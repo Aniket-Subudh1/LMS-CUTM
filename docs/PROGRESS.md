@@ -110,12 +110,12 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-31 | A student's section must be one of the batch's `sections` (single create and import); a section is added to the batch first | M01 | — |
 | A-32 | Re-enabling a disabled account returns it to `invited` if the person never set a password, otherwise `active` | M01 | — |
 | A-33 | CSV import replaces an existing user's roles with the role in the row; administrator accounts are never changed by import | M01 | — |
-| A-34 | Home lists the newest five offerings the viewer teaches, oversees or is enrolled in, not “this term’s”; `/courses` has the full list | M01 | — |
+| A-34 | Home lists the newest six offerings the viewer teaches, oversees or is enrolled in, not “this term’s”; `/courses` has the full list | M01 | — |
 | A-35 | A head of department sees the People roster of their department's offerings but cannot change enrolment; only admin and the offering's faculty can | M01 | — |
 | A-36 | The worker may import `lib/queue` and `lib/auth/tokens` (to enqueue per-recipient mail and build invitation links); AGENTS.md's layer table says so | M01 | — |
 | A-37 | The seed runs only against a local MongoDB (`localhost` or `127.0.0.1`) and never in production; without `--e2e` it leaves users `invited` and needs an existing administrator | M01 | — |
 | A-38 | There is no public sign-up: accounts are created by an administrator and the person sets a password from the invitation link (01 §4–§5). The "sign up" screen of the redesign is that page, titled "Set up your account" | auth UI | — |
-| A-39 | Home shows only data that exists today: counts of structure, catalogue, offerings and users for admins; offerings and enrolled students for faculty and HoD; enrolled courses for students; the six latest audit entries for admins. Later milestones add their sections | `/home` | — |
+| A-39 | Home shows only data that exists today: counts of structure, catalogue, offerings and users for admins; offerings and enrolled students for faculty and HoD; enrolled courses for students; the six latest audit entries for admins. “Enrolled students” is counted as active enrolments across the viewer’s offerings (a student in two of them counts twice), so the count stays one indexed query. Later milestones add their sections | `/home` | — |
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
 
 ## 5. Log

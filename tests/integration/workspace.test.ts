@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getOfferingCourse } from '@/lib/data/courses';
 import { db } from '@/lib/db';
-import { getWorkspace, listMyOfferings, listRoster } from '@/lib/data/workspace';
+import { getHomeSummary, getWorkspace, listMyOfferings, listRoster } from '@/lib/data/workspace';
+import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -102,6 +103,59 @@ describe('listMyOfferings', () => {
     await expect(listMyOfferings(1, {})).rejects.toMatchObject(redirectsTo('/home'));
     switchBrowser(new Map());
     await expect(listMyOfferings(1, {})).rejects.toMatchObject(redirectsTo('/login'));
+  });
+});
+
+describe('getHomeSummary', () => {
+  it('counts what each role works with', async () => {
+    const w = await world();
+    const student = await makeUser({ roles: ['student'] });
+    const other = await makeUser({ roles: ['student'] });
+    await Promise.all([
+      enroll(w.offA._id, student._id),
+      enroll(w.offA._id, other._id, 'dropped'),
+      enroll(w.draftA._id, other._id),
+      enroll(w.offB._id, other._id),
+    ]);
+
+    await signInAs(w.facultyA);
+    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, admin: null });
+    await signInAs(w.hodA);
+    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, admin: null });
+    await signInAs(student);
+    expect(await getHomeSummary()).toEqual({ myOfferings: 1, enrolments: null, admin: null });
+    await signInAs(await makeUser({ roles: ['support'] }));
+    expect(await getHomeSummary()).toEqual({ myOfferings: null, enrolments: null, admin: null });
+  });
+
+  it('gives admins the structure, catalogue and user counts and the latest audit entries', async () => {
+    const admin = await makeUser({ roles: ['admin'], name: 'Audit Admin' });
+    await signInAs(admin);
+    const before = await getHomeSummary();
+    await world();
+    await makeUser({ roles: ['faculty', 'hod'], status: 'invited' });
+    const entry = await AuditLog.create({
+      at: new Date(Date.now() + 60_000),
+      actorId: admin._id,
+      action: 'user.created',
+      entity: 'user',
+      entityId: newId(),
+    });
+    const after = await getHomeSummary();
+    expect(after.myOfferings).toBeNull();
+    expect(after.admin).toMatchObject({
+      departments: (before.admin?.departments ?? 0) + 2,
+      activeOfferings: (before.admin?.activeOfferings ?? 0) + 2,
+      invited: (before.admin?.invited ?? 0) + 1,
+    });
+    expect(after.admin?.recent[0]).toEqual({
+      id: String(entry._id),
+      at: entry.at,
+      actor: 'Audit Admin',
+      action: 'user.created',
+      entity: 'user',
+    });
+    expect(after.admin?.recent.length).toBeLessThanOrEqual(6);
   });
 });
 

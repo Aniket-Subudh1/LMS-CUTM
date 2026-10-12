@@ -117,7 +117,7 @@ Routes: `/courses`, `app/(app)/courses/[offeringId]/layout.tsx`, `/courses/[offe
 - People: roster `DataTable` (roll no, name, email, status); for teach/admin, the enrollment-change form (T7).
 
 ### T11 · Home sections and seed data
-- `/home`: faculty — "My offerings this term"; student — "My courses"; admin — links to Structure, Offerings, Users; support — link to Users.
+- `/home`: faculty — "My offerings this term"; student — "My courses"; admin — links to Structure, Offerings, Users; support — link to Users. Since the UI redesign: `getHomeSummary()` in `lib/data/workspace.ts` (stat tiles: the viewer's offerings, active enrolments across the offerings they teach or oversee, and for admins the structure, catalogue, offering and user counts plus the six latest audit entries; 08 §6 Home).
 - `scripts/seed.ts` (dev) creates the structure below; `--e2e` creates the deterministic fixture set in 10 §3 with passwords from `.env.e2e`:
   department CSE; program `BTECH-CSE` (ugc) with default outcomes; batch 2025 (sections A, B); program `SKILL` (skill); term `2026-ODD` current; course `CS101 C Programming` (theory+practice, 4 credits, CO1–CO3, a CO map); course `SK01 Excel Basics` (skill); scheme `theory+practice` v1 as in 07 §2; two offerings with one faculty each; 20 students in batch 2025 section A.
 - Add CI step 5 (e2e) now that the seed exists.

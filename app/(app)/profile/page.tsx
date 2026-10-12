@@ -81,6 +81,7 @@ async function Profile() {
                 icon={<KeyIcon weight="duotone" />}
                 title="Change password"
                 description="You stay signed in on this browser."
+                openParam="password"
                 action={changePassword}
                 submitLabel="Change password"
                 successMessage="Your password has been changed."

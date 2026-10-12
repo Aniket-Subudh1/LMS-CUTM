@@ -151,9 +151,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Today />
           </Suspense>
         </header>
-        <main className="motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
+        <div className="motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
           {children}
-        </main>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

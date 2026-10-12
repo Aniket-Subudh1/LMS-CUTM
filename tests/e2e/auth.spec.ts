@@ -100,7 +100,7 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   await expect(page.getByRole('heading', { name: 'Set up your account' })).toBeVisible();
   await setPassword(page, invite, 'first-password-123');
   await expect(page.getByRole('heading', { name: 'Asha', exact: true })).toBeVisible();
-  await expect(page.getByText('Administrator')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Your roles' }).getByText('Administrator')).toBeVisible();
 
   await page.goto(invite);
   await expect(page.getByRole('heading', { name: 'Link not valid' })).toBeVisible();
