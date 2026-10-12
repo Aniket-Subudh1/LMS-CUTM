@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connection } from 'next/server';
+import { LinkBreakIcon, LockKeyIcon, PasswordIcon, UserPlusIcon } from '@phosphor-icons/react/ssr';
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/password-input';
@@ -26,36 +27,66 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
   const data = typeof token === 'string' ? await readToken(token, ['reset', 'invite']) : null;
   if (!data || !(await isTokenCurrent(data))) {
     return (
-      <div className="grid gap-8">
-        <div className="grid gap-2">
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">Link not valid</h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">This link has expired or was already used.</p>
+      <div className="grid gap-7">
+        <div className="grid gap-3">
+          <span className="bg-warning/12 text-warning grid size-11 place-items-center rounded-lg">
+            <LinkBreakIcon weight="duotone" className="size-6" />
+          </span>
+          <div className="grid gap-1.5">
+            <h1 className="text-2xl leading-tight font-semibold tracking-tight">Link not valid</h1>
+            <p className="text-muted-foreground text-sm leading-relaxed">This link has expired or was already used.</p>
+          </div>
         </div>
-        <Button asChild>
+        <Button asChild className="h-10">
           <Link href="/forgot-password">Request a new link</Link>
         </Button>
       </div>
     );
   }
+  const invite = data.purpose === 'invite';
   return (
-    <div className="grid gap-8">
-      <div className="grid gap-2">
-        <h1 className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">
-          {data.purpose === 'invite' ? 'Set your password' : 'Choose a new password'}
-        </h1>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {data.purpose === 'invite'
-            ? 'Welcome to the CUTM LMS. Choose a password to activate your account.'
-            : 'You will be signed in once it is saved.'}
-        </p>
+    <div className="grid gap-7">
+      <div className="grid gap-3">
+        <span className="icon-chip size-11 [&_svg]:size-6">
+          {invite ? <UserPlusIcon weight="duotone" /> : <PasswordIcon weight="duotone" />}
+        </span>
+        <div className="grid gap-1.5">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight">
+            {invite ? 'Set up your account' : 'Choose a new password'}
+          </h1>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {invite
+              ? 'Welcome to the CUTM LMS. Choose a password to activate your account; you will be signed in once it is saved.'
+              : 'You will be signed in once it is saved.'}
+          </p>
+        </div>
       </div>
       <ActionForm action={resetPassword} submitLabel="Save password" fullWidth>
         <input type="hidden" name="token" value={token} />
         <Field name="password" label="New password" hint="10 to 128 characters. Not your email address.">
-          <PasswordInput name="password" autoComplete="new-password" required minLength={10} maxLength={128} />
+          <span className="relative block">
+            <LockKeyIcon
+              aria-hidden="true"
+              className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2"
+            />
+            <PasswordInput
+              name="password"
+              autoComplete="new-password"
+              required
+              minLength={10}
+              maxLength={128}
+              className="h-10 pl-9"
+            />
+          </span>
         </Field>
         <Field name="confirm" label="Repeat the password">
-          <PasswordInput name="confirm" autoComplete="new-password" required />
+          <span className="relative block">
+            <LockKeyIcon
+              aria-hidden="true"
+              className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2"
+            />
+            <PasswordInput name="confirm" autoComplete="new-password" required className="h-10 pl-9" />
+          </span>
         </Field>
       </ActionForm>
     </div>

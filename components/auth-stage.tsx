@@ -2,8 +2,27 @@
 
 import { useLayoutEffect, useRef } from 'react';
 import Image from 'next/image';
+import { ChartLineUpIcon, ShieldCheckIcon, StackIcon } from '@phosphor-icons/react';
 import gsap from 'gsap';
 import { UniversityLogo } from '@/components/university-logo';
+
+const FEATURES = [
+  {
+    icon: StackIcon,
+    title: 'Every course in one place',
+    text: 'Syllabus, outcomes and the people on each offering.',
+  },
+  {
+    icon: ChartLineUpIcon,
+    title: 'Marks you can trust',
+    text: 'Internal marks follow the evaluation scheme, and every change is audited.',
+  },
+  {
+    icon: ShieldCheckIcon,
+    title: 'Your account, protected',
+    text: 'Password links that expire, and sign-out on every device in one click.',
+  },
+];
 
 export function AuthStage() {
   const root = useRef<HTMLElement>(null);
@@ -14,13 +33,13 @@ export function AuthStage() {
     const ctx = gsap.context(() => {
       gsap.matchMedia().add('(prefers-reduced-motion: no-preference)', () => {
         gsap
-          .timeline({ defaults: { ease: 'power2.out' } })
-          .from('[data-auth-motion="logo"]', { y: 12, opacity: 0, duration: 0.7 }, 0)
-          .from('[data-auth-motion="rule"]', { scaleX: 0, duration: 0.55 }, 0.16)
-          .from('[data-auth-motion="line"]', { y: 8, opacity: 0, duration: 0.5, stagger: 0.08 }, 0.24);
+          .timeline({ defaults: { ease: 'power3.out' } })
+          .from('[data-auth-motion="logo"]', { y: 16, opacity: 0, scale: 0.96, duration: 0.8 }, 0)
+          .from('[data-auth-motion="line"]', { y: 12, opacity: 0, duration: 0.6, stagger: 0.08 }, 0.2)
+          .from('[data-auth-motion="feature"]', { x: -12, opacity: 0, duration: 0.5, stagger: 0.1 }, 0.45);
         gsap.to('[data-auth-motion="lotus"]', {
-          rotation: 8,
-          duration: 22,
+          rotation: 12,
+          duration: 26,
           ease: 'sine.inOut',
           repeat: -1,
           yoyo: true,
@@ -32,7 +51,10 @@ export function AuthStage() {
   }, []);
 
   return (
-    <aside ref={root} className="bg-background relative hidden overflow-hidden border-r lg:flex lg:flex-col">
+    <aside
+      ref={root}
+      className="auth-aurora motion-safe:animate-aurora relative hidden overflow-hidden text-white lg:flex lg:flex-col"
+    >
       <Image
         src="/brand/lotus.svg"
         alt=""
@@ -40,22 +62,43 @@ export function AuthStage() {
         height={200}
         unoptimized
         data-auth-motion="lotus"
-        className="pointer-events-none absolute -right-24 -bottom-28 w-[28rem] opacity-[0.22]"
+        className="pointer-events-none absolute -right-32 -bottom-36 w-[34rem] opacity-25 brightness-0 invert"
       />
-      <div className="relative z-10 flex flex-1 flex-col justify-center px-10 py-12 xl:px-16">
-        <div data-auth-motion="logo" className="w-40 xl:w-48">
-          <UniversityLogo priority sizes="12rem" className="w-full" />
+      <div className="relative z-10 flex flex-1 flex-col justify-between gap-12 px-10 py-10 xl:px-16 xl:py-14">
+        <div data-auth-motion="logo" className="w-fit rounded-2xl bg-white p-3 shadow-lg shadow-black/15">
+          <UniversityLogo priority sizes="7rem" className="w-24 xl:w-28" />
         </div>
-        <span aria-hidden="true" data-auth-motion="rule" className="bg-gold mt-8 block h-px w-16 origin-left" />
-        <p
-          data-auth-motion="line"
-          className="mt-6 max-w-md text-3xl leading-tight font-semibold tracking-tight xl:text-4xl"
-        >
-          Connecting through knowledge.
-        </p>
-        <p data-auth-motion="line" className="text-muted-foreground mt-4 max-w-sm text-sm leading-relaxed">
-          The learning system for students, faculty and staff of Centurion University.
-        </p>
+        <div className="grid max-w-lg gap-8">
+          <div className="grid gap-4">
+            <p data-auth-motion="line" className="text-sm font-semibold tracking-[0.18em] text-white/70 uppercase">
+              Learning Management System
+            </p>
+            <h2 data-auth-motion="line" className="text-4xl leading-[1.1] font-semibold tracking-tight xl:text-5xl">
+              Connecting through knowledge.
+            </h2>
+            <p data-auth-motion="line" className="max-w-md text-base leading-relaxed text-white/80">
+              The learning system for students, faculty and staff of Centurion University.
+            </p>
+          </div>
+          <ul className="grid gap-3">
+            {FEATURES.map((f) => (
+              <li
+                key={f.title}
+                data-auth-motion="feature"
+                className="flex items-start gap-4 rounded-xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur-sm"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-white/15">
+                  <f.icon weight="duotone" className="size-5" />
+                </span>
+                <span className="grid gap-0.5">
+                  <span className="font-medium">{f.title}</span>
+                  <span className="text-sm text-white/75">{f.text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="text-xs text-white/60">Centurion University of Technology and Management</p>
       </div>
     </aside>
   );
