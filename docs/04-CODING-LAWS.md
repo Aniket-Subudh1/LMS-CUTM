@@ -88,7 +88,7 @@ Copy these shapes exactly. File paths are the real ones.
 ### 6.1 Model — `lib/models/<name>.ts`
 
 ```ts
-import { Schema, model, models, type InferSchemaType, type Model } from 'mongoose';
+import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 import { ROLES } from '@/lib/schemas/common';
 
 const userSchema = new Schema(
@@ -109,12 +109,12 @@ userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ rollNo: 1 }, { unique: true, partialFilterExpression: { rollNo: { $type: 'string' } } });
 
 export type UserDoc = InferSchemaType<typeof userSchema>;
-export const User: Model<UserDoc> = models.User ?? model('User', userSchema);
+export const User: Model<UserDoc> = mongoose.models.User ?? mongoose.model('User', userSchema);
 ```
 
 Rules:
 - **Export the model annotated as `Model<Doc>`.** The tempting `(models.User as Model<UserDoc>) ?? model(...)` produces a union type whose methods are not callable under Mongoose 9 (verified).
-- `models.X ?? model(...)` prevents `OverwriteModelError` when Next.js re-evaluates modules in development.
+- `mongoose.models.X ?? mongoose.model(...)` prevents `OverwriteModelError` when Next.js re-evaluates modules in development. Use the **default import** for `models` and `connection`: under plain Node ESM (`tsx` — the worker and scripts) Mongoose does not provide them as named exports (verified: `SyntaxError: … does not provide an export named 'models'`); `Schema`, `Types` and `isValidObjectId` are fine as named imports.
 - Indexes are declared in the model with `schema.index(...)`, never ad hoc in code.
 - Middleware (rare): `schema.pre('save', async function () { … })` — Mongoose 9 passes **no `next`**.
 - No business logic, statics, methods or virtuals unless a milestone specifies one.
