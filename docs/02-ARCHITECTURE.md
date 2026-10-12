@@ -47,8 +47,8 @@ Paths are exact. Do not create folders not listed here without updating this sec
 .
 ├── AGENTS.md · CLAUDE.md · README.md
 ├── app/
-│   ├── layout.tsx                      root <html>, fonts, globals.css
-│   ├── globals.css                     tokens + component classes (08 §4)
+│   ├── layout.tsx                      root <html>, Geist font, globals.css
+│   ├── globals.css                     shadcn design tokens (08 §4)
 │   ├── page.tsx                        redirect('/home')
 │   ├── not-found.tsx
 │   ├── (auth)/                         public pages, no app shell
@@ -74,7 +74,10 @@ Paths are exact. Do not create folders not listed here without updating this sec
 │       ├── webhooks/github/route.ts
 │       ├── auth/github/callback/route.ts
 │       └── exports/internal-marks/route.ts
-├── components/                         shared components — inventory only (08 §5)
+├── components/                         app components — inventory only (08 §5.2)
+│   └── ui/                             vendored shadcn/ui primitives, added on first use (08 §5.1)
+├── hooks/use-mobile.ts                 shadcn sidebar's viewport hook
+├── components.json                     shadcn configuration (style new-york-v4, aliases)
 ├── lib/
 │   ├── env.ts                          lazy, validated environment
 │   ├── db.ts                           Mongo connection (cached on globalThis)
@@ -84,7 +87,8 @@ Paths are exact. Do not create folders not listed here without updating this sec
 │   ├── audit.ts                        writeAudit()
 │   ├── queue.ts                        queue handles + job types
 │   ├── rate-limit.ts                   Redis fixed-window limiter
-│   ├── format.ts                       Intl date/number formatting (IST)
+│   ├── format.ts                       labels (ROLE_LABEL) and Intl date/number formatting (IST)
+│   ├── cn.ts                           cn(): clsx + tailwind-merge for shadcn classes
 │   ├── auth/                           session.ts · password.ts · access.ts
 │   ├── schemas/                        Zod only — shared by browser, web and worker
 │   ├── models/                         one Mongoose model per collection

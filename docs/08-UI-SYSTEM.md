@@ -4,11 +4,14 @@ Server-first, minimal JavaScript, mobile-first, readable on a slow connection. S
 
 ## 1. Principles
 
-1. **A page that only shows data ships no client JavaScript.** Interactivity is isolated in the inventory's client components (§5).
-2. **One way to do each thing:** lists → `DataTable`; forms → `ActionForm` + `Field`; filters → GET `<form>`; destructive actions → `ConfirmSubmit`; navigation inside an area → `TabNav`.
-3. **No modals, toasts, drawers, carousels, drag-and-drop, infinite scroll** (04 §1).
-4. **Every page has four states designed:** loading (`loading.tsx` skeleton), empty (a sentence saying what to do next), error (`error.tsx`), not found (`not-found.tsx`).
-5. **Words over icons.** Icons (lucide-react) only beside a text label.
+The UI is built on **shadcn/ui** (Radix primitives styled with Tailwind v4), vendored into `components/ui/` at a pinned version. The bar is a professional, consistent product a first-time user understands without training.
+
+1. **Server-first.** Pages are Server Components; interactivity lives in `components/ui/` primitives and the few app client components in §5. A page that only shows data ships no extra JavaScript of its own.
+2. **One way to do each thing:** lists → `DataTable`; forms → `ActionForm` + `Field` with shadcn inputs; filters → GET `<form>`; destructive actions → `ConfirmSubmit` (shadcn `AlertDialog`); navigation inside an area → `TabNav`; feedback → inline `Alert` in the form (no toasts); dashboards → `Card` grids with shadcn charts (M06+).
+3. **Not used:** toasts, carousels, drag-and-drop, infinite scroll, modals for data entry (create/edit pages are routes). `Sheet` is used only by the mobile sidebar; `AlertDialog` only for confirmations.
+4. **Every page has four states designed:** loading (`loading.tsx` with `Skeleton`), empty (shadcn `Empty` with a sentence saying what to do next), error (`error.tsx`), not found (`not-found.tsx`).
+5. **Icons support words.** Icons (lucide-react) sit beside a text label; icon-only buttons are allowed only with an `aria-label` or `sr-only` text (the sidebar trigger, collapsed-sidebar items with tooltips).
+6. **Explain as you go.** Every card has a title and a one-line description of what it is for; every form field has a label and, where a rule applies, a hint; every error says what to do next.
 
 ## 2. Route map
 
@@ -91,72 +94,56 @@ The `(app)` layout renders a header (product name, notifications count, user men
 
 The workspace layout reads `params` and the offering, so its header and tabs render inside their own `<Suspense>` (02 §5).
 
-## 4. Design tokens and CSS classes — `app/globals.css`
+## 4. Design tokens — `app/globals.css`
 
-Tokens go in Tailwind v4's `@theme` so utilities exist (`bg-primary`, `text-muted`, `border-border`). Brand colours are placeholders until CUTM provides its palette (Q-32).
+shadcn's token set, defined once in `:root` and mapped to Tailwind colours with `@theme inline` (so `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `border-border` exist). Brand values are placeholders until CUTM provides its palette (Q-32): navy primary `oklch(0.33 0.07 258)`, gold accent `--gold` `oklch(0.76 0.14 80)`, deep-navy sidebar. Extra tokens beyond shadcn's: `--success`, `--warning`, `--gold`. No dark theme (out of scope); `@custom-variant dark` is declared only so shadcn's `dark:` classes stay inert.
 
-```css
-@import "tailwindcss";
+Rules:
+- Use shadcn components and token utilities (`bg-card`, `text-muted-foreground`); never hard-code a hex colour in a component.
+- Typography: Geist (`next/font/google`, self-hosted at build). Page titles via `PageHeader`; card titles via `CardTitle`.
+- Status → `Badge` variant mapping lives in one function, `statusTone(status)` in `lib/format.ts` (added with its first caller, M01); role names in `ROLE_LABEL` there (M00).
+- Rendered rich text uses one class, `.prose-lms`, defined in `globals.css` with `RichTextView` (M02).
 
-@theme {
-  --color-primary: #1d3557;
-  --color-primary-hover: #16283f;
-  --color-accent: #b7791f;
-  --color-surface: #ffffff;
-  --color-page: #f7f7f5;
-  --color-ink: #18181b;
-  --color-muted: #52525b;
-  --color-border: #d4d4d8;
-  --color-success: #15803d;
-  --color-warning: #b45309;
-  --color-danger: #b91c1c;
-  --color-info: #1d4ed8;
-}
-```
+## 5. Components
 
-Component classes, defined once with `@apply` in `@layer components` (verified to compile through the `@tailwindcss/turbopack` loader). Use these class names; do not re-create them with ad-hoc utility strings.
+### 5.1 `components/ui/` — vendored shadcn/ui primitives
 
-| Class | For |
-|---|---|
-| `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-sm` | Buttons and button-styled links |
-| `.input` | `<input>`, `<select>`, `<textarea>` |
-| `.form`, `.field`, `.field-label`, `.field-hint`, `.field-error`, `.form-error`, `.form-success` | Forms (`ActionForm`, `Field`) |
-| `.page-header` | `<header>` with `<h1>`, optional description and actions |
-| `.card` | Bordered surface block |
-| `.badge`, `.badge-success`, `.badge-warning`, `.badge-danger`, `.badge-info`, `.badge-muted` | Statuses |
-| `.table` | Tables (`DataTable` uses it) |
-| `.skeleton` | Loading placeholders |
-| `.empty` | Empty-state sentence |
-| `.prose-lms` | Rendered rich text |
+Source: shadcn/ui tag **`shadcn@4.21.4`**, style `new-york-v4` (`components.json`). The registry host may be blocked in some networks; the same files are at `https://raw.githubusercontent.com/shadcn-ui/ui/shadcn@4.21.4/apps/v4/registry/new-york-v4/ui/<name>.tsx` — copy with imports rewritten (`@/registry/new-york-v4/ui/` → `@/components/ui/`, `"cn"` → `@/lib/cn`, hooks → `@/hooks/`) and run `npm run format`.
 
-Status → badge tone mapping lives in one function, `statusTone(status)` in `lib/format.ts`.
+- **Add a primitive only in the commit that first uses it** (deletion test). Never add one "for later".
+- Do not restyle primitives per page; extend with `className` at the call site. Edit a vendored file only to fix a lint/type error, and mark the edit with a `Local change from shadcn 4.21.4` comment.
+- In M00: `alert`, `avatar`, `badge`, `button`, `card`, `dropdown-menu`, `input`, `label`, `separator`, `sheet`, `sidebar`, `skeleton`, `tooltip` (+ `hooks/use-mobile.ts`, `lib/cn.ts`). Local changes: `sidebar` skeleton width fixed (purity lint), `use-mobile` rewritten with `useSyncExternalStore` (effect-setState lint).
+- Planned first uses: `table`, `tabs`, `alert-dialog`, `select`, `textarea`, `empty`, `pagination` (M01); `progress`, `chart` (M06, adds `recharts`).
 
-## 5. Shared component inventory (closed list)
+### 5.2 App components (closed list)
 
-These are the **only** files allowed in `components/`. The entries below are pre-approved: each has two or more planned call sites (or is a client boundary), even if the second arrives in a later milestone. Adding a **new** entry requires two real call sites (or a client boundary) and a row here, in the same commit (04 §2).
+These are the **only** other files allowed in `components/`. Each has two or more call sites (or is a required client boundary). Adding an entry requires two real call sites and a row here, in the same commit (04 §2).
 
 | Component | File | Kind | Props (contract) | Used by | Milestone |
 |---|---|---|---|---|---|
 | `ActionForm`, `Field` | `action-form.tsx` | client | 04 §6.8 | every form | M00 |
-| `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — renders `.table`, an empty sentence, and Previous/Next links that keep `query` | every list | M01 |
-| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string }[] }` | course workspace, admin, reports | M01 |
-| `ConfirmSubmit` | `confirm-submit.tsx` | client | `{ message: string; className?: string; children: ReactNode }` — a submit button that cancels unless `window.confirm(message)` | publish, lock, end session, delete | M01 |
+| `PageHeader` | `page-header.tsx` | server | `{ title: string; description?: string }` | every page in the shell | M00 |
+| `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | none; the `NAV` list lives in the file (items gain `roles` from M01) | `(app)` layout | M00 |
+| `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — shadcn `Table` in a bordered card, an `Empty` state, and `Pagination` links that keep `query` | every list | M01 |
+| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string }[] }` — link tabs styled as shadcn `Tabs` | course workspace, admin, reports | M01 |
+| `ConfirmSubmit` | `confirm-submit.tsx` | client | `{ title: string; message: string; confirmLabel: string; variant?: 'default' \| 'destructive'; children: ReactNode }` — shadcn `AlertDialog`; the confirm button submits the enclosing form (`form.requestSubmit()`) | publish, lock, end session, delete | M01 |
 | `RichTextEditor` | `rich-text-editor.tsx` | client | `{ name: string; initial?: RichTextDoc; placeholder?: string }` — Tiptap StarterKit, `immediatelyRender: false`, writes JSON to a hidden input `name` | plan, lesson description, item prompts, text answers, task description | M02 |
 | `RichTextView` | `rich-text-view.tsx` | server | `{ doc: RichTextDoc }` — `generateHTML` from `@tiptap/html/server` with StarterKit into `.prose-lms` | everywhere rich text is shown | M02 |
-| `FileUpload` | `file-upload.tsx` | client | `{ name: string; purpose: UploadPurpose; contextId: string; accept: string; maxBytes: number; multiple?: boolean }` — calls `createUpload`, PUTs with `XMLHttpRequest` (for progress), writes keys to hidden inputs `name[]` | lesson files, syllabus, submissions | M02 |
+| `FileUpload` | `file-upload.tsx` | client | `{ name: string; purpose: UploadPurpose; contextId: string; accept: string; maxBytes: number; multiple?: boolean }` — calls `createUpload`, PUTs with `XMLHttpRequest` (for progress, shadcn `Progress`), writes keys to hidden inputs `name[]` | lesson files, syllabus, submissions | M02 |
 | `VideoPlayer` | `video-player.tsx` | client | `{ lessonId: string; src: string; lowSrc: string \| null; durationSec: number }` — native `<video controls>`; an "HD / Data saver" toggle when `lowSrc` exists (default Data saver below 768 px wide, choice kept in `localStorage`; switching keeps the playback position); collects played ranges, `sendBeacon` every 30 s and on `pagehide` | lesson page | M02 |
 | `LiveRoom` | `live-room.tsx` | client | `{ sessionId: string; serverUrl: string; token: string }` — LiveKit `LiveKitRoom` + `VideoConference`; focus beacon every 60 s while visible | live session page | M03 |
 | `AssessmentRunner` | `assessment-runner.tsx` | client | `{ attempt: AttemptDTO }` (no answer keys, no hidden cases) — timer, autosave per answer, submit, proctoring hooks, renders items by type | attempt page | M04, M05 |
 | `CodeEditor` | `code-editor.tsx` | client | `{ name?: string; value: string; language: 'c' \| 'cpp' \| 'java'; readOnly?: boolean; onChange?: (v: string) => void }` | runner, builder (starter code) | M05 |
-| `Sparkline` | `sparkline.tsx` | server | `{ values: number[]; max: number; label: string }` — inline SVG polyline, `role="img"` + `aria-label` | marks trend, engagement trend | M06 |
-| `Meter` | `meter.tsx` | server | `{ value: number \| null; max: number; label: string }` — CSS bar with the number as text | attainment, progress, engagement | M06 |
-| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: string[]; cells: Record<string, number>; mode: 'edit' \| 'levels' \| 'values' }` — `edit` renders `<select name="cell[]">` per cell for an `ActionForm` | course admin, outcomes report | M01, M09 |
+| `TrendChart` | `trend-chart.tsx` | client (shadcn `chart`) | `{ points: { label: string; value: number }[]; max: number; label: string }` — area/line chart with an accessible summary sentence | marks trend, engagement trend | M06 |
+| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: string[]; cells: Record<string, number>; mode: 'edit' \| 'levels' \| 'values' }` — `edit` renders a `<select name="cell[]">` per cell for an `ActionForm` | course admin, outcomes report | M01, M09 |
 
-Not components (use markup/CSS): page headers, badges, empty states, search/filter forms, cards, the kanban board (a server-rendered grid with per-card status forms), notification lists.
+Bars and percentages (attainment, progress, engagement) use the shadcn `Progress` primitive with the number as text beside it; there is no separate `Meter` component.
+
+Not components (use shadcn primitives + markup): page sections (`Card`), badges, empty states (`Empty`), search/filter forms, the kanban board (a server-rendered grid of `Card`s with per-card status forms), notification lists.
 
 ## 6. Page patterns
 
-**List page** — `page.tsx` validates `searchParams` (Zod), calls one DAL list function, renders `.page-header` (title + primary action link), an optional GET filter `<form>`, and `DataTable`.
+**List page** — `page.tsx` validates `searchParams` (Zod), calls one DAL list function, renders `PageHeader` (title + description; the primary action `Button` beside it), an optional GET filter `<form>`, and `DataTable`.
 
 **Detail page** — validates `params`, calls DAL `get…` (which `notFound()`s on no access), renders sections. Secondary actions are small `ActionForm`s or `ConfirmSubmit` buttons.
 
@@ -177,8 +164,8 @@ Not components (use markup/CSS): page headers, badges, empty states, search/filt
 ## 8. Accessibility and responsiveness
 
 - Every input has a visible `<label>` (via `Field`). Errors are associated text, not colour alone.
-- Keyboard: everything reachable and operable; visible focus outline (`.input`, `.btn` define it).
+- Keyboard: everything reachable and operable; visible focus rings come from the shadcn primitives (`focus-visible:ring`); Radix menus and dialogs handle focus and `Esc`.
 - Contrast: WCAG 2.1 AA for text and badges.
 - `aria-live="polite"` for the attempt timer's minute updates and autosave status; `role="alert"` for form errors.
-- Layout works from 360 px wide. Tables scroll horizontally inside their container on small screens; the attempt runner is single-column on phones.
+- Layout works from 360 px wide (no horizontal page scroll — e2e asserts it). Tables scroll horizontally inside their container on small screens; the attempt runner is single-column on phones.
 - Low bandwidth (NFR-07): read pages are server-rendered HTML; uploads show progress and can be retried; videos stream from object storage/CDN with `preload="metadata"`.

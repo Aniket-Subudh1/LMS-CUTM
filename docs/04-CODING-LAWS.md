@@ -30,7 +30,7 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 ## 2. The reuse law
 
 - **Rule of two:** extract a function or component only when it has **two real call sites in the same commit**. Never extract "because it might be reused".
-- **Shared components** live in `components/` and must be in the inventory (`08-UI-SYSTEM.md` §5). Inventory entries are pre-approved. To add a new one: two call sites + an inventory row, same commit.
+- **UI primitives** are shadcn/ui files in `components/ui/` (08 §5.1), added on first use. **App components** live in `components/` and must be in the inventory (08 §5.2). Inventory entries are pre-approved. To add a new one: two call sites + an inventory row, same commit.
 - **Client boundary exception:** a component that must be `'use client'` gets its own file even with one call site, because a Server Component page cannot contain client code. It still goes in the inventory.
 - **Local components:** a component used by one page is a function in that page's file, not a new file.
 - **Shared functions:** a pure calculation used twice goes to `lib/domain/`; a write used by an action and a job goes to `lib/data/` (02 §3.1).
@@ -525,7 +525,11 @@ Rules: `PageProps<'/route'>` and `LayoutProps<'/route'>` are global types genera
 ```tsx
 'use client';
 
-import { createContext, use, useActionState, type ReactNode } from 'react';
+import { createContext, startTransition, use, useActionState, useRef, type ReactNode } from 'react';
+import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
 
 type Result = ActionResult<unknown> | null;
@@ -535,35 +539,85 @@ export function ActionForm({
   action,
   submitLabel,
   successMessage,
+  submitVariant = 'default',
+  fullWidth = false,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
   submitLabel: string;
   successMessage?: string;
-  children: ReactNode;
+  submitVariant?: 'default' | 'destructive';
+  fullWidth?: boolean;
+  children?: ReactNode;
 }) {
-  const [state, formAction, pending] = useActionState<Result, FormData>((_prev, fd) => action(fd), null);
+  const form = useRef<HTMLFormElement>(null);
+  const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
+    const result = await action(fd);
+    if (result.ok) form.current?.reset();
+    return result;
+  }, null);
+  // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
-    <form action={formAction} className="form">
-      {state && !state.ok && <p role="alert" className="form-error">{state.message}</p>}
-      {state?.ok && successMessage && <p role="status" className="form-success">{successMessage}</p>}
+    <form
+      ref={form}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const fd = new FormData(event.currentTarget);
+        startTransition(() => formAction(fd));
+      }}
+      className="grid gap-5"
+    >
+      {state && !state.ok && (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+      )}
+      {state?.ok && successMessage && (
+        <Alert role="status" className="border-success/30 text-success">
+          <CircleCheck />
+          <AlertDescription className="text-success">{successMessage}</AlertDescription>
+        </Alert>
+      )}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <button type="submit" className="btn btn-primary" disabled={pending}>
-        {pending ? 'Please wait…' : submitLabel}
-      </button>
+      <Button
+        type="submit"
+        variant={submitVariant}
+        disabled={pending}
+        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
+      >
+        {pending && <LoaderCircle className="animate-spin" />}
+        {submitLabel}
+      </Button>
     </form>
   );
 }
 
-export function Field({ name, label, hint, children }: { name: string; label: string; hint?: string; children: ReactNode }) {
+export function Field({
+  name,
+  label,
+  hint,
+  children,
+}: {
+  name: string;
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   const errors = use(FormErrors)?.[name];
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
-      {errors?.map((e) => <span key={e} className="field-error">{e}</span>)}
-    </label>
+    <div className="grid gap-2">
+      <label className="grid gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        {children}
+      </label>
+      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
+      {errors?.map((e) => (
+        <p key={e} className="text-destructive text-sm">
+          {e}
+        </p>
+      ))}
+    </div>
   );
 }
 ```
@@ -574,10 +628,14 @@ Usage from a Server Component page (an action is passed straight through — no 
 <ActionForm action={renameOffering} submitLabel="Rename" successMessage="Saved.">
   <input type="hidden" name="offeringId" value={offeringId} />
   <Field name="title" label="Title">
-    <input name="title" className="input" required />
+    <Input name="title" required />
   </Field>
 </ActionForm>
 ```
+
+- Controls are shadcn primitives (`Input`, `Textarea`, `Select` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
+- The form submits through `startTransition` in `onSubmit`, not `<form action>`: React clears every uncontrolled field after a `<form action>` completes, which wiped the email after a wrong password (verified). `ActionForm` resets the form itself, only after a successful result.
+- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms.
 
 ### 6.9 Jobs — `lib/queue.ts` (producer) and `worker/jobs/<queue>.ts` (consumer)
 

@@ -33,12 +33,12 @@ Class P90s are computed over active enrollments (zeros included). Returns `{ stu
 Worker scheduler `engagement-nightly` (`30 2 * * *` IST) → `compute/engagementSnapshot { offeringId }` for every active offering (job id `eng-<offeringId>-<day>`): `computeOfferingEngagement` → one `bulkWrite` setting `enrollments.engagement`. A "Recompute" button on the People tab enqueues the same job (teach, 1/min).
 
 ### T4 · People tab: engagement columns (ENG-02 list, DSH-01)
-For `teach`/`oversee`: score, band badge, trend arrow, the five signal values as small `Meter`s, last activity; filters: band, trend; sort by score. For skill offerings the existing traceability columns (lessons completed, watched minutes, quizzes attempted, time-based attendance %) stay alongside (DSH-05). "Computed <time>".
+For `teach`/`oversee`: score, band badge, trend arrow, the five signal values as small `Progress` bars, last activity; filters: band, trend; sort by score. For skill offerings the existing traceability columns (lessons completed, watched minutes, quizzes attempted, time-based attendance %) stay alongside (DSH-05). "Computed <time>".
 
 ### T5 · Student drill-down (ENG-02)
 Route: `/courses/[offeringId]/people/[studentId]` (teach/oversee):
 - Live computation for this student (T2 for one student, reusing the class P90s from the snapshot to avoid recomputing the class).
-- Sections: signals with the raw numbers behind each (e.g. "6 of 8 classes attended"), daily activity over the window (`Sparkline` of active minutes = (videoSec + liveSec) / 60 per day), attendance list, assessment timeline (% per published assessment with the M06 trend), video progress per lesson, project metrics when the course has a project, and internal marks summary.
+- Sections: signals with the raw numbers behind each (e.g. "6 of 8 classes attended"), daily activity over the window (`TrendChart` of active minutes = (videoSec + liveSec) / 60 per day), attendance list, assessment timeline (% per published assessment with the M06 trend), video progress per lesson, project metrics when the course has a project, and internal marks summary.
 - "Explain with AI": a link to `?explain=1`; the page calls `explainEngagement` (06 §4.7) with **only** the numbers and labels (no name, roll number or email) and shows the text in a box labelled "AI-generated summary — based only on the numbers above". System prompt: "Explain to a university teacher, in at most 120 words and plain language, what these engagement numbers suggest and which one or two signals most need attention. Do not speculate about causes outside the data. Do not judge the student." Refusal or error → "No summary available right now." Rate limit 30/hour per user.
 
 ### T6 · Department and skill reports (DSH-01, DSH-05)

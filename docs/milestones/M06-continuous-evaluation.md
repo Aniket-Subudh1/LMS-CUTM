@@ -7,7 +7,7 @@
 | Release | **R2** |
 | Packages added | — |
 | Collections | `internalMarks` |
-| Components introduced | `Sparkline`, `Meter` |
+| Components introduced | `TrendChart`; shadcn `chart` (+ `recharts` 3.10.1, `react-is`) and `progress` primitives |
 
 ## Goal
 
@@ -44,15 +44,15 @@ Triggers (enqueue `compute/internalMarks { offeringId }`, job id `ce-<offeringId
 
 ### T3 · Marks tab (CE-09, DSH-02, CE-10)
 Route: `/courses/[offeringId]/marks` (ugc only; add the tab).
-- `teach` / `oversee`: `DataTable` of students — roll no, name, one column per scheme component (`marks / weight`), total (`total / internalMax`), a "complete" badge, trend badge and `Sparkline` of `points`; filters: trend (`dropping` first), incomplete; sort by total. Header shows "Computed <time>" and, for `teach`, a "Recompute now" button (`requestRecompute`, rate-limited 1/min per offering).
-- `learn`: own component breakdown with a `Meter` per component, the list of contributing published assessments with counted scores, and the own trend `Sparkline`.
-- `Sparkline` (server SVG, 08 §5) and `Meter` (server CSS bar) are introduced here; their second call sites are the CE report (T4) and M09/M10.
+- `teach` / `oversee`: `DataTable` of students — roll no, name, one column per scheme component (`marks / weight`), total (`total / internalMax`), a "complete" badge, trend badge and `TrendChart` of `points`; filters: trend (`dropping` first), incomplete; sort by total. Header shows "Computed <time>" and, for `teach`, a "Recompute now" button (`requestRecompute`, rate-limited 1/min per offering).
+- `learn`: own component breakdown with a `Progress` bar per component, the list of contributing published assessments with counted scores, and the own trend `TrendChart`.
+- `TrendChart` (shadcn chart, 08 §5.2) and the shadcn `Progress` primitive are introduced here; their second call sites are the CE report (T4) and M09/M10.
 - CE-10: the client has yet to describe "continuous evaluation in mark entry" (Q-06). This milestone delivers the computed marks view and the grading flows from M04/M05; do not invent an additional mark-entry screen.
 
 ### T4 · CE report (DSH-02 for HoD/admin)
 Route: `/reports/ce` (`hod`, `admin`), `app/(app)/reports/layout.tsx` with `TabNav` (CE now; Attainment in M09; Engagement in M10).
 - Filters: term (default current), department (admin only; HoD fixed to theirs).
-- `DataTable` of offerings: title, faculty, students, average internal % (`Meter`), % complete, number of students `dropping`; each row links to the offering's Marks tab.
+- `DataTable` of offerings: title, faculty, students, average internal % (`Progress` bar), % complete, number of students `dropping`; each row links to the offering's Marks tab.
 - One aggregation over `internalMarks` grouped by `offeringId` for the page's offerings (index `{ offeringId, studentId }`).
 
 ### T5 · Scheme rebinding (admin)

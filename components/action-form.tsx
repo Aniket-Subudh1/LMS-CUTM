@@ -1,6 +1,10 @@
 'use client';
 
-import { createContext, use, useActionState, type ReactNode } from 'react';
+import { createContext, startTransition, use, useActionState, useRef, type ReactNode } from 'react';
+import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
 
 type Result = ActionResult<unknown> | null;
@@ -10,30 +14,56 @@ export function ActionForm({
   action,
   submitLabel,
   successMessage,
+  submitVariant = 'default',
+  fullWidth = false,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
   submitLabel: string;
   successMessage?: string;
-  children: ReactNode;
+  submitVariant?: 'default' | 'destructive';
+  fullWidth?: boolean;
+  children?: ReactNode;
 }) {
-  const [state, formAction, pending] = useActionState<Result, FormData>((_prev, fd) => action(fd), null);
+  const form = useRef<HTMLFormElement>(null);
+  const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
+    const result = await action(fd);
+    if (result.ok) form.current?.reset();
+    return result;
+  }, null);
+  // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
-    <form action={formAction} className="form">
+    <form
+      ref={form}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const fd = new FormData(event.currentTarget);
+        startTransition(() => formAction(fd));
+      }}
+      className="grid gap-5"
+    >
       {state && !state.ok && (
-        <p role="alert" className="form-error">
-          {state.message}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
       )}
       {state?.ok && successMessage && (
-        <p role="status" className="form-success">
-          {successMessage}
-        </p>
+        <Alert role="status" className="border-success/30 text-success">
+          <CircleCheck />
+          <AlertDescription className="text-success">{successMessage}</AlertDescription>
+        </Alert>
       )}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <button type="submit" className="btn btn-primary" disabled={pending}>
-        {pending ? 'Please wait…' : submitLabel}
-      </button>
+      <Button
+        type="submit"
+        variant={submitVariant}
+        disabled={pending}
+        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
+      >
+        {pending && <LoaderCircle className="animate-spin" />}
+        {submitLabel}
+      </Button>
     </form>
   );
 }
@@ -51,15 +81,17 @@ export function Field({
 }) {
   const errors = use(FormErrors)?.[name];
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
+    <div className="grid gap-2">
+      <label className="grid gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        {children}
+      </label>
+      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
       {errors?.map((e) => (
-        <span key={e} className="field-error">
+        <p key={e} className="text-destructive text-sm">
           {e}
-        </span>
+        </p>
       ))}
-    </label>
+    </div>
   );
 }

@@ -1,82 +1,84 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
-@theme {
-  --color-primary: #1d3557;
-  --color-primary-hover: #16283f;
-  --color-accent: #b7791f;
-  --color-surface: #ffffff;
-  --color-page: #f7f7f5;
-  --color-ink: #18181b;
-  --color-muted: #52525b;
-  --color-border: #d4d4d8;
-  --color-success: #15803d;
-  --color-warning: #b45309;
-  --color-danger: #b91c1c;
-  --color-info: #1d4ed8;
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-gold: var(--gold);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* CUTM navy and gold are placeholders until the university supplies its palette (Q-32). */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.975 0.004 255);
+  --foreground: oklch(0.21 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.03 260);
+  --primary: oklch(0.33 0.07 258);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.01 255);
+  --secondary-foreground: oklch(0.33 0.07 258);
+  --muted: oklch(0.955 0.008 255);
+  --muted-foreground: oklch(0.5 0.02 258);
+  --accent: oklch(0.95 0.015 255);
+  --accent-foreground: oklch(0.33 0.07 258);
+  --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.52 0.13 150);
+  --warning: oklch(0.6 0.15 60);
+  --gold: oklch(0.76 0.14 80);
+  --border: oklch(0.91 0.008 255);
+  --input: oklch(0.88 0.01 255);
+  --ring: oklch(0.55 0.1 258);
+  --sidebar: oklch(0.255 0.055 260);
+  --sidebar-foreground: oklch(0.93 0.015 255);
+  --sidebar-primary: oklch(0.76 0.14 80);
+  --sidebar-primary-foreground: oklch(0.25 0.05 260);
+  --sidebar-accent: oklch(0.33 0.06 260);
+  --sidebar-accent-foreground: oklch(0.99 0 0);
+  --sidebar-border: oklch(0.33 0.05 260);
+  --sidebar-ring: oklch(0.76 0.14 80);
 }
 
 @layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
   body {
-    @apply bg-page text-ink antialiased;
-  }
-  h1 {
-    @apply text-2xl font-semibold;
-  }
-  h2 {
-    @apply text-lg font-semibold;
-  }
-  a {
-    @apply text-primary underline-offset-2 hover:underline;
-  }
-}
-
-@layer components {
-  .btn {
-    @apply focus-visible:outline-primary inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60;
-  }
-  .btn-primary {
-    @apply bg-primary hover:bg-primary-hover text-white;
-  }
-  .btn-secondary {
-    @apply border-border bg-surface text-ink hover:bg-page border;
-  }
-  .btn-danger {
-    @apply bg-danger text-white hover:opacity-90;
-  }
-  .btn-sm {
-    @apply px-3 py-1.5;
-  }
-  .input {
-    @apply border-border bg-surface focus-visible:outline-primary w-full rounded-md border px-3 py-2 text-base focus-visible:outline-2;
-  }
-  .form {
-    @apply flex flex-col gap-4;
-  }
-  .field {
-    @apply flex flex-col gap-1;
-  }
-  .field-label {
-    @apply text-sm font-medium;
-  }
-  .field-hint {
-    @apply text-muted text-sm;
-  }
-  .field-error {
-    @apply text-danger text-sm;
-  }
-  .form-error {
-    @apply border-danger text-danger rounded-md border px-3 py-2 text-sm;
-  }
-  .form-success {
-    @apply border-success text-success rounded-md border px-3 py-2 text-sm;
-  }
-  .page-header {
-    @apply mb-6 flex flex-col gap-1;
-  }
-  .card {
-    @apply border-border bg-surface flex flex-col gap-4 rounded-lg border p-4 sm:p-6;
-  }
-  .skeleton {
-    @apply bg-border animate-pulse rounded-md;
+    @apply bg-background text-foreground antialiased;
   }
 }

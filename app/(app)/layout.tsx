@@ -1,63 +1,123 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
+import { ChevronsUpDown, GraduationCap, LogOut, UserRound } from 'lucide-react';
 import { logout } from '@/app/(auth)/actions';
+import { AppBreadcrumb, AppNav } from '@/components/app-nav';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Separator } from '@/components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
 import { getViewer } from '@/lib/auth/session';
 
-const NAV = [
-  { href: '/home', label: 'Home' },
-  { href: '/profile', label: 'Profile' },
-];
-
-function NavLinks() {
-  return (
-    <ul className="flex flex-col gap-1">
-      {NAV.map((item) => (
-        <li key={item.href}>
-          <Link href={item.href} className="text-ink hover:bg-page block rounded-md px-3 py-2">
-            {item.label}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-async function UserName() {
+async function UserMenu() {
   const viewer = await getViewer();
-  return <span className="text-muted hidden text-sm sm:inline">{viewer?.name}</span>;
+  if (!viewer) return null;
+  const initials = viewer.name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
+              <Avatar className="size-8 rounded-lg">
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground rounded-lg font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-medium">{viewer.name}</span>
+                <span className="truncate text-xs opacity-70">{viewer.email}</span>
+              </span>
+              <ChevronsUpDown className="ml-auto" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
+            <DropdownMenuItem asChild>
+              <Link href="/profile">
+                <UserRound />
+                Profile
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <form action={logout}>
+              <DropdownMenuItem asChild>
+                <button type="submit" className="w-full">
+                  <LogOut />
+                  Sign out
+                </button>
+              </DropdownMenuItem>
+            </form>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
 }
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[14rem_1fr] lg:grid-rows-[auto_1fr]">
-      <header className="border-border bg-surface flex items-center justify-between gap-3 border-b px-4 py-3 lg:col-span-2">
-        <Link href="/home" className="font-semibold">
-          CUTM LMS
-        </Link>
-        <div className="flex items-center gap-3">
-          <Suspense fallback={<span className="skeleton hidden h-5 w-24 sm:inline-block" />}>
-            <UserName />
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <Link href="/home">
+                  <span className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+                    <GraduationCap className="size-5" />
+                  </span>
+                  <span className="grid flex-1 text-left leading-tight">
+                    <span className="truncate font-semibold">CUTM LMS</span>
+                    <span className="truncate text-xs opacity-70">Centurion University</span>
+                  </span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+          <AppNav />
+        </SidebarContent>
+        <SidebarFooter>
+          <Suspense fallback={<SidebarMenuSkeleton showIcon />}>
+            <UserMenu />
           </Suspense>
-          <form action={logout}>
-            <button type="submit" className="btn btn-secondary btn-sm">
-              Sign out
-            </button>
-          </form>
-          <details className="relative lg:hidden">
-            <summary className="btn btn-secondary btn-sm list-none">Menu</summary>
-            <nav
-              aria-label="Primary"
-              className="border-border bg-surface absolute right-0 z-10 mt-2 w-48 rounded-md border p-2 shadow"
-            >
-              <NavLinks />
-            </nav>
-          </details>
-        </div>
-      </header>
-      <nav aria-label="Primary" className="border-border bg-surface hidden border-r p-4 lg:block">
-        <NavLinks />
-      </nav>
-      <main className="mx-auto w-full max-w-5xl px-4 py-6 lg:px-8">{children}</main>
-    </div>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+      <SidebarInset>
+        <header className="bg-background/95 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+          <AppBreadcrumb />
+        </header>
+        <main className="flex-1 p-4 md:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-6xl">{children}</div>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

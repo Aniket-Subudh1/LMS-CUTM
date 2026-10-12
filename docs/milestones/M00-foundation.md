@@ -97,9 +97,11 @@ Pages use `ActionForm`/`Field` (04 §6.8). `/reset-password` reads `token` from 
 ### T7 · App shell, home, profile
 Files: `app/layout.tsx`, `app/globals.css`, `app/not-found.tsx`, `app/(app)/layout.tsx`, `app/(app)/loading.tsx`, `app/(app)/error.tsx`, `app/(app)/home/page.tsx`, `app/(app)/profile/page.tsx`, `app/(app)/profile/actions.ts`, `proxy.ts`.
 
-- `globals.css`: tokens and component classes per 08 §4.
-- `(app)/layout.tsx`: header + navigation per 08 §3; user name and role-based nav inside `<Suspense>` (04 §6.7). Includes a sign-out form posting to `logout`.
-- `home/page.tsx`: "Welcome, <name>" and the viewer's roles; later milestones add sections. No placeholder sections for features that do not exist yet.
+- UI system (client decision during M00): shadcn/ui per 08 §1, §4, §5 — `components.json`, `components/ui/` primitives listed in 08 §5.1, `hooks/use-mobile.ts`, `lib/cn.ts`, `lib/format.ts` (`ROLE_LABEL`), `components/page-header.tsx`, `components/app-nav.tsx`.
+- `globals.css`: shadcn tokens with the CUTM palette per 08 §4.
+- `(auth)/layout.tsx`: split screen — form column, and from 1024 px a navy brand panel.
+- `(app)/layout.tsx`: the sidebar shell per 08 §3; the user menu (name, email, Profile, Sign out posting to `logout`) inside `<Suspense>` (04 §6.7).
+- `home/page.tsx`: "Welcome, <first name>", today's date (IST), a card explaining each of the viewer's roles, and an account-security card linking to the profile; later milestones add sections. No placeholder sections for features that do not exist yet.
 - `profile/page.tsx` + `actions.ts`: `changePassword` (`current`, `password`, `confirm`; verify current; new hash; `sessionVersion + 1`; `signIn` again so this browser stays signed in; audit `user.password_changed`); `signOutEverywhere` (`sessionVersion + 1`; audit `user.sessions_revoked`; redirect to `/login`).
 - `proxy.ts`: as 04's verified pattern — redirect to `/login` when the `lms_session` cookie is absent; matcher excludes `login`, `forgot-password`, `reset-password`, `api/`, `_next/`, `favicon.ico`.
 
@@ -125,7 +127,7 @@ Files: `scripts/create-admin.ts`, `app/api/health/route.ts`, `.github/workflows/
 - **AC-M00-05** Given two browsers signed in as the same user, when "Sign out everywhere" is used in one, then the other is redirected to `/login` on its next request, and an audit entry `user.sessions_revoked` exists.
 - **AC-M00-06** `npm run build` succeeds with **no** env vars set, and `npm run check:bundle` passes.
 - **AC-M00-07** Security headers from 09 §8 are present on `/login` (`curl -I`).
-- **AC-M00-08** The layout renders at 360 px wide without horizontal scrolling; navigation collapses into the header menu.
+- **AC-M00-08** The layout renders at 360 px wide without horizontal scrolling; below 768 px the sidebar is hidden and opens as a sheet from the header button.
 
 ## Validation checklist (human)
 
