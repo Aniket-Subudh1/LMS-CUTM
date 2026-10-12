@@ -108,8 +108,8 @@ Files: `app/layout.tsx`, `app/globals.css`, `app/not-found.tsx`, `app/(app)/layo
 ### T8 · First admin, health check, CI, bundle scan
 Files: `scripts/create-admin.ts`, `app/api/health/route.ts`, `.github/workflows/ci.yml`, `scripts/check-bundle.ts`.
 
-- `create-admin.ts --email --name`: upserts an `invited` user with roles `['admin']`; prints `<APP_URL>/reset-password?token=<invite token>`; refuses if an active admin with that email exists.
-- `/api/health`: 06 §3 (2 s timeouts; `503` on failure; no data beyond up/down).
+- `create-admin.ts --email --name`: upserts an `invited` user with roles `['admin']`; enqueues `invitationEmail` (`mail/send`, job id `mail-invite-<userId>-<minuteBucket>`) and prints `<APP_URL>/reset-password?token=<invite token>` (the link is a secret: printed to the operator's terminal, never logged); refuses (exit 1) if the email belongs to an `active` or `disabled` account; re-running for an `invited` one issues a fresh link.
+- `/api/health`: 06 §3 (2 s timeouts; `503` on failure; no data beyond up/down); `await connection()` first so it is never prerendered. `lib/db.ts` must not cache a failed first connection (verified: Mongo down at start-up, then up → the next request connects).
 - `ci.yml`: 10 §5 steps 1–4 (e2e in step 5 from M01 when seed exists).
 - `check-bundle.ts`: 09 §7.
 

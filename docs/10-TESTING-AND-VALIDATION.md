@@ -155,19 +155,17 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `test:integration` | `vitest run --project integration` | |
 | `test:e2e` | `playwright test` | |
 | `check` | `npm run lint && npm run typecheck && npm run test` | Run after every task |
-| `check:bundle` | `tsx scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7) |
+| `check:bundle` | `tsx --env-file-if-exists=.env.local scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7): forbidden names always; the values of secret variables when they are set (locally, from `.env.local`) |
 | `format` | `prettier --write .` | |
 
 `--env-file-if-exists` loads `.env.local` when present (Next.js loads it automatically for `next dev`; the worker and scripts do not). A missing variable fails loudly through `env()`.
 
 ## 5. Continuous integration — `.github/workflows/ci.yml` (M00)
 
-On every push and pull request:
-1. `npm ci`
-2. `npm run lint`, `npm run typecheck`, `npm run test`
-3. Start service containers `mongo:8.0` (with `--replSet rs0`, initiated in a step) and `redis:8.6`; run `npm run test:integration` with `TEST_MONGODB_URI`.
-4. `npm run build` with placeholder env (the build needs none — 02 §5), then `npm run check:bundle`.
-5. On pull requests to `main`: start the stack, `npm run db:seed -- --e2e`, `npm run test:e2e`.
+On every push and pull request (two parallel jobs, Node 24, `npm ci`):
+1. **verify:** `npm run lint`, `npm run typecheck`, `npm run test`, then `npm run build` with **no** env (the build needs none — 02 §5) and `npm run check:bundle`.
+2. **integration:** a `redis:8.6` service container; `npm run test:integration` **without** `TEST_MONGODB_URI`, so `tests/setup.ts` starts a mongodb-memory-server replica set (GitHub service containers cannot pass `--replSet`). The `mongod` binary is cached at `/home/runner/.cache/mongodb-binaries` (`MONGOMS_DOWNLOAD_DIR`, an absolute path: Node does not expand `~`).
+3. From M01 (when `scripts/seed.ts` exists), on pull requests to `main`: start the stack, `npm run db:seed -- --e2e`, `npm run test:e2e`. Until then e2e runs locally (M00 T9).
 
 ## 6. Release gates
 

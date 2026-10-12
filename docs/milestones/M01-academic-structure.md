@@ -90,7 +90,7 @@ Routes: `/admin/offerings` (filters: term, department, status), `/admin/offering
 | `changeEnrollments` | teach or admin; CSV per 06 §8.2 (`rollno,action`); unknown roll number → row error; all-or-nothing; audit `enrollment.changed` with counts |
 
 ### T8 · Users (ADM-05, SUP-01)
-Files (besides the routes): `lib/schemas/jobs.ts` + `MailJob` (`invitation { userIds }`, 06 §6); `lib/queue.ts` mail queue typed `Queue<MailSend | MailJob, void, 'send' | 'fanout'>`; `worker/jobs/mail.ts` + `fanout` (for each chunk of 500 invited users: a 7-day invite token, `invitationEmail`, `send` with job id `mail-invite-<userId>-<sessionVersion>`). `sendResetLink` is the second caller of the reset email: move the token + `resetEmail` + enqueue lines from `app/(auth)/actions.ts` into one exported function in `lib/auth/tokens.ts` and call it from both.
+Files (besides the routes): `lib/schemas/jobs.ts` + `MailJob` (`invitation { userIds }`, 06 §6); `lib/queue.ts` mail queue typed `Queue<MailSend | MailJob, void, 'send' | 'fanout'>`; `worker/jobs/mail.ts` + `fanout` (for each chunk of 500 invited users: a 7-day invite token, `invitationEmail`, `send` with job id `mail-invite-<userId>-<minuteBucket>`). `sendResetLink` is the second caller of the reset email: move the token + `resetEmail` + enqueue lines from `app/(auth)/actions.ts` into one exported function in `lib/auth/tokens.ts` and call it from both.
 
 Routes: `/admin/users` (search box → text index; filters role/status), `/admin/users/new`, `/admin/users/import`, `/admin/users/[id]`.
 
