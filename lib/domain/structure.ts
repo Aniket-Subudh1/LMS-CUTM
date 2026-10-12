@@ -1,7 +1,10 @@
-import { COMPONENTS } from '@/lib/schemas/structure';
+import { COMPONENT_KEYS, COMPONENTS } from '@/lib/schemas/structure';
 
-export function componentKey(components: readonly string[]): string {
-  return COMPONENTS.filter((c) => components.includes(c)).join('+');
+export function componentKey(components: readonly string[]): (typeof COMPONENT_KEYS)[number] {
+  const joined = COMPONENTS.filter((c) => components.includes(c)).join('+');
+  const key = COMPONENT_KEYS.find((k) => k === joined);
+  if (!key) throw new RangeError('A course needs at least one component.');
+  return key;
 }
 
 export type SchemeDraft = {

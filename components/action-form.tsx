@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ConfirmSubmit } from '@/components/confirm-submit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
@@ -25,6 +26,7 @@ export function ActionForm({
   successMessage,
   submitVariant = 'default',
   fullWidth = false,
+  confirm,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
@@ -32,6 +34,8 @@ export function ActionForm({
   successMessage?: string;
   submitVariant?: 'default' | 'destructive';
   fullWidth?: boolean;
+  // Asks first: the submit button opens a dialog and only its confirm button submits the form.
+  confirm?: { title: string; message: string };
   children?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
@@ -48,6 +52,17 @@ export function ActionForm({
     () => false,
   );
   // `<form action>` would make React clear every field after each submit, including a failed one.
+  const submit = (
+    <Button
+      type={confirm ? 'button' : 'submit'}
+      variant={submitVariant}
+      disabled={pending || !hydrated}
+      className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
+    >
+      {pending && <LoaderCircle className="animate-spin" />}
+      {submitLabel}
+    </Button>
+  );
   return (
     <form
       ref={form}
@@ -72,15 +87,13 @@ export function ActionForm({
         </Alert>
       )}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <Button
-        type="submit"
-        variant={submitVariant}
-        disabled={pending || !hydrated}
-        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
-      >
-        {pending && <LoaderCircle className="animate-spin" />}
-        {submitLabel}
-      </Button>
+      {confirm ? (
+        <ConfirmSubmit {...confirm} confirmLabel={submitLabel} variant={submitVariant}>
+          {submit}
+        </ConfirmSubmit>
+      ) : (
+        submit
+      )}
     </form>
   );
 }

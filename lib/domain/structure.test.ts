@@ -23,6 +23,10 @@ describe('componentKey', () => {
     expect(componentKey(input)).toBe(expected);
   });
 
+  it('refuses an empty list', () => {
+    expect(() => componentKey([])).toThrow(RangeError);
+  });
+
   it('only ever produces a key the scheme screens list', () => {
     // Every non-empty subset of the three components, as a bit mask 1..7.
     const keys = Array.from({ length: 7 }, (_, m) => COMPONENTS.filter((_c, i) => (m + 1) & (1 << i)));

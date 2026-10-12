@@ -128,7 +128,15 @@ function Outcomes({ course }: { course: CourseDetail }) {
                 </Field>
                 <BloomSelect defaultValue={co.bloomLevel} />
               </ActionForm>
-              <ActionForm action={deleteCo} submitLabel={`Delete ${co.code}`} submitVariant="destructive">
+              <ActionForm
+                action={deleteCo}
+                submitLabel={`Delete ${co.code}`}
+                submitVariant="destructive"
+                confirm={{
+                  title: `Delete ${co.code}?`,
+                  message: 'Its links in the CO–PO–PSO matrix are removed too. This cannot be undone.',
+                }}
+              >
                 <input type="hidden" name="courseId" value={course.id} />
                 <input type="hidden" name="coId" value={co.id} />
               </ActionForm>

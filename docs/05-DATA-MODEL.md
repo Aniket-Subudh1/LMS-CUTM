@@ -135,7 +135,7 @@ Invariants: **Σ `components.weight` = `internalMax`** (CE-07). A version is nev
 | lockedAt, lockedBy | D?, Id? | internal-marks lock (M08) |
 | lastPushedAt | D? | last CE export/push |
 
-Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }`.
+Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }` · `{ status: 1, _id: -1 }` (the admin list filtered by status alone).
 Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, scheme binding or internal mark for this offering. End-sem marks are imported after the lock and freeze when the student's grade sheet is published (M08).
 
 ### 3.9 `enrollments`

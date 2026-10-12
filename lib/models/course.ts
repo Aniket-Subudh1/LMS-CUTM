@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
-import { BLOOM_LEVELS, CATEGORIES, COMPONENTS } from '@/lib/schemas/structure';
+import { BLOOM_LEVELS, CATEGORIES, COMPONENT_KEYS, COMPONENTS } from '@/lib/schemas/structure';
 
 const coSchema = new Schema({
   code: { type: String, required: true, trim: true, maxlength: 10 },
@@ -26,7 +26,7 @@ const courseSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 160 },
     credits: { type: Number, required: true, min: 0, max: 30 },
     components: { type: [{ type: String, enum: COMPONENTS }], required: true },
-    componentKey: { type: String, required: true },
+    componentKey: { type: String, enum: COMPONENT_KEYS, required: true },
     syllabusText: { type: Schema.Types.Mixed },
     syllabusFileKey: { type: String },
     objectives: { type: [{ type: String, trim: true, maxlength: 500 }], default: [] },

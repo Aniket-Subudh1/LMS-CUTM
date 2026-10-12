@@ -16,6 +16,8 @@ export class AppError extends Error {
   constructor(
     readonly code: ErrorCode,
     message: string,
+    // Per-field messages for failures found after parsing (for example, the rows of a rejected CSV).
+    readonly fieldErrors?: Partial<Record<string, string[]>>,
   ) {
     super(message);
   }

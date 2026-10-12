@@ -385,7 +385,9 @@ async function settle<R>(work: () => Promise<ActionResult<R>>): Promise<ActionRe
     return await work();
   } catch (error) {
     unstable_rethrow(error);
-    if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
+    if (error instanceof AppError) {
+      return { ok: false, code: error.code, message: error.message, fieldErrors: error.fieldErrors };
+    }
     const errorId = crypto.randomUUID();
     log.error('action failed', { errorId, error });
     return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };

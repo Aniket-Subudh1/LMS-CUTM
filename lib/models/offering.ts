@@ -52,6 +52,7 @@ offeringSchema.index({ facultyIds: 1, status: 1 });
 offeringSchema.index({ departmentId: 1, termId: 1 });
 offeringSchema.index({ batchId: 1, termId: 1 });
 offeringSchema.index({ termId: 1, status: 1 });
+offeringSchema.index({ status: 1, _id: -1 });
 
 export type OfferingDoc = InferSchemaType<typeof offeringSchema>;
 export const Offering: Model<OfferingDoc> = mongoose.models.Offering ?? mongoose.model('Offering', offeringSchema);
