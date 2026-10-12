@@ -19,7 +19,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | Milestone | Status | Validated by | Notes |
 |---|---|---|---|
 | M00 Foundation | Done — awaiting human validation | | shadcn/ui adopted at the client's request (entry below) |
-| M01 Academic structure & admin | Not started | | |
+| M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
 | M02 Content, plan, announcements, skill progress | Not started | | |
 | M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
 | M04 Assessment engine | Not started | | |
@@ -71,6 +71,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4) | — | Answered 13 Oct 2026 |
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
+| Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
 
 ## 4. Assumptions register
 
@@ -101,6 +102,18 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-23 | The UI is shadcn/ui on Tailwind v4 (client request, 12 Oct 2026); light theme only | all UI | — |
 | A-24 | Inter is self-hosted through `next/font` (downloaded from Google Fonts at build time); one family for the whole UI, no serif | build | Q-12 |
 | A-25 | `admin:create` only creates or re-invites; it refuses an email whose account is active or disabled | M00 | — |
+| A-26 | Creating an offering enrols every student of the batch (and section) who is `invited` or `active`, never `disabled` | M01 | Q-35 |
+| A-27 | An offering for a whole batch (`section: null`) and offerings for its sections can coexist; 05 §3.8's unique index allows it | M01 | — |
+| A-28 | Faculty on an offering may be `invited` or `active`, not `disabled`; at most five | M01 | — |
+| A-29 | `createOffering` writes the offering, its enrolments and the audit entry in one transaction (04 §6.14) | M01 | — |
+| A-30 | The admin offerings list filters by term, department and status only when asked; it does not default to the current term (it sorts on `_id`, which is indexed) | M01 | — |
+| A-31 | A student's section must be one of the batch's `sections` (single create and import); a section is added to the batch first | M01 | — |
+| A-32 | Re-enabling a disabled account returns it to `invited` if the person never set a password, otherwise `active` | M01 | — |
+| A-33 | CSV import replaces an existing user's roles with the role in the row; administrator accounts are never changed by import | M01 | — |
+| A-34 | Home lists the newest five offerings the viewer teaches, oversees or is enrolled in, not “this term’s”; `/courses` has the full list | M01 | — |
+| A-35 | A head of department sees the People roster of their department's offerings but cannot change enrolment; only admin and the offering's faculty can | M01 | — |
+| A-36 | The worker may import `lib/queue` and `lib/auth/tokens` (to enqueue per-recipient mail and build invitation links); AGENTS.md's layer table says so | M01 | — |
+| A-37 | The seed runs only against a local MongoDB (`localhost` or `127.0.0.1`) and never in production; without `--e2e` it leaves users `invited` and needs an existing administrator | M01 | — |
 
 ## 5. Log
 
@@ -384,3 +397,65 @@ The profile page no longer shows the password form and sign-out action as cards.
 
 **Verification**
 - Browser: `/profile` shows one account panel. “Change password” opens a centred dialog; the first field is focused; Escape closes it. “Sign out everywhere” opens a centred confirmation dialog. At 360 px, `scrollWidth` is 360, the rows stack, and the dialog fits the screen.
+
+### 2026-10-13 · M01 Academic structure & administration (T0–T12) · Cursor (AI agent), at Aniket's request
+
+Admins can model the university end to end: departments, programmes with PO/PSO lists, batches, terms, the course catalogue with COs and the CO–PO–PSO matrix, versioned evaluation schemes, offerings with faculty and batch enrolment, users (single, CSV import, roles, status, sessions), and an audit log. Every role has “My courses” and a course workspace (Overview, People). Thirteen commits, `30a9918` to the one that adds this entry (`M01(deps)` … `M01(tests)`).
+
+**Created** (new unless marked *changed*)
+- Models: `lib/models/{department,program,batch,term,course,evaluation-scheme,offering,enrollment}.ts`; `audit-log.ts` *changed* (two indexes); `scripts/sync-indexes.ts` *changed*.
+- Schemas and pure code: `lib/schemas/structure.ts`, `lib/schemas/common.ts` *changed* (`page`, `pageSize`, `istDate`), `lib/schemas/jobs.ts` *changed* (`MailJob`); `lib/domain/{structure,csv,time}.ts`; `lib/format.ts` *changed*; each with a co-located test.
+- Access and plumbing: `lib/auth/access.ts` (`offeringAccess`, `requireTeach`); `lib/auth/tokens.ts` *changed* (`passwordLink`, `queueResetLink`); `lib/errors.ts` and `lib/action.ts` *changed* (`AppError` carries `fieldErrors`; `csvRejected`); `lib/db.ts` *changed* (`isDuplicateKey`); `lib/queue.ts` *changed* (`fanout`); `worker/jobs/mail.ts` *changed* (dispatch on job name, invitation fan-out); `next.config.ts` *changed* (`experimental.serverActions.bodySizeLimit: '2mb'`).
+- DAL: `lib/data/{structure,courses,schemes,offerings,users,audit,workspace}.ts`.
+- Actions: `app/(app)/admin/actions.ts`, `admin/courses/actions.ts`, `admin/schemes/actions.ts`, `admin/offerings/actions.ts`, `admin/users/actions.ts`, `courses/actions.ts`.
+- Routes: `/admin` (+ layout), `/admin/{departments,programs,programs/[id],terms,courses,courses/new,courses/[id],schemes,schemes/[componentKey],offerings,offerings/new,users,users/new,users/import,users/[id],audit}`, `/courses`, `/courses/[offeringId]` (+ layout), `/courses/[offeringId]/people`; `/home` *changed* (offerings and shortcuts cards); `(app)/layout.tsx` *changed* (Suspense, `Nav`); `(auth)/actions.ts` *changed* (uses `queueResetLink`).
+- Components: `data-table.tsx`, `tab-nav.tsx`, `co-po-matrix.tsx`, `confirm-submit.tsx`; `app-nav.tsx` and `action-form.tsx` *changed*; shadcn `ui/{table,tabs,empty,pagination,native-select,textarea,alert-dialog}.tsx` (`shadcn@4.21.4`, each added with its first user).
+- Scripts and CI: `scripts/seed.ts`, `scripts/create-admin.ts` *changed*, `package.json` (`db:seed`, `db:seed:e2e`, `db:indexes:e2e`, `papaparse` and its types; `start:e2e` now copies `public/`), `playwright.config.ts` *changed* (loads `.env.e2e`), `.github/workflows/ci.yml` (`e2e` job).
+- Tests: `tests/factories.ts`, `tests/next-request.ts` *changed*; integration `{access,structure,catalog,schemes,offerings,users,audit,workspace}.test.ts`; `auth.test.ts` and `mail-worker.test.ts` *changed*; e2e `tests/e2e/admin-structure.spec.ts`.
+- Docs changed with the code: 03 §4, 04 §6.4 and §6.6, 05 §3.8 and §7.5, 06 §2, §6 and §8.2, 08 §2, §3, §5.1 and §5.2, 10 §3–§4, and `AGENTS.md` (Worker layer row).
+
+**Not done**
+- Nothing in the milestone's task list was left out. These are unverified or deferred:
+  - The CI `e2e` job is written but has not run on GitHub. Locally only `admin-structure.spec.ts` was run; `auth.spec.ts` needs Mailpit, which is not installed here (no Docker).
+  - The human validation checklist is not walked; that is the reviewer's step.
+  - Screens were checked at 1280 px width only (screenshots of home, users, user detail, courses and the workspace). No mobile width, keyboard or screen-reader pass.
+  - 3,000-row import timing (AC-M01-05) was not measured; the logic is tested with small files. The action runs in the request and the body limit is 2 MB, so a very large file is rejected rather than slowed.
+  - The scheme editor and CO matrix grids were not exercised in a browser; only through the actions' integration tests.
+
+**Assumptions** — A-26 to A-37 (§4).
+
+**Open questions** — Q-35 (§3).
+
+**Doc fixes made together with code**
+| Where | Fix |
+|---|---|
+| 03 §4 | `serverActions.bodySizeLimit` sits under `experimental` in the installed Next 16.4 types |
+| 06 §2 | `istDate` is a validated `YYYY-MM-DD` string; the action converts it with `istDateToDate` (schemas import only `zod`) |
+| 04 §6.4 | students open only `active` or `completed` offerings, though they are enrolled while the offering is `draft` |
+| 05 §3.8, §7.5 | extra indexes: `offerings {status, _id}`, `auditLogs {at}` and `{entity, at}` |
+| 04 §6.6, 06 §2 | `AppError` carries optional `fieldErrors` (used for CSV row errors) |
+| 06 §8.2 | the enrolment form is on `/courses/<id>/people`, not a separate import route |
+| 08 §2 | `/admin/settings` belongs to M02; `/admin/users/new` added |
+| 08 §3, §5.1, §5.2 | `AppNav({ roles })`; `ConfirmSubmit`, `TabNav`, `DataTable`, `CoPoMatrix` inventory with their call sites |
+| AGENTS.md | Worker may import `lib/queue` and `lib/auth/tokens` (A-36) |
+| 10 §3–§4 | `db:indexes:e2e`, `db:seed:e2e`, `E2E_PASSWORD`, fixture emails, `start:e2e` copies `public/` (without it the logo returned 404 on the standalone server) |
+
+**Acceptance criteria** (what was run is in Verification)
+| ID | Result | Evidence |
+|---|---|---|
+| AC-M01-01 | Pass | `schemes.test.ts`: weights 45 against 50 are rejected with both numbers in the message |
+| AC-M01-02 | Pass | `schemes.test.ts`: version n+1 is active, the previous is retired; `offerings.test.ts`: an offering stores the id of the scheme version active when it was created. Versions are separate documents and nothing rewrites `schemeId`, so a new version cannot reach an existing offering; there is no test that creates a version after an offering and re-reads it |
+| AC-M01-03 | Pass, with Q-35 | `offerings.test.ts`: section A gets exactly its students (invited and active, not disabled, other sections or batches); a repeat is `CONFLICT` and writes nothing |
+| AC-M01-04 | Pass | `catalog.test.ts`: levels 1–3 and the programme's codes only; e2e: Overview shows the saved levels |
+| AC-M01-05 | Pass for logic | `users.test.ts`: a file with six bad rows writes nothing and lists each as `Row N: …`; the corrected file creates users, queues invitations and writes one audit entry. Size not measured |
+| AC-M01-06 | Pass | `workspace.test.ts` and `access.test.ts`: student, faculty, HoD and another department's offering answer 404; e2e: the student sees only CS101 |
+| AC-M01-07 | Pass | `users.test.ts`: support lists, opens a user and queues a reset link; `revokeUserSessions` is `FORBIDDEN`; the audit page redirects to `/home` |
+| AC-M01-08 | Pass | `users.test.ts` checks `user.created`, `user.imported`, `user.roles_changed`, `user.disabled`, `user.enabled`, `user.sessions_revoked`; `audit.test.ts` filters them |
+
+**Verification**
+- `npm run check` → eslint no warnings; `next typegen && tsc --noEmit` clean; unit `Test Files 10 passed, Tests 57 passed`.
+- `npx vitest run --project integration` (local Mongo replica set via mongodb-memory-server, Redis db 1) → `Test Files 11 passed, Tests 116 passed`.
+- `npm run build` → compiled with no errors; `npm run check:bundle` → `37 files scanned for 4 names and 3 secret values; clean`.
+- `npm run db:indexes:e2e`, then `npm run db:seed:e2e` run twice → both print `Seeded e2e fixtures: 1 department, 2 programmes, 2 courses, 2 offerings, 20 students enrolled in CS101.`; counts after the second run: users 24, departments 1, programs 2, batches 2, terms 1, courses 2, schemes 1, offerings 2, enrollments 20 (repeat is a no-op). Against `mongodb://example.com/x` the seed prints `Refusing to seed "example.com"` and exits.
+- `npx playwright test admin-structure` (against `npm run build` output, `.env.e2e` with generated values) → `3 passed`: admin adds a department, finds a user and opens CS101's Overview and People; faculty drops and re-adds a student by CSV and sees a row error for an unknown roll number; a student sees only CS101 and `/admin/users` sends them to `/home`.
+- Not run: `npx playwright test auth` (needs Mailpit), the CI `e2e` job, any remote or Atlas database.

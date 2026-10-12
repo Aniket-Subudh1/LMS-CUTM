@@ -228,7 +228,7 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 - students: `rollno`, `program` (code), `batchstartyear`, `section` required; faculty/hod: `employeeid`, `department` (code) required.
 - Upsert by `email`. New users are `invited` and receive an invitation email (07-day token).
 
-### 8.2 Enrollment changes — `/courses/<id>/people/import` (M01)
+### 8.2 Enrollment changes — form on `/courses/<id>/people` (M01)
 `rollno,action` with `action` ∈ `add, drop`. (The whole batch/section is enrolled automatically when the offering is created.)
 
 ### 8.3 End-semester marks — `/admin/exams/import` (M08)

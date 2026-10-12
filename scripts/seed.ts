@@ -25,6 +25,13 @@ function found<T>(doc: T | null, what: string): T {
   return doc;
 }
 
+// Fixture data must never reach a shared or hosted database.
+const host = new URL(process.env.MONGODB_URI ?? 'mongodb://invalid').hostname;
+if (process.env.NODE_ENV === 'production' || !['localhost', '127.0.0.1'].includes(host)) {
+  console.error(`Refusing to seed "${host}": the seed only runs against a local MongoDB.`);
+  process.exit(1);
+}
+
 const password = Password.safeParse(process.env.E2E_PASSWORD);
 if (e2e && !password.success) {
   console.error('--e2e needs E2E_PASSWORD (at least 10 characters) in .env.e2e.');

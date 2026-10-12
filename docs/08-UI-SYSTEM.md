@@ -57,8 +57,8 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/admin/courses`, `/admin/courses/[id]` | A | M01 | Catalog, components, COs, CO-PO-PSO matrix, syllabus |
 | `/admin/schemes`, `/admin/schemes/[componentKey]` | A | M01 | Evaluation schemes and versions |
 | `/admin/offerings`, `/admin/offerings/new` | A | M01 | Create offerings, assign faculty and scheme |
-| `/admin/users`, `/admin/users/import`, `/admin/users/[id]` | A P | M01 | Users; P may only view and send a reset link |
-| `/admin/settings`, `/admin/settings/[key]` | A | M01 | Settings registry (06 §7) |
+| `/admin/users`, `/admin/users/new`, `/admin/users/import`, `/admin/users/[id]` | A P | M01 | Users; P may only view and send a reset link |
+| `/admin/settings`, `/admin/settings/[key]` | A | M02 | Settings registry (06 §7) |
 | `/admin/exams` | A | M08 | End-sem import, CE export, locks, grade sheets |
 | `/admin/integrations` | A | M07, M08 | Sync runs, failed jobs, GitHub App status |
 | `/admin/audit` | A | M01 | Audit log search |
