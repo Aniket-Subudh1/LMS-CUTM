@@ -13,17 +13,34 @@ import {
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/password-input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { isTokenCurrent, readToken } from '@/lib/auth/tokens';
-import Loading from '../loading';
 import { resetPassword } from '../actions';
 
 export const metadata: Metadata = { title: 'Set password' };
 
 export default function ResetPasswordPage({ searchParams }: PageProps<'/reset-password'>) {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<FormSkeleton />}>
       <ResetForm searchParams={searchParams} />
     </Suspense>
+  );
+}
+
+function FormSkeleton() {
+  return (
+    <div className="grid gap-7" aria-busy="true" aria-label="Loading">
+      <div className="grid gap-3">
+        <Skeleton className="size-11 rounded-lg" />
+        <Skeleton className="h-7 w-56" />
+        <Skeleton className="h-4 w-full" />
+      </div>
+      <div className="grid gap-5">
+        <Skeleton className="h-10" />
+        <Skeleton className="h-10" />
+        <Skeleton className="h-10" />
+      </div>
+    </div>
   );
 }
 
