@@ -24,6 +24,18 @@ export function formatDate(date: Date): string {
   return dateFormat.format(date);
 }
 
+const longDateFormat = new Intl.DateTimeFormat('en-IN', {
+  timeZone: IST,
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+});
+
+// `Tuesday, 13 October`: the top bar and the Home greeting.
+export function formatLongDate(date: Date): string {
+  return longDateFormat.format(date);
+}
+
 // `12 Oct 2026, 10:30 AM` (08 §7); en-IN prints the meridiem in lower case.
 export function formatDateTime(date: Date): string {
   return dateTimeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());

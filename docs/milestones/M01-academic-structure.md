@@ -46,7 +46,7 @@ Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/doma
 File: `lib/auth/access.ts` — exactly 04 §6.4 (`offeringAccess`, `requireTeach`). Integration tests: admin → oversee; listed faculty → teach; HoD of the department → oversee; HoD of another department → 404; enrolled student → learn; dropped student → 404.
 
 ### T4 · Departments, programs, batches, terms
-Routes: `/admin`, `/admin/departments`, `/admin/programs`, `/admin/programs/[id]`, `/admin/terms`; `app/(app)/admin/layout.tsx` (`requireViewer(['admin','support'])`; since the UI redesign the sidebar's Administration group replaces its `TabNav` — 08 §3; support sees only Users). Create and edit forms are `FormDialog`s on these pages (08 §6). Actions in `app/(app)/admin/actions.ts` (all `roles: ['admin']`, audit not required for structure except where 09 §6 says):
+Routes: `/admin`, `/admin/departments`, `/admin/programs`, `/admin/programs/[id]`, `/admin/terms`; no admin layout: since the UI redesign the sidebar's Administration group is the admin navigation (08 §3) and every admin page is guarded by its DAL call (`requireViewer(['admin'])`, Users also `support`); support sees only Users. Create and edit forms are `FormDialog`s on these pages (08 §6). Actions in `app/(app)/admin/actions.ts` (all `roles: ['admin']`, audit not required for structure except where 09 §6 says):
 
 | Action | Rules |
 |---|---|

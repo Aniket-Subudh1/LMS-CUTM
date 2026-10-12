@@ -53,7 +53,7 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/reports/ce` | H A | M06 | CE overview across the department's offerings |
 | `/reports/attainment` | H A | M09 | Program/batch attainment |
 | `/reports/engagement` | H A | M10 | Engagement across offerings; skill-course traceability |
-| `/admin` | A | M01 | Admin landing |
+| `/admin` | A | M01 | Academic structure: cards for departments, programmes and terms |
 | `/admin/departments`, `/admin/programs`, `/admin/programs/[id]` | A | M01 | Structure, POs/PSOs, batches |
 | `/admin/terms` | A | M01 | Academic calendar (terms) |
 | `/admin/courses`, `/admin/courses/[id]` | A | M01 | Catalog ("New course" dialog), components, COs, CO-PO-PSO matrix, syllabus |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDateTime, initials, statusTone } from './format';
+import { formatDate, formatDateTime, formatLongDate, initials, statusTone } from './format';
 
 describe('formatting', () => {
   it('prints IST date-times the way 08 §7 shows them', () => {
@@ -9,6 +9,7 @@ describe('formatting', () => {
 
   it('prints IST dates', () => {
     expect(formatDate(new Date('2026-10-12T18:30:00Z'))).toBe('13 Oct 2026');
+    expect(formatLongDate(new Date('2026-10-12T18:30:00Z'))).toBe('Tuesday, 13 October');
   });
 
   it('maps statuses to a badge tone, with a neutral fallback', () => {

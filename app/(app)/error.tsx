@@ -1,23 +1,24 @@
 'use client';
 
-import { WarningIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, WarningIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function ErrorPage({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
-    <Card className="mx-auto max-w-lg">
-      <CardHeader>
-        <WarningIcon weight="duotone" className="text-warning size-8" />
-        <CardTitle className="text-xl">Something went wrong</CardTitle>
-        <CardDescription>
+    <div className="surface mx-auto grid max-w-lg justify-items-center gap-4 p-8 text-center">
+      <span className="bg-warning/12 text-warning grid size-14 place-items-center rounded-2xl">
+        <WarningIcon weight="duotone" className="size-8" />
+      </span>
+      <div className="grid gap-1.5">
+        <h1 className="text-xl font-semibold">Something went wrong</h1>
+        <p className="text-muted-foreground text-sm">
           Try again. If it keeps happening, contact support
           {error.digest ? ` and quote the reference ${error.digest}` : ''}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button onClick={() => retry()}>Try again</Button>
-      </CardContent>
-    </Card>
+        </p>
+      </div>
+      <Button onClick={() => retry()}>
+        <ArrowClockwiseIcon weight="bold" /> Try again
+      </Button>
+    </div>
   );
 }

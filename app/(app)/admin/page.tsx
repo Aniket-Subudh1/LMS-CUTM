@@ -1,16 +1,34 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import {
+  ArrowRightIcon,
+  BuildingsIcon,
+  CalendarDotsIcon,
+  GraduationCapIcon,
+  TreeStructureIcon,
+} from '@phosphor-icons/react/ssr';
 import Loading from '../loading';
+import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
 import { requireViewer } from '@/lib/auth/session';
 
-export const metadata: Metadata = { title: 'Administration' };
+export const metadata: Metadata = { title: 'Academic structure' };
 
 const SECTIONS = [
-  { href: '/admin/departments', title: 'Departments', text: 'The departments that own programmes and courses.' },
-  { href: '/admin/programs', title: 'Programmes', text: 'Programmes, their batches and their PO and PSO lists.' },
-  { href: '/admin/terms', title: 'Terms', text: 'Academic terms and which one is current.' },
+  {
+    href: '/admin/departments',
+    title: 'Departments',
+    text: 'The departments that own programmes and courses.',
+    icon: BuildingsIcon,
+  },
+  {
+    href: '/admin/programs',
+    title: 'Programmes',
+    text: 'Programmes, their batches and their PO and PSO lists.',
+    icon: GraduationCapIcon,
+  },
+  { href: '/admin/terms', title: 'Terms', text: 'Academic terms and which one is current.', icon: CalendarDotsIcon },
 ];
 
 export default function AdminPage() {
@@ -26,18 +44,26 @@ async function Admin() {
   return (
     <>
       <PageHeader
-        title="Administration"
+        icon={<TreeStructureIcon weight="duotone" />}
+        title="Academic structure"
         description="Set up the academic structure that courses, offerings and marks hang from."
       />
       <ul className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
         {SECTIONS.map((s) => (
           <li key={s.href}>
-            <Link
-              href={s.href}
-              className="bg-card hover:bg-accent focus-visible:ring-ring/50 block h-full rounded-lg border p-5 transition-colors focus-visible:ring-[3px] focus-visible:outline-none"
-            >
-              <h2 className="font-semibold">{s.title}</h2>
-              <p className="text-muted-foreground mt-1 text-sm">{s.text}</p>
+            <Link href={s.href} className="surface-interactive group flex h-full flex-col gap-4 p-5">
+              <span className="icon-chip size-12 [&_svg]:size-7">
+                <s.icon weight="duotone" />
+              </span>
+              <div className="grid gap-1">
+                <h2 className="font-semibold">{s.title}</h2>
+                <p className="text-muted-foreground text-sm">{s.text}</p>
+              </div>
+              <span className="text-primary mt-auto flex items-center gap-1.5 text-sm font-medium">
+                Open {s.title.toLowerCase()}
+                <ArrowRightIcon className="transition-transform group-hover:translate-x-0.5" />
+                <LinkSpinner className="ml-auto" />
+              </span>
             </Link>
           </li>
         ))}

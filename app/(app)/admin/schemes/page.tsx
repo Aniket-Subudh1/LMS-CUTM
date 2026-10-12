@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRightIcon, SlidersHorizontalIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
+import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { listActiveSchemes } from '@/lib/data/schemes';
@@ -54,6 +55,7 @@ async function Schemes() {
                 <span className="text-primary mt-auto flex items-center gap-1.5 text-sm font-medium">
                   {scheme ? 'View versions' : 'Create the first version'}
                   <ArrowRightIcon className="transition-transform group-hover:translate-x-0.5" />
+                  <LinkSpinner className="ml-auto" />
                 </span>
               </Link>
             </li>
