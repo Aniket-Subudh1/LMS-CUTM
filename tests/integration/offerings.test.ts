@@ -424,5 +424,7 @@ describe('listOfferings', () => {
     const all = await listOfferings(1, { status: 'draft' });
     expect(all.rows.length).toBeLessThanOrEqual(25);
     expect(all.total).toBe(await Offering.countDocuments({ status: 'draft' }));
+    const unfiltered = await listOfferings(1, { termId: undefined, departmentId: undefined, status: undefined });
+    expect(unfiltered.total).toBe(await Offering.countDocuments());
   });
 });

@@ -62,10 +62,15 @@ export type OfferingFilter = { termId?: string; departmentId?: string; status?: 
 
 export async function listOfferings(
   page: number,
-  filter: OfferingFilter,
+  filters: OfferingFilter,
 ): Promise<{ rows: OfferingRow[]; total: number }> {
   await requireViewer(['admin']);
   await db();
+  const filter = {
+    ...(filters.termId ? { termId: filters.termId } : {}),
+    ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+  };
   const [docs, total] = await Promise.all([
     Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1 })
       .sort({ _id: -1 })
