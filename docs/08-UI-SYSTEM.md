@@ -7,11 +7,13 @@ Server-first, minimal JavaScript, mobile-first, readable on a slow connection. S
 The UI is built on **shadcn/ui** (Radix primitives styled with Tailwind v4), vendored into `components/ui/` at a pinned version. The bar is a professional, consistent product a first-time user understands without training.
 
 1. **Server-first.** Pages are Server Components; interactivity lives in `components/ui/` primitives and the few app client components in §5. A page that only shows data ships no extra JavaScript of its own.
-2. **One way to do each thing:** lists → `DataTable`; forms → `ActionForm` + `Field` with shadcn inputs; filters → GET `<form>`; destructive actions → `ConfirmSubmit` (shadcn `AlertDialog`); navigation inside an area → `TabNav`; feedback → inline `Alert` in the form (no toasts); dashboards → `Card` grids with shadcn charts (M06+).
-3. **Not used:** toasts, carousels, drag-and-drop, infinite scroll, modals for creating or editing records (those are routes). `Sheet` is used only by the mobile sidebar; `AlertDialog` only for confirmations. The profile page is the exception: changing the password and signing out everywhere open a native `<dialog>` on that page.
-4. **Every page has four states designed:** loading (`loading.tsx` with `Skeleton`), empty (shadcn `Empty` with a sentence saying what to do next), error (`error.tsx`), not found (`not-found.tsx`).
-5. **Icons support words.** Icons (lucide-react) sit beside a text label; icon-only buttons are allowed only with an `aria-label` or `sr-only` text (the sidebar trigger, collapsed-sidebar items with tooltips).
-6. **Explain as you go.** Every card has a title and a one-line description of what it is for; every form field has a label and, where a rule applies, a hint; every error says what to do next.
+2. **One way to do each thing:** large record lists → `DataTable`; navigation and small lists (fewer than a page of items) → icon card grids; create/edit forms → `FormDialog` (an `ActionForm` + `Field` with shadcn inputs inside a shadcn `Dialog`); filters → `FilterForm`; destructive or one-click actions → `ConfirmSubmit` (shadcn `AlertDialog`); navigation inside the course workspace → `TabNav`; feedback → the dialog's success state, or an inline `Alert` in the form for errors (no toasts); dashboards → `Card` grids with shadcn charts (M06+).
+3. **Not used:** toasts, carousels, drag-and-drop, infinite scroll, create/edit pages (`/new`, `/[id]/edit`) except the large editors named in 04 §1. `Sheet` is used only by the mobile sidebar; `AlertDialog` only for confirmations; `Dialog` only through `FormDialog`.
+4. **Every page has four states designed:** loading (`loading.tsx` with `Skeleton`s shaped like the page), empty (shadcn `Empty` with a sentence saying what to do next), error (`error.tsx`), not found (`not-found.tsx`).
+5. **Icons support words.** Icons (Phosphor, duotone weight) sit beside a text label; icon-only buttons are allowed only with an `aria-label` or `sr-only` text (the sidebar trigger, row action menus, collapsed-sidebar items with tooltips).
+6. **No double submits, no silent waits.** Every submit button disables and shows a spinner while its action runs, and the form's fields are disabled with it. A confirm dialog stays open with a spinner until its action settles. A sidebar or card link shows a spinner while its navigation is pending (`NavLink`); a filter's button does too (`FilterForm`).
+7. **Cards lift; they do not get one-sided borders.** A card is `rounded-xl bg-card ring-1 ring-border shadow-card`. A clickable card adds a hover that raises it slightly, deepens the shadow, tints the ring with the primary colour and fills its icon chip. No `border-l`/`border-t` accent stripes or inset side shadows anywhere, including the active sidebar item.
+8. **Explain as you go.** Every card has a title and a one-line description of what it is for; every form field has a label and, where a rule applies, a hint; every error says what to do next.
 
 ## 2. Route map
 
@@ -54,10 +56,10 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/admin` | A | M01 | Admin landing |
 | `/admin/departments`, `/admin/programs`, `/admin/programs/[id]` | A | M01 | Structure, POs/PSOs, batches |
 | `/admin/terms` | A | M01 | Academic calendar (terms) |
-| `/admin/courses`, `/admin/courses/[id]` | A | M01 | Catalog, components, COs, CO-PO-PSO matrix, syllabus |
+| `/admin/courses`, `/admin/courses/[id]` | A | M01 | Catalog ("New course" dialog), components, COs, CO-PO-PSO matrix, syllabus |
 | `/admin/schemes`, `/admin/schemes/[componentKey]` | A | M01 | Evaluation schemes and versions |
-| `/admin/offerings`, `/admin/offerings/new` | A | M01 | Create offerings, assign faculty and scheme |
-| `/admin/users`, `/admin/users/new`, `/admin/users/import`, `/admin/users/[id]` | A P | M01 | Users; P may only view and send a reset link |
+| `/admin/offerings` | A | M01 | Offerings; "New offering" and "Change faculty" dialogs |
+| `/admin/users`, `/admin/users/[id]` | A P | M01 | Users; "New user" and "Import CSV" dialogs (admin). P may only view and send a reset link |
 | `/admin/settings`, `/admin/settings/[key]` | A | M02 | Settings registry (06 §7) |
 | `/admin/exams` | A | M08 | End-sem import, CE export, locks, grade sheets |
 | `/admin/integrations` | A | M07, M08 | Sync runs, failed jobs, GitHub App status |
@@ -65,18 +67,23 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 
 ## 3. Navigation
 
-The `(app)` layout renders a header (product name, notifications count, user menu) and a primary nav. The nav lists only routes that exist: M00 ships Home and Profile; each milestone adds its own items with their role filter. On screens ≥ 1024 px the nav is a left sidebar; below that it is a `<details>` menu in the header. Items by role (a user with several roles sees the union, in this order):
+The `(app)` layout renders a light sidebar and a sticky top bar (sidebar trigger, breadcrumb trail, today's date in IST). The sidebar header is the logo lockup with the label "Learning Management"; its footer is the user card (initials avatar, name, primary role) that opens the menu with Profile and Sign out. On screens ≥ 768 px the sidebar is docked and collapses to icons (tooltips name each item); below that it opens as a `Sheet`.
 
-| Item | Roles |
-|---|---|
-| Home | all |
-| My courses (`/courses`) | student, faculty, hod, admin |
-| Results | student |
-| Reports | hod, admin |
-| Administration | admin |
-| Users (`/admin/users`) | support |
-| Notifications | all |
-| Profile | all |
+The nav lists only routes that exist, in groups; each milestone adds its own items with their role filter. A group with no visible item is not shown. Each item has a Phosphor duotone icon in a rounded chip. The current item is a tinted pill with its chip filled (`fill` weight); the most specific matching `href` (or listed prefix) is current. Items by role (a user with several roles sees the union, in this order):
+
+| Group | Item | Roles |
+|---|---|---|
+| Overview | Home | all |
+| Overview | Notifications (M02) | all |
+| Learning | My courses (`/courses`) | student, faculty, hod, admin |
+| Learning | Results (M08) | student |
+| Learning | Reports (M06) | hod, admin |
+| Administration | Structure (`/admin`; also owns departments, programmes, terms) with sub-items Departments, Programmes, Terms | admin |
+| Administration | Courses, Schemes, Offerings, Audit log | admin |
+| Administration | Users (`/admin/users`) | admin, support |
+| Account | Profile | all |
+
+The admin area has no `TabNav`: the sidebar is its navigation.
 
 **Course workspace tabs** (`TabNav` in `app/(app)/courses/[offeringId]/layout.tsx`, computed from access and the offering's category/components):
 
@@ -96,13 +103,15 @@ The workspace layout reads `params` and the offering, so its header and tabs ren
 
 ## 4. Design tokens — `app/globals.css`
 
-shadcn's token set, defined once in `:root` and mapped to Tailwind colours with `@theme inline` (so `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `border-border` exist). The palette is sampled from the official lockup at `public/brand/logo.svg` (Q-32): seal crimson primary `oklch(0.566 0.207 26.1)`, wordmark charcoal foreground, paper background `oklch(0.965 0.007 80.7)`, flame gold `--gold` `oklch(0.613 0.108 79.8)` for hairlines (the brightest petal gold disappears on the paper). Extra tokens beyond shadcn's: `--success`, `--warning`, `--gold`. No dark theme (out of scope); `@custom-variant dark` is declared only so shadcn's `dark:` classes stay inert.
+shadcn's token set, defined once in `:root` and mapped to Tailwind colours with `@theme inline` (so `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `border-border` exist). The palette is sampled from the official lockup at `public/brand/logo.svg` (Q-32): seal crimson primary `oklch(0.566 0.207 26.1)`, wordmark charcoal foreground, a cool near-white page background `oklch(0.975 0.003 260)` with white cards so cards lift off the page, flame gold `--gold` `oklch(0.613 0.108 79.8)` for small accents (never as a border stripe). Extra tokens beyond shadcn's: `--success`, `--warning`, `--gold`, and two elevation shadows, `--shadow-card` (resting) and `--shadow-elevated` (hover, dialogs), exposed as `shadow-card` / `shadow-elevated`. Radius is `0.75rem`. No dark theme (out of scope); `@custom-variant dark` is declared only so shadcn's `dark:` classes stay inert.
 
-The product mark is the full lockup — emblem, “Centurion”, “UNIVERSITY”, and “Shaping Lives… Empowering Communities…” — via `UniversityLogo`. Do not crop the words off the seal. Pages use `public/brand/logo.png` (a transparent render of the same lockup) because the official SVG is a 2 MB embedded PNG. The sidebar is light so that wordmark stays readable; the sidebar logo is 72 px wide. Layouts are fully fluid (no max-width on the shell); card groups use `auto-fit` grids.
+Motion: `tw-animate-css` enter animations plus three keyframes in `globals.css` — `success-pop` (the dialog's success check), `success-draw` (its stroke), `aurora` (the slow drift of the sign-in gradient). All motion is behind `motion-safe:`.
+
+The product mark is the full lockup — emblem, “Centurion”, “UNIVERSITY”, and “Shaping Lives… Empowering Communities…” — via `UniversityLogo`. Do not crop the words off the seal. Pages use `public/brand/logo.png` (a transparent render of the same lockup) because the official SVG is a 2 MB embedded PNG. The sidebar is light so that wordmark stays readable; on the crimson sign-in panel the lockup sits on a white chip. Layouts are fully fluid (no max-width on the shell); card groups use `auto-fit` grids.
 
 Rules:
 - Use shadcn components and token utilities (`bg-card`, `text-muted-foreground`); never hard-code a hex colour in a component.
-- Typography: Inter for everything (`next/font/google`, self-hosted at build); no serif. Page titles via `PageHeader`; card titles via `CardTitle`.
+- Typography: Inter for everything (`next/font/google`, self-hosted at build); no serif. Page titles via `PageHeader`; card titles via `CardTitle`. Numbers in stat tiles use `tabular-nums`.
 - Status → `Badge` variant mapping lives in one function, `statusTone(status)` in `lib/format.ts` (added with its first caller, M01); role names in `ROLE_LABEL` there (M00).
 - Rendered rich text uses one class, `.prose-lms`, defined in `globals.css` with `RichTextView` (M02).
 
@@ -115,7 +124,10 @@ Source: shadcn/ui tag **`shadcn@4.21.4`**, style `new-york-v4` (`components.json
 - **Add a primitive only in the commit that first uses it** (deletion test). Never add one "for later".
 - Do not restyle primitives per page; extend with `className` at the call site. Edit a vendored file only to fix a lint/type error, and mark the edit with a `Local change from shadcn 4.21.4` comment.
 - In M00: `alert`, `avatar`, `badge`, `button`, `card`, `dropdown-menu`, `input`, `label`, `separator`, `sheet`, `sidebar`, `skeleton`, `tooltip` (+ `hooks/use-mobile.ts`, `lib/cn.ts`). Local changes: `sidebar` skeleton width fixed (purity lint), `use-mobile` rewritten with `useSyncExternalStore` (effect-setState lint).
-- Planned first uses: `table`, `tabs`, `alert-dialog`, `native-select` (in place of Radix `select`: a real `<select>` posts with the form and needs no client code), `textarea`, `empty`, `pagination` (M01); `progress`, `chart` (M06, adds `recharts`).
+- Planned first uses: `table`, `tabs`, `alert-dialog`, `native-select` (in place of Radix `select`: a real `<select>` posts with the form and needs no client code), `textarea`, `empty`, `pagination` (M01); `dialog` (UI redesign, used only by `FormDialog`); `progress`, `chart` (M06, adds `recharts`).
+- Icons: shadcn ships lucide imports. Every vendored file that used one (`dialog`, `dropdown-menu`, `native-select`, `pagination`, `sheet`, `sidebar`) imports the Phosphor equivalent instead, marked `Local change from shadcn 4.21.4: Phosphor icons`. Do the same when vendoring a new primitive.
+
+Shared surface classes are Tailwind `@utility` rules in `globals.css`, not components: `surface` (a resting card: white, `ring-1 ring-border`, `shadow-card`, `rounded-xl`), `surface-interactive` (adds the hover lift, ring tint and the filled icon chip on hover), and `icon-chip` (a rounded square holding a duotone icon in the primary tint; inside `surface-interactive` it fills on hover).
 
 ### 5.2 App components (closed list)
 
@@ -123,14 +135,18 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 
 | Component | File | Kind | Props (contract) | Used by | Milestone |
 |---|---|---|---|---|---|
-| `ActionForm`, `Field`, `FieldErrors` | `action-form.tsx` | client | 04 §6.8; `FieldErrors` is `{ name: string }` and prints that field's errors for a group of controls (a grid of rows) where `Field`'s single `<label>` does not fit | every form | M00 (`FieldErrors` M01) |
-| `PageHeader` | `page-header.tsx` | server | `{ title: string; description?: string }` | every page in the shell | M00 |
+| `ActionForm`, `Field`, `FieldErrors` | `action-form.tsx` | client | 04 §6.8, plus: `replaceOnSuccess?: boolean` (on success the fields are replaced by an animated check and `successMessage`); `onSuccess?: (data: unknown) => void` and `onPendingChange?: (pending: boolean) => void` (for a client parent such as `FormDialog`); `secondary?: ReactNode` (a control shown before the submit button, such as Cancel). The children sit in a `<fieldset disabled>` while the action runs. `FieldErrors` is `{ name: string }` and prints that field's errors for a group of controls (a grid of rows) where `Field`'s single `<label>` does not fit | every form | M00 (`FieldErrors` M01; additions UI redesign) |
+| `FormDialog` | `form-dialog.tsx` | client (shadcn `Dialog`, `useRouter`, `useSearchParams`) | `{ trigger: ReactNode; title: string; description?: string; icon?: ReactNode; size?: 'default' \| 'wide' \| 'full'; openParam?: string; action; submitLabel: string; successMessage: string; submitVariant?: 'default' \| 'destructive'; children?: ReactNode }` — `trigger` is the element that opens it (`DialogTrigger asChild`). The form inside is an `ActionForm` with `replaceOnSuccess`. While the action runs, Esc, an outside click and the close button do nothing. On success the header and fields give way to the success state; after 1.6 s the dialog closes and, if the action returned `{ next }` (06 §1), navigates there. Each open starts with a fresh form. `openParam` opens it on load when the URL has `?new=<openParam>` (Home quick actions); closing removes the parameter | every create/edit form | UI redesign |
+| `FilterForm` | `filter-form.tsx` | client (`next/form`, `useFormStatus`) | `{ action: string; submitLabel?: string; children: ReactNode }` — a toolbar card holding GET filter fields (the children) and a submit button that shows a spinner while the filtered page loads | courses, admin courses, offerings, users, audit | UI redesign |
+| `LinkSpinner` | `link-spinner.tsx` | client (`useLinkStatus`) | `{ className?: string }` — a fixed-size spinner, invisible until the enclosing `<Link>`'s navigation is pending; placed inside a `Link` | sidebar items, dashboard and card-grid links | UI redesign |
+| `PasswordInput` | `password-input.tsx` | client | the `Input` props except `type` — a password `Input` with a show/hide toggle button (`aria-label`, `aria-pressed`) | sign in, set password, change password | UI redesign |
+| `PageHeader` | `page-header.tsx` | server | `{ title: string; description?: string; icon?: ReactNode; actions?: ReactNode }` — `icon` shows in an `icon-chip` before the title; `actions` (usually `FormDialog` triggers) align to the right and wrap below on phones | every page in the shell | M00 (`icon`, `actions` UI redesign) |
 | `UniversityLogo` | `university-logo.tsx` | server | `{ className?: string; sizes: string; priority?: boolean }` — the official lockup, words included | auth layout, auth stage, app sidebar, 404 | M00 |
-| `AuthStage` | `auth-stage.tsx` | client (`gsap`) | none | `(auth)` layout | M00 |
-| `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | `AppNav({ roles })` — the layout reads the viewer and passes their roles; `AppBreadcrumb` takes none. Each is wrapped in `<Suspense>` because `usePathname` is request data on a dynamic route. The `NAV` list lives in the file with a `roles` filter per item (the union for several roles; the longest matching `href` is current) | `(app)` layout | M00 |
-| `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — shadcn `Table` in a bordered card, an `Empty` state, and `Pagination` links that keep `query` | every list | M01 |
-| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string; prefixes?: string[] }[] }` — link tabs styled as shadcn `Tabs`; a tab is current for its `href`, anything below it and any `prefixes`, longest match wins (Structure owns `/admin`, `/admin/departments`, …) | course workspace, admin, reports | M01 |
-| `ConfirmSubmit` | `confirm-submit.tsx` | client | `{ title: string; message: string; confirmLabel: string; variant?: 'default' \| 'destructive'; children: ReactNode }` — shadcn `AlertDialog`; `children` is the button that opens it and the confirm button submits the enclosing form (`form.requestSubmit()`). Used through `ActionForm`'s `confirm={{ title, message }}` prop, which makes the form's own submit button the trigger | offering status, delete a CO, publish, lock, end session | M01 |
+| `AuthStage` | `auth-stage.tsx` | client (`gsap`) | none — the crimson brand panel on wide screens: the lockup on a white chip, a headline, three feature rows and the drifting lotus | `(auth)` layout | M00 |
+| `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | `AppNav({ roles })` — the layout reads the viewer and passes their roles; `AppBreadcrumb` takes none and prints the group and the current item (and the sub-item under Structure). Each is wrapped in `<Suspense>` because `usePathname` is request data on a dynamic route. The `NAV` groups live in the file with a `roles` filter per item (the union for several roles; the longest matching `href` or prefix is current) | `(app)` layout | M00 (groups UI redesign) |
+| `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — shadcn `Table` in a `surface` card with a muted header row and a row hover tint, an `Empty` state, and a footer with the range shown ("1–25 of 340") and `Pagination` links that keep `query`. Row actions are small icon buttons in the last column (`FormDialog` triggers, `ConfirmSubmit` forms) | every large list | M01 |
+| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string; prefixes?: string[] }[] }` — link tabs styled as shadcn `Tabs`; a tab is current for its `href`, anything below it and any `prefixes`, longest match wins | course workspace, reports | M01 |
+| `ConfirmSubmit` | `confirm-submit.tsx` | client | `{ title: string; message: string; confirmLabel: string; variant?: 'default' \| 'destructive'; pending: boolean; children: ReactNode }` — shadcn `AlertDialog`; `children` is the button that opens it and the confirm button submits the enclosing form (`form.requestSubmit()`). The dialog stays open, its buttons disabled and the confirm button spinning, until the action settles (`pending` from `ActionForm`). Used through `ActionForm`'s `confirm={{ title, message }}` prop, which makes the form's own submit button the trigger | offering status, delete a CO, account access actions, publish, lock, end session | M01 |
 | `RichTextEditor` | `rich-text-editor.tsx` | client | `{ name: string; initial?: RichTextDoc; placeholder?: string }` — Tiptap StarterKit, `immediatelyRender: false`, writes JSON to a hidden input `name` | plan, lesson description, item prompts, text answers, task description | M02 |
 | `RichTextView` | `rich-text-view.tsx` | server | `{ doc: RichTextDoc }` — `generateHTML` from `@tiptap/html/server` with StarterKit into `.prose-lms` | everywhere rich text is shown | M02 |
 | `FileUpload` | `file-upload.tsx` | client | `{ name: string; purpose: UploadPurpose; contextId: string; accept: string; maxBytes: number; multiple?: boolean }` — calls `createUpload`, PUTs with `XMLHttpRequest` (for progress, shadcn `Progress`), writes keys to hidden inputs `name[]` | lesson files, syllabus, submissions | M02 |
@@ -143,17 +159,19 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 
 Bars and percentages (attainment, progress, engagement) use the shadcn `Progress` primitive with the number as text beside it; there is no separate `Meter` component.
 
-Not components (use shadcn primitives + markup): page sections (`Card`), badges, empty states (`Empty`), search/filter forms, the kanban board (a server-rendered grid of `Card`s with per-card status forms), notification lists.
+Not components (use shadcn primitives + markup + the `surface` utilities): page sections, stat tiles, quick-action cards, badges, empty states (`Empty`), the kanban board (a server-rendered grid of cards with per-card status forms), notification lists.
 
 ## 6. Page patterns
 
-**List page** — `page.tsx` validates `searchParams` (Zod), calls one DAL list function, renders `PageHeader` (title + description; the primary action `Button` beside it), an optional GET filter `<form>`, and `DataTable`.
+**List page** — `page.tsx` validates `searchParams` (Zod), calls one DAL list function, renders `PageHeader` (icon, title, description; the "New …" `FormDialog` triggers as `actions`), an optional `FilterForm`, and either `DataTable` (large lists) or a card grid (small lists such as departments, terms, schemes, the admin landing, my courses).
 
-**Detail page** — validates `params`, calls DAL `get…` (which `notFound()`s on no access), renders sections. Secondary actions are small `ActionForm`s or `ConfirmSubmit` buttons.
+**Detail page** — validates `params`, calls DAL `get…` (which `notFound()`s on no access), renders sections as `surface` cards with an icon chip, a title and a one-line description. Each section shows its data read-only; its "Edit …" button opens a `FormDialog`. Destructive or one-click actions are `ConfirmSubmit` buttons.
 
-**Create / edit page** — a route (`/new`, `/[id]/edit`) with one `ActionForm`. On success the action `redirect()`s to the detail page.
+**Create / edit** — a `FormDialog` on the list or detail page. Fields for an edit are pre-filled from the row or record already on the page. On success the action calls `refresh()` (the page behind updates while the success state shows); a create that leads somewhere returns `{ next }` and the dialog navigates there after closing.
 
 **Workspace** — `courses/[offeringId]/layout.tsx` renders the offering title and `TabNav` inside `<Suspense>`; each tab is its own page with its own `loading.tsx` when it has heavy data.
+
+**Home** — the role-aware dashboard. A greeting band (first name, today's date in IST, role chips); stat tiles from `getHomeSummary()` that link to their list; a quick-actions grid of icon cards (admin: add a user, import users, new course, new offering, add a term, add a department, each opening the target page's dialog through `?new=`; support: find a user); the viewer's newest offerings as cards; for admins the latest audit entries as a timeline; and an account-security card. Only data that exists is shown — each milestone adds its own section (today's live classes, due soon, to grade, results) when it ships.
 
 **Role-aware page** — one route serves several roles; the DAL returns a discriminated DTO (`{ view: 'student', … } | { view: 'teacher', … }`) and the page renders the matching section. Do not create parallel routes per role.
 

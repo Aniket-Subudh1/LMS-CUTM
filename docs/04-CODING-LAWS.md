@@ -18,7 +18,7 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 - A page that only displays data is a Server Component with zero client JavaScript.
 - Filtering, sorting and pagination are a GET `<form>` and `searchParams`, not client state.
 - One feedback pattern for mutations: `ActionForm` showing `message` / `fieldErrors`. No toasts.
-- No modal dialogs for create/edit. Use a dedicated route (`…/new`, `…/[id]/edit`) or an inline `<details>` section.
+- Create and edit forms open in a `FormDialog` (08 §5.2) on the list or detail page they belong to. Fields lock while the action runs; on success the dialog shows its success state in place of the fields and closes itself. An action that creates a record the user should open next returns `{ next: '/path' }` instead of calling `redirect()`, and the dialog navigates there after closing. Large editors that are a page of their own (an assessment builder, the attempt runner) stay routes.
 - No drag-and-drop. A `<select>` or two buttons change a status.
 - No optimistic UI unless a milestone asks for it.
 - No configuration for things nobody asked to configure. Constants live next to their only use.
@@ -465,7 +465,7 @@ Rules:
 - `publicAction(input, run)` is only for the pre-sign-in actions in `app/(auth)/actions.ts` (login, password reset). Everything else uses `action()`.
 - Expected failures throw `AppError(code, message)`. Never return raw exception text.
 - `unstable_rethrow` lets `redirect()` / `notFound()` thrown inside `run` behave normally. The shared access helpers (`offeringAccess`, `requireTeach`) call `notFound()`, so a tampered or stale id ends in Next's not-found handling rather than an `ActionResult` — intended. Integration tests assert it with `await expect(act(input)).rejects.toThrow('NEXT_HTTP_ERROR_FALLBACK;404')` (verified).
-- Call `refresh()` after a successful mutation unless you `redirect()`.
+- Call `refresh()` after a successful mutation unless you `redirect()`. Actions submitted from a `FormDialog` do not `redirect()` (the success state would never show); a create returns `{ next }` (06 §1).
 
 ### 6.7 Page — `app/(app)/**/page.tsx` (+ `loading.tsx`)
 

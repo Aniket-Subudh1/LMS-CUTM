@@ -43,7 +43,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@aws-sdk/s3-request-presigner` | 3.1149.0 | M00 | Presigned PUT/GET | `lib/integrations/storage.ts` | — |
 | `nodemailer` | 10.1.0 | M00 | SMTP | `lib/integrations/mail.ts` | Read the v10 README before use |
 | `server-only` | 0.0.1 | M00 | Guard server modules from client bundles | server modules | Aliased to an empty module in Vitest |
-| `lucide-react` | 1.48.0 | M00 | Icons beside labels (08 §1) | `app/`, `components/` | Import named icons only (`House`, not `HomeIcon` aliases) |
+| `@phosphor-icons/react` | 2.1.10 | UI redesign (13 Oct 2026; replaced `lucide-react` 1.48.0 at the client's request) | Icons beside labels, duotone weight (08 §1) | `app/`, `components/` | Server Components import from **`@phosphor-icons/react/ssr`** (the root entry uses React context, which a Server Component cannot read); client components import from `@phosphor-icons/react`. Import the `…Icon` names (`HouseIcon`), not the deprecated bare names. Pass `weight="duotone"` (or `"fill"` for an active state); size with Tailwind `size-*` classes |
 | `radix-ui` | 1.6.7 | M00 | Accessible primitives under `components/ui/` (shadcn) | `components/ui/` | The unified package: `import { Dialog as SheetPrimitive } from 'radix-ui'` |
 | `class-variance-authority` | 0.7.1 | M00 | Variant classes in shadcn primitives | `components/ui/` | — |
 | `clsx`, `tailwind-merge` | 2.1.1, 3.7.0 | M00 | `cn()` in `lib/cn.ts` (merges conflicting Tailwind classes) | `lib/cn.ts` | tailwind-merge 3 is the Tailwind v4 line |

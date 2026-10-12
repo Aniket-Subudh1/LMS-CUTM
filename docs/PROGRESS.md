@@ -114,6 +114,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-35 | A head of department sees the People roster of their department's offerings but cannot change enrolment; only admin and the offering's faculty can | M01 | — |
 | A-36 | The worker may import `lib/queue` and `lib/auth/tokens` (to enqueue per-recipient mail and build invitation links); AGENTS.md's layer table says so | M01 | — |
 | A-37 | The seed runs only against a local MongoDB (`localhost` or `127.0.0.1`) and never in production; without `--e2e` it leaves users `invited` and needs an existing administrator | M01 | — |
+| A-38 | There is no public sign-up: accounts are created by an administrator and the person sets a password from the invitation link (01 §4–§5). The "sign up" screen of the redesign is that page, titled "Set up your account" | auth UI | — |
+| A-39 | Home shows only data that exists today: counts of structure, catalogue, offerings and users for admins; offerings and enrolled students for faculty and HoD; enrolled courses for students; the six latest audit entries for admins. Later milestones add their sections | `/home` | — |
+| A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
 
 ## 5. Log
 
@@ -459,3 +462,14 @@ Admins can model the university end to end: departments, programmes with PO/PSO 
 - `npm run db:indexes:e2e`, then `npm run db:seed:e2e` run twice → both print `Seeded e2e fixtures: 1 department, 2 programmes, 2 courses, 2 offerings, 20 students enrolled in CS101.`; counts after the second run: users 24, departments 1, programs 2, batches 2, terms 1, courses 2, schemes 1, offerings 2, enrollments 20 (repeat is a no-op). Against `mongodb://example.com/x` the seed prints `Refusing to seed "example.com"` and exits.
 - `npx playwright test admin-structure` (against `npm run build` output, `.env.e2e` with generated values) → `3 passed`: admin adds a department, finds a user and opens CS101's Overview and People; faculty drops and re-adds a student by CSV and sees a row error for an unknown roll number; a student sees only CS101 and `/admin/users` sends them to `/home`.
 - Not run: `npx playwright test auth` (needs Mailpit), the CI `e2e` job, any remote or Atlas database.
+
+### 2026-10-13 · Decision: UI and UX redesign · Cursor (AI agent), at Aniket's request
+
+Aniket asked (13 Oct 2026) for a complete redesign of the dashboard, the sign-in pages and the sidebar, to an industry-grade standard. He made these decisions:
+- Every create/edit form is a modal (`FormDialog`). While saving, its fields and buttons lock. On success its fields give way to the success message, and it closes itself. This replaces the "forms are routes" rule (04 §1, 08 §1 and §6), and `/admin/courses/new`, `/admin/offerings/new`, `/admin/users/new` and `/admin/users/import` are removed.
+- Icons are Phosphor (duotone) instead of lucide (03 §3).
+- The sidebar stays light, with grouped sections and a tinted active pill. One-sided accent borders (the gold card tops, the inset bar on the active nav item) are removed everywhere.
+- Large record lists (users, audit, offerings, the course catalogue) stay as redesigned tables. Navigation and small lists become icon card grids.
+- Every submit shows a loader and cannot be pressed twice. Links and filters show a pending spinner.
+
+Contract change: create actions return `{ next }` instead of calling `redirect()` (06 §1). The build entry follows below.

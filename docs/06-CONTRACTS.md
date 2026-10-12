@@ -28,6 +28,8 @@ export type ActionResult<T> =
   | { ok: false; code: ErrorCode; message: string; fieldErrors?: Partial<Record<string, string[]>> };
 ```
 
+**Where to go next.** An action that creates a record the user should open next (a course, a programme, a user) returns `{ next: string }` — an app path — as its `data`, instead of calling `redirect()`. `FormDialog` (08 §5.2) shows its success state, closes, then navigates to `next`. Edits return nothing and call `refresh()`. Only the pre-sign-in actions (`login`, `resetPassword`) and sign-out actions still `redirect()`, because they leave the signed-in shell.
+
 | Code | Meaning | Typical message | Route-handler status |
 |---|---|---|---|
 | `VALIDATION` | Input failed Zod or a business rule about the input | "Weights must add up to 50." | 400 |
@@ -222,7 +224,7 @@ Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token,
 
 All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (`header: true, skipEmptyLines: 'greedy'`, header names trimmed and lower-cased). Max 5,000 data rows per file (2 MB action body limit). Imports are **all-or-nothing per file**: if any row fails validation, nothing is written and the action returns every row error (`{ row, message }`, row numbers 1-based excluding the header). The parsing and row validation are pure functions in `lib/domain/csv.ts`.
 
-### 8.1 Users — `/admin/users/import` (M01)
+### 8.1 Users — "Import CSV" dialog on `/admin/users` (M01)
 `role,name,email,rollno,employeeid,department,program,batchstartyear,section`
 - `role` ∈ `student, faculty, hod, support` (admins are never imported). `hod` rows get roles `['faculty','hod']`.
 - students: `rollno`, `program` (code), `batchstartyear`, `section` required; faculty/hod: `employeeid`, `department` (code) required.
