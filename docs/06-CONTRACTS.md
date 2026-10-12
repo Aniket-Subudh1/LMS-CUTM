@@ -44,7 +44,7 @@ export type ActionResult<T> =
 | `page` | `z.coerce.number().int().min(1).max(10_000).default(1)` | `pageSize = 25`; `max per page = 100` |
 | `richText` | `z.json()` refined by size (≤ 100 KB serialized) | Rendered server-side on write to validate nodes (`lib/domain/rich-text.ts`) |
 | `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)` transformed with `parseIstLocal` | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z` |
-| `istDate` | `YYYY-MM-DD` → `Date` at 00:00 IST | for calendar dates |
+| `istDate` | `YYYY-MM-DD` string, checked to be a real date | for calendar dates; `lib/schemas` imports `zod` only, so the action converts it with `istDateToDate` (`lib/domain/time.ts`) to a `Date` at 00:00 IST |
 | `marks` | `z.coerce.number().min(0).max(1000)` then `roundHalfUp(x, 2)` | all hand-entered marks |
 | `ids[]` | `z.array(objectId).max(n)` with the `name[]` form convention | |
 | `email` | `z.email().toLowerCase()` | |
