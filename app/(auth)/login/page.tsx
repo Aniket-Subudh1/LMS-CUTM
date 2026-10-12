@@ -8,10 +8,10 @@ export const metadata: Metadata = { title: 'Sign in' };
 
 export default function LoginPage() {
   return (
-    <div className="grid gap-6">
-      <div className="grid gap-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in to your account</h1>
-        <p className="text-muted-foreground text-sm">Use your university email address.</p>
+    <div className="grid gap-8">
+      <div className="grid gap-2">
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">Sign in to your account</h1>
+        <p className="text-muted-foreground text-sm leading-relaxed">Use your university email address.</p>
       </div>
       <ActionForm action={login} submitLabel="Sign in" fullWidth>
         <Field name="email" label="Email">
@@ -21,7 +21,7 @@ export default function LoginPage() {
           <Input name="password" type="password" autoComplete="current-password" required />
         </Field>
       </ActionForm>
-      <p className="text-muted-foreground text-center text-sm">
+      <p className="text-muted-foreground text-sm">
         Forgot your password?{' '}
         <Link href="/forgot-password" className="text-primary font-medium underline-offset-4 hover:underline">
           Reset it

@@ -1,8 +1,9 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ChevronsUpDown, GraduationCap, LogOut, UserRound } from 'lucide-react';
+import { ChevronsUpDown, LogOut, UserRound } from 'lucide-react';
 import { logout } from '@/app/(auth)/actions';
 import { AppBreadcrumb, AppNav } from '@/components/app-nav';
+import { UniversityLogo } from '@/components/university-logo';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -79,24 +80,15 @@ async function UserMenu() {
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
-    <SidebarProvider>
+    <SidebarProvider className="[--sidebar-width:15rem]!">
       <Sidebar collapsible="icon">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild>
-                <Link href="/home">
-                  <span className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
-                    <GraduationCap className="size-5" />
-                  </span>
-                  <span className="grid flex-1 text-left leading-tight">
-                    <span className="truncate font-semibold">CUTM LMS</span>
-                    <span className="truncate text-xs opacity-70">Centurion University</span>
-                  </span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+        <SidebarHeader className="items-center border-b px-3 py-4 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
+          <Link
+            href="/home"
+            className="focus-visible:ring-ring rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <UniversityLogo priority sizes="72px" className="w-[4.5rem] group-data-[collapsible=icon]:w-8" />
+          </Link>
         </SidebarHeader>
         <SidebarContent>
           <AppNav />
@@ -109,13 +101,13 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <header className="bg-background/95 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur">
-          <SidebarTrigger className="-ml-1" />
+        <header className="bg-background/95 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur sm:px-6 lg:px-8 xl:px-10">
+          <SidebarTrigger className="-ml-2" />
           <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <AppBreadcrumb />
         </header>
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+        <main className="motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
+          {children}
         </main>
       </SidebarInset>
     </SidebarProvider>

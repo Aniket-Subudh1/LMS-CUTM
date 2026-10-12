@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,38 +40,38 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* CUTM navy and gold are placeholders until the university supplies its palette (Q-32). */
+/* Sampled from the official lockup. See docs/08-UI-SYSTEM.md §4. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(0.975 0.004 255);
-  --foreground: oklch(0.21 0.03 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.03 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.03 260);
-  --primary: oklch(0.33 0.07 258);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.01 255);
-  --secondary-foreground: oklch(0.33 0.07 258);
-  --muted: oklch(0.955 0.008 255);
-  --muted-foreground: oklch(0.5 0.02 258);
-  --accent: oklch(0.95 0.015 255);
-  --accent-foreground: oklch(0.33 0.07 258);
-  --destructive: oklch(0.577 0.245 27.325);
+  --radius: 0.5rem;
+  --background: oklch(0.965 0.007 80.7);
+  --foreground: oklch(0.246 0.004 345.5);
+  --card: oklch(0.985 0.004 80);
+  --card-foreground: oklch(0.246 0.004 345.5);
+  --popover: oklch(0.985 0.004 80);
+  --popover-foreground: oklch(0.246 0.004 345.5);
+  --primary: oklch(0.566 0.207 26.1);
+  --primary-foreground: oklch(0.99 0.002 80);
+  --secondary: oklch(0.94 0.01 80);
+  --secondary-foreground: oklch(0.246 0.004 345.5);
+  --muted: oklch(0.94 0.008 80);
+  --muted-foreground: oklch(0.468 0.008 53.3);
+  --accent: oklch(0.95 0.016 30);
+  --accent-foreground: oklch(0.246 0.004 345.5);
+  --destructive: oklch(0.419 0.154 23.3);
   --success: oklch(0.52 0.13 150);
   --warning: oklch(0.6 0.15 60);
-  --gold: oklch(0.76 0.14 80);
-  --border: oklch(0.91 0.008 255);
-  --input: oklch(0.88 0.01 255);
-  --ring: oklch(0.55 0.1 258);
-  --sidebar: oklch(0.255 0.055 260);
-  --sidebar-foreground: oklch(0.93 0.015 255);
-  --sidebar-primary: oklch(0.76 0.14 80);
-  --sidebar-primary-foreground: oklch(0.25 0.05 260);
-  --sidebar-accent: oklch(0.33 0.06 260);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(0.33 0.05 260);
-  --sidebar-ring: oklch(0.76 0.14 80);
+  --gold: oklch(0.613 0.108 79.8);
+  --border: oklch(0.9 0.01 80);
+  --input: oklch(0.88 0.012 80);
+  --ring: oklch(0.566 0.207 26.1);
+  --sidebar: oklch(0.985 0.004 80);
+  --sidebar-foreground: oklch(0.246 0.004 345.5);
+  --sidebar-primary: oklch(0.566 0.207 26.1);
+  --sidebar-primary-foreground: oklch(0.99 0.002 80);
+  --sidebar-accent: oklch(0.95 0.018 30);
+  --sidebar-accent-foreground: oklch(0.419 0.154 23.3);
+  --sidebar-border: oklch(0.9 0.01 80);
+  --sidebar-ring: oklch(0.566 0.207 26.1);
 }
 
 @layer base {
@@ -80,5 +80,14 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Desktop-only, so a phone does not download the stage illustration. */
+@media (min-width: 64rem) {
+  .auth-print {
+    background-image: url('/brand/stage-print.jpg');
+    background-position: left bottom;
+    background-size: cover;
   }
 }

@@ -8,7 +8,7 @@ The UI is built on **shadcn/ui** (Radix primitives styled with Tailwind v4), ven
 
 1. **Server-first.** Pages are Server Components; interactivity lives in `components/ui/` primitives and the few app client components in §5. A page that only shows data ships no extra JavaScript of its own.
 2. **One way to do each thing:** lists → `DataTable`; forms → `ActionForm` + `Field` with shadcn inputs; filters → GET `<form>`; destructive actions → `ConfirmSubmit` (shadcn `AlertDialog`); navigation inside an area → `TabNav`; feedback → inline `Alert` in the form (no toasts); dashboards → `Card` grids with shadcn charts (M06+).
-3. **Not used:** toasts, carousels, drag-and-drop, infinite scroll, modals for data entry (create/edit pages are routes). `Sheet` is used only by the mobile sidebar; `AlertDialog` only for confirmations.
+3. **Not used:** toasts, carousels, drag-and-drop, infinite scroll, modals for creating or editing records (those are routes). `Sheet` is used only by the mobile sidebar; `AlertDialog` only for confirmations. The profile page is the exception: changing the password and signing out everywhere open a native `<dialog>` on that page.
 4. **Every page has four states designed:** loading (`loading.tsx` with `Skeleton`), empty (shadcn `Empty` with a sentence saying what to do next), error (`error.tsx`), not found (`not-found.tsx`).
 5. **Icons support words.** Icons (lucide-react) sit beside a text label; icon-only buttons are allowed only with an `aria-label` or `sr-only` text (the sidebar trigger, collapsed-sidebar items with tooltips).
 6. **Explain as you go.** Every card has a title and a one-line description of what it is for; every form field has a label and, where a rule applies, a hint; every error says what to do next.
@@ -96,11 +96,13 @@ The workspace layout reads `params` and the offering, so its header and tabs ren
 
 ## 4. Design tokens — `app/globals.css`
 
-shadcn's token set, defined once in `:root` and mapped to Tailwind colours with `@theme inline` (so `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `border-border` exist). Brand values are placeholders until CUTM provides its palette (Q-32): navy primary `oklch(0.33 0.07 258)`, gold accent `--gold` `oklch(0.76 0.14 80)`, deep-navy sidebar. Extra tokens beyond shadcn's: `--success`, `--warning`, `--gold`. No dark theme (out of scope); `@custom-variant dark` is declared only so shadcn's `dark:` classes stay inert.
+shadcn's token set, defined once in `:root` and mapped to Tailwind colours with `@theme inline` (so `bg-primary`, `text-muted-foreground`, `bg-sidebar`, `border-border` exist). The palette is sampled from the official lockup at `public/brand/logo.svg` (Q-32): seal crimson primary `oklch(0.566 0.207 26.1)`, wordmark charcoal foreground, paper background `oklch(0.965 0.007 80.7)`, flame gold `--gold` `oklch(0.613 0.108 79.8)` for hairlines (the brightest petal gold disappears on the paper). Extra tokens beyond shadcn's: `--success`, `--warning`, `--gold`. No dark theme (out of scope); `@custom-variant dark` is declared only so shadcn's `dark:` classes stay inert.
+
+The product mark is the full lockup — emblem, “Centurion”, “UNIVERSITY”, and “Shaping Lives… Empowering Communities…” — via `UniversityLogo`. Do not crop the words off the seal. Pages use `public/brand/logo.png` (a transparent render of the same lockup) because the official SVG is a 2 MB embedded PNG. The sidebar is light so that wordmark stays readable; the sidebar logo is 72 px wide. Layouts are fully fluid (no max-width on the shell); card groups use `auto-fit` grids.
 
 Rules:
 - Use shadcn components and token utilities (`bg-card`, `text-muted-foreground`); never hard-code a hex colour in a component.
-- Typography: Geist (`next/font/google`, self-hosted at build). Page titles via `PageHeader`; card titles via `CardTitle`.
+- Typography: Inter for everything (`next/font/google`, self-hosted at build); no serif. Page titles via `PageHeader`; card titles via `CardTitle`.
 - Status → `Badge` variant mapping lives in one function, `statusTone(status)` in `lib/format.ts` (added with its first caller, M01); role names in `ROLE_LABEL` there (M00).
 - Rendered rich text uses one class, `.prose-lms`, defined in `globals.css` with `RichTextView` (M02).
 
@@ -123,6 +125,8 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 |---|---|---|---|---|---|
 | `ActionForm`, `Field` | `action-form.tsx` | client | 04 §6.8 | every form | M00 |
 | `PageHeader` | `page-header.tsx` | server | `{ title: string; description?: string }` | every page in the shell | M00 |
+| `UniversityLogo` | `university-logo.tsx` | server | `{ className?: string; sizes: string; priority?: boolean }` — the official lockup, words included | auth layout, auth stage, app sidebar, 404 | M00 |
+| `AuthStage` | `auth-stage.tsx` | client (`gsap`) | none | `(auth)` layout | M00 |
 | `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | none; the `NAV` list lives in the file (items gain `roles` from M01) | `(app)` layout | M00 |
 | `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — shadcn `Table` in a bordered card, an `Empty` state, and `Pagination` links that keep `query` | every list | M01 |
 | `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string }[] }` — link tabs styled as shadcn `Tabs` | course workspace, admin, reports | M01 |

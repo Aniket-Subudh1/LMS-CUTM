@@ -47,7 +47,7 @@ Paths are exact. Do not create folders not listed here without updating this sec
 .
 ├── AGENTS.md · CLAUDE.md · README.md
 ├── app/
-│   ├── layout.tsx                      root <html>, Geist font, globals.css
+│   ├── layout.tsx                      root <html>, Inter, globals.css
 │   ├── globals.css                     shadcn design tokens (08 §4)
 │   ├── page.tsx                        redirect('/home')
 │   ├── not-found.tsx
@@ -159,7 +159,7 @@ Producer: `await mailQueue().add(name, payload, { jobId })` with a deterministic
 
 `next.config.ts` already sets `cacheComponents: true` and `partialPrefetching: true`. Consequences you must design for (verified with a production build of the canonical patterns):
 
-1. **Any read of `cookies()`, `headers()`, `params` or `searchParams` must sit under a `<Suspense>` boundary** or the build fails. `app/(app)/loading.tsx` provides that boundary for every page. Layouts must not `await` the session at top level — push it into a child component wrapped in its own `<Suspense>`.
+1. **Any read of `cookies()`, `headers()`, `params`, `searchParams` or `connection()` must sit under a `<Suspense>` boundary** or the build fails. The boundary has to be inside the segment that changes: `app/(app)/loading.tsx` wraps the layout's children, so it sits above a navigation between `/home` and `/profile` and does not count. A page that reads the session puts that read in a child wrapped in its own `<Suspense>`. Layouts must not `await` the session at top level.
 2. **Environment variables are read lazily.** `env()` parses `process.env` on first call. Never read `env()` (or open a DB/Redis connection) at module top level: modules are evaluated during `next build`, where production secrets are absent.
 3. **Default: no `use cache`.** MongoDB with the right index is fast, and in-memory caches on several web instances drift apart after a mutation. `use cache` is allowed only on the functions listed here, each with `cacheLife` and `cacheTag`:
 

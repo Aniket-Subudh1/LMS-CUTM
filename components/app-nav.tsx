@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ChevronRight, House, UserRound, type LucideIcon } from 'lucide-react';
+import { House, UserRound, type LucideIcon } from 'lucide-react';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -32,7 +32,12 @@ export function AppNav() {
       <SidebarMenu>
         {NAV.map((item) => (
           <SidebarMenuItem key={item.href}>
-            <SidebarMenuButton asChild isActive={item === current} tooltip={item.label}>
+            <SidebarMenuButton
+              asChild
+              isActive={item === current}
+              tooltip={item.label}
+              className="data-[active=true]:shadow-[inset_2px_0_0_var(--color-sidebar-primary)]"
+            >
               <Link
                 href={item.href}
                 aria-current={item === current ? 'page' : undefined}
@@ -53,8 +58,6 @@ export function AppBreadcrumb() {
   const current = useCurrent();
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
-      <span className="text-muted-foreground hidden sm:inline">CUTM LMS</span>
-      <ChevronRight className="text-muted-foreground hidden size-3.5 sm:inline" />
       <span className="truncate font-medium">{current?.label}</span>
     </nav>
   );

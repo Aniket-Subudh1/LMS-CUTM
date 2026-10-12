@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connection } from 'next/server';
@@ -5,21 +6,30 @@ import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { isTokenCurrent, readToken } from '@/lib/auth/tokens';
+import Loading from '../loading';
 import { resetPassword } from '../actions';
 
 export const metadata: Metadata = { title: 'Set password' };
 
-export default async function ResetPasswordPage({ searchParams }: PageProps<'/reset-password'>) {
+export default function ResetPasswordPage({ searchParams }: PageProps<'/reset-password'>) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <ResetForm searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-password'>['searchParams'] }) {
   const { token } = await searchParams;
   // Unsealing checks the token's expiry against the clock, so it must run at request time.
   await connection();
   const data = typeof token === 'string' ? await readToken(token, ['reset', 'invite']) : null;
   if (!data || !(await isTokenCurrent(data))) {
     return (
-      <div className="grid gap-6 text-center">
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Link not valid</h1>
-          <p className="text-muted-foreground text-sm">This link has expired or was already used.</p>
+      <div className="grid gap-8">
+        <div className="grid gap-2">
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">Link not valid</h1>
+          <p className="text-muted-foreground text-sm leading-relaxed">This link has expired or was already used.</p>
         </div>
         <Button asChild>
           <Link href="/forgot-password">Request a new link</Link>
@@ -28,12 +38,12 @@ export default async function ResetPasswordPage({ searchParams }: PageProps<'/re
     );
   }
   return (
-    <div className="grid gap-6">
-      <div className="grid gap-1 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">
+    <div className="grid gap-8">
+      <div className="grid gap-2">
+        <h1 className="text-2xl leading-tight font-semibold tracking-tight md:text-3xl">
           {data.purpose === 'invite' ? 'Set your password' : 'Choose a new password'}
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-sm leading-relaxed">
           {data.purpose === 'invite'
             ? 'Welcome to the CUTM LMS. Choose a password to activate your account.'
             : 'You will be signed in once it is saved.'}

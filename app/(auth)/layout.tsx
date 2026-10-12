@@ -1,30 +1,20 @@
-import { GraduationCap } from 'lucide-react';
+import { AuthStage } from '@/components/auth-stage';
+import { UniversityLogo } from '@/components/university-logo';
 
 export default function AuthLayout({ children }: LayoutProps<'/'>) {
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
-      <div className="flex flex-col gap-6 p-6 md:p-10">
-        <p className="flex items-center gap-2 font-semibold">
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-            <GraduationCap className="size-5" />
-          </span>
-          CUTM LMS
-        </p>
-        <main className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">{children}</div>
-        </main>
-      </div>
-      <aside className="bg-sidebar text-sidebar-foreground relative hidden flex-col justify-end overflow-hidden p-10 lg:flex">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,var(--color-sidebar-accent),transparent_55%),radial-gradient(circle_at_80%_90%,color-mix(in_oklch,var(--color-gold)_35%,transparent),transparent_50%)]"
+    <div className="bg-background grid min-h-dvh lg:grid-cols-[minmax(0,1.1fr)_minmax(26rem,0.9fr)]">
+      <AuthStage />
+      <main className="flex flex-col items-center justify-center gap-8 px-4 py-10 sm:px-8 lg:px-12 xl:px-20">
+        <UniversityLogo
+          priority
+          sizes="8rem"
+          className="motion-safe:animate-in motion-safe:fade-in-0 w-28 sm:w-32 lg:hidden"
         />
-        <div className="relative grid max-w-md gap-3">
-          <span className="bg-gold h-1 w-12 rounded-full" />
-          <p className="text-3xl font-semibold tracking-tight">Centurion University of Technology and Management</p>
-          <p className="text-sidebar-foreground/75">Learning Management System for students, faculty and staff.</p>
+        <div className="sm:bg-card w-full max-w-md sm:rounded-xl sm:border sm:p-8 sm:shadow-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+          {children}
         </div>
-      </aside>
+      </main>
     </div>
   );
 }

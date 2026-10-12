@@ -140,7 +140,7 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 
 - Password policy: 10–128 characters; must not equal the email; no composition rules.
 - Login failure message is always "Email or password is incorrect." (also for invited users without a password and disabled users).
-- `forgot-password` always answers "If that email is registered, a link has been sent."
+- `forgot-password` says "This email does not exist in the database." when no active or invited user has that email, and "This email is registered. A reset link has been sent." when one does. Login still uses one message for every failure.
 - Session: 12 h TTL; `sessionVersion` check on every request (02 §6). "Sign out everywhere" and password change increment it.
 - Server Actions are POST-only and Next.js checks `Origin` against `Host`; route handlers that mutate (`/api/beacon`) rely on the `sameSite=lax` cookie, which browsers do not send on cross-site POSTs; webhooks rely on signatures.
 

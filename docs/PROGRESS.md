@@ -68,9 +68,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
 | Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env | M11 | Open |
-| Q-32 | CUTM brand colours and logo | @client | Navy primary, gold accent, navy sidebar (shadcn tokens in `app/globals.css`); graduation-cap icon as the logo | — | Open |
+| Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4) | — | Answered 13 Oct 2026 |
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
-| Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built (the messages are already identical) | M11 hardening | Open |
+| Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 
 ## 4. Assumptions register
 
@@ -99,7 +99,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-21 | Production object storage is Cloudflare R2; lecture videos are MP4 with a 480p data-saver copy (ADR-19) | M02, M11 | Q-12 |
 | A-22 | Login rate limits count failed attempts only (a success refunds its slot); forgot-password counts every request | M00 | Q-33 |
 | A-23 | The UI is shadcn/ui on Tailwind v4 (client request, 12 Oct 2026); light theme only | all UI | — |
-| A-24 | The Geist font is self-hosted through `next/font` (downloaded from Google Fonts at build time) | build | Q-12 |
+| A-24 | Inter is self-hosted through `next/font` (downloaded from Google Fonts at build time); one family for the whole UI, no serif | build | Q-12 |
 | A-25 | `admin:create` only creates or re-invites; it refuses an email whose account is active or disabled | M00 | — |
 
 ## 5. Log
@@ -228,3 +228,159 @@ Screenshots reviewed at 1280 px (login, home, profile, user menu) and 360 px (lo
 
 **Manual steps not performed:** no human has walked the M00 validation checklist; email was checked in Mailpit only (no real inbox); the 360 px checks ran in headless Chromium, not on a phone.
 
+### 2026-10-13 · tooling · Cursor (AI agent)
+
+**Created**
+- `package.json` — `allowScripts` pins for `esbuild@0.28.2`, `fsevents@2.3.3`, `mongodb-memory-server@11.3.0`, `msgpackr-extract@3.0.4`, `unrs-resolver@1.12.2` (npm 11 install-script review)
+- `.nvmrc` — `24`, matching the Node 24 LTS pin in `docs/03-TECH-STACK.md`
+
+**Not done**
+- The five high audit findings are one advisory, `braces` ≤ 3.0.3 (`GHSA-vfj7-8cjw-p6xm`), pulled in only by `eslint-config-next@16.4.0` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch`. npm's latest `braces` is 3.0.3; no patched release exists. `npm audit fix --force` would install `eslint-config-next@14.2.35` and break the Next 16 toolchain, so it was not run.
+
+**Assumptions**
+- Local default Node was switched from 25.9.0 to 24.21.0 (`nvm alias default 24`). Vitest 5.0.4 does not list Node 25.
+
+**Open questions** — none.
+
+**Verification**
+```
+nvm install 24                         → Now using node v24.21.0 (npm v11.19.0)
+npm i                                  → up to date, audited 547 packages; no EBADENGINE; no allow-scripts warning
+npm audit fix                          → still 5 high; only offered fix is eslint-config-next@14.2.35 (breaking)
+```
+
+### 2026-10-13 · auth · Cursor (AI agent)
+
+**Created**
+- `app/(auth)/actions.ts` — `requestPasswordReset` returns not-found when the email has no active or invited user
+- `app/(auth)/forgot-password/page.tsx` — success copy says the email is registered and the link was sent
+- `tests/integration/auth.test.ts`, `tests/e2e/auth.spec.ts` — expect the two different answers
+- `docs/09-SECURITY.md`, `docs/milestones/M00-foundation.md` — same contract
+
+**Not done**
+- Integration and e2e suites were not re-run here (they need local Redis on port 6379 and the compose stack).
+
+**Assumptions**
+- A disabled account is treated as not in the database for this form, same as before: only `active` and `invited` receive a reset link.
+- The admin `aniketsubudhi00@gmail.com` was created directly as `active` with a password so the login form works. `admin:create` only invites and does not set a password.
+
+**Open questions** — none.
+
+**Verification**
+- `GET http://localhost:3001/api/health` → `{"ok":true,"mongo":"up","redis":"up"}`
+- Browser on `http://localhost:3001`: unknown email shows "This email does not exist in the database."; `aniketsubudhi00@gmail.com` shows "This email is registered. A reset link has been sent."; sign-in reaches `/home` with "Welcome, Aniket" and "Administrator".
+- The mail worker picked up the reset job and Gmail rejected SMTP auth (`535 5.7.8 Username and Password not accepted`). The message was not delivered.
+- Integration and e2e suites were not run (local Redis on port 6379 is not running).
+
+### 2026-10-13 · shell · Cursor (AI agent)
+
+**Created**
+- `app/(app)/home/page.tsx`, `app/(app)/profile/page.tsx`, `app/(auth)/reset-password/page.tsx` — session and token reads sit in a child under `<Suspense>`
+- `docs/02-ARCHITECTURE.md`, `docs/04-CODING-LAWS.md` — the shell `loading.tsx` does not cover a navigation between pages in the same layout
+
+**Not done** — none.
+
+**Assumptions** — none.
+
+**Open questions** — none.
+
+**Verification**
+- Browser: `/home` shows "Welcome, Aniket"; client navigation to `/profile` shows the account. Dev log after the change has no `uncached data during prerendering or a navigation` error.
+
+### 2026-10-13 · brand · Cursor (AI agent)
+
+The sign-in screen and the signed-in shell now use the official Centurion lockup, including the words under the seal, and a palette sampled from that file.
+
+**Created**
+- `public/brand/logo.svg` — the university file, unchanged (a 2 MB PNG embedded in SVG)
+- `public/brand/logo.png` — transparent 960 px render of the same lockup, including “Centurion”, “UNIVERSITY”, and “Shaping Lives… Empowering Communities…”, for the pages
+- `public/brand/lotus.svg`, `public/brand/stage-print.jpg`
+- `app/icon.png` — the full lockup, not a cropped seal
+- `components/university-logo.tsx`, `components/auth-stage.tsx`
+- `gsap@3.15.0`
+
+**Changed**
+- `app/globals.css`, `app/layout.tsx`, `app/not-found.tsx`
+- `app/(auth)/layout.tsx`, `app/(auth)/loading.tsx`, `app/(auth)/login/page.tsx`, `app/(auth)/forgot-password/page.tsx`, `app/(auth)/reset-password/page.tsx`
+- `app/(app)/layout.tsx`, `app/(app)/home/page.tsx`, `app/(app)/profile/page.tsx`
+- `components/page-header.tsx`, `components/app-nav.tsx`
+- `proxy.ts` — static images and `icon.png` are not redirected to `/login`, or the mark cannot load before sign-in
+- `tests/e2e/auth.spec.ts` — home heading is the first name (`Asha`), with “Welcome” as the label above it
+- `docs/02-ARCHITECTURE.md`, `docs/03-TECH-STACK.md`, `docs/08-UI-SYSTEM.md`, `docs/milestones/M00-foundation.md`
+
+**Not done**
+- `npm run test:e2e` was not run (it needs the compose stack and a production build).
+
+**Assumptions**
+- The brightest gold in the seal (`#F0D040`) disappears as a hairline on the paper, so `--gold` is a darker flame tone from the same mark (`#A67C2D`). The focus ring stays seal crimson, which passes WCAG on the paper; gold does not.
+- The sidebar is light (paper), so the dark wordmark in the lockup stays readable.
+- There is still no public registration page. The invitation screen is `/reset-password`.
+
+**Open questions** — Q-32 answered (logo and sampled colours).
+
+**Verification**
+```
+npm run check → eslint: 0 problems · tsc: 0 errors · Test Files 5 passed · Tests 11 passed
+```
+- `GET /brand/logo.png` without a session → `200` `image/png`. `GET /home` without a session → `307` to `/login`.
+- Browser at 1280×800: `/login` shows the full lockup (seal, Centurion, UNIVERSITY, tagline), the gold rule, and the sign-in form. Email field is labelled. With `prefers-reduced-motion: reduce`, the logo stays at opacity 1 and the lotus has no transform.
+- Browser at 360×740: `/login` scroll width is 360, the stage is hidden, the full lockup is 160 px wide above the form, and the Sign in button sits inside the viewport. `/forgot-password` and `/reset-password?token=not-a-real-token` (“Link not valid”) use the same lockup.
+- Signed-in `/home`: sidebar shows the full lockup; heading “Aniket” with label “Welcome”; both cards fit (no horizontal scroll). Collapsed rail is the same image at 32×51, not a cropped seal. `/profile` shows the account and password fields.
+
+
+### 2026-10-13 · ui-polish · Cursor (AI agent)
+
+Typography, logo size, width and responsiveness fixes after review of the brand pass.
+
+**Created** — none (`public/brand/logo.png` replaces `logo.jpg`; `emblem.png` removed).
+
+**Changed**
+- `app/layout.tsx`, `app/globals.css` — Inter only (A-24), light sidebar tokens
+- `components/university-logo.tsx` — transparent PNG, `sizes` prop
+- `components/auth-stage.tsx`, `app/(auth)/*` — smaller logo, left-aligned headings, tablet card and desktop split
+- `app/(app)/layout.tsx` — sidebar 15 rem, 72 px logo, no max-width on the shell
+- `app/(app)/home/page.tsx`, `app/(app)/profile/page.tsx`, `app/(app)/loading.tsx` — `auto-fit` card grids, hairline-top cards, welcome band
+- `components/page-header.tsx` (no `eyebrow`), `components/app-nav.tsx` (active marker)
+- `docs/02-ARCHITECTURE.md`, `docs/08-UI-SYSTEM.md`, `docs/PROGRESS.md`
+
+**Not done**
+- `npm run test:e2e` was not run (needs the compose stack and a production build).
+- The mobile sidebar sheet and the collapsed rail were not re-measured after the change.
+
+**Assumptions** — A-24 now reads Inter.
+
+**Open questions** — none.
+
+**Verification**
+```
+npm run check → eslint: 0 problems · tsc: 0 errors · Test Files 5 passed · Tests 11 passed
+```
+- Browser metrics (no emulated touch): no horizontal scroll at 360, 768, 1024, 1440 and 1920 px.
+- `/login`: 1440 split with a 192 px lockup, form 448 px; 768 centred 448 px card with a 128 px lockup; 360 card 328 px wide (16 px gutters).
+- `/home` at 1920: content spans x 280–1880 (40 px gutters), two cards 788 px each. At 360 cards are 328 px.
+- `/profile`: 1024 single column, cards 705 px; 1440 two columns (365 and 731 px); 360 cards 313 px with inputs inside.
+- Sidebar logo is 72×114 px on the light sidebar. Computed body font is Inter.
+- Note: the dev server first checked was stale (served an old charcoal sidebar); it was restarted on port 3100 and the checks above ran against it.
+
+### 2026-10-13 · profile-dialogs · Cursor (AI agent)
+
+The profile page no longer shows the password form and sign-out action as cards. Both open in a dialog.
+
+**Created**
+- `app/(app)/profile/account-actions.tsx` — native `<dialog>` for change password and sign out everywhere
+
+**Changed**
+- `app/(app)/profile/page.tsx` — one account panel (name, email, roles) with those two actions
+- `tests/e2e/auth.spec.ts` — opens each dialog before submitting
+- `docs/08-UI-SYSTEM.md` — profile is the exception to “no modals for data entry”
+
+**Not done**
+- `npm run test:e2e` was not run (needs the compose stack and a production build).
+
+**Assumptions**
+- These two account actions stay on `/profile` inside a native dialog, rather than moving to their own routes.
+
+**Open questions** — none.
+
+**Verification**
+- Browser: `/profile` shows one account panel. “Change password” opens a centred dialog; the first field is focused; Escape closes it. “Sign out everywhere” opens a centred confirmation dialog. At 360 px, `scrollWidth` is 360, the rows stack, and the dialog fits the screen.

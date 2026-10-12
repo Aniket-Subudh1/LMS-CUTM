@@ -48,7 +48,7 @@ export const requestPasswordReset = publicAction(ResetRequestInput, async ({ ema
     { email, status: { $in: ['active', 'invited'] } },
     { name: 1, email: 1, sessionVersion: 1 },
   ).lean();
-  if (!user) return;
+  if (!user) throw new AppError('NOT_FOUND', 'This email does not exist in the database.');
   const link = new URL('/reset-password', env().APP_URL);
   link.searchParams.set(
     'token',
