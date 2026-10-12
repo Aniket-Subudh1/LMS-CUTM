@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { House, UserRound, type LucideIcon } from 'lucide-react';
+import { BookOpen, House, Settings, UserRound, Users, type LucideIcon } from 'lucide-react';
+import type { Role } from '@/lib/schemas/common';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -12,25 +13,32 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
-// Later milestones add items with a `roles` filter (08 §3).
-const NAV: { href: string; label: string; icon: LucideIcon }[] = [
+// Items by role (08 §3); a user with several roles sees the union. `roles` absent means everyone.
+const NAV: { href: string; label: string; icon: LucideIcon; roles?: Role[] }[] = [
   { href: '/home', label: 'Home', icon: House },
+  { href: '/courses', label: 'My courses', icon: BookOpen, roles: ['student', 'faculty', 'hod', 'admin'] },
+  { href: '/admin', label: 'Administration', icon: Settings, roles: ['admin'] },
+  { href: '/admin/users', label: 'Users', icon: Users, roles: ['support'] },
   { href: '/profile', label: 'Profile', icon: UserRound },
 ];
 
-function useCurrent() {
+// The most specific match wins, so /admin/users highlights Users for a support user and Administration for an admin.
+function useCurrent(items: typeof NAV) {
   const pathname = usePathname();
-  return NAV.find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  return items
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
 }
 
-export function AppNav() {
-  const current = useCurrent();
+export function AppNav({ roles }: { roles: Role[] }) {
+  const items = NAV.filter((item) => !item.roles || item.roles.some((r) => roles.includes(r)));
+  const current = useCurrent(items);
   const { setOpenMobile } = useSidebar();
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Menu</SidebarGroupLabel>
       <SidebarMenu>
-        {NAV.map((item) => (
+        {items.map((item) => (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
               asChild
@@ -55,7 +63,7 @@ export function AppNav() {
 }
 
 export function AppBreadcrumb() {
-  const current = useCurrent();
+  const current = useCurrent(NAV);
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <span className="truncate font-medium">{current?.label}</span>

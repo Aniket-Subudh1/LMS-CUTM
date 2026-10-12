@@ -2,9 +2,11 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
+import { offeringAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { Course } from '@/lib/models/course';
+import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { pageSize } from '@/lib/schemas/common';
 import type { BLOOM_LEVELS, CATEGORIES, COMPONENTS } from '@/lib/schemas/structure';
@@ -82,8 +84,7 @@ export type CourseDetail = {
   cells: Record<string, number>;
 };
 
-export async function getCourse(id: string): Promise<CourseDetail> {
-  await requireViewer(['admin']);
+async function readCourse(id: string): Promise<CourseDetail> {
   if (!isValidObjectId(id)) notFound();
   await db();
   const course = await Course.findById(id).lean();
@@ -110,4 +111,18 @@ export async function getCourse(id: string): Promise<CourseDetail> {
     outcomes: [...program.pos, ...program.psos].map((o) => o.code),
     cells: Object.fromEntries(course.coMap.map((m) => [`${m.coId}:${m.outcome}`, m.level])),
   };
+}
+
+export async function getCourse(id: string): Promise<CourseDetail> {
+  await requireViewer(['admin']);
+  return readCourse(id);
+}
+
+// The course behind an offering, for anyone who may open that offering's workspace.
+export async function getOfferingCourse(offeringId: string): Promise<CourseDetail> {
+  const viewer = await requireViewer();
+  await offeringAccess(viewer, offeringId);
+  const offering = await Offering.findById(offeringId, { courseId: 1 }).lean();
+  if (!offering) notFound();
+  return readCourse(String(offering.courseId));
 }

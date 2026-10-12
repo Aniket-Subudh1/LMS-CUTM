@@ -79,6 +79,11 @@ async function UserMenu() {
   );
 }
 
+async function Nav() {
+  const viewer = await getViewer();
+  return <AppNav roles={viewer?.roles ?? []} />;
+}
+
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:15rem]!">
@@ -100,7 +105,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
               </SidebarMenu>
             }
           >
-            <AppNav />
+            <Nav />
           </Suspense>
         </SidebarContent>
         <SidebarFooter>
