@@ -30,7 +30,7 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 ## 2. The reuse law
 
 - **Rule of two:** extract a function or component only when it has **two real call sites in the same commit**. Never extract "because it might be reused".
-- **Shared components** live in `components/` and must be in the inventory (`08-UI-SYSTEM.md` §5). Inventory entries are pre-approved. To add a new one: two call sites + an inventory row, same commit.
+- **UI primitives** are shadcn/ui files in `components/ui/` (08 §5.1), added on first use. **App components** live in `components/` and must be in the inventory (08 §5.2). Inventory entries are pre-approved. To add a new one: two call sites + an inventory row, same commit.
 - **Client boundary exception:** a component that must be `'use client'` gets its own file even with one call site, because a Server Component page cannot contain client code. It still goes in the inventory.
 - **Local components:** a component used by one page is a function in that page's file, not a new file.
 - **Shared functions:** a pure calculation used twice goes to `lib/domain/`; a write used by an action and a job goes to `lib/data/` (02 §3.1).
@@ -88,7 +88,7 @@ Copy these shapes exactly. File paths are the real ones.
 ### 6.1 Model — `lib/models/<name>.ts`
 
 ```ts
-import { Schema, model, models, type InferSchemaType, type Model } from 'mongoose';
+import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 import { ROLES } from '@/lib/schemas/common';
 
 const userSchema = new Schema(
@@ -109,12 +109,12 @@ userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ rollNo: 1 }, { unique: true, partialFilterExpression: { rollNo: { $type: 'string' } } });
 
 export type UserDoc = InferSchemaType<typeof userSchema>;
-export const User: Model<UserDoc> = models.User ?? model('User', userSchema);
+export const User: Model<UserDoc> = mongoose.models.User ?? mongoose.model('User', userSchema);
 ```
 
 Rules:
 - **Export the model annotated as `Model<Doc>`.** The tempting `(models.User as Model<UserDoc>) ?? model(...)` produces a union type whose methods are not callable under Mongoose 9 (verified).
-- `models.X ?? model(...)` prevents `OverwriteModelError` when Next.js re-evaluates modules in development.
+- `mongoose.models.X ?? mongoose.model(...)` prevents `OverwriteModelError` when Next.js re-evaluates modules in development. Use the **default import** for `models` and `connection`: under plain Node ESM (`tsx` — the worker and scripts) Mongoose does not provide them as named exports (verified: `SyntaxError: … does not provide an export named 'models'`); `Schema`, `Types` and `isValidObjectId` are fine as named imports.
 - Indexes are declared in the model with `schema.index(...)`, never ad hoc in code.
 - Middleware (rare): `schema.pre('save', async function () { … })` — Mongoose 9 passes **no `next`**.
 - No business logic, statics, methods or virtuals unless a milestone specifies one.
@@ -158,10 +158,13 @@ import { env } from '@/lib/env';
 const globalForDb = globalThis as typeof globalThis & { mongoose?: Promise<typeof mongoose> };
 
 export function db(): Promise<typeof mongoose> {
-  globalForDb.mongoose ??= mongoose.connect(env().MONGODB_URI, {
-    autoIndex: env().NODE_ENV !== 'production',
-    maxPoolSize: 20,
-  });
+  // A failed first connection is not cached, so the next request retries; once connected, the driver reconnects itself.
+  globalForDb.mongoose ??= mongoose
+    .connect(env().MONGODB_URI, { autoIndex: env().NODE_ENV !== 'production', maxPoolSize: 20 })
+    .catch((error: unknown) => {
+      globalForDb.mongoose = undefined;
+      throw error;
+    });
   return globalForDb.mongoose;
 }
 ```
@@ -219,7 +222,7 @@ import { User } from '@/lib/models/user';
 import type { Role } from '@/lib/schemas/common';
 
 export type SessionData = { uid: string; sv: number };
-export type Viewer = { id: string; name: string; roles: Role[]; departmentId: string | null };
+export type Viewer = { id: string; name: string; email: string; roles: Role[]; departmentId: string | null };
 
 export const SESSION_COOKIE = 'lms_session';
 
@@ -239,14 +242,31 @@ export async function session() {
   return getIronSession<SessionData>(await cookies(), options());
 }
 
+export async function signIn(user: { id: string; sessionVersion: number }): Promise<void> {
+  const s = await session();
+  s.uid = user.id;
+  s.sv = user.sessionVersion;
+  await s.save();
+}
+
+export async function signOut(): Promise<void> {
+  (await session()).destroy();
+}
+
 export const getViewer = cache(async (): Promise<Viewer | null> => {
   await connection();
   const s = await session();
   if (!s.uid || s.sv === undefined) return null;
   await db();
-  const user = await User.findById(s.uid, { name: 1, roles: 1, departmentId: 1, sessionVersion: 1, status: 1 }).lean();
+  const user = await User.findById(s.uid, { name: 1, email: 1, roles: 1, departmentId: 1, sessionVersion: 1, status: 1 }).lean();
   if (!user || user.status !== 'active' || user.sessionVersion !== s.sv) return null;
-  return { id: String(user._id), name: user.name, roles: user.roles, departmentId: user.departmentId ? String(user.departmentId) : null };
+  return {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    roles: user.roles,
+    departmentId: user.departmentId ? String(user.departmentId) : null,
+  };
 });
 
 export async function requireViewer(roles?: readonly Role[]): Promise<Viewer> {
@@ -259,7 +279,7 @@ export async function requireViewer(roles?: readonly Role[]): Promise<Viewer> {
 
 - **`await connection()` comes first.** Without it, Next 16's runtime prerender evaluates the session read (which checks expiry against the clock) and logs "encountered the unstable value `Date.now()` while prerendering" (verified). With it, the read is request-time.
 - `cache()` memoizes the viewer for the request, so pages, layouts and DAL functions can all call `getViewer()` and hit the database once.
-- Login writes `s.uid`, `s.sv` then `await s.save()`; logout calls `s.destroy()` (`(auth)/actions.ts`, M00).
+- `signIn` is called by login, password reset and password change (a change bumps `sessionVersion`, so the current browser re-signs to stay signed in); `signOut` by logout.
 
 ```ts
 // lib/auth/access.ts
@@ -357,36 +377,54 @@ function formDataToObject(fd: FormData): Record<string, unknown> {
   return out;
 }
 
+async function settle<R>(work: () => Promise<ActionResult<R>>): Promise<ActionResult<R>> {
+  try {
+    return await work();
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
+    const errorId = crypto.randomUUID();
+    log.error('action failed', { errorId, error });
+    return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };
+  }
+}
+
+async function validated<S extends z.ZodType, R>(
+  schema: S,
+  raw: unknown,
+  run: (input: z.infer<S>) => Promise<R>,
+): Promise<ActionResult<R>> {
+  const parsed = schema.safeParse(raw instanceof FormData ? formDataToObject(raw) : raw);
+  if (!parsed.success) {
+    const { fieldErrors, formErrors } = z.flattenError(parsed.error);
+    return {
+      ok: false,
+      code: 'VALIDATION',
+      message: formErrors[0] ?? 'Please correct the highlighted fields.',
+      fieldErrors,
+    };
+  }
+  return { ok: true, data: await run(parsed.data) };
+}
+
 export function action<S extends z.ZodType, R>(
   config: { input: S; roles: readonly Role[] },
   run: (input: z.infer<S>, viewer: Viewer) => Promise<R>,
 ) {
-  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> => {
-    try {
+  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> =>
+    settle(async () => {
       const viewer = await getViewer();
       if (!viewer) return { ok: false, code: 'UNAUTHENTICATED', message: 'Please sign in again.' };
       if (!viewer.roles.some((r) => config.roles.includes(r))) {
         return { ok: false, code: 'FORBIDDEN', message: 'You do not have access to this action.' };
       }
-      const parsed = config.input.safeParse(raw instanceof FormData ? formDataToObject(raw) : raw);
-      if (!parsed.success) {
-        const { fieldErrors, formErrors } = z.flattenError(parsed.error);
-        return {
-          ok: false,
-          code: 'VALIDATION',
-          message: formErrors[0] ?? 'Please correct the highlighted fields.',
-          fieldErrors,
-        };
-      }
-      return { ok: true, data: await run(parsed.data, viewer) };
-    } catch (error) {
-      unstable_rethrow(error);
-      if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
-      const errorId = crypto.randomUUID();
-      log.error('action failed', { errorId, error });
-      return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };
-    }
-  };
+      return validated(config.input, raw, (input) => run(input, viewer));
+    });
+}
+
+// Only for actions that run before sign-in (login, password reset).
+export function publicAction<S extends z.ZodType, R>(input: S, run: (input: z.infer<S>) => Promise<R>) {
+  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> => settle(() => validated(input, raw, run));
 }
 ```
 
@@ -419,6 +457,7 @@ export const renameOffering = action(
 Rules:
 - Actions accept either `FormData` (from `ActionForm`) or a plain object (from a client component via `startTransition`). Repeated fields use the `name[]` convention to always arrive as arrays.
 - The role check in `action()` is coarse; the record check inside `run` is mandatory.
+- `publicAction(input, run)` is only for the pre-sign-in actions in `app/(auth)/actions.ts` (login, password reset). Everything else uses `action()`.
 - Expected failures throw `AppError(code, message)`. Never return raw exception text.
 - `unstable_rethrow` lets `redirect()` / `notFound()` thrown inside `run` behave normally. The shared access helpers (`offeringAccess`, `requireTeach`) call `notFound()`, so a tampered or stale id ends in Next's not-found handling rather than an `ActionResult` — intended. Integration tests assert it with `await expect(act(input)).rejects.toThrow('NEXT_HTTP_ERROR_FALLBACK;404')` (verified).
 - Call `refresh()` after a successful mutation unless you `redirect()`.
@@ -489,45 +528,116 @@ Rules: `PageProps<'/route'>` and `LayoutProps<'/route'>` are global types genera
 ```tsx
 'use client';
 
-import { createContext, use, useActionState, type ReactNode } from 'react';
+import {
+  createContext,
+  startTransition,
+  use,
+  useActionState,
+  useRef,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
+import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
 
 type Result = ActionResult<unknown> | null;
 const FormErrors = createContext<Partial<Record<string, string[]>> | undefined>(undefined);
+const noSubscription = () => () => {};
 
 export function ActionForm({
   action,
   submitLabel,
   successMessage,
+  submitVariant = 'default',
+  fullWidth = false,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
   submitLabel: string;
   successMessage?: string;
-  children: ReactNode;
+  submitVariant?: 'default' | 'destructive';
+  fullWidth?: boolean;
+  children?: ReactNode;
 }) {
-  const [state, formAction, pending] = useActionState<Result, FormData>((_prev, fd) => action(fd), null);
+  const form = useRef<HTMLFormElement>(null);
+  const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
+    const result = await action(fd);
+    if (result.ok) form.current?.reset();
+    return result;
+  }, null);
+  // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
+  // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
+  const hydrated = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
+  // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
-    <form action={formAction} className="form">
-      {state && !state.ok && <p role="alert" className="form-error">{state.message}</p>}
-      {state?.ok && successMessage && <p role="status" className="form-success">{successMessage}</p>}
+    <form
+      ref={form}
+      method="post"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const fd = new FormData(event.currentTarget);
+        startTransition(() => formAction(fd));
+      }}
+      className="grid gap-5"
+    >
+      {state && !state.ok && (
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{state.message}</AlertDescription>
+        </Alert>
+      )}
+      {state?.ok && successMessage && (
+        <Alert role="status" className="border-success/30 text-success">
+          <CircleCheck />
+          <AlertDescription className="text-success">{successMessage}</AlertDescription>
+        </Alert>
+      )}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <button type="submit" className="btn btn-primary" disabled={pending}>
-        {pending ? 'Saving…' : submitLabel}
-      </button>
+      <Button
+        type="submit"
+        variant={submitVariant}
+        disabled={pending || !hydrated}
+        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
+      >
+        {pending && <LoaderCircle className="animate-spin" />}
+        {submitLabel}
+      </Button>
     </form>
   );
 }
 
-export function Field({ name, label, hint, children }: { name: string; label: string; hint?: string; children: ReactNode }) {
+export function Field({
+  name,
+  label,
+  hint,
+  children,
+}: {
+  name: string;
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   const errors = use(FormErrors)?.[name];
   return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
-      {errors?.map((e) => <span key={e} className="field-error">{e}</span>)}
-    </label>
+    <div className="grid gap-2">
+      <label className="grid gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        {children}
+      </label>
+      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
+      {errors?.map((e) => (
+        <p key={e} className="text-destructive text-sm">
+          {e}
+        </p>
+      ))}
+    </div>
   );
 }
 ```
@@ -538,10 +648,15 @@ Usage from a Server Component page (an action is passed straight through — no 
 <ActionForm action={renameOffering} submitLabel="Rename" successMessage="Saved.">
   <input type="hidden" name="offeringId" value={offeringId} />
   <Field name="title" label="Title">
-    <input name="title" className="input" required />
+    <Input name="title" required />
   </Field>
 </ActionForm>
 ```
+
+- Controls are shadcn primitives (`Input`, `Textarea`, `Select` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
+- The form submits through `startTransition` in `onSubmit`, not `<form action>`: React clears every uncontrolled field after a `<form action>` completes, which wiped the email after a wrong password (verified). `ActionForm` resets the form itself, only after a successful result.
+- The submit button is disabled until hydration and the form is `method="post"`: before hydration `onSubmit` is not attached, and a native submit would have put the fields (a password) in the URL (found by e2e; regression test with JavaScript disabled).
+- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms.
 
 ### 6.9 Jobs — `lib/queue.ts` (producer) and `worker/jobs/<queue>.ts` (consumer)
 
@@ -551,17 +666,17 @@ import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
-import type { MailJob } from '@/lib/schemas/jobs';
+import type { MailSend } from '@/lib/schemas/jobs';
 
-const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: Queue<MailJob> };
+const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: Queue<MailSend, void, 'send'> };
 
 export function redis(): Redis {
   globalForQueue.redis ??= new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
   return globalForQueue.redis;
 }
 
-export function mailQueue(): Queue<MailJob> {
-  globalForQueue.mail ??= new Queue<MailJob>('mail', {
+export function mailQueue(): Queue<MailSend, void, 'send'> {
+  globalForQueue.mail ??= new Queue<MailSend, void, 'send'>('mail', {
     connection: redis(),
     defaultJobOptions: { attempts: 5, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
   });
@@ -570,44 +685,50 @@ export function mailQueue(): Queue<MailJob> {
 // compute and sync queues follow the same shape.
 ```
 
+The type parameters are `<data, result, job name>`; BullMQ then rejects a wrong job name or payload at compile time. M01 adds the `fanout` job: the queue becomes `Queue<MailSend | MailJob, void, 'send' | 'fanout'>` and the worker dispatches on `job.name`.
+
 ```ts
-// lib/schemas/jobs.ts — every job payload has a schema
+// lib/schemas/jobs.ts — every job payload has a schema (M00 content)
 import { z } from 'zod';
-import { objectId } from '@/lib/schemas/common';
 
-export const MailJob = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('coursePlanPublished'), offeringId: objectId, version: z.number().int().min(1) }),
-  z.object({ kind: z.literal('passwordReset'), userId: objectId, token: z.string().min(1) }),
-]);
-export type MailJob = z.infer<typeof MailJob>;
+export const MailSend = z.object({
+  to: z.email(),
+  subject: z.string().min(1).max(200),
+  text: z.string().min(1),
+  html: z.string().min(1),
+});
+export type MailSend = z.infer<typeof MailSend>;
+// M01 adds `MailJob`, the `fanout` union (06 §6): z.discriminatedUnion('kind', [z.object({ kind: z.literal('invitation'), … }), …])
 ```
 
 ```ts
-// producer, inside an action
-await mailQueue().add('fanout', { kind: 'coursePlanPublished', offeringId, version: planVersion }, { jobId: `plan-${offeringId}-${planVersion}` });
+// producer, inside an action (M00 password reset)
+await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link }), {
+  jobId: `mail-reset-${user._id}-${Math.floor(Date.now() / 60_000)}`,
+});
 ```
 
 ```ts
-// worker/jobs/mail.ts — consumer shape
+// worker/jobs/mail.ts — consumer shape (M00 content)
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import { MailJob } from '@/lib/schemas/jobs';
+import { sendMail } from '@/lib/integrations/mail';
 import { log } from '@/lib/log';
+import { MailSend } from '@/lib/schemas/jobs';
 
 export function startMailWorker(redisUrl: string): Worker {
-  const worker = new Worker(
-    'mail',
-    async (job) => {
-      const data = MailJob.parse(job.data);
-      log.info('mail job', { id: job.id, kind: data.kind });
-      // idempotent work…
-    },
-    { connection: new Redis(redisUrl, { maxRetriesPerRequest: null }), concurrency: 10 },
+  const worker = new Worker('mail', async (job) => sendMail(MailSend.parse(job.data)), {
+    connection: new Redis(redisUrl, { maxRetriesPerRequest: null }),
+    concurrency: 10,
+  });
+  worker.on('failed', (job, error) =>
+    log.error('job failed', { queue: 'mail', id: job?.id, attemptsMade: job?.attemptsMade, error }),
   );
-  worker.on('failed', (job, error) => log.error('job failed', { queue: 'mail', id: job?.id, attemptsMade: job?.attemptsMade, error }));
   return worker;
 }
 ```
+
+Integration-test a worker through the real queue (`tests/integration/mail-worker.test.ts`): mock the adapter, start the worker, `add` a job and `await job.waitUntilFinished(new QueueEvents(…))`; close the worker, the events connection, the queue and `redis()` at the end.
 
 ```ts
 // worker/index.ts — entry point (run: tsx --conditions=react-server worker/index.ts)

@@ -322,3 +322,5 @@ Event types: `fullscreen_exit`, `tab_hidden`, `paste_blocked`, `webcam_unavailab
 ## 16. Rate limiting — `lib/rate-limit.ts` (not pure; integration-tested)
 
 Fixed window: key `rl:<name>:<subject>:<floor(now / windowMs)>`; `INCR`; on the first increment `PEXPIRE windowMs`; allowed while the count ≤ limit. Limits per action are in 09 §4.
+
+The attempt is counted **before** the check, so parallel guesses are limited too. `limit()` returns `{ refund }` bound to the key it incremented (`DECR` + `PEXPIRE` in one `MULTI`); login calls it after a correct password, so only failures count toward the login limits (AC-M00-04) and a student signing in on several lab machines is never blocked.

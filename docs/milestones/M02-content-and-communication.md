@@ -7,7 +7,7 @@
 | Release | part of R1 |
 | Packages added | `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm`, `@tiptap/html`, `happy-dom`, `ffmpeg-static` |
 | Env vars added | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` |
-| Collections | `lessons`, `lessonProgress`, `notifications`, `engagementDaily` |
+| Collections | `lessons`, `lessonProgress`, `notifications`, `engagementDaily`, `settings` |
 | Components introduced | `RichTextEditor`, `RichTextView`, `FileUpload`, `VideoPlayer` |
 
 ## Goal
@@ -34,7 +34,7 @@ Files: `lib/schemas/uploads.ts`, `lib/domain/uploads.ts` (+ test), `app/(app)/ac
 - `FileUpload` (client, 08 §5): for each selected file → `createUpload` → `XMLHttpRequest` PUT with `Content-Type` and a progress bar → on success appends a hidden input `name[]` whose value is JSON `{ key, fileName, contentType, size, durationSec? }`. For `video/*` files it reads `durationSec` from a detached `<video>` element's `loadedmetadata` before uploading. Shows per-file errors with a Retry button.
 
 ### T3 · Settings registry and page
-Files: `lib/schemas/settings.ts`, `lib/models/setting.ts` (exists), `lib/data/settings.ts`, `app/(app)/admin/settings/page.tsx`, `app/(app)/admin/settings/[key]/page.tsx`, `app/(app)/admin/settings/actions.ts`.
+Files: `lib/schemas/settings.ts`, `lib/models/setting.ts` (05 §7.3; add to `scripts/sync-indexes.ts`), `lib/data/settings.ts`, `app/(app)/admin/settings/page.tsx`, `app/(app)/admin/settings/[key]/page.tsx`, `app/(app)/admin/settings/actions.ts`.
 - Registry: `{ key, schema, label, description, fieldHelp: Record<field, string> }` entries. This milestone adds **`lessons`** only; each later milestone adds its key(s) from 06 §7.
 - `getSettings(key)` (exported, server-only) → `Schema.parse(stored ?? {})`; the read is a `use cache` inner function (`cacheLife('minutes')`, tag `settings:<key>`).
 - Page: a `<textarea>` with the current value as formatted JSON, the defaults and a field-help table. `saveSettings` (admin): `JSON.parse` → schema parse → on failure `fieldErrors.value` with one line per Zod issue (`path: message`); on success upsert, audit `settings.updated` (changed fields), `updateTag('settings:<key>')`.

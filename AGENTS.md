@@ -38,7 +38,7 @@ Every library call must match the installed version. Versions are pinned in `doc
 The best code is the code not written. Use the platform (HTML forms, Server Components, Server Actions, native `<dialog>`/`<details>`, `Intl`) before a library; use an installed library before writing your own. No speculative abstraction, no wrapper that only forwards, no "utils" file, no barrel `index.ts`. Details and examples: `docs/04-CODING-LAWS.md` §1.
 
 ### 4 · A shared component must already be shared
-A component lives in `components/` only if it is in the inventory in `docs/08-UI-SYSTEM.md` §5 **and** is used by two or more routes, or it is a required client boundary (`'use client'`) listed there. Everything else is written inline in the page that uses it. Adding to the inventory requires two real call sites in the same commit.
+The UI is built from **shadcn/ui** primitives vendored in `components/ui/` at a pinned version (`docs/08-UI-SYSTEM.md` §5.1); a primitive is added only in the commit that first uses it, never restyled per page, and never replaced by a hand-made look-alike. An app component lives in `components/` only if it is in the inventory in `docs/08-UI-SYSTEM.md` §5.2 **and** is used by two or more routes, or it is a required client boundary (`'use client'`) listed there. Everything else is written inline in the page that uses it. Adding to the inventory requires two real call sites in the same commit.
 
 ### 5 · Build for 30,000 students from the first line
 Every list is paginated (max 100 per page) and backed by a declared index. No unbounded array in a document. No file bytes pass through Next.js — uploads and downloads use presigned URLs. Anything slower than ~1 s or that fans out over many students runs in the worker, not in a request. The web process is stateless. Details: `docs/04-CODING-LAWS.md` §3.
@@ -53,7 +53,7 @@ Every Server Action, Route Handler and DAL function verifies the session and the
 - Locked marks are immutable. Unlocking is an admin action with a mandatory reason.
 
 ### 8 · Vendors stay behind adapters
-Only `lib/integrations/<name>/` may import a vendor SDK or call a vendor API (LiveKit, Judge0, GitHub, SMTP, S3, Anthropic, the university exam system). If a vendor quirk forces a change anywhere else, the adapter interface is wrong — **stop and report it** rather than special-casing.
+Only `lib/integrations/<name>.ts` may import a vendor SDK or call a vendor API (LiveKit, Judge0, GitHub, SMTP, S3, Anthropic, the university exam system). If a vendor quirk forces a change anywhere else, the adapter interface is wrong — **stop and report it** rather than special-casing.
 
 ---
 
@@ -87,7 +87,7 @@ This codebase is handed over to another team. Every file must earn its place.
 | Schemas | `lib/schemas/` | `zod` only | anything else |
 | Domain (pure) | `lib/domain/` | `lib/schemas` types | I/O, `Date.now()`, `Math.random()`, `process.env` |
 | Models | `lib/models/` | `mongoose`, `lib/schemas` | business logic |
-| Integrations | `lib/integrations/<name>/` | its vendor SDK, `lib/env`, `lib/log` | models, DAL |
+| Integrations | `lib/integrations/<name>.ts` | its vendor SDK, `lib/env`, `lib/log` | models, DAL |
 | DAL | `lib/data/` | models, domain, integrations, auth | `next/navigation` redirects other than `notFound`/`redirect('/login')` |
 | Actions | `app/**/actions.ts` | `lib/action`, DAL, models, domain, queue | rendering |
 | Routes/UI | `app/**`, `components/**` | DAL, actions, components | models, integrations, vendor SDKs |

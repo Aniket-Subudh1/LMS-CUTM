@@ -34,7 +34,7 @@ Program scope: `recomputeProgramAttainment(programId, batchId, termIds)` uses th
 
 ### T3 · Outcomes tab (CPP-09, DSH-06)
 Route: `/courses/[offeringId]/outcomes` (ugc; teach/oversee; add the tab).
-- CO table: code, statement, Bloom level, CIE (assessed students, attained, %, level), SEE level, value, target, met badge, `Meter` (0–3).
+- CO table: code, statement, Bloom level, CIE (assessed students, attained, %, level), SEE level, value, target, met badge, `Progress` bar (0–3).
 - Outcomes: `CoPoMatrix` in `values` mode (CO rows × PO/PSO columns showing the correlation levels, plus a bottom row with each outcome's attainment value); unmapped outcomes shown as "—".
 - Warnings (not-assessed COs, CIE only, students missing end-sem marks) and "Computed <time> with settings: target 60 %, levels 70/60/50, CIE 0.5 / SEE 0.5".
 - Print stylesheet for accreditation files (no PDF/Excel export — CPP-10 part is backlog).

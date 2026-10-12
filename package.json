@@ -2,25 +2,64 @@
   "name": "cutm-lms",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "node .next/standalone/server.js",
+    "start:local": "cp -r .next/static .next/standalone/.next/ && node --env-file-if-exists=.env.local .next/standalone/server.js",
+    "start:e2e": "cp -r .next/static .next/standalone/.next/ && node --env-file=.env.e2e .next/standalone/server.js",
+    "worker": "tsx --env-file-if-exists=.env.local --conditions=react-server worker/index.ts",
+    "worker:e2e": "tsx --env-file=.env.e2e --conditions=react-server worker/index.ts",
+    "worker:dev": "tsx watch --env-file-if-exists=.env.local --conditions=react-server worker/index.ts",
+    "db:indexes": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts",
+    "admin:create": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "check:bundle": "tsx --env-file-if-exists=.env.local scripts/check-bundle.ts",
+    "format": "prettier --write ."
   },
   "dependencies": {
+    "@node-rs/argon2": "2.2.2",
+    "bullmq": "6.3.13",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "ioredis": "6.0.0",
+    "iron-session": "9.0.1",
+    "lucide-react": "1.48.0",
+    "mongoose": "9.11.1",
     "next": "16.4.0",
+    "nodemailer": "10.1.0",
+    "radix-ui": "1.6.7",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1",
+    "tailwind-merge": "3.7.0",
+    "tw-animate-css": "1.4.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.0",
     "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
+    "@types/node": "24.19.2",
+    "@types/nodemailer": "8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "mongodb-memory-server": "11.3.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.8.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "4.23.15",
+    "typescript": "^5",
+    "vitest": "5.0.4"
   }
 }

@@ -54,7 +54,7 @@ Route: `/courses/[offeringId]/projects` (tab shown when the course has `project`
 - Scheduler `github-nightly` (02 §8).
 
 ### T6 · GitHub project dashboard (PRJ-04, DSH-03)
-Project page (`mode: github`): repository link and last sync (`teach`: "Sync now", rate-limited 1/min); per member: commits, active weeks / total, last-minute share, message quality, lines and share, huge commits, **suggested score** (07 §12) with a one-line explanation of each component, and a weekly-commits `Sparkline`; unattributed commits count (authors without a linked identity) with a hint to link GitHub; the 20 most recent commits (short sha, author, first line, IST time, +/−).
+Project page (`mode: github`): repository link and last sync (`teach`: "Sync now", rate-limited 1/min); per member: commits, active weeks / total, last-minute share, message quality, lines and share, huge commits, **suggested score** (07 §12) with a one-line explanation of each component, and a weekly-commits `TrendChart`; unattributed commits count (authors without a linked identity) with a hint to link GitHub; the 20 most recent commits (short sha, author, first line, IST time, +/−).
 
 ### T7 · Task tracker (PRJ-05 … PRJ-08, DSH-04)
 Project page (`mode: tracker`): a server-rendered board with four columns (Backlog, In progress, Review, Done). Each card: title, assignee, due date with an overdue badge, and one small form per allowed move (`canMoveTask`) — no drag-and-drop.

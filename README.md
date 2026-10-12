@@ -26,19 +26,22 @@ Start with **`AGENTS.md`**, then **`docs/00-START-HERE.md`**. To hand a mileston
 | `docs/11-OPERATIONS.md` | Environment variables, local stack, deploy, backups, cost model, support |
 | `docs/milestones/` | M00–M11 build plans with tasks, tests and acceptance criteria |
 
-## Local development (once M00 is built)
+## Local development
 
 Requires Node.js 24 (≥ 22.13) and Docker.
 
 ```bash
 npm ci
 docker compose up -d            # MongoDB (replica set), Redis, RustFS (S3), Mailpit
-cp .env.example .env.local      # fill in values
-npm run s3:setup                # from M02
+cp .env.example .env.local      # set SESSION_PASSWORD: openssl rand -base64 32
 npm run db:indexes
-npm run admin:create -- --email you@cutm.ac.in --name "Your Name"
 npm run dev                     # web on http://localhost:3000
 npm run worker:dev              # background jobs (second terminal)
+npm run admin:create -- --email you@cutm.ac.in --name "Your Name"   # prints your set-password link
 ```
 
-Mail: http://localhost:8025 · Object storage console: http://localhost:9001
+Open the printed link (the same invitation arrives in Mailpit) to set your password. `/api/health` reports Mongo and Redis status.
+
+Checks: `npm run check` (lint, types, unit) · `npm run test:integration` · `npm run build && npm run test:e2e` (needs `.env.e2e`, see `docs/10-TESTING-AND-VALIDATION.md` §3).
+
+Mail: http://localhost:8025 · Object storage console (from M02): http://localhost:9001

@@ -30,7 +30,9 @@ Files: `lib/models/{department,program,batch,term,course,evaluation-scheme,offer
 Exactly 05 §3.2–§3.9 (fields, enums, bounds, indexes). Embedded arrays get `_id` where 05 lists one (`cos`, `modules`, `calendar`).
 
 ### T2 · Schemas and pure functions
-Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/domain/csv.ts` (+ test).
+Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/domain/csv.ts` (+ test), `lib/domain/time.ts` (+ test), `lib/format.ts`, `lib/schemas/common.ts` (+ `page`, `pageSize`, `istDate`).
+
+- First callers arrive here, so create: `lib/domain/time.ts` — `parseIstLocal`, `istDayKey`, `istDateToDate` with the 07 §11 vectors (terms use IST dates); `lib/format.ts` (exists since M00 with `ROLE_LABEL`; add) — `formatDateTime(d)` (`12 Oct 2026, 10:30 AM`, IST via `Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', … })`), `formatDate(d)`, `statusTone(status)` → badge tone; `page`/`pageSize` (04 §6.3) for the first lists.
 
 - `structure.ts` (schemas): inputs for every action below; `ASSESSMENT_MODES` (05 §5.1) and `BLOOM_LEVELS` as `as const` arrays (they are used from M01 by schemes and COs).
 - `lib/domain/structure.ts`:
@@ -88,6 +90,8 @@ Routes: `/admin/offerings` (filters: term, department, status), `/admin/offering
 | `changeEnrollments` | teach or admin; CSV per 06 §8.2 (`rollno,action`); unknown roll number → row error; all-or-nothing; audit `enrollment.changed` with counts |
 
 ### T8 · Users (ADM-05, SUP-01)
+Files (besides the routes): `lib/schemas/jobs.ts` + `MailJob` (`invitation { userIds }`, 06 §6); `lib/queue.ts` mail queue typed `Queue<MailSend | MailJob, void, 'send' | 'fanout'>`; `worker/jobs/mail.ts` + `fanout` (for each chunk of 500 invited users: a 7-day invite token, `invitationEmail`, `send` with job id `mail-invite-<userId>-<minuteBucket>`). `sendResetLink` is the second caller of the reset email: move the token + `resetEmail` + enqueue lines from `app/(auth)/actions.ts` into one exported function in `lib/auth/tokens.ts` and call it from both.
+
 Routes: `/admin/users` (search box → text index; filters role/status), `/admin/users/new`, `/admin/users/import`, `/admin/users/[id]`.
 
 | Action | Roles | Rules |

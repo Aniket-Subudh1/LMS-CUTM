@@ -18,7 +18,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 
 | Milestone | Status | Validated by | Notes |
 |---|---|---|---|
-| M00 Foundation | Not started | | |
+| M00 Foundation | Done — awaiting human validation | | shadcn/ui adopted at the client's request (entry below) |
 | M01 Academic structure & admin | Not started | | |
 | M02 Content, plan, announcements, skill progress | Not started | | |
 | M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
@@ -68,7 +68,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
 | Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env | M11 | Open |
-| Q-32 | CUTM brand colours and logo | @client | Neutral navy/amber placeholders | — | Open |
+| Q-32 | CUTM brand colours and logo | @client | Navy primary, gold accent, navy sidebar (shadcn tokens in `app/globals.css`); graduation-cap icon as the logo | — | Open |
+| Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
+| Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built (the messages are already identical) | M11 hardening | Open |
 
 ## 4. Assumptions register
 
@@ -95,6 +97,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-19 | Students do not see engagement scores | M10 | Q-29 |
 | A-20 | Only assessments with published results count toward CE and attainment | M06, M09 | — |
 | A-21 | Production object storage is Cloudflare R2; lecture videos are MP4 with a 480p data-saver copy (ADR-19) | M02, M11 | Q-12 |
+| A-22 | Login rate limits count failed attempts only (a success refunds its slot); forgot-password counts every request | M00 | Q-33 |
+| A-23 | The UI is shadcn/ui on Tailwind v4 (client request, 12 Oct 2026); light theme only | all UI | — |
+| A-24 | The Geist font is self-hosted through `next/font` (downloaded from Google Fonts at build time) | build | Q-12 |
+| A-25 | `admin:create` only creates or re-invites; it refuses an email whose account is active or disabled | M00 | — |
 
 ## 5. Log
 
@@ -153,3 +159,72 @@ Request: "look at live streaming — maybe Mux"; then "do whatever is cheap, ver
 **Changed docs** — 01 (LIV-02), 02 (services, integrations, ADR-18/19), 03 (infra, `ffmpeg-static`, not-used list), 05 (`lessons.lowKey`, `transcode`), 06 (storage functions, R2 config, `media/transcodeLesson` on its own queue), 08 (`VideoPlayer` toggle), 11 (R2 env, LiveKit production + TURN, cost model, worker image), M02 (T8b), M03 (engine decision), this file (Q-25, A-09, A-21).
 
 **Open** — confirm with the client that self-hosted LiveKit meets LIV-02 (Q-25a); hosting with included bandwidth (Q-12).
+
+### 2026-10-12 · M00 Foundation (T1–T9) · Claude (AI agent), at Aniket's request
+
+Requests: "completely plan m0 and start making it properly"; mid-way, "pull the best UI library and components … everything top notch" and "make sure m0 is completely done".
+
+**Created** (one commit per task: 78daf99 tooling · d849fd1 core · e7be9a7 models · aba60ea auth primitives · bc43bcb mail · 43e5434 auth pages · 097731b shell · 615717e UI system · 8092df6 ops · this commit tests)
+- Tooling: `package.json` (exact versions, scripts incl. `worker:e2e`), `next.config.ts` (security headers), `.prettierrc.json`, `.prettierignore`, `vitest.config.ts`, `playwright.config.ts`, `compose.yaml`, `.env.example`, `.gitignore`, `components.json`, `.github/workflows/ci.yml`
+- Core: `lib/env.ts`, `lib/db.ts`, `lib/log.ts`, `lib/errors.ts`, `lib/action.ts` (`action`, `publicAction`), `lib/audit.ts`, `lib/queue.ts`, `lib/rate-limit.ts`, `lib/cn.ts`, `lib/format.ts`
+- Auth: `lib/auth/{password,session,tokens}.ts`, `lib/schemas/{common,auth,jobs}.ts`
+- Data: `lib/models/{user,audit-log}.ts`, `scripts/sync-indexes.ts`
+- Mail: `lib/integrations/mail.ts`, `lib/domain/email-templates.ts`, `worker/index.ts`, `worker/jobs/mail.ts`
+- UI: `app/layout.tsx`, `app/globals.css`, `app/page.tsx`, `app/not-found.tsx`, `app/(auth)/{actions.ts,layout.tsx,loading.tsx}`, `app/(auth)/{login,forgot-password,reset-password}/page.tsx`, `app/(app)/{layout,loading,error}.tsx`, `app/(app)/home/page.tsx`, `app/(app)/profile/{page.tsx,actions.ts}`, `proxy.ts`, `components/{action-form,app-nav,page-header}.tsx`, `components/ui/{alert,avatar,badge,button,card,dropdown-menu,input,label,separator,sheet,sidebar,skeleton,tooltip}.tsx` (shadcn 4.21.4), `hooks/use-mobile.ts`
+- Ops: `app/api/health/route.ts`, `scripts/create-admin.ts`, `scripts/check-bundle.ts`
+- Tests: `lib/log.test.ts`, `lib/action.test.ts`, `lib/auth/tokens.test.ts`, `lib/schemas/auth.test.ts`, `lib/domain/email-templates.test.ts`, `tests/setup.ts`, `tests/server-only.ts`, `tests/next-request.ts`, `tests/integration/{auth,profile,mail-worker}.test.ts`, `tests/e2e/auth.spec.ts`
+- Removed: the five scaffold SVGs in `public/`
+- Docs changed in the same commits as the code: AGENTS (laws 4 and 8), README, 02, 03, 04 (§2, §6.2, §6.4, §6.6, §6.8, §6.9), 05 §1, 06 §6, 07 §16, 08 (§1, §3, §4, §5 rewritten for shadcn), 09 §4, 10 (§2, §3, §4, §5), M00, M01, M06, M07, M09, M10
+
+**Decisions and deviations** (each recorded in the doc it changes)
+- Files whose first caller is a later milestone moved there (deletion test): `round.ts` → M04; `time.ts`, `page`/`pageSize` → M01; settings model → M02. Password reset enqueues `mail/send` directly; the `fanout` job arrives with invitations in M01.
+- UI system: shadcn/ui replaces the hand-written CSS classes (client request). The registry host is blocked here, so the files were copied from the pinned GitHub tag with the CLI's import rewrites; the method is in 08 §5.1. Charts for later dashboards: shadcn `chart` (Recharts) instead of hand-drawn SVG.
+- `publicAction()` added so the three pre-sign-in actions share the wrapper's validation and error mapping.
+
+**Defects found and fixed during M00** (each has a test now)
+- `lib/db.ts` cached a failed first connection: a server started while Mongo was down stayed down after Mongo recovered.
+- Login counted successful sign-ins toward the limit: a 6th sign-in in 15 min (a student moving between lab machines) would have been blocked.
+- React 19 cleared every field after a failed form submit (`<form action>`): the email had to be retyped after a wrong password.
+- Before hydration, a submitted form did a native GET: the email and **password** went into the URL. Now `method="post"` and the button is disabled until hydrated.
+- A used invite/reset link still showed the password form (the action rejected it, but only after typing). The page now checks `isTokenCurrent`.
+- `/reset-password` read the clock during the runtime prerender (`Date.now()` error) → `await connection()`.
+
+**Not done**
+- E2E is not in CI until M01 provides `scripts/seed.ts` (10 §5).
+- Timing-based email enumeration is not mitigated (Q-34).
+- No dark theme (not in scope).
+
+**Assumptions** — A-22 … A-25 (§4).
+
+**Open questions** — Q-33, Q-34 (§3); Q-32 default updated.
+
+**Verification** (compose stack: mongo:8.0 rs0, redis:8.6, mailpit; Node 22.22.0; Chromium 1194 via `PW_CHROMIUM_PATH`)
+```
+npm run check              → eslint: 0 problems · tsc: 0 errors · Test Files 5 passed · Tests 11 passed (11)
+npm run test:integration   → Test Files 3 passed · Tests 15 passed (15)   (TEST_MONGODB_URI = local replica set)
+env -i … npm run build     → ✓ Compiled successfully (no environment variables); /home, /profile, /reset-password partially prerendered; /api/health dynamic; Proxy registered
+npm run check:bundle       → check-bundle: 25 files scanned for 4 names and 3 secret values; clean   (planted "SESSION_PASSWORD" file → exit 1)
+npm run test:e2e           → 5 passed (≈20 s); 8 consecutive runs and 2 runs after fresh builds all green
+npm run db:indexes         → users (email unique, partial uniques, text index, …) and auditlogs indexes created
+```
+- GitHub Actions run #1 on `ae654e9` (https://github.com/Aniket-Subudh1/LMS-CUTM/actions/runs/38295067817): **verify** ✓ (lint, typecheck, unit, build without env, bundle scan) and **integration** ✓ (`Test Files 3 passed · Tests 15 passed`, mongodb-memory-server downloaded `mongod` 8.2.6 during `npm ci`; binary cache saved). Warning only: `actions/cache@v4` runs on the deprecated Node 20 action runtime.
+- Mutation check: removing the login refund or the reset token's `sessionVersion` condition makes the matching integration tests fail (2 failures), then restored.
+- E2E flakiness investigated, not retried away: 4 failures in 22 runs before the fix. The saved trace showed a fill binding to the previous page's input while Next hid it after a client navigation; fixed by waiting for the new page (10 §3). Separately, all runs shared one client IP and so one rate-limit window; each run now sends its own `X-Forwarded-For`.
+
+| AC | Result | How |
+|---|---|---|
+| AC-M00-01 | Pass | `curl /api/health` → `200 {"ok":true,"mongo":"up","redis":"up"}`; `/login` renders; e2e asserts both |
+| AC-M00-02 | Pass | `curl /home`, `/profile` without cookie → `307` to `/login`; e2e |
+| AC-M00-03 | Pass | e2e: `admin:create` link → set password → `/home` → same link shows "Link not valid"; integration: second use → expired message |
+| AC-M00-04 | Pass | integration: identical message for wrong password, disabled, invited and unknown emails; 6th failure → `RATE_LIMITED` even with the right password |
+| AC-M00-05 | Pass | e2e with two browser contexts; integration: other browser's viewer is null, `user.sessions_revoked` audit entry |
+| AC-M00-06 | Pass | build with `env -i`; bundle scan clean; negative test fails as expected |
+| AC-M00-07 | Pass | `curl -I /login` and e2e: CSP, nosniff, Referrer-Policy, Permissions-Policy, HSTS |
+| AC-M00-08 | Pass | e2e at 360 × 740: `scrollWidth` ≤ 360 on `/login`, `/home`, `/profile`; sidebar hidden, opens as a sheet, closes on navigation |
+
+Health under failure: `docker stop` mongo → `503 {"ok":false,"mongo":"down","redis":"up"}` in 2.01 s; redis → 503 in 2.01 s; both recover on restart; Mongo down at server start then up → recovers on the next request.
+
+Screenshots reviewed at 1280 px (login, home, profile, user menu) and 360 px (login with error, home, sidebar sheet).
+
+**Manual steps not performed:** no human has walked the M00 validation checklist; email was checked in Mailpit only (no real inbox); the 360 px checks ran in headless Chromium, not on a phone.
+

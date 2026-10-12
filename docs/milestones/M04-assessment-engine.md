@@ -37,7 +37,8 @@ Files: `lib/models/assessment.ts`, `lib/models/submission.ts`, `lib/schemas/asse
 - `lib/schemas/assessment.ts`: `AssessmentSettings`; `Item` as a discriminated union on `type` with per-type rules (options 2–8 and a valid key for mcq/msq; numeric value + tolerance ≥ 0; rubric rows ≤ 10 summing to `maxMarks`); `Answer` union by item type (mcq `optionId`; msq `optionIds`; numeric `value`; text `richText`; file `fileKeys` ≤ 10); `MODE_ITEM_TYPES` map from the table above.
 
 ### T2 · Pure functions
-Files: `lib/domain/grading.ts`, `lib/domain/attempts.ts`, `lib/domain/shuffle.ts` (+ tests).
+Files: `lib/domain/round.ts`, `lib/domain/grading.ts`, `lib/domain/attempts.ts`, `lib/domain/shuffle.ts` (+ tests).
+- `round.ts`: 04 §6.10 plus `ceilTo` (07 §1) with every 07 §1 vector — first caller is `attemptTotal`.
 - `grading.ts`: `autoGrade(item, answer)` (07 §14 rows for mcq/msq/numeric; returns `null` for manual types), `rubricTotal(rubric, criteriaMarks)`, `attemptTotal(items, scores)` → number or null if any item unscored (`roundHalfUp` 2 dp). Vectors: 07 §14 mcq/msq/numeric rows; msq {a,b} vs key {a,b,c} → 0; numeric 3.14 vs 3.1416 ± 0.01 → full.
 - `attempts.ts`: `deadlineAt({ startedAt, durationMin, closesAt, lateUntil })` = min(start + duration, lateUntil ?? closesAt); `canStart({ now, opensAt, closesAt, lateUntil, attemptsUsed, attemptsAllowed, inProgress })` → `start | resume | not_open | closed | no_attempts_left`; `isLate(submittedAt, closesAt)`; `countedScore(attempts, policy)` (07 §2: best/last over graded attempts, else 0). Vectors: start 10:00, 60 min, closes 10:30, no late → 10:30; lateUntil 11:30 → 11:00; untimed with lateUntil 11:30 → 11:30; the 07 §2 attempt-policy rows.
 - `shuffle.ts`: `seededShuffle(ids, seed)` — Mulberry32 seeded from a 32-bit FNV-1a hash of `seed`; deterministic (same seed → same order) and pure. Vector: the same input and seed give the same output twice; different seeds give different orders for a 10-element list.

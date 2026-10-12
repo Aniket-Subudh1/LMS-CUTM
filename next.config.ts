@@ -1,17 +1,34 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
+
+const SECURITY_HEADERS = [
+  {
+    key: 'Content-Security-Policy',
+    value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+  },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()',
+  },
+  { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+];
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  output: 'standalone',
+  // bullmq loads ioredis with a dynamic require that the bundler cannot follow.
+  serverExternalPackages: ['bullmq', 'ioredis'],
   turbopack: {
     rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
+      '*.css': {
+        loaders: ['@tailwindcss/turbopack'],
+        as: '*.css',
       },
     },
   },
+  headers: async () => [{ source: '/:path*', headers: SECURITY_HEADERS }],
 };
 
 export default nextConfig;

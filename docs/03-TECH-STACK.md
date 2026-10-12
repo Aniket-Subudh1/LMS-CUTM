@@ -43,7 +43,12 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@aws-sdk/s3-request-presigner` | 3.1149.0 | M00 | Presigned PUT/GET | `lib/integrations/storage.ts` | — |
 | `nodemailer` | 10.1.0 | M00 | SMTP | `lib/integrations/mail.ts` | Read the v10 README before use |
 | `server-only` | 0.0.1 | M00 | Guard server modules from client bundles | server modules | Aliased to an empty module in Vitest |
-| `lucide-react` | 1.55.0 | M00 | Icons in navigation and buttons only | `app/`, `components/` | Import named icons only |
+| `lucide-react` | 1.48.0 | M00 | Icons beside labels (08 §1) | `app/`, `components/` | Import named icons only (`House`, not `HomeIcon` aliases) |
+| `radix-ui` | 1.6.7 | M00 | Accessible primitives under `components/ui/` (shadcn) | `components/ui/` | The unified package: `import { Dialog as SheetPrimitive } from 'radix-ui'` |
+| `class-variance-authority` | 0.7.1 | M00 | Variant classes in shadcn primitives | `components/ui/` | — |
+| `clsx`, `tailwind-merge` | 2.1.1, 3.7.0 | M00 | `cn()` in `lib/cn.ts` (merges conflicting Tailwind classes) | `lib/cn.ts` | tailwind-merge 3 is the Tailwind v4 line |
+| `tw-animate-css` | 1.4.0 | M00 | Enter/exit animations used by shadcn (`animate-in`, `fade-in-0`) | `app/globals.css` | CSS only (`@import 'tw-animate-css'`) |
+| `recharts`, `react-is` | 3.10.1, match React | M06 | shadcn `chart` primitive | `components/ui/chart.tsx`, `components/trend-chart.tsx` | Client only |
 | `papaparse` | 5.7.0 | M01 | CSV parse/unparse for imports and exports | `lib/domain/csv.ts` | — |
 | `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm` | 3.31.4 | M02 | Rich-text editor | `components/rich-text-editor.tsx` | `useEditor({ immediatelyRender: false })` for SSR |
 | `ffmpeg-static` | 5.3.0 | M02 | Bundled ffmpeg 7.0.2 binary for the 480p data-saver transcode (worker only; spawned as a separate process — GPL binary, not linked) | `worker/jobs/compute.ts` | Always pass `-pix_fmt yuv420p -profile:v main` (without it a 1080p source can produce High 4:4:4 that phones cannot play — verified) and `-movflags +faststart` |
@@ -67,7 +72,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `mongodb-memory-server` | 11.3.0 | M00 | Ephemeral MongoDB replica set for integration tests (downloads `mongod` on first run; set `TEST_MONGODB_URI` to use a real replica set instead) |
 | `tsx` | 4.23.15 | M00 | Run `worker/index.ts` and `scripts/*.ts` |
 | `@playwright/test` | 1.64.0 | M00 | End-to-end tests |
-| `@next/playwright` | 16.4.0 | M00 | `instant()` helper for navigation assertions (optional use) |
+| `@next/playwright` | 16.4.0 | when the first `instant()` test is written | `instant()` helper for navigation assertions (optional use) |
 | `prettier` | 3.9.10 | M00 | Formatting |
 | `prettier-plugin-tailwindcss` | 0.8.1 | M00 | Class ordering |
 | `@types/nodemailer` | 8.0.2 | M00 | Types |
@@ -81,7 +86,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   output: 'standalone',
   serverExternalPackages: ['bullmq', 'ioredis'], // bullmq loads ioredis with a dynamic require
-  serverActions: { bodySizeLimit: '2mb' },       // CSV imports; files never go through actions
+  serverActions: { bodySizeLimit: '2mb' },       // added in M01 for CSV imports; files never go through actions
   turbopack: { rules: { '*.css': { loaders: ['@tailwindcss/turbopack'], as: '*.css' } } },
   headers: async () => [{ source: '/:path*', headers: SECURITY_HEADERS }], // 09 §8
 };
@@ -95,9 +100,9 @@ Do not add these. If you believe one is needed, raise an `@dev` open question wi
 
 | Not used | Use instead | Reason |
 |---|---|---|
-| UI kits (shadcn/ui, MUI, Chakra, Mantine, Radix) | Tailwind + native HTML + CSS classes in `globals.css` | Least code and JS; no generated component trees to maintain |
-| Chart libraries (Recharts, Chart.js, D3) | `components/sparkline.tsx`, `components/meter.tsx` (server-rendered SVG/CSS) | Dashboards need trend lines and bars only |
-| Toast libraries | Inline status in `ActionForm` | One feedback pattern |
+| Other UI kits (MUI, Chakra, Mantine, Ant Design, daisyUI) | shadcn/ui, vendored in `components/ui/` (08 §5.1) | One design system. shadcn was chosen by the client (M00) for a professional dashboard UI: its source lives in the repo, is Tailwind-native and accessible (Radix) |
+| Other chart libraries (Chart.js, D3, Nivo, ECharts) | shadcn `chart` (Recharts) and `Progress` | One charting approach, styled by the same tokens |
+| Toast libraries (incl. shadcn `sonner`) | Inline `Alert` in `ActionForm` | One feedback pattern, next to the form it concerns |
 | Form libraries (react-hook-form, Formik) | Native forms + Server Actions + Zod | Already validated on the server |
 | Client data libraries (TanStack Query, SWR, Redux, Zustand) | Server Components + `refresh()` | Data lives on the server |
 | tRPC, GraphQL, axios | Server Actions; `fetch` inside adapters | No internal API |
