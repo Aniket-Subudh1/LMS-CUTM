@@ -112,3 +112,13 @@ export function Field({
     </div>
   );
 }
+
+// For a group of controls that share one error list (a grid of rows), where `Field`'s single <label> does not fit.
+export function FieldErrors({ name }: { name: string }) {
+  const errors = use(FormErrors)?.[name];
+  return errors?.map((e) => (
+    <p key={e} className="text-destructive text-sm">
+      {e}
+    </p>
+  ));
+}

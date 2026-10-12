@@ -115,7 +115,7 @@ Source: shadcn/ui tag **`shadcn@4.21.4`**, style `new-york-v4` (`components.json
 - **Add a primitive only in the commit that first uses it** (deletion test). Never add one "for later".
 - Do not restyle primitives per page; extend with `className` at the call site. Edit a vendored file only to fix a lint/type error, and mark the edit with a `Local change from shadcn 4.21.4` comment.
 - In M00: `alert`, `avatar`, `badge`, `button`, `card`, `dropdown-menu`, `input`, `label`, `separator`, `sheet`, `sidebar`, `skeleton`, `tooltip` (+ `hooks/use-mobile.ts`, `lib/cn.ts`). Local changes: `sidebar` skeleton width fixed (purity lint), `use-mobile` rewritten with `useSyncExternalStore` (effect-setState lint).
-- Planned first uses: `table`, `tabs`, `alert-dialog`, `select`, `textarea`, `empty`, `pagination` (M01); `progress`, `chart` (M06, adds `recharts`).
+- Planned first uses: `table`, `tabs`, `alert-dialog`, `native-select` (in place of Radix `select`: a real `<select>` posts with the form and needs no client code), `textarea`, `empty`, `pagination` (M01); `progress`, `chart` (M06, adds `recharts`).
 
 ### 5.2 App components (closed list)
 
@@ -123,13 +123,13 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 
 | Component | File | Kind | Props (contract) | Used by | Milestone |
 |---|---|---|---|---|---|
-| `ActionForm`, `Field` | `action-form.tsx` | client | 04 §6.8 | every form | M00 |
+| `ActionForm`, `Field`, `FieldErrors` | `action-form.tsx` | client | 04 §6.8; `FieldErrors` is `{ name: string }` and prints that field's errors for a group of controls (a grid of rows) where `Field`'s single `<label>` does not fit | every form | M00 (`FieldErrors` M01) |
 | `PageHeader` | `page-header.tsx` | server | `{ title: string; description?: string }` | every page in the shell | M00 |
 | `UniversityLogo` | `university-logo.tsx` | server | `{ className?: string; sizes: string; priority?: boolean }` — the official lockup, words included | auth layout, auth stage, app sidebar, 404 | M00 |
 | `AuthStage` | `auth-stage.tsx` | client (`gsap`) | none | `(auth)` layout | M00 |
-| `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | none; the `NAV` list lives in the file (items gain `roles` from M01) | `(app)` layout | M00 |
+| `AppNav`, `AppBreadcrumb` | `app-nav.tsx` | client (`usePathname`, `useSidebar`) | none; the layout wraps each in `<Suspense>` because `usePathname` is request data on a dynamic route; the `NAV` list lives in the file (items gain `roles` from M01) | `(app)` layout | M00 |
 | `DataTable` | `data-table.tsx` | server | `{ columns: { header: string; cell: (row: T) => ReactNode; className?: string }[]; rows: T[]; rowKey: (row: T) => string; total: number; page: number; pageSize: number; query: Record<string, string>; path: string; empty: string }` — shadcn `Table` in a bordered card, an `Empty` state, and `Pagination` links that keep `query` | every list | M01 |
-| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string }[] }` — link tabs styled as shadcn `Tabs` | course workspace, admin, reports | M01 |
+| `TabNav` | `tab-nav.tsx` | client (`usePathname`) | `{ tabs: { href: string; label: string; prefixes?: string[] }[] }` — link tabs styled as shadcn `Tabs`; a tab is current for its `href`, anything below it and any `prefixes`, longest match wins (Structure owns `/admin`, `/admin/departments`, …) | course workspace, admin, reports | M01 |
 | `ConfirmSubmit` | `confirm-submit.tsx` | client | `{ title: string; message: string; confirmLabel: string; variant?: 'default' \| 'destructive'; children: ReactNode }` — shadcn `AlertDialog`; the confirm button submits the enclosing form (`form.requestSubmit()`) | publish, lock, end session, delete | M01 |
 | `RichTextEditor` | `rich-text-editor.tsx` | client | `{ name: string; initial?: RichTextDoc; placeholder?: string }` — Tiptap StarterKit, `immediatelyRender: false`, writes JSON to a hidden input `name` | plan, lesson description, item prompts, text answers, task description | M02 |
 | `RichTextView` | `rich-text-view.tsx` | server | `{ doc: RichTextDoc }` — `generateHTML` from `@tiptap/html/server` with StarterKit into `.prose-lms` | everywhere rich text is shown | M02 |

@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sidebar,
   SidebarContent,
@@ -91,7 +92,16 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
           </Link>
         </SidebarHeader>
         <SidebarContent>
-          <AppNav />
+          <Suspense
+            fallback={
+              <SidebarMenu className="px-2">
+                <SidebarMenuSkeleton showIcon />
+                <SidebarMenuSkeleton showIcon />
+              </SidebarMenu>
+            }
+          >
+            <AppNav />
+          </Suspense>
         </SidebarContent>
         <SidebarFooter>
           <Suspense fallback={<SidebarMenuSkeleton showIcon />}>
@@ -104,7 +114,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <header className="bg-background/95 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur sm:px-6 lg:px-8 xl:px-10">
           <SidebarTrigger className="-ml-2" />
           <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-          <AppBreadcrumb />
+          <Suspense fallback={<Skeleton className="h-4 w-24" />}>
+            <AppBreadcrumb />
+          </Suspense>
         </header>
         <main className="motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
           {children}

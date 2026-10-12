@@ -14,3 +14,8 @@ export function db(): Promise<typeof mongoose> {
     });
   return globalForDb.mongoose;
 }
+
+// A unique index rejected a write; actions turn this into a CONFLICT with a message about the specific value.
+export function isDuplicateKey(error: unknown): boolean {
+  return error instanceof mongoose.mongo.MongoServerError && error.code === 11000;
+}

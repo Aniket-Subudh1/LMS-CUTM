@@ -2,7 +2,8 @@ import { Types } from 'mongoose';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering, type OfferingDoc } from '@/lib/models/offering';
 import { User, type UserDoc } from '@/lib/models/user';
-import type { Viewer } from '@/lib/auth/session';
+import { signIn, type Viewer } from '@/lib/auth/session';
+import { switchBrowser } from './next-request';
 
 let counter = 0;
 const next = () => ++counter;
@@ -47,4 +48,18 @@ export async function makeOffering(over: Partial<OfferingDoc> = {}) {
 
 export function enroll(offeringId: Types.ObjectId, studentId: Types.ObjectId, status: 'active' | 'dropped' = 'active') {
   return Enrollment.create({ offeringId, studentId, status });
+}
+
+// Signs the user in on a fresh browser, so the next action call runs as them.
+export async function signInAs(user: { _id: Types.ObjectId; sessionVersion: number }): Promise<void> {
+  switchBrowser(new Map());
+  await signIn({ id: String(user._id), sessionVersion: user.sessionVersion });
+}
+
+export function form(fields: Record<string, string | string[]>): FormData {
+  const fd = new FormData();
+  for (const [key, value] of Object.entries(fields)) {
+    for (const v of Array.isArray(value) ? value : [value]) fd.append(key, v);
+  }
+  return fd;
 }
