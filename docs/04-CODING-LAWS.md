@@ -611,26 +611,26 @@ await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link
 ```
 
 ```ts
-// worker/jobs/mail.ts — consumer shape
+// worker/jobs/mail.ts — consumer shape (M00 content)
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import { MailJob } from '@/lib/schemas/jobs';
+import { sendMail } from '@/lib/integrations/mail';
 import { log } from '@/lib/log';
+import { MailSend } from '@/lib/schemas/jobs';
 
 export function startMailWorker(redisUrl: string): Worker {
-  const worker = new Worker(
-    'mail',
-    async (job) => {
-      const data = MailJob.parse(job.data);
-      log.info('mail job', { id: job.id, kind: data.kind });
-      // idempotent work…
-    },
-    { connection: new Redis(redisUrl, { maxRetriesPerRequest: null }), concurrency: 10 },
+  const worker = new Worker('mail', async (job) => sendMail(MailSend.parse(job.data)), {
+    connection: new Redis(redisUrl, { maxRetriesPerRequest: null }),
+    concurrency: 10,
+  });
+  worker.on('failed', (job, error) =>
+    log.error('job failed', { queue: 'mail', id: job?.id, attemptsMade: job?.attemptsMade, error }),
   );
-  worker.on('failed', (job, error) => log.error('job failed', { queue: 'mail', id: job?.id, attemptsMade: job?.attemptsMade, error }));
   return worker;
 }
 ```
+
+Integration-test a worker through the real queue (`tests/integration/mail-worker.test.ts`): mock the adapter, start the worker, `add` a job and `await job.waitUntilFinished(new QueueEvents(…))`; close the worker, the events connection, the queue and `redis()` at the end.
 
 ```ts
 // worker/index.ts — entry point (run: tsx --conditions=react-server worker/index.ts)
