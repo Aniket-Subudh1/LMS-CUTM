@@ -1,8 +1,10 @@
 import 'server-only';
 import { sealData, unsealData } from 'iron-session';
 import { z } from 'zod';
+import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import { log } from '@/lib/log';
+import { User } from '@/lib/models/user';
 
 const TTL_SEC = { reset: 30 * 60, invite: 7 * 24 * 60 * 60 } as const;
 export type TokenPurpose = keyof typeof TTL_SEC;
@@ -23,4 +25,11 @@ export async function readToken(token: string, purposes: readonly TokenPurpose[]
     log.debug('token rejected', { error });
     return null;
   }
+}
+
+// Setting a password bumps sessionVersion, so a used (or superseded) link no longer matches its user.
+export async function isTokenCurrent(data: TokenData): Promise<boolean> {
+  await db();
+  const user = await User.exists({ _id: data.uid, sessionVersion: data.sv, status: { $in: ['active', 'invited'] } });
+  return user !== null;
 }

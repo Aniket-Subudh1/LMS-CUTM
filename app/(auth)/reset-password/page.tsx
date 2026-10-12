@@ -4,7 +4,7 @@ import { connection } from 'next/server';
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { readToken } from '@/lib/auth/tokens';
+import { isTokenCurrent, readToken } from '@/lib/auth/tokens';
 import { resetPassword } from '../actions';
 
 export const metadata: Metadata = { title: 'Set password' };
@@ -14,7 +14,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps<'/re
   // Unsealing checks the token's expiry against the clock, so it must run at request time.
   await connection();
   const data = typeof token === 'string' ? await readToken(token, ['reset', 'invite']) : null;
-  if (!data) {
+  if (!data || !(await isTokenCurrent(data))) {
     return (
       <div className="grid gap-6 text-center">
         <div className="grid gap-1">

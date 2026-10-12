@@ -528,7 +528,15 @@ Rules: `PageProps<'/route'>` and `LayoutProps<'/route'>` are global types genera
 ```tsx
 'use client';
 
-import { createContext, startTransition, use, useActionState, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  startTransition,
+  use,
+  useActionState,
+  useRef,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -537,6 +545,7 @@ import type { ActionResult } from '@/lib/errors';
 
 type Result = ActionResult<unknown> | null;
 const FormErrors = createContext<Partial<Record<string, string[]>> | undefined>(undefined);
+const noSubscription = () => () => {};
 
 export function ActionForm({
   action,
@@ -559,10 +568,18 @@ export function ActionForm({
     if (result.ok) form.current?.reset();
     return result;
   }, null);
+  // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
+  // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
+  const hydrated = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
   // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
     <form
       ref={form}
+      method="post"
       onSubmit={(event) => {
         event.preventDefault();
         const fd = new FormData(event.currentTarget);
@@ -586,7 +603,7 @@ export function ActionForm({
       <Button
         type="submit"
         variant={submitVariant}
-        disabled={pending}
+        disabled={pending || !hydrated}
         className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
       >
         {pending && <LoaderCircle className="animate-spin" />}
@@ -638,6 +655,7 @@ Usage from a Server Component page (an action is passed straight through — no 
 
 - Controls are shadcn primitives (`Input`, `Textarea`, `Select` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
 - The form submits through `startTransition` in `onSubmit`, not `<form action>`: React clears every uncontrolled field after a `<form action>` completes, which wiped the email after a wrong password (verified). `ActionForm` resets the form itself, only after a successful result.
+- The submit button is disabled until hydration and the form is `method="post"`: before hydration `onSubmit` is not attached, and a native submit would have put the fields (a password) in the URL (found by e2e; regression test with JavaScript disabled).
 - `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms.
 
 ### 6.9 Jobs — `lib/queue.ts` (producer) and `worker/jobs/<queue>.ts` (consumer)

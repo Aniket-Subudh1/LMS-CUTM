@@ -1,6 +1,14 @@
 'use client';
 
-import { createContext, startTransition, use, useActionState, useRef, type ReactNode } from 'react';
+import {
+  createContext,
+  startTransition,
+  use,
+  useActionState,
+  useRef,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -9,6 +17,7 @@ import type { ActionResult } from '@/lib/errors';
 
 type Result = ActionResult<unknown> | null;
 const FormErrors = createContext<Partial<Record<string, string[]>> | undefined>(undefined);
+const noSubscription = () => () => {};
 
 export function ActionForm({
   action,
@@ -31,10 +40,18 @@ export function ActionForm({
     if (result.ok) form.current?.reset();
     return result;
   }, null);
+  // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
+  // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
+  const hydrated = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
   // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
     <form
       ref={form}
+      method="post"
       onSubmit={(event) => {
         event.preventDefault();
         const fd = new FormData(event.currentTarget);
@@ -58,7 +75,7 @@ export function ActionForm({
       <Button
         type="submit"
         variant={submitVariant}
-        disabled={pending}
+        disabled={pending || !hydrated}
         className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
       >
         {pending && <LoaderCircle className="animate-spin" />}

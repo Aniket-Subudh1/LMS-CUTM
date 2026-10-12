@@ -50,10 +50,12 @@ export {};
 ```
 
 ```ts
-// tests/setup.ts
+// tests/setup.ts (M00 content; M02 adds the S3_* test values)
 import { afterAll, beforeAll } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { Redis } from 'ioredis';
+import './next-request';
 
 let memory: MongoMemoryReplSet | undefined;
 
@@ -68,14 +70,18 @@ beforeAll(async () => {
   }
   Object.assign(process.env, {
     APP_URL: 'http://localhost:3000',
-    REDIS_URL: 'redis://localhost:6379',
+    REDIS_URL: 'redis://localhost:6379/1',
     SESSION_PASSWORD: 'test-session-password-at-least-32-chars',
-    S3_ENDPOINT: 'http://localhost:9000',
-    S3_BUCKET: 'lms-test',
-    S3_ACCESS_KEY_ID: 'test',
-    S3_SECRET_ACCESS_KEY: 'test',
-    S3_FORCE_PATH_STYLE: 'true',
+    SMTP_HOST: 'localhost',
+    SMTP_PORT: '1025',
+    SMTP_SECURE: 'false',
+    MAIL_FROM: 'CUTM LMS <lms@test.local>',
+    LOG_LEVEL: 'error',
   });
+  // Redis database 1 belongs to the tests: start every file without rate-limit counters or queued jobs.
+  const redis = new Redis(process.env.REDIS_URL ?? '');
+  await redis.flushdb();
+  await redis.quit();
 });
 
 afterAll(async () => {
@@ -85,6 +91,44 @@ afterAll(async () => {
 });
 ```
 
+```ts
+// tests/next-request.ts (imported by tests/setup.ts)
+import { vi } from 'vitest';
+
+// Integration tests run actions outside a Next request. This stands in for one browser: its cookies and its IP.
+export const browser = { cookies: new Map<string, string>(), ip: '203.0.113.1' };
+
+export function switchBrowser(cookies: Map<string, string>, ip = '203.0.113.1') {
+  browser.cookies = cookies;
+  browser.ip = ip;
+}
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (name: string) => {
+      const value = browser.cookies.get(name);
+      return value === undefined ? undefined : { name, value };
+    },
+    getAll: () => [...browser.cookies].map(([name, value]) => ({ name, value })),
+    set: (name: string, value: string) => {
+      if (value === '') browser.cookies.delete(name);
+      else browser.cookies.set(name, value);
+    },
+  }),
+  headers: async () => new Headers({ 'x-forwarded-for': browser.ip }),
+}));
+
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  connection: async () => {},
+}));
+
+vi.mock('next/cache', () => ({ refresh: vi.fn(), updateTag: vi.fn(), revalidateTag: vi.fn() }));
+```
+
+- Actions run for real: `cookies()` is an in-memory jar, so `signIn`/`getViewer`/`signOut` go through iron-session unchanged. `switchBrowser(new Map())` starts a fresh browser; keep two `Map`s to test "the other browser" (verified in `tests/integration/profile.test.ts`).
+- `redirect()` throws an error whose **digest** holds the target: `await expect(act(fd)).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_REDIRECT;\w+;\/home;/) })` (the message is just `NEXT_REDIRECT`).
+- Redis database **1** belongs to the tests and is flushed at the start of every file (rate-limit counters, queued jobs). A test file that touches the queue closes `mailQueue()` and quits `redis()` in `afterAll`.
 - **Every required env var must be set in `tests/setup.ts`.** When you add one to `lib/env.ts`, add a test value here in the same commit.
 - `mongodb-memory-server` downloads a `mongod` binary from `fastdl.mongodb.org` on first run. Where that host is blocked (some CI/sandbox networks), start the compose stack and set `TEST_MONGODB_URI='mongodb://localhost:27017/?replicaSet=rs0&directConnection=true'` — this is how the canonical patterns were verified.
 - Transactions require the collection to exist: call `Model.createCollection()` in a test's setup for any collection written inside a transaction (production collections are created by `scripts/sync-indexes.ts`).
@@ -130,6 +174,22 @@ For each new DAL read: one test that a user with access gets the data and one th
 - `playwright.config.ts`: `testDir: 'tests/e2e'`, Chromium only, `baseURL: 'http://localhost:3100'`, `webServer.command: 'npm run start:e2e'` (builds nothing — CI builds first), `reuseExistingServer: !process.env.CI`.
 - `start:e2e` runs the standalone server with `.env.e2e` (database `lms_e2e`) after `scripts/seed.ts --e2e` creates deterministic fixtures: one admin, one HoD, two faculty, twenty students, one department, one ugc program with a batch, one skill program, one term, two offerings.
 - Seeded e2e passwords exist only in `.env.e2e` (never committed with real values; CI generates them).
+- `.env.e2e` (gitignored; CI generates it) — M00 content:
+  ```
+  PORT=3100
+  APP_URL=http://localhost:3100
+  MONGODB_URI=mongodb://localhost:27017/lms_e2e?replicaSet=rs0&directConnection=true
+  REDIS_URL=redis://localhost:6379/2
+  SESSION_PASSWORD=<openssl rand -base64 32>
+  SMTP_HOST=localhost
+  SMTP_PORT=1025
+  SMTP_SECURE=false
+  MAIL_FROM="CUTM LMS <lms@localhost>"
+  LOG_LEVEL=info
+  ```
+  `LOG_LEVEL` must be at least `info`: Playwright starts the worker (`npm run worker:e2e`) as a second `webServer` and waits for its `worker started` line.
+- The compose stack must be running (Mongo, Redis, Mailpit) and `npm run build` must have run. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
+- Next keeps the previous page mounted but hidden after a client navigation, and `getByLabel` matches hidden elements: look fields up with `page.getByLabel(label).filter({ visible: true })` (the `field()` helper in `tests/e2e/auth.spec.ts`); `getByRole` already ignores hidden elements. Use `exact: true` when one label is a prefix of another ("New password" / "Repeat the new password"). After a click that navigates client-side, wait for the new page (`toHaveURL` or its heading) before filling: for a moment both forms are visible and a fill can bind to the old one as it is hidden (verified failure, with trace).
 - Run `npx playwright install chromium` once. In a sandbox with a preinstalled Chromium of another revision, set `PW_CHROMIUM_PATH` to its executable; `playwright.config.ts` passes it as `launchOptions.executablePath` only when set.
 
 Journeys added per milestone are listed in each milestone file; together they form the release suite.

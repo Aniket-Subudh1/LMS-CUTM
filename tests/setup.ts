@@ -1,6 +1,8 @@
 import { afterAll, beforeAll } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { Redis } from 'ioredis';
+import './next-request';
 
 let memory: MongoMemoryReplSet | undefined;
 
@@ -23,6 +25,10 @@ beforeAll(async () => {
     MAIL_FROM: 'CUTM LMS <lms@test.local>',
     LOG_LEVEL: 'error',
   });
+  // Redis database 1 belongs to the tests: start every file without rate-limit counters or queued jobs.
+  const redis = new Redis(process.env.REDIS_URL ?? '');
+  await redis.flushdb();
+  await redis.quit();
 });
 
 afterAll(async () => {
