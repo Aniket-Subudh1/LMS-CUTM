@@ -62,7 +62,7 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 
 ## 3. Navigation
 
-The `(app)` layout renders a header (product name, notifications count, user menu) and a primary nav. On screens ≥ 1024 px the nav is a left sidebar; below that it is a `<details>` menu in the header. Items by role (a user with several roles sees the union, in this order):
+The `(app)` layout renders a header (product name, notifications count, user menu) and a primary nav. The nav lists only routes that exist: M00 ships Home and Profile; each milestone adds its own items with their role filter. On screens ≥ 1024 px the nav is a left sidebar; below that it is a `<details>` menu in the header. Items by role (a user with several roles sees the union, in this order):
 
 | Item | Roles |
 |---|---|

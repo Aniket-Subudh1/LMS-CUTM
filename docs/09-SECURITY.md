@@ -71,8 +71,8 @@ Rules:
 
 | Action | Subject | Limit |
 |---|---|---|
-| Login | email | 5 / 15 min |
-| Login | IP | 30 / 15 min |
+| Login (failed attempts; a success refunds its slot, 07 §16) | email | 5 / 15 min |
+| Login (failed attempts) | IP | 30 / 15 min |
 | Forgot password | email | 3 / hour |
 | Forgot password | IP | 20 / hour |
 | Code run | student | 1 per `runCooldownSec` (3 s), 200 / hour |

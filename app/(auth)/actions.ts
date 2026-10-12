@@ -20,13 +20,16 @@ const INCORRECT = 'Email or password is incorrect.';
 const EXPIRED = 'This link has expired or was already used.';
 
 export const login = publicAction(LoginInput, async ({ email, password }) => {
-  await limit('login-ip', await clientIp(), 30, 15 * MINUTE);
-  await limit('login', email, 5, 15 * MINUTE);
+  const attempts = [
+    await limit('login-ip', await clientIp(), 30, 15 * MINUTE),
+    await limit('login', email, 5, 15 * MINUTE),
+  ];
   await db();
   const user = await User.findOne({ email, status: 'active' }, { passwordHash: 1, sessionVersion: 1 }).lean();
   if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, password))) {
     throw new AppError('UNAUTHENTICATED', INCORRECT);
   }
+  await Promise.all(attempts.map((a) => a.refund()));
   await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
   await signIn({ id: String(user._id), sessionVersion: user.sessionVersion });
   redirect('/home');

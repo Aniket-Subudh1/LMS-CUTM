@@ -4,7 +4,7 @@ MongoDB 8.0 replica set, Mongoose 9. This document is the source of truth for ev
 
 ## 1. Conventions
 
-- **Collections** are created by Mongoose models (`lib/models/<singular>.ts`) and named by Mongoose's pluralisation (`Offering` → `offerings`).
+- **Collections** are created by Mongoose models (`lib/models/<singular>.ts`) and named by Mongoose's pluralisation, which also lower-cases (`Offering` → `offerings`, `AuditLog` → `auditlogs`). Headings below use the camelCase name for readability; in `mongosh` use the lower-cased one.
 - **Timestamps:** every collection has `createdAt` / `updatedAt` (`{ timestamps: true }`) unless marked *append-only*.
 - **References** are `ObjectId` fields named `<entity>Id` / `<entity>Ids`. No Mongoose `populate`; load related records with one `$in` query (04 §3 S4).
 - **Bounded arrays only.** Every embedded array lists its maximum; the Zod input schema enforces it.
