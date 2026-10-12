@@ -105,7 +105,10 @@ export function ActionForm({
         </Alert>
       )}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>
-        <fieldset disabled={pending} className="grid min-w-0 gap-5 transition-opacity disabled:opacity-60">
+        <fieldset
+          disabled={pending}
+          className="grid min-w-0 gap-5 transition-opacity not-has-[>:not([type=hidden])]:hidden disabled:opacity-60"
+        >
           {children}
         </fieldset>
       </FormErrors>
