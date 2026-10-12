@@ -28,8 +28,8 @@ A secure, deployable skeleton every later milestone builds on: tooling, local st
 ### T1 · Tooling and configuration
 Files: `package.json`, `next.config.ts`, `tsconfig.json` (unchanged unless needed), `.prettierrc.json`, `.prettierignore`, `vitest.config.ts`, `playwright.config.ts`, `compose.yaml`, `.env.example`, `README.md`, `app/page.tsx`, `public/` (remove the five create-next-app SVGs), `tests/server-only.ts`, `tests/setup.ts`.
 
-1. `package.json`: `"type": "module"`, `"engines": { "node": ">=22.13" }`, the scripts in 10 §4 except `s3:setup` (M02), exact versions from 03 §3 (`npm install --save-exact`), `@types/node` 24.19.2.
-2. `next.config.ts`: exactly 03 §4 (`SECURITY_HEADERS` from 09 §8 defined in the same file).
+1. `package.json`: `"type": "module"`, `"engines": { "node": ">=22.13" }`, the scripts in 10 §4 except `s3:setup` (M02), exact versions from 03 §3 (`npm install --save-exact`) for packages M00 actually imports (`lucide-react` and `@next/playwright` wait for their first use), `@types/node` 24.19.2.
+2. `next.config.ts`: 03 §4 without `serverActions` (added in M01) (`SECURITY_HEADERS` from 09 §8 defined in the same file). Add `!.env.example` to `.gitignore` (the scaffold's `.env*` rule ignores it).
 3. `.prettierrc.json`: `{ "singleQuote": true, "printWidth": 120, "plugins": ["prettier-plugin-tailwindcss"] }`. Run `npm run format` once.
 4. `vitest.config.ts`, `tests/setup.ts`, `tests/server-only.ts`: exactly 10 §2 (without the S3 variables until M02).
 5. `playwright.config.ts`: 10 §3.

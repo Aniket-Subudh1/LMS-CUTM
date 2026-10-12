@@ -43,7 +43,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@aws-sdk/s3-request-presigner` | 3.1149.0 | M00 | Presigned PUT/GET | `lib/integrations/storage.ts` | — |
 | `nodemailer` | 10.1.0 | M00 | SMTP | `lib/integrations/mail.ts` | Read the v10 README before use |
 | `server-only` | 0.0.1 | M00 | Guard server modules from client bundles | server modules | Aliased to an empty module in Vitest |
-| `lucide-react` | 1.55.0 | M00 | Icons in navigation and buttons only | `app/`, `components/` | Import named icons only |
+| `lucide-react` | 1.55.0 | when first used (not in M00 — its navigation is text-only) | Icons in navigation and buttons only | `app/`, `components/` | Import named icons only |
 | `papaparse` | 5.7.0 | M01 | CSV parse/unparse for imports and exports | `lib/domain/csv.ts` | — |
 | `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm` | 3.31.4 | M02 | Rich-text editor | `components/rich-text-editor.tsx` | `useEditor({ immediatelyRender: false })` for SSR |
 | `ffmpeg-static` | 5.3.0 | M02 | Bundled ffmpeg 7.0.2 binary for the 480p data-saver transcode (worker only; spawned as a separate process — GPL binary, not linked) | `worker/jobs/compute.ts` | Always pass `-pix_fmt yuv420p -profile:v main` (without it a 1080p source can produce High 4:4:4 that phones cannot play — verified) and `-movflags +faststart` |
@@ -67,7 +67,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `mongodb-memory-server` | 11.3.0 | M00 | Ephemeral MongoDB replica set for integration tests (downloads `mongod` on first run; set `TEST_MONGODB_URI` to use a real replica set instead) |
 | `tsx` | 4.23.15 | M00 | Run `worker/index.ts` and `scripts/*.ts` |
 | `@playwright/test` | 1.64.0 | M00 | End-to-end tests |
-| `@next/playwright` | 16.4.0 | M00 | `instant()` helper for navigation assertions (optional use) |
+| `@next/playwright` | 16.4.0 | when the first `instant()` test is written | `instant()` helper for navigation assertions (optional use) |
 | `prettier` | 3.9.10 | M00 | Formatting |
 | `prettier-plugin-tailwindcss` | 0.8.1 | M00 | Class ordering |
 | `@types/nodemailer` | 8.0.2 | M00 | Types |
@@ -81,7 +81,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   output: 'standalone',
   serverExternalPackages: ['bullmq', 'ioredis'], // bullmq loads ioredis with a dynamic require
-  serverActions: { bodySizeLimit: '2mb' },       // CSV imports; files never go through actions
+  serverActions: { bodySizeLimit: '2mb' },       // added in M01 for CSV imports; files never go through actions
   turbopack: { rules: { '*.css': { loaders: ['@tailwindcss/turbopack'], as: '*.css' } } },
   headers: async () => [{ source: '/:path*', headers: SECURITY_HEADERS }], // 09 §8
 };
