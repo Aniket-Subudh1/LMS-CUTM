@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { COMPONENT_KEYS, COMPONENTS } from '@/lib/schemas/structure';
 import { componentKey, defaultOutcomes, nextCoCode, validateScheme, type SchemeDraft } from './structure';
 
 // 07 §2 worked example: theory+practice, internal maximum 50.
@@ -20,6 +21,12 @@ describe('componentKey', () => {
     [['project', 'theory', 'practice'], 'theory+practice+project'],
   ])('componentKey(%j) = %s', (input, expected) => {
     expect(componentKey(input)).toBe(expected);
+  });
+
+  it('only ever produces a key the scheme screens list', () => {
+    // Every non-empty subset of the three components, as a bit mask 1..7.
+    const keys = Array.from({ length: 7 }, (_, m) => COMPONENTS.filter((_c, i) => (m + 1) & (1 << i)));
+    expect(keys.map(componentKey).sort()).toEqual([...COMPONENT_KEYS].sort());
   });
 });
 

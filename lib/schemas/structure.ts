@@ -16,6 +16,16 @@ export const ASSESSMENT_MODES = [
   'coding_competition',
   'project_review',
 ] as const;
+// Every combination of the three components in canonical order; a course's `componentKey` is always one of these.
+export const COMPONENT_KEYS = [
+  'theory',
+  'practice',
+  'project',
+  'theory+practice',
+  'theory+project',
+  'practice+project',
+  'theory+practice+project',
+] as const;
 export const AGGREGATIONS = ['average', 'sum', 'best_n'] as const;
 export const ROUNDING_MODES = ['half_up', 'ceil'] as const;
 export const TERM_STATUSES = ['upcoming', 'current', 'closed'] as const;
@@ -224,7 +234,7 @@ export const CreateSchemeVersion = z.preprocess(
     };
   },
   z.object({
-    componentKey: z.string().regex(/^(?:theory(?:\+practice)?(?:\+project)?|practice(?:\+project)?|project)$/),
+    componentKey: z.enum(COMPONENT_KEYS),
     name: text(120),
     internalMax: num.pipe(z.number().positive().max(200)),
     externalMax: num.pipe(z.number().min(0).max(200)),

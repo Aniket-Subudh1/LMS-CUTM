@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
-import { AGGREGATIONS, ASSESSMENT_MODES, ROUNDING_MODES } from '@/lib/schemas/structure';
+import { AGGREGATIONS, ASSESSMENT_MODES, COMPONENT_KEYS, ROUNDING_MODES } from '@/lib/schemas/structure';
 
 const schemeComponentSchema = new Schema(
   {
@@ -16,7 +16,7 @@ const schemeComponentSchema = new Schema(
 // Immutable once written: "editing" a scheme inserts version n+1 (05 §3.7).
 const evaluationSchemeSchema = new Schema(
   {
-    componentKey: { type: String, required: true },
+    componentKey: { type: String, enum: COMPONENT_KEYS, required: true },
     version: { type: Number, required: true, min: 1 },
     name: { type: String, required: true, trim: true, maxlength: 120 },
     internalMax: { type: Number, required: true, min: 0, max: 200 },
