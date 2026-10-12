@@ -190,7 +190,6 @@ Requests: "completely plan m0 and start making it properly"; mid-way, "pull the 
 - `/reset-password` read the clock during the runtime prerender (`Date.now()` error) → `await connection()`.
 
 **Not done**
-- CI has not run yet; the first GitHub Actions run after this push is the first execution of `ci.yml`. Its integration job relies on mongodb-memory-server downloading `mongod` (blocked in this sandbox, so not exercised here).
 - E2E is not in CI until M01 provides `scripts/seed.ts` (10 §5).
 - Timing-based email enumeration is not mitigated (Q-34).
 - No dark theme (not in scope).
@@ -208,6 +207,7 @@ npm run check:bundle       → check-bundle: 25 files scanned for 4 names and 3 
 npm run test:e2e           → 5 passed (≈20 s); 8 consecutive runs and 2 runs after fresh builds all green
 npm run db:indexes         → users (email unique, partial uniques, text index, …) and auditlogs indexes created
 ```
+- GitHub Actions run #1 on `ae654e9` (https://github.com/Aniket-Subudh1/LMS-CUTM/actions/runs/38295067817): **verify** ✓ (lint, typecheck, unit, build without env, bundle scan) and **integration** ✓ (`Test Files 3 passed · Tests 15 passed`, mongodb-memory-server downloaded `mongod` 8.2.6 during `npm ci`; binary cache saved). Warning only: `actions/cache@v4` runs on the deprecated Node 20 action runtime.
 - Mutation check: removing the login refund or the reset token's `sessionVersion` condition makes the matching integration tests fail (2 failures), then restored.
 - E2E flakiness investigated, not retried away: 4 failures in 22 runs before the fix. The saved trace showed a fill binding to the previous page's input while Next hid it after a client navigation; fixed by waiting for the new page (10 §3). Separately, all runs shared one client IP and so one rate-limit window; each run now sends its own `X-Forwarded-For`.
 
