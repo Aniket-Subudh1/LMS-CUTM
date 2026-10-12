@@ -1,7 +1,6 @@
 'use server';
 
 import { refresh, updateTag } from 'next/cache';
-import { redirect } from 'next/navigation';
 import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { db, isDuplicateKey } from '@/lib/db';
@@ -30,7 +29,6 @@ export const saveDepartment = action({ input: SaveDepartment, roles: ['admin'] }
     if (isDuplicateKey(error)) throw taken('A department with code', fields.code);
     throw error;
   }
-  if (id) redirect('/admin/departments');
   refresh();
 });
 
@@ -39,7 +37,7 @@ export const saveProgram = action({ input: SaveProgram, roles: ['admin'] }, asyn
   if (!(await Department.exists({ _id: fields.departmentId }))) {
     throw new AppError('VALIDATION', 'Choose an existing department.');
   }
-  let next = '/admin/programs';
+  let created: string | null = null;
   try {
     if (id) {
       // `departmentId` is copied onto courses and offerings; moving a program under courses would leave those copies wrong.
@@ -52,15 +50,15 @@ export const saveProgram = action({ input: SaveProgram, roles: ['admin'] }, asyn
       await Program.updateOne({ _id: id }, { $set: fields });
     } else {
       const outcomes = category === 'ugc' ? defaultOutcomes() : { pos: [], psos: [] };
-      const created = await Program.create({ ...fields, category, ...outcomes });
-      next = `/admin/programs/${created.id}`;
+      created = String((await Program.create({ ...fields, category, ...outcomes }))._id);
     }
   } catch (error) {
     if (isDuplicateKey(error)) throw taken('A programme with code', fields.code);
     throw error;
   }
   updateTag('catalog');
-  redirect(next);
+  if (created) return { next: `/admin/programs/${created}` };
+  refresh();
 });
 
 export const saveProgramOutcomes = action({ input: SaveProgramOutcomes, roles: ['admin'] }, async (input) => {
@@ -106,7 +104,6 @@ export const saveBatch = action({ input: SaveBatch, roles: ['admin'] }, async ({
     if (isDuplicateKey(error)) throw taken('A batch starting in', String(fields.startYear));
     throw error;
   }
-  if (id) redirect(`/admin/programs/${programId}`);
   refresh();
 });
 
@@ -134,6 +131,5 @@ export const saveTerm = action({ input: SaveTerm, roles: ['admin'] }, async ({ i
     if (isDuplicateKey(error)) throw taken('A term with code', fields.code);
     throw error;
   }
-  if (id) redirect('/admin/terms');
   refresh();
 });

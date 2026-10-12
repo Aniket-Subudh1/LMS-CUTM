@@ -17,7 +17,7 @@ import { form, makeOffering, makeUser, newId, signInAs } from '../factories';
 import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
-const TO_OFFERINGS = { digest: expect.stringMatching(/;\/admin\/offerings;/) };
+const SAVED = { ok: true };
 
 beforeAll(async () => {
   await db();
@@ -123,7 +123,7 @@ describe('createOffering', () => {
       makeUser({ roles: ['faculty'], batchId: s.batch._id, section: 'A' }),
     ]);
 
-    await expect(createOffering(s.fields())).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(s.fields())).toEqual(SAVED);
     const offering = await Offering.findOne({ courseId: s.course._id });
     expect(offering).toMatchObject({
       title: `${s.course.code} · ${s.course.title} · ${s.term.code} · A`,
@@ -150,7 +150,7 @@ describe('createOffering', () => {
     const s = await setup();
     await activeScheme('theory');
     await Promise.all([s.student('A'), s.student('B'), s.student('B')]);
-    await expect(createOffering(s.fields({ section: '' }))).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(s.fields({ section: '' }))).toEqual(SAVED);
     const offering = await Offering.findOne({ courseId: s.course._id });
     expect(offering?.section).toBeNull();
     expect(await Enrollment.countDocuments({ offeringId: offering?._id })).toBe(3);
@@ -161,7 +161,7 @@ describe('createOffering', () => {
     const s = await setup();
     await activeScheme('theory');
     await s.student('A');
-    await expect(createOffering(s.fields())).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(s.fields())).toEqual(SAVED);
     expect(await createOffering(s.fields())).toEqual({
       ok: false,
       code: 'CONFLICT',
@@ -172,7 +172,7 @@ describe('createOffering', () => {
     expect(await Enrollment.countDocuments({ offeringId: offering?._id })).toBe(1);
     expect(await AuditLog.countDocuments({ action: 'enrollment.changed', offeringId: offering?._id })).toBe(1);
 
-    await expect(createOffering(s.fields({ section: '' }))).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(s.fields({ section: '' }))).toEqual(SAVED);
     await expect(createOffering(s.fields({ section: '' }))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
   });
 
@@ -187,7 +187,7 @@ describe('createOffering', () => {
     expect(await Offering.countDocuments({ courseId: ugc.course._id })).toBe(0);
 
     const skill = await setup({ category: 'skill' });
-    await expect(createOffering(skill.fields())).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(skill.fields())).toEqual(SAVED);
     expect((await Offering.findOne({ courseId: skill.course._id }))?.schemeId).toBeNull();
   });
 
@@ -200,12 +200,12 @@ describe('createOffering', () => {
       code: 'VALIDATION',
       fieldErrors: { projectMode: ['Choose GitHub or Tracker.'] },
     });
-    await expect(createOffering(withProject.fields({ projectMode: 'tracker' }))).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(withProject.fields({ projectMode: 'tracker' }))).toEqual(SAVED);
     expect((await Offering.findOne({ courseId: withProject.course._id }))?.projectMode).toBe('tracker');
 
     await activeScheme('theory');
     const plain = await setup();
-    await expect(createOffering(plain.fields({ projectMode: 'github' }))).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(plain.fields({ projectMode: 'github' }))).toEqual(SAVED);
     expect((await Offering.findOne({ courseId: plain.course._id }))?.projectMode).toBeNull();
   });
 
@@ -407,7 +407,7 @@ describe('listOfferings', () => {
     const s = await setup();
     await activeScheme('theory');
     await Promise.all([s.student('A'), s.student('A')]);
-    await expect(createOffering(s.fields())).rejects.toMatchObject(TO_OFFERINGS);
+    expect(await createOffering(s.fields())).toEqual(SAVED);
     const offering = await Offering.findOne({ courseId: s.course._id });
     await Enrollment.updateOne({ offeringId: offering?._id }, { $set: { status: 'dropped' } });
 

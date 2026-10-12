@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { connection } from 'next/server';
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/password-input';
 import { isTokenCurrent, readToken } from '@/lib/auth/tokens';
 import Loading from '../loading';
 import { resetPassword } from '../actions';
@@ -52,10 +52,10 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
       <ActionForm action={resetPassword} submitLabel="Save password" fullWidth>
         <input type="hidden" name="token" value={token} />
         <Field name="password" label="New password" hint="10 to 128 characters. Not your email address.">
-          <Input name="password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} />
+          <PasswordInput name="password" autoComplete="new-password" required minLength={10} maxLength={128} />
         </Field>
         <Field name="confirm" label="Repeat the password">
-          <Input name="confirm" type="password" autoComplete="new-password" required />
+          <PasswordInput name="confirm" autoComplete="new-password" required />
         </Field>
       </ActionForm>
     </div>

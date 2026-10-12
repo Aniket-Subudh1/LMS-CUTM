@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDateTime, statusTone } from './format';
+import { formatDate, formatDateTime, initials, statusTone } from './format';
 
 describe('formatting', () => {
   it('prints IST date-times the way 08 §7 shows them', () => {
@@ -15,5 +15,11 @@ describe('formatting', () => {
     expect(statusTone('active')).toBe('success');
     expect(statusTone('disabled')).toBe('danger');
     expect(statusTone('something-new')).toBe('secondary');
+  });
+
+  it('takes avatar initials from the first two words', () => {
+    expect(initials('Asha Mohanty')).toBe('AM');
+    expect(initials('  ravi  kumar patnaik ')).toBe('RK');
+    expect(initials('Sita')).toBe('S');
   });
 });

@@ -538,12 +538,14 @@ import {
   startTransition,
   use,
   useActionState,
+  useEffect,
   useRef,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { CheckCircleIcon, CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ConfirmSubmit } from '@/components/confirm-submit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
@@ -558,6 +560,11 @@ export function ActionForm({
   successMessage,
   submitVariant = 'default',
   fullWidth = false,
+  confirm,
+  replaceOnSuccess = false,
+  onSuccess,
+  onPendingChange,
+  secondary,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
@@ -565,20 +572,43 @@ export function ActionForm({
   successMessage?: string;
   submitVariant?: 'default' | 'destructive';
   fullWidth?: boolean;
+  // Asks first: the submit button opens a dialog and only its confirm button submits the form.
+  confirm?: { title: string; message: string };
+  replaceOnSuccess?: boolean;
+  onSuccess?: (data: unknown) => void;
+  onPendingChange?: (pending: boolean) => void;
+  secondary?: ReactNode;
   children?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
     const result = await action(fd);
-    if (result.ok) form.current?.reset();
+    if (result.ok) {
+      form.current?.reset();
+      onSuccess?.(result.data);
+    }
     return result;
   }, null);
+  useEffect(() => onPendingChange?.(pending), [pending, onPendingChange]);
   // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
   // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
   const hydrated = useSyncExternalStore(
     noSubscription,
     () => true,
     () => false,
+  );
+  if (replaceOnSuccess && state?.ok) return <SuccessState message={successMessage ?? 'Saved.'} />;
+  const submit = (
+    <Button
+      type={confirm ? 'button' : 'submit'}
+      variant={submitVariant}
+      disabled={pending || !hydrated}
+      aria-busy={pending}
+      className={cn(fullWidth && 'h-10 w-full')}
+    >
+      {pending && <CircleNotchIcon className="animate-spin" />}
+      {submitLabel}
+    </Button>
   );
   // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
@@ -593,28 +623,56 @@ export function ActionForm({
       className="grid gap-5"
     >
       {state && !state.ok && (
-        <Alert variant="destructive">
-          <CircleAlert />
+        <Alert variant="destructive" className="border-destructive/25 bg-destructive/5">
+          <WarningCircleIcon weight="duotone" />
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
       {state?.ok && successMessage && (
-        <Alert role="status" className="border-success/30 text-success">
-          <CircleCheck />
+        <Alert role="status" className="border-success/25 bg-success/5 text-success">
+          <CheckCircleIcon weight="duotone" />
           <AlertDescription className="text-success">{successMessage}</AlertDescription>
         </Alert>
       )}
-      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <Button
-        type="submit"
-        variant={submitVariant}
-        disabled={pending || !hydrated}
-        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
-      >
-        {pending && <LoaderCircle className="animate-spin" />}
-        {submitLabel}
-      </Button>
+      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>
+        <fieldset disabled={pending} className="grid min-w-0 gap-5 transition-opacity disabled:opacity-60">
+          {children}
+        </fieldset>
+      </FormErrors>
+      <div data-slot="form-footer" className={cn('flex flex-wrap items-center gap-2', secondary && 'justify-end')}>
+        {secondary}
+        {confirm ? (
+          <ConfirmSubmit {...confirm} confirmLabel={submitLabel} variant={submitVariant} pending={pending}>
+            {submit}
+          </ConfirmSubmit>
+        ) : (
+          submit
+        )}
+      </div>
     </form>
+  );
+}
+
+function SuccessState({ message }: { message: string }) {
+  return (
+    <div role="status" className="grid justify-items-center gap-4 py-8 text-center">
+      <svg viewBox="0 0 52 52" aria-hidden="true" className="text-success motion-safe:animate-success-pop size-16">
+        <circle cx="26" cy="26" r="25" fill="currentColor" opacity="0.12" />
+        <circle cx="26" cy="26" r="19" fill="currentColor" />
+        <path
+          d="M17 26.5l6 6 12-13"
+          fill="none"
+          stroke="white"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray={1}
+          className="motion-safe:animate-success-draw"
+        />
+      </svg>
+      <p className="max-w-sm text-base font-semibold text-balance">{message}</p>
+    </div>
   );
 }
 
@@ -636,7 +694,7 @@ export function Field({
         <span className="text-sm font-medium">{label}</span>
         {children}
       </label>
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
+      {hint && <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>}
       {errors?.map((e) => (
         <p key={e} className="text-destructive text-sm">
           {e}
@@ -645,23 +703,42 @@ export function Field({
     </div>
   );
 }
+
+// For a group of controls that share one error list (a grid of rows), where `Field`'s single <label> does not fit.
+export function FieldErrors({ name }: { name: string }) {
+  const errors = use(FormErrors)?.[name];
+  return errors?.map((e) => (
+    <p key={e} className="text-destructive text-sm">
+      {e}
+    </p>
+  ));
+}
 ```
 
-Usage from a Server Component page (an action is passed straight through — no wrapper):
+Usage from a Server Component page (an action is passed straight through — no wrapper). A create or edit form lives in a `FormDialog` (08 §5.2), which supplies the trigger, header, Cancel button, success state and auto-close:
 
 ```tsx
-<ActionForm action={renameOffering} submitLabel="Rename" successMessage="Saved.">
+<FormDialog
+  trigger={<Button variant="outline" size="sm">Rename</Button>}
+  title="Rename offering"
+  description="Students see this title in their course list."
+  action={renameOffering}
+  submitLabel="Save"
+  successMessage="Offering renamed."
+>
   <input type="hidden" name="offeringId" value={offeringId} />
   <Field name="title" label="Title">
     <Input name="title" required />
   </Field>
-</ActionForm>
+</FormDialog>
 ```
 
-- Controls are shadcn primitives (`Input`, `Textarea`, `Select` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
+- Controls are shadcn primitives (`Input`, `Textarea`, `NativeSelect` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
 - The form submits through `startTransition` in `onSubmit`, not `<form action>`: React clears every uncontrolled field after a `<form action>` completes, which wiped the email after a wrong password (verified). `ActionForm` resets the form itself, only after a successful result.
 - The submit button is disabled until hydration and the form is `method="post"`: before hydration `onSubmit` is not attached, and a native submit would have put the fields (a password) in the URL (found by e2e; regression test with JavaScript disabled).
-- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms.
+- While the action runs, the fields sit in a disabled `<fieldset>` and the submit button shows a spinner, so nothing can be edited or submitted twice.
+- `replaceOnSuccess` swaps the form for the success state (an animated check and `successMessage`); `FormDialog` always sets it, and the forgot-password page uses it directly. Without it, success is an inline `Alert` above the fields.
+- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms; `confirm` for a one-click action that needs an "are you sure" (`ConfirmSubmit`).
 
 ### 6.9 Jobs — `lib/queue.ts` (producer) and `worker/jobs/<queue>.ts` (consumer)
 

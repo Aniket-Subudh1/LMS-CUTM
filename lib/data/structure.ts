@@ -24,15 +24,6 @@ export async function listDepartments(page: number): Promise<{ rows: DepartmentR
   return { rows: docs.map((d) => ({ id: String(d._id), code: d.code, name: d.name, status: d.status })), total };
 }
 
-export async function getDepartment(id: string): Promise<DepartmentRow> {
-  await requireViewer(['admin']);
-  if (!isValidObjectId(id)) notFound();
-  await db();
-  const d = await Department.findById(id, { code: 1, name: 1, status: 1 }).lean();
-  if (!d) notFound();
-  return { id: String(d._id), code: d.code, name: d.name, status: d.status };
-}
-
 // Departments are few (dozens); the cap keeps a select bounded all the same.
 export async function listDepartmentsForSelect(): Promise<{ id: string; label: string }[]> {
   await requireViewer(['admin']);
@@ -146,15 +137,6 @@ export async function listBatches(programId: string, page: number): Promise<{ ro
   };
 }
 
-export async function getBatch(programId: string, id: string): Promise<BatchRow> {
-  await requireViewer(['admin']);
-  if (!isValidObjectId(id)) notFound();
-  await db();
-  const b = await Batch.findOne({ _id: id, programId }, { name: 1, startYear: 1, sections: 1, status: 1 }).lean();
-  if (!b) notFound();
-  return { id: String(b._id), name: b.name, startYear: b.startYear, sections: b.sections, status: b.status };
-}
-
 export type TermRow = {
   id: string;
   code: string;
@@ -193,13 +175,4 @@ export async function listTerms(page: number): Promise<{ rows: TermRow[]; total:
     Term.estimatedDocumentCount(),
   ]);
   return { rows: docs.map(termRow), total };
-}
-
-export async function getTerm(id: string): Promise<TermRow> {
-  await requireViewer(['admin']);
-  if (!isValidObjectId(id)) notFound();
-  await db();
-  const t = await Term.findById(id, termFields).lean();
-  if (!t) notFound();
-  return termRow(t);
 }

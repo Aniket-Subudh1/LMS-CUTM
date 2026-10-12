@@ -1,7 +1,6 @@
 'use server';
 
 import { refresh, updateTag } from 'next/cache';
-import { redirect } from 'next/navigation';
 import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
@@ -51,7 +50,7 @@ export const saveCourse = action(
       throw error;
     }
     updateTag('catalog');
-    if (!id) redirect(`/admin/courses/${courseId}`);
+    if (!id) return { next: `/admin/courses/${courseId}` };
     refresh();
   },
 );

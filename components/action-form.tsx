@@ -5,6 +5,7 @@ import {
   startTransition,
   use,
   useActionState,
+  useEffect,
   useRef,
   useSyncExternalStore,
   type ReactNode,
@@ -25,25 +26,39 @@ export function ActionForm({
   submitLabel,
   successMessage,
   submitVariant = 'default',
+  submitSize = 'default',
   fullWidth = false,
   confirm,
+  replaceOnSuccess = false,
+  onSuccess,
+  onPendingChange,
+  secondary,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
   submitLabel: string;
   successMessage?: string;
   submitVariant?: 'default' | 'destructive';
+  submitSize?: 'default' | 'sm';
   fullWidth?: boolean;
   // Asks first: the submit button opens a dialog and only its confirm button submits the form.
   confirm?: { title: string; message: string };
+  replaceOnSuccess?: boolean;
+  onSuccess?: (data: unknown) => void;
+  onPendingChange?: (pending: boolean) => void;
+  secondary?: ReactNode;
   children?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
     const result = await action(fd);
-    if (result.ok) form.current?.reset();
+    if (result.ok) {
+      form.current?.reset();
+      onSuccess?.(result.data);
+    }
     return result;
   }, null);
+  useEffect(() => onPendingChange?.(pending), [pending, onPendingChange]);
   // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
   // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
   const hydrated = useSyncExternalStore(
@@ -51,18 +66,21 @@ export function ActionForm({
     () => true,
     () => false,
   );
-  // `<form action>` would make React clear every field after each submit, including a failed one.
+  if (replaceOnSuccess && state?.ok) return <SuccessState message={successMessage ?? 'Saved.'} />;
   const submit = (
     <Button
       type={confirm ? 'button' : 'submit'}
       variant={submitVariant}
+      size={submitSize}
       disabled={pending || !hydrated}
-      className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
+      aria-busy={pending}
+      className={cn(fullWidth && 'h-10 w-full')}
     >
       {pending && <CircleNotchIcon className="animate-spin" />}
       {submitLabel}
     </Button>
   );
+  // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
     <form
       ref={form}
@@ -75,26 +93,56 @@ export function ActionForm({
       className="grid gap-5"
     >
       {state && !state.ok && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="border-destructive/25 bg-destructive/5">
           <WarningCircleIcon weight="duotone" />
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
       {state?.ok && successMessage && (
-        <Alert role="status" className="border-success/30 text-success">
+        <Alert role="status" className="border-success/25 bg-success/5 text-success">
           <CheckCircleIcon weight="duotone" />
           <AlertDescription className="text-success">{successMessage}</AlertDescription>
         </Alert>
       )}
-      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      {confirm ? (
-        <ConfirmSubmit {...confirm} confirmLabel={submitLabel} variant={submitVariant}>
-          {submit}
-        </ConfirmSubmit>
-      ) : (
-        submit
-      )}
+      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>
+        <fieldset disabled={pending} className="grid min-w-0 gap-5 transition-opacity disabled:opacity-60">
+          {children}
+        </fieldset>
+      </FormErrors>
+      <div data-slot="form-footer" className={cn('flex flex-wrap items-center gap-2', secondary && 'justify-end')}>
+        {secondary}
+        {confirm ? (
+          <ConfirmSubmit {...confirm} confirmLabel={submitLabel} variant={submitVariant} pending={pending}>
+            {submit}
+          </ConfirmSubmit>
+        ) : (
+          submit
+        )}
+      </div>
     </form>
+  );
+}
+
+function SuccessState({ message }: { message: string }) {
+  return (
+    <div role="status" className="grid justify-items-center gap-4 py-8 text-center">
+      <svg viewBox="0 0 52 52" aria-hidden="true" className="text-success motion-safe:animate-success-pop size-16">
+        <circle cx="26" cy="26" r="25" fill="currentColor" opacity="0.12" />
+        <circle cx="26" cy="26" r="19" fill="currentColor" />
+        <path
+          d="M17 26.5l6 6 12-13"
+          fill="none"
+          stroke="white"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray={1}
+          className="motion-safe:animate-success-draw"
+        />
+      </svg>
+      <p className="max-w-sm text-base font-semibold text-balance">{message}</p>
+    </div>
   );
 }
 
@@ -116,7 +164,7 @@ export function Field({
         <span className="text-sm font-medium">{label}</span>
         {children}
       </label>
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
+      {hint && <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>}
       {errors?.map((e) => (
         <p key={e} className="text-destructive text-sm">
           {e}

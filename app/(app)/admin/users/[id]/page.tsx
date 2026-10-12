@@ -1,10 +1,23 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
+import {
+  BookOpenTextIcon,
+  EnvelopeSimpleIcon,
+  IdentificationBadgeIcon,
+  PencilSimpleIcon,
+  ProhibitIcon,
+  ShieldCheckIcon,
+  SignOutIcon,
+  UserCircleIcon,
+} from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { revokeUserSessions, sendResetLink, setUserStatus, updateUserRoles } from '../actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
+import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { requireViewer } from '@/lib/auth/session';
 import { getUserDetail, type UserDetail } from '@/lib/data/users';
 import { formatDateTime, ROLE_LABEL, statusTone } from '@/lib/format';
@@ -26,7 +39,6 @@ async function User({ params }: { params: PageProps<'/admin/users/[id]'>['params
   const isAdmin = viewer.roles.includes('admin');
   const facts: [string, string | null][] = [
     ['Email', user.email],
-    ['Status', user.status],
     ['Roll number', user.rollNo],
     ['Employee id', user.employeeId],
     ['Department', user.department],
@@ -37,21 +49,22 @@ async function User({ params }: { params: PageProps<'/admin/users/[id]'>['params
   ];
   return (
     <>
-      <PageHeader title={user.name} description={user.roles.map((r) => ROLE_LABEL[r]).join(', ')} />
-      <div className="grid max-w-3xl gap-6">
-        <section className="bg-card rounded-lg border p-5 sm:p-6">
-          <h2 className="mb-4 text-base font-semibold">Details</h2>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            {facts
-              .filter((f): f is [string, string] => f[1] !== null)
-              .map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-muted-foreground text-sm">{label}</dt>
-                  <dd className="text-sm font-medium">{value}</dd>
-                </div>
-              ))}
-          </dl>
-        </section>
+      <PageHeader
+        icon={<UserCircleIcon weight="duotone" />}
+        title={user.name}
+        description={user.roles.map((r) => ROLE_LABEL[r]).join(', ')}
+        actions={<Badge variant={statusTone(user.status)}>{user.status}</Badge>}
+      />
+      <div className="grid gap-8">
+        <dl className="surface grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-x-6 gap-y-4 p-5">
+          {facts
+            .filter((f): f is [string, string] => f[1] !== null)
+            .map(([label, value]) => (
+              <Fact key={label} label={label}>
+                {value}
+              </Fact>
+            ))}
+        </dl>
         {user.roles.includes('student') && <Enrollments enrollments={user.enrollments} />}
         <Access user={user} isAdmin={isAdmin} />
       </div>
@@ -61,91 +74,165 @@ async function User({ params }: { params: PageProps<'/admin/users/[id]'>['params
 
 function Enrollments({ enrollments }: { enrollments: UserDetail['enrollments'] }) {
   return (
-    <section className="bg-card rounded-lg border p-5 sm:p-6">
-      <h2 className="mb-4 text-base font-semibold">Enrolments</h2>
+    <Section
+      icon={<BookOpenTextIcon weight="duotone" />}
+      title="Enrolments"
+      description="The offerings this student is on."
+    >
       {enrollments.length === 0 ? (
-        <p className="text-muted-foreground text-sm">Not enrolled in any offering.</p>
+        <p className="surface text-muted-foreground p-5 text-sm">Not enrolled in any offering.</p>
       ) : (
-        <ul className="grid gap-2 text-sm">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-3">
           {enrollments.map((e) => (
-            <li key={e.offeringId} className="flex items-center justify-between gap-3">
-              <span>{e.title}</span>
+            <li key={e.offeringId} className="surface flex items-center justify-between gap-3 p-4 text-sm">
+              <span className="font-medium">{e.title}</span>
               <Badge variant={statusTone(e.status)}>{e.status}</Badge>
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </Section>
+  );
+}
+
+function AccessCard({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <li className="surface flex flex-col gap-4 p-5">
+      <div className="flex items-start gap-3">
+        <span className="icon-chip size-10 [&_svg]:size-5">{icon}</span>
+        <div>
+          <h3 className="font-medium">{title}</h3>
+          <p className="text-muted-foreground text-sm">{description}</p>
+        </div>
+      </div>
+      <div className="mt-auto">{children}</div>
+    </li>
   );
 }
 
 function Access({ user, isAdmin }: { user: UserDetail; isAdmin: boolean }) {
   const disabled = user.status === 'disabled';
   return (
-    <section className="bg-card grid gap-6 rounded-lg border p-5 sm:p-6">
-      <h2 className="text-base font-semibold">Access</h2>
-      {!disabled && (
-        <div className="grid gap-1.5">
-          <ActionForm
-            action={sendResetLink}
-            submitLabel="Send password link"
-            successMessage="The link has been queued."
+    <Section
+      icon={<ShieldCheckIcon weight="duotone" />}
+      title="Access"
+      description="Every change here is recorded in the audit log."
+    >
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4">
+        {!disabled && (
+          <AccessCard
+            icon={<EnvelopeSimpleIcon weight="duotone" />}
+            title="Password link"
+            description="Emails a link, valid for 30 minutes, to set a new password."
           >
-            <input type="hidden" name="userId" value={user.id} />
-          </ActionForm>
-          <p className="text-muted-foreground text-sm">Emails a link, valid for 30 minutes, to set a new password.</p>
-        </div>
-      )}
-      {isAdmin && (
-        <>
-          <ActionForm action={updateUserRoles} submitLabel="Save roles" successMessage="Roles saved.">
-            <input type="hidden" name="userId" value={user.id} />
-            <fieldset className="grid gap-2">
-              <legend className="mb-1 text-sm font-medium">Roles</legend>
-              {ROLES.map((r) => (
-                <label key={r} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="roles[]"
-                    value={r}
-                    defaultChecked={user.roles.includes(r)}
-                    className="accent-primary size-4"
-                  />
-                  {ROLE_LABEL[r]}
-                </label>
-              ))}
-              <FieldErrors name="roles[]" />
-            </fieldset>
-          </ActionForm>
-          <div className="flex flex-wrap gap-3">
             <ActionForm
-              action={setUserStatus}
-              submitLabel={disabled ? 'Enable account' : 'Disable account'}
-              submitVariant={disabled ? 'default' : 'destructive'}
-              confirm={
-                disabled
-                  ? { title: 'Enable this account?', message: 'The person can sign in again.' }
-                  : { title: 'Disable this account?', message: 'They are signed out everywhere and cannot sign in.' }
+              action={sendResetLink}
+              submitLabel="Send password link"
+              submitSize="sm"
+              successMessage="The link has been queued."
+            >
+              <input type="hidden" name="userId" value={user.id} />
+            </ActionForm>
+          </AccessCard>
+        )}
+        {isAdmin && (
+          <>
+            <AccessCard
+              icon={<IdentificationBadgeIcon weight="duotone" />}
+              title="Roles"
+              description={user.roles.map((r) => ROLE_LABEL[r]).join(', ')}
+            >
+              <FormDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <PencilSimpleIcon weight="duotone" /> Change roles
+                  </Button>
+                }
+                icon={<IdentificationBadgeIcon weight="duotone" />}
+                title={`Roles of ${user.name}`}
+                description="A student needs a batch and a head of department needs a department."
+                action={updateUserRoles}
+                submitLabel="Save roles"
+                successMessage="Roles saved."
+              >
+                <input type="hidden" name="userId" value={user.id} />
+                <fieldset className="grid gap-2">
+                  <legend className="mb-2 text-sm font-medium">Roles</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {ROLES.map((r) => (
+                      <label
+                        key={r}
+                        className="ring-border has-checked:bg-primary/10 has-checked:ring-primary/40 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          name="roles[]"
+                          value={r}
+                          defaultChecked={user.roles.includes(r)}
+                          className="accent-primary size-4"
+                        />
+                        {ROLE_LABEL[r]}
+                      </label>
+                    ))}
+                  </div>
+                  <FieldErrors name="roles[]" />
+                </fieldset>
+              </FormDialog>
+            </AccessCard>
+            <AccessCard
+              icon={<ProhibitIcon weight="duotone" />}
+              title={disabled ? 'Account disabled' : 'Account status'}
+              description={
+                disabled ? 'The person cannot sign in.' : 'Disabling signs the person out and blocks sign-in.'
               }
             >
-              <input type="hidden" name="userId" value={user.id} />
-              <input type="hidden" name="status" value={disabled ? 'active' : 'disabled'} />
-            </ActionForm>
-            <ActionForm
-              action={revokeUserSessions}
-              submitLabel="Sign out everywhere"
-              submitVariant="destructive"
-              successMessage="All sessions ended."
-              confirm={{
-                title: 'Sign this user out everywhere?',
-                message: 'Every session ends, and any unused password link stops working.',
-              }}
+              <ActionForm
+                action={setUserStatus}
+                submitLabel={disabled ? 'Enable account' : 'Disable account'}
+                submitVariant={disabled ? 'default' : 'destructive'}
+                submitSize="sm"
+                confirm={
+                  disabled
+                    ? { title: 'Enable this account?', message: 'The person can sign in again.' }
+                    : { title: 'Disable this account?', message: 'They are signed out everywhere and cannot sign in.' }
+                }
+              >
+                <input type="hidden" name="userId" value={user.id} />
+                <input type="hidden" name="status" value={disabled ? 'active' : 'disabled'} />
+              </ActionForm>
+            </AccessCard>
+            <AccessCard
+              icon={<SignOutIcon weight="duotone" />}
+              title="Sessions"
+              description="End every session and retire any unused password link."
             >
-              <input type="hidden" name="userId" value={user.id} />
-            </ActionForm>
-          </div>
-        </>
-      )}
-    </section>
+              <ActionForm
+                action={revokeUserSessions}
+                submitLabel="Sign out everywhere"
+                submitVariant="destructive"
+                submitSize="sm"
+                successMessage="All sessions ended."
+                confirm={{
+                  title: 'Sign this user out everywhere?',
+                  message: 'Every session ends, and any unused password link stops working.',
+                }}
+              >
+                <input type="hidden" name="userId" value={user.id} />
+              </ActionForm>
+            </AccessCard>
+          </>
+        )}
+      </ul>
+    </Section>
   );
 }

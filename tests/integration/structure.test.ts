@@ -13,7 +13,8 @@ import { switchBrowser } from '../next-request';
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
 // `path` is a regular expression source: redirect() puts the target between semicolons in the error digest.
 const redirectsTo = (path: string) => ({ digest: expect.stringMatching(new RegExp(`;${path};`)) });
-const PROGRAM_PAGE = '/admin/programs/[a-f\\d]{24}';
+const PROGRAM_PAGE = { ok: true, data: { next: expect.stringMatching(/^\/admin\/programs\/[a-f\d]{24}$/) } };
+const SAVED = { ok: true };
 
 beforeAll(async () => {
   await db();
@@ -76,9 +77,9 @@ describe('saveDepartment', () => {
   it('updates in place and answers 404 for an unknown id', async () => {
     await asAdmin();
     const dept = await makeDepartment('ECE');
-    await expect(
-      saveDepartment(form({ id: String(dept._id), code: 'ECE', name: 'Electronics', status: 'archived' })),
-    ).rejects.toMatchObject(redirectsTo('/admin/departments'));
+    expect(
+      await saveDepartment(form({ id: String(dept._id), code: 'ECE', name: 'Electronics', status: 'archived' })),
+    ).toEqual(SAVED);
     expect(await Department.findById(dept._id)).toMatchObject({ name: 'Electronics', status: 'archived' });
     expect(
       await saveDepartment(form({ id: String(newId()), code: 'GHOST', name: 'G', status: 'active' })),
@@ -91,12 +92,12 @@ describe('saveProgram', () => {
     await asAdmin();
     const dept = await makeDepartment('PRG1');
     const base = { departmentId: String(dept._id), durationSemesters: '8', status: 'active' };
-    await expect(
-      saveProgram(form({ ...base, code: 'btech-x', name: 'B.Tech X', category: 'ugc' })),
-    ).rejects.toMatchObject(redirectsTo(PROGRAM_PAGE));
-    await expect(
-      saveProgram(form({ ...base, code: 'cert-x', name: 'Certificate X', category: 'skill' })),
-    ).rejects.toMatchObject(redirectsTo(PROGRAM_PAGE));
+    expect(await saveProgram(form({ ...base, code: 'btech-x', name: 'B.Tech X', category: 'ugc' }))).toMatchObject(
+      PROGRAM_PAGE,
+    );
+    expect(
+      await saveProgram(form({ ...base, code: 'cert-x', name: 'Certificate X', category: 'skill' })),
+    ).toMatchObject(PROGRAM_PAGE);
     const ugc = await Program.findOne({ code: 'BTECH-X' });
     const skill = await Program.findOne({ code: 'CERT-X' });
     expect([ugc?.pos.length, ugc?.psos.length]).toEqual([12, 3]);
@@ -114,7 +115,7 @@ describe('saveProgram', () => {
       durationSemesters: '8',
       status: 'active',
     };
-    await expect(saveProgram(form(fields))).rejects.toMatchObject(redirectsTo(PROGRAM_PAGE));
+    expect(await saveProgram(form(fields))).toMatchObject(PROGRAM_PAGE);
     expect(await saveProgram(form(fields))).toMatchObject({ ok: false, code: 'CONFLICT' });
     expect(await saveProgram(form({ ...fields, code: 'NO-D', departmentId: String(newId()) }))).toMatchObject({
       ok: false,
@@ -142,7 +143,7 @@ describe('saveProgram', () => {
         durationSemesters: '6',
         status: 'active',
       });
-    await expect(saveProgram(edit(String(to._id)))).rejects.toMatchObject(redirectsTo('/admin/programs'));
+    expect(await saveProgram(edit(String(to._id)))).toEqual(SAVED);
     expect(await Program.findById(program._id)).toMatchObject({ name: 'Moved', category: 'ugc', durationSemesters: 6 });
 
     await Course.create({
@@ -277,7 +278,7 @@ describe('saveBatch', () => {
     const edit = (programId: string) =>
       form({ id: String(batch._id), programId, name: 'renamed', startYear: '2025', sections: 'A', status: 'active' });
     expect(await saveBatch(edit(String(two._id)))).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    await expect(saveBatch(edit(String(one._id)))).rejects.toMatchObject(redirectsTo(`/admin/programs/${one._id}`));
+    expect(await saveBatch(edit(String(one._id)))).toEqual(SAVED);
     expect(await Batch.findById(batch._id)).toMatchObject({ name: 'renamed', sections: ['A'] });
   });
 });
@@ -310,9 +311,7 @@ describe('saveTerm', () => {
     expect((await Term.findOne({ code: 'T-B' }))?.status).toBe('current');
 
     const b = await Term.findOne({ code: 'T-B' });
-    await expect(saveTerm(term('T-B', 'current', { id: String(b?._id), name: 'B renamed' }))).rejects.toMatchObject(
-      redirectsTo('/admin/terms'),
-    );
+    expect(await saveTerm(term('T-B', 'current', { id: String(b?._id), name: 'B renamed' }))).toEqual(SAVED);
     expect(await Term.countDocuments({ status: 'current' })).toBe(1);
     expect((await Term.findOne({ code: 'T-B' }))?.name).toBe('B renamed');
   });

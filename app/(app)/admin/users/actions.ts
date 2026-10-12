@@ -1,7 +1,6 @@
 'use server';
 
 import { refresh } from 'next/cache';
-import { redirect } from 'next/navigation';
 import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
@@ -106,7 +105,7 @@ export const createUser = action({ input: CreateUser, roles: ['admin'] }, async 
     return String(user._id);
   });
   await enqueueInvitations([created]);
-  redirect(`/admin/users/${created}`);
+  return { next: `/admin/users/${created}` };
 });
 
 export const importUsers = action({ input: ImportUsers, roles: ['admin'] }, async ({ file }, viewer) => {

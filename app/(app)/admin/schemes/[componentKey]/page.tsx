@@ -4,10 +4,13 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { createSchemeVersion } from '../actions';
-import { ActionForm, Field, FieldErrors } from '@/components/action-form';
+import { PlusIcon, SlidersHorizontalIcon } from '@phosphor-icons/react/ssr';
+import { Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
+import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { getLatestScheme, listSchemeVersions, type SchemeVersion } from '@/lib/data/schemes';
@@ -44,45 +47,29 @@ async function Scheme({
   return (
     <>
       <PageHeader
+        icon={<SlidersHorizontalIcon weight="duotone" />}
         title={`Scheme: ${key.data.replaceAll('+', ' + ')}`}
         description="Applies to courses with exactly these components. Saving creates the next version and retires the current one."
-      />
-      <div className="grid gap-6">
-        <DataTable
-          columns={[
-            { header: 'Version', cell: (v) => <span className="font-medium">v{v.version}</span> },
-            { header: 'Name', cell: (v) => v.name },
-            { header: 'Status', cell: (v) => <Badge variant={statusTone(v.status)}>{v.status}</Badge> },
-            { header: 'Internal / external', cell: (v) => `${v.internalMax} / ${v.externalMax}` },
-            { header: 'Weights', cell: (v) => v.components.map((c) => `${c.label} ${c.weight}`).join(' · ') },
-            { header: 'Saved', cell: (v) => formatDateTime(v.createdAt) },
-          ]}
-          rows={versions.rows}
-          rowKey={(v) => v.id}
-          total={versions.total}
-          page={page}
-          pageSize={pageSize}
-          query={{}}
-          path={path}
-          empty="No version yet. Create the first one below."
-        />
-        <section className="bg-card rounded-lg border p-5 sm:p-6">
-          <h2 className="font-semibold">{latest ? `New version (v${latest.version + 1})` : 'First version'}</h2>
-          <p className="text-muted-foreground mt-1 mb-4 max-w-prose text-sm">
-            {latest ? `Starts from v${latest.version}. ` : ''}Weights must add up to the internal maximum. Leave unused
-            rows empty.
-          </p>
-          <ActionForm
-            key={latest?.id ?? 'none'}
+        actions={
+          <FormDialog
+            trigger={
+              <Button>
+                <PlusIcon weight="bold" /> {latest ? 'New version' : 'Create first version'}
+              </Button>
+            }
+            size="full"
+            icon={<SlidersHorizontalIcon weight="duotone" />}
+            title={latest ? `New version (v${latest.version + 1})` : 'First version'}
+            description={`${latest ? `Starts from v${latest.version}. ` : ''}Weights must add up to the internal maximum. Leave unused rows empty.`}
             action={createSchemeVersion}
             submitLabel="Save as new version"
-            successMessage="New version saved."
+            successMessage="New version saved. It applies to offerings created from now on."
           >
             <input type="hidden" name="componentKey" value={key.data} />
-            <Field name="name" label="Name">
-              <Input name="name" required maxLength={120} defaultValue={latest?.name} />
-            </Field>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
+              <Field name="name" label="Name">
+                <Input name="name" required maxLength={120} defaultValue={latest?.name} />
+              </Field>
               <Field name="internalMax" label="Internal maximum">
                 <Input
                   name="internalMax"
@@ -122,23 +109,41 @@ async function Scheme({
               </Field>
             </div>
             <FieldErrors name="components" />
-            <ol className="grid gap-4">
+            <ol className="grid gap-3 lg:grid-cols-2">
               {Array.from({ length: ROWS }, (_, i) => (
                 <li key={i}>
                   <ComponentRow index={i} row={latest?.components[i]} />
                 </li>
               ))}
             </ol>
-          </ActionForm>
-        </section>
-      </div>
+          </FormDialog>
+        }
+      />
+      <DataTable
+        columns={[
+          { header: 'Version', cell: (v) => <span className="font-medium">v{v.version}</span> },
+          { header: 'Name', cell: (v) => v.name },
+          { header: 'Status', cell: (v) => <Badge variant={statusTone(v.status)}>{v.status}</Badge> },
+          { header: 'Internal / external', cell: (v) => `${v.internalMax} / ${v.externalMax}` },
+          { header: 'Weights', cell: (v) => v.components.map((c) => `${c.label} ${c.weight}`).join(' · ') },
+          { header: 'Saved', cell: (v) => formatDateTime(v.createdAt) },
+        ]}
+        rows={versions.rows}
+        rowKey={(v) => v.id}
+        total={versions.total}
+        page={page}
+        pageSize={pageSize}
+        query={{}}
+        path={path}
+        empty="No version yet. Create the first one with Create first version."
+      />
     </>
   );
 }
 
 function ComponentRow({ index: i, row }: { index: number; row: SchemeVersion['components'][number] | undefined }) {
   return (
-    <fieldset className="grid gap-3 rounded-md border p-4">
+    <fieldset className="ring-border grid gap-3 rounded-xl p-4 ring-1">
       <legend className="px-1 text-sm font-medium">Component {i + 1}</legend>
       <div className="grid gap-3 sm:grid-cols-[10rem_1fr_6rem]">
         <Input

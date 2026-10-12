@@ -1,22 +1,24 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { BuildingsIcon, PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { saveDepartment } from '../actions';
-import { ActionForm, Field } from '@/components/action-form';
-import { DataTable } from '@/components/data-table';
+import { Field } from '@/components/action-form';
+import { EmptyState, PageNav } from '@/components/data-table';
+import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { getDepartment, listDepartments } from '@/lib/data/structure';
+import { listDepartments, type DepartmentRow } from '@/lib/data/structure';
 import { statusTone } from '@/lib/format';
-import { objectId, page as pageParam, pageSize } from '@/lib/schemas/common';
+import { page as pageParam, pageSize } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'Departments' };
 
-const Search = z.object({ page: pageParam.catch(1), edit: objectId.optional().catch(undefined) });
+const Search = z.object({ page: pageParam.catch(1) });
 
 export default function DepartmentsPage({ searchParams }: PageProps<'/admin/departments'>) {
   return (
@@ -27,58 +29,86 @@ export default function DepartmentsPage({ searchParams }: PageProps<'/admin/depa
 }
 
 async function Departments({ searchParams }: { searchParams: PageProps<'/admin/departments'>['searchParams'] }) {
-  const { page, edit } = Search.parse(await searchParams);
-  const [{ rows, total }, editing] = await Promise.all([listDepartments(page), edit ? getDepartment(edit) : null]);
+  const { page } = Search.parse(await searchParams);
+  const { rows, total } = await listDepartments(page);
   return (
     <>
-      <PageHeader title="Departments" description="Every programme and course belongs to one department." />
-      <DataTable
-        columns={[
-          { header: 'Code', cell: (d) => <span className="font-medium">{d.code}</span> },
-          { header: 'Name', cell: (d) => d.name },
-          { header: 'Status', cell: (d) => <Badge variant={statusTone(d.status)}>{d.status}</Badge> },
-          {
-            header: '',
-            className: 'text-right',
-            cell: (d) => (
-              <Link href={`/admin/departments?edit=${d.id}`} className="text-sm underline-offset-4 hover:underline">
-                Edit<span className="sr-only"> {d.code}</span>
-              </Link>
-            ),
-          },
-        ]}
-        rows={rows}
-        rowKey={(d) => d.id}
-        total={total}
-        page={page}
-        pageSize={pageSize}
-        query={{}}
-        path="/admin/departments"
-        empty="Add the first department below."
+      <PageHeader
+        icon={<BuildingsIcon weight="duotone" />}
+        title="Departments"
+        description="Every programme and course belongs to one department."
+        actions={<DepartmentDialog />}
       />
-      <section className="bg-card mt-6 max-w-2xl rounded-lg border p-5 sm:p-6">
-        <h2 className="mb-4 font-semibold">{editing ? `Edit ${editing.code}` : 'Add a department'}</h2>
-        <ActionForm
-          key={editing?.id ?? 'new'}
-          action={saveDepartment}
-          submitLabel={editing ? 'Save changes' : 'Add department'}
-          successMessage="Department added."
-        >
-          {editing && <input type="hidden" name="id" value={editing.id} />}
-          <Field name="code" label="Code" hint="Short and unique, for example CSE.">
-            <Input name="code" required maxLength={10} defaultValue={editing?.code} />
-          </Field>
-          <Field name="name" label="Name">
-            <Input name="name" required maxLength={120} defaultValue={editing?.name} />
-          </Field>
-          <Field name="status" label="Status">
-            <NativeSelect name="status" defaultValue={editing?.status ?? 'active'}>
-              <NativeSelectOption value="active">Active</NativeSelectOption>
-              <NativeSelectOption value="archived">Archived</NativeSelectOption>
-            </NativeSelect>
-          </Field>
-        </ActionForm>
-      </section>
+      {rows.length === 0 ? (
+        <EmptyState icon={<BuildingsIcon weight="duotone" />} text="Add the first department with Add department." />
+      ) : (
+        <div className="grid gap-5">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-4">
+            {rows.map((d) => (
+              <li key={d.id} className="surface flex items-start gap-4 p-5">
+                <span className="icon-chip size-11 [&_svg]:size-6">
+                  <BuildingsIcon weight="duotone" />
+                </span>
+                <div className="grid min-w-0 flex-1 gap-1">
+                  <p className="text-muted-foreground text-xs font-semibold tracking-wide">{d.code}</p>
+                  <p className="leading-snug font-medium">{d.name}</p>
+                  <Badge variant={statusTone(d.status)} className="mt-1">
+                    {d.status}
+                  </Badge>
+                </div>
+                <DepartmentDialog department={d} />
+              </li>
+            ))}
+          </ul>
+          <PageNav
+            shown={rows.length}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            query={{}}
+            path="/admin/departments"
+          />
+        </div>
+      )}
     </>
+  );
+}
+
+function DepartmentDialog({ department }: { department?: DepartmentRow }) {
+  return (
+    <FormDialog
+      trigger={
+        department ? (
+          <Button variant="ghost" size="icon-sm" aria-label={`Edit ${department.code}`}>
+            <PencilSimpleIcon weight="duotone" />
+          </Button>
+        ) : (
+          <Button>
+            <PlusIcon weight="bold" /> Add department
+          </Button>
+        )
+      }
+      icon={<BuildingsIcon weight="duotone" />}
+      title={department ? `Edit ${department.code}` : 'Add a department'}
+      description="Programmes and courses are filed under a department."
+      openParam={department ? undefined : 'department'}
+      action={saveDepartment}
+      submitLabel={department ? 'Save changes' : 'Add department'}
+      successMessage={department ? 'Department updated.' : 'Department added.'}
+    >
+      {department && <input type="hidden" name="id" value={department.id} />}
+      <Field name="code" label="Code" hint="Short and unique, for example CSE.">
+        <Input name="code" required maxLength={10} defaultValue={department?.code} />
+      </Field>
+      <Field name="name" label="Name">
+        <Input name="name" required maxLength={120} defaultValue={department?.name} />
+      </Field>
+      <Field name="status" label="Status">
+        <NativeSelect name="status" defaultValue={department?.status ?? 'active'}>
+          <NativeSelectOption value="active">Active</NativeSelectOption>
+          <NativeSelectOption value="archived">Archived</NativeSelectOption>
+        </NativeSelect>
+      </Field>
+    </FormDialog>
   );
 }

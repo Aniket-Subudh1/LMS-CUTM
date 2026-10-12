@@ -20,7 +20,7 @@ import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
 const redirectsTo = (path: string) => ({ digest: expect.stringMatching(new RegExp(`;${path};`)) });
-const USER_PAGE = '/admin/users/[a-f\\d]{24}';
+const USER_PAGE = { ok: true, data: { next: expect.stringMatching(/^\/admin\/users\/[a-f\d]{24}$/) } };
 
 beforeAll(async () => {
   await db();
@@ -78,8 +78,8 @@ describe('createUser', () => {
     const admin = await asAdmin();
     const s = await setup();
     const email = `student${s.n}@cutm.test`;
-    await expect(
-      createUser(
+    expect(
+      await createUser(
         form({
           name: 'Asha Mohanty',
           email: ` ${email.toUpperCase()} `,
@@ -89,7 +89,7 @@ describe('createUser', () => {
           section: 'A',
         }),
       ),
-    ).rejects.toMatchObject(redirectsTo(USER_PAGE));
+    ).toMatchObject(USER_PAGE);
     const user = await User.findOne({ email });
     expect(user).toMatchObject({ status: 'invited', roles: ['student'], rollNo: `R${s.n}`, section: 'A' });
     expect(user?.programId).toEqual(s.program._id);
@@ -102,8 +102,8 @@ describe('createUser', () => {
   it('creates faculty with a department', async () => {
     await asAdmin();
     const s = await setup();
-    await expect(
-      createUser(
+    expect(
+      await createUser(
         form({
           name: 'Dr Rao',
           email: `rao${s.n}@cutm.test`,
@@ -112,7 +112,7 @@ describe('createUser', () => {
           departmentId: String(s.department._id),
         }),
       ),
-    ).rejects.toMatchObject(redirectsTo(USER_PAGE));
+    ).toMatchObject(USER_PAGE);
     expect(await User.findOne({ email: `rao${s.n}@cutm.test` })).toMatchObject({
       roles: ['faculty', 'hod'],
       employeeId: `E${s.n}`,
@@ -163,9 +163,9 @@ describe('createUser', () => {
       batchId: String(s.batch._id),
       section: 'A',
     };
-    await expect(
-      createUser(form({ ...fields, email: `dup${s.n}@cutm.test`, rollNo: `R${s.n}` })),
-    ).rejects.toMatchObject(redirectsTo(USER_PAGE));
+    expect(await createUser(form({ ...fields, email: `dup${s.n}@cutm.test`, rollNo: `R${s.n}` }))).toMatchObject(
+      USER_PAGE,
+    );
     expect(await createUser(form({ ...fields, email: `dup${s.n}@cutm.test`, rollNo: `X${s.n}` }))).toMatchObject({
       ok: false,
       code: 'CONFLICT',

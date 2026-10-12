@@ -9,7 +9,7 @@ import { form, makeUser, newId, signInAs } from '../factories';
 import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
-const COURSE_PAGE = { digest: expect.stringMatching(/;\/admin\/courses\/[a-f\d]{24};/) };
+const COURSE_PAGE = { ok: true, data: { next: expect.stringMatching(/^\/admin\/courses\/[a-f\d]{24}$/) } };
 
 beforeAll(async () => {
   await db();
@@ -42,7 +42,7 @@ const courseFields = (programId: string, code: string, components = ['theory', '
 
 async function makeCourse(code: string, category: 'ugc' | 'skill' = 'ugc') {
   const program = await makeProgram(`P-${code}`, category);
-  await expect(saveCourse(courseFields(String(program._id), code))).rejects.toMatchObject(COURSE_PAGE);
+  expect(await saveCourse(courseFields(String(program._id), code))).toMatchObject(COURSE_PAGE);
   const course = await Course.findOne({ programId: program._id, code });
   if (!course) throw new Error('course was not created');
   return { program, course, id: String(course._id) };
@@ -73,7 +73,7 @@ describe('saveCourse', () => {
   it('copies department and category from the programme and computes the component key', async () => {
     await asAdmin();
     const program = await makeProgram('SC-1');
-    await expect(saveCourse(courseFields(String(program._id), 'cs101', ['practice', 'theory']))).rejects.toMatchObject(
+    expect(await saveCourse(courseFields(String(program._id), 'cs101', ['practice', 'theory']))).toMatchObject(
       COURSE_PAGE,
     );
     expect(await Course.findOne({ programId: program._id })).toMatchObject({
@@ -87,13 +87,13 @@ describe('saveCourse', () => {
   it('keeps a code unique within a programme only', async () => {
     await asAdmin();
     const [one, two] = await Promise.all([makeProgram('SC-2'), makeProgram('SC-3')]);
-    await expect(saveCourse(courseFields(String(one._id), 'DUP'))).rejects.toMatchObject(COURSE_PAGE);
+    expect(await saveCourse(courseFields(String(one._id), 'DUP'))).toMatchObject(COURSE_PAGE);
     expect(await saveCourse(courseFields(String(one._id), 'dup'))).toEqual({
       ok: false,
       code: 'CONFLICT',
       message: 'This programme already has a course DUP.',
     });
-    await expect(saveCourse(courseFields(String(two._id), 'DUP'))).rejects.toMatchObject(COURSE_PAGE);
+    expect(await saveCourse(courseFields(String(two._id), 'DUP'))).toMatchObject(COURSE_PAGE);
   });
 
   it('validates credits, components and the programme', async () => {

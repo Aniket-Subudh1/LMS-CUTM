@@ -1,7 +1,6 @@
 'use server';
 
 import { refresh } from 'next/cache';
-import { redirect } from 'next/navigation';
 import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
@@ -140,7 +139,7 @@ export const createOffering = action({ input: CreateOffering, roles: ['admin'] }
     }
     throw error;
   }
-  redirect('/admin/offerings');
+  refresh();
 });
 
 export const updateOfferingFaculty = action(

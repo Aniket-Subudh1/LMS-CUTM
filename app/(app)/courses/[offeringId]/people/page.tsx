@@ -1,11 +1,15 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
+import { FileArrowUpIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { changeEnrollments } from '../../actions';
-import { ActionForm, Field } from '@/components/action-form';
+import { Field } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
+import { FormDialog } from '@/components/form-dialog';
+import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getWorkspace, listRoster } from '@/lib/data/workspace';
 import { statusTone } from '@/lib/format';
@@ -34,7 +38,33 @@ async function People({
   const { page } = Search.parse(await searchParams);
   const [workspace, { rows, total }] = await Promise.all([getWorkspace(offeringId), listRoster(offeringId, page)]);
   return (
-    <div className="grid gap-6">
+    <Section
+      icon={<UsersThreeIcon weight="duotone" />}
+      title="Roster"
+      description={`${total} ${total === 1 ? 'student' : 'students'} on this offering.`}
+      action={
+        workspace.canChangeEnrollments && (
+          <FormDialog
+            trigger={
+              <Button variant="outline" size="sm">
+                <FileArrowUpIcon weight="duotone" /> Change enrolment
+              </Button>
+            }
+            icon={<FileArrowUpIcon weight="duotone" />}
+            title="Change enrolment"
+            description="Upload a CSV with the columns rollNo and action (add or drop). If any row is wrong nothing is changed."
+            action={changeEnrollments}
+            submitLabel="Apply changes"
+            successMessage="Enrolment updated."
+          >
+            <input type="hidden" name="offeringId" value={workspace.id} />
+            <Field name="file" label="CSV file">
+              <Input name="file" type="file" accept=".csv,text/csv" required />
+            </Field>
+          </FormDialog>
+        )
+      }
+    >
       <DataTable
         columns={[
           { header: 'Roll no.', cell: (s) => s.rollNo },
@@ -51,21 +81,6 @@ async function People({
         path={`/courses/${workspace.id}/people`}
         empty="Nobody is enrolled in this offering."
       />
-      {workspace.canChangeEnrollments && (
-        <section className="bg-card max-w-2xl rounded-lg border p-5 sm:p-6">
-          <h2 className="text-base font-semibold">Change enrolment</h2>
-          <p className="text-muted-foreground mt-1 mb-5 text-sm">
-            Upload a CSV with the columns <code>rollNo</code> and <code>action</code> (add or drop). If any row is wrong
-            nothing is changed.
-          </p>
-          <ActionForm action={changeEnrollments} submitLabel="Apply changes" successMessage="Enrolment updated.">
-            <input type="hidden" name="offeringId" value={workspace.id} />
-            <Field name="file" label="CSV file">
-              <Input name="file" type="file" accept=".csv,text/csv" required />
-            </Field>
-          </ActionForm>
-        </section>
-      )}
-    </div>
+    </Section>
   );
 }

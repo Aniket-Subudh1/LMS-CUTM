@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ActionForm, Field } from '@/components/action-form';
+import { PasswordInput } from '@/components/password-input';
 import { Input } from '@/components/ui/input';
 import { login } from '../actions';
 
@@ -18,7 +19,7 @@ export default function LoginPage() {
           <Input name="email" type="email" autoComplete="username" placeholder="name@cutm.ac.in" required />
         </Field>
         <Field name="password" label="Password">
-          <Input name="password" type="password" autoComplete="current-password" required />
+          <PasswordInput name="password" autoComplete="current-password" required />
         </Field>
       </ActionForm>
       <p className="text-muted-foreground text-sm">
