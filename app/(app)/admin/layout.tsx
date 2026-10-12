@@ -9,9 +9,11 @@ const STRUCTURE = {
   prefixes: ['/admin/departments', '/admin/programs', '/admin/terms'],
 };
 
+const COURSES = { href: '/admin/courses', label: 'Courses' };
+
 async function AdminTabs() {
   const viewer = await requireViewer(['admin', 'support']);
-  const tabs = viewer.roles.includes('admin') ? [STRUCTURE] : [];
+  const tabs = viewer.roles.includes('admin') ? [STRUCTURE, COURSES] : [];
   return <TabNav tabs={tabs} />;
 }
 

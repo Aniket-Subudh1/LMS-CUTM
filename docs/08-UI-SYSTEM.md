@@ -139,7 +139,7 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 | `AssessmentRunner` | `assessment-runner.tsx` | client | `{ attempt: AttemptDTO }` (no answer keys, no hidden cases) — timer, autosave per answer, submit, proctoring hooks, renders items by type | attempt page | M04, M05 |
 | `CodeEditor` | `code-editor.tsx` | client | `{ name?: string; value: string; language: 'c' \| 'cpp' \| 'java'; readOnly?: boolean; onChange?: (v: string) => void }` | runner, builder (starter code) | M05 |
 | `TrendChart` | `trend-chart.tsx` | client (shadcn `chart`) | `{ points: { label: string; value: number }[]; max: number; label: string }` — area/line chart with an accessible summary sentence | marks trend, engagement trend | M06 |
-| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: string[]; cells: Record<string, number>; mode: 'edit' \| 'levels' \| 'values' }` — `edit` renders a `<select name="cell[]">` per cell for an `ActionForm` | course admin, outcomes report | M01, M09 |
+| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: string[]; cells: Record<string, number>; mode: 'edit' \| 'levels' \| 'values' }` — `edit` renders a `<select name="cell[]">` per cell for an `ActionForm`; `levels` shows the saved level or “–”; `values` is added in M09 (M01 ships `edit` and `levels`) | course admin, outcomes report | M01, M09 |
 
 Bars and percentages (attainment, progress, engagement) use the shadcn `Progress` primitive with the number as text beside it; there is no separate `Meter` component.
 

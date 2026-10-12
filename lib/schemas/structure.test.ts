@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { CreateSchemeVersion, SaveCoMap, SaveProgramOutcomes, SaveTerm } from './structure';
+import { CreateSchemeVersion, CreateUser, SaveCoMap, SaveCourse, SaveProgramOutcomes, SaveTerm } from './structure';
 
 const id = 'a'.repeat(24);
 
@@ -103,5 +103,18 @@ describe('SaveTerm', () => {
     expect(ok.success && ok.data.code).toBe('2026-ODD');
     expect(SaveTerm.safeParse({ ...term, endsOn: '2026-07-15' }).success).toBe(false);
     expect(SaveTerm.safeParse({ ...term, startsOn: '2026-02-30' }).success).toBe(false);
+  });
+});
+
+describe('checkbox groups', () => {
+  const fieldErrors = (result: { success: boolean; error?: z.ZodError }) =>
+    result.error ? z.flattenError(result.error).fieldErrors : {};
+
+  it('turn "nothing ticked" into the field message, not a type error', () => {
+    const course = { programId: id, code: 'cs1', title: 'T', credits: '3', status: 'draft' };
+    expect(fieldErrors(SaveCourse.safeParse(course))).toEqual({ 'components[]': ['Pick at least one component.'] });
+    expect(fieldErrors(CreateUser.safeParse({ name: 'N', email: 'n@cutm.test' }))).toEqual({
+      'roles[]': ['Pick at least one role.'],
+    });
   });
 });

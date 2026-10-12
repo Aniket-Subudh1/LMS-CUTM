@@ -46,6 +46,8 @@ const lines = (v: string) =>
     .map((line) => line.trim())
     .filter(Boolean);
 const unique = (items: readonly string[]) => new Set(items).size === items.length;
+// A group of checkboxes with none ticked sends no field at all; that is an empty list, not a type error.
+const noneChecked = (raw: unknown) => raw ?? [];
 
 const csvFile = z
   .file('Choose a CSV file.')
@@ -146,11 +148,14 @@ export const SaveCourse = z.object({
   code: code(20),
   title: text(160),
   credits: num.pipe(z.number().min(0).max(30).multipleOf(0.5, 'Credits go in steps of 0.5.')),
-  'components[]': z
-    .array(z.enum(COMPONENTS))
-    .min(1, 'Pick at least one component.')
-    .max(3)
-    .refine(unique, 'Each component can appear once.'),
+  'components[]': z.preprocess(
+    noneChecked,
+    z
+      .array(z.enum(COMPONENTS))
+      .min(1, 'Pick at least one component.')
+      .max(3)
+      .refine(unique, 'Each component can appear once.'),
+  ),
   status: z.enum(['draft', 'active', 'archived']),
 });
 
@@ -262,7 +267,10 @@ export const ChangeEnrollments = z.object({ offeringId: objectId, file: csvFile 
 
 // --- Users (M01 T8) ---
 
-const userRoles = z.array(z.enum(ROLES)).min(1, 'Pick at least one role.').max(3).refine(unique);
+const userRoles = z.preprocess(
+  noneChecked,
+  z.array(z.enum(ROLES)).min(1, 'Pick at least one role.').max(3).refine(unique),
+);
 
 export const CreateUser = z.object({
   name: text(120),
