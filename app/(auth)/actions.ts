@@ -5,13 +5,10 @@ import { publicAction } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
 import { signIn, signOut } from '@/lib/auth/session';
-import { createToken, readToken } from '@/lib/auth/tokens';
+import { queueResetLink, readToken } from '@/lib/auth/tokens';
 import { db } from '@/lib/db';
-import { resetEmail } from '@/lib/domain/email-templates';
-import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { User } from '@/lib/models/user';
-import { mailQueue } from '@/lib/queue';
 import { clientIp, limit } from '@/lib/rate-limit';
 import { LoginInput, ResetInput, ResetRequestInput } from '@/lib/schemas/auth';
 
@@ -49,13 +46,11 @@ export const requestPasswordReset = publicAction(ResetRequestInput, async ({ ema
     { name: 1, email: 1, sessionVersion: 1 },
   ).lean();
   if (!user) throw new AppError('NOT_FOUND', 'This email does not exist in the database.');
-  const link = new URL('/reset-password', env().APP_URL);
-  link.searchParams.set(
-    'token',
-    await createToken({ uid: String(user._id), sv: user.sessionVersion, purpose: 'reset' }),
-  );
-  await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link: link.href }), {
-    jobId: `mail-reset-${user._id}-${Math.floor(Date.now() / MINUTE)}`,
+  await queueResetLink({
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    sessionVersion: user.sessionVersion,
   });
 });
 

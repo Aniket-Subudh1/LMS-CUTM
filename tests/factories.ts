@@ -56,7 +56,7 @@ export async function signInAs(user: { _id: Types.ObjectId; sessionVersion: numb
   await signIn({ id: String(user._id), sessionVersion: user.sessionVersion });
 }
 
-export function form(fields: Record<string, string | string[]>): FormData {
+export function form(fields: Record<string, string | string[] | File>): FormData {
   const fd = new FormData();
   for (const [key, value] of Object.entries(fields)) {
     for (const v of Array.isArray(value) ? value : [value]) fd.append(key, v);

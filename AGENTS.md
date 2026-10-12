@@ -91,7 +91,7 @@ This codebase is handed over to another team. Every file must earn its place.
 | DAL | `lib/data/` | models, domain, integrations, auth | `next/navigation` redirects other than `notFound`/`redirect('/login')` |
 | Actions | `app/**/actions.ts` | `lib/action`, DAL, models, domain, queue | rendering |
 | Routes/UI | `app/**`, `components/**` | DAL, actions, components | models, integrations, vendor SDKs |
-| Worker | `worker/` | models, domain, integrations, DAL internals | `app/`, `components/`, `next/*` |
+| Worker | `worker/` | models, domain, integrations, DAL internals, `lib/queue` (to enqueue follow-up jobs), `lib/auth/tokens` (invitation links) | `app/`, `components/`, `next/*` |
 
 ## Contracts
 

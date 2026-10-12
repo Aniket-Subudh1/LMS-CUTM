@@ -2,17 +2,18 @@ import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
-import type { MailSend } from '@/lib/schemas/jobs';
+import type { MailJob, MailSend } from '@/lib/schemas/jobs';
 
-const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: Queue<MailSend, void, 'send'> };
+type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
+const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: MailQueue };
 
 export function redis(): Redis {
   globalForQueue.redis ??= new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
   return globalForQueue.redis;
 }
 
-export function mailQueue(): Queue<MailSend, void, 'send'> {
-  globalForQueue.mail ??= new Queue<MailSend, void, 'send'>('mail', {
+export function mailQueue(): MailQueue {
+  globalForQueue.mail ??= new Queue<MailSend | MailJob, void, 'send' | 'fanout'>('mail', {
     connection: redis(),
     defaultJobOptions: {
       attempts: 5,

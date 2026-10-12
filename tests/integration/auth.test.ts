@@ -39,8 +39,8 @@ async function makeUser(email: string, fields: { status?: 'invited' | 'active' |
 
 async function queuedLink(to: string): Promise<string> {
   const jobs = await m.mailQueue().getJobs(['waiting', 'delayed', 'prioritized']);
-  const job = jobs.find((j) => j.data.to === to);
-  const link = job?.data.text.match(/http\S+/)?.[0];
+  const data = jobs.map((j) => j.data).find((d) => 'to' in d && d.to === to);
+  const link = data && 'text' in data ? data.text.match(/http\S+/)?.[0] : undefined;
   if (!link) throw new Error(`no email queued for ${to}`);
   return link;
 }

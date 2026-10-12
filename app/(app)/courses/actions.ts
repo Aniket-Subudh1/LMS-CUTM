@@ -7,16 +7,11 @@ import { writeAudit } from '@/lib/audit';
 import { requireTeach } from '@/lib/auth/access';
 import { db } from '@/lib/db';
 import { formatCsvErrors, parseEnrollmentCsv, type CsvError } from '@/lib/domain/csv';
-import { AppError } from '@/lib/errors';
+import { AppError, csvRejected } from '@/lib/errors';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
 import { ChangeEnrollments } from '@/lib/schemas/structure';
-
-const rejected = (errors: CsvError[]) =>
-  new AppError('VALIDATION', 'Nothing was changed. Fix the rows below and upload the file again.', {
-    file: formatCsvErrors(errors),
-  });
 
 // 06 §8.2. All or nothing: one bad row stops the whole file.
 export const changeEnrollments = action(
@@ -29,7 +24,7 @@ export const changeEnrollments = action(
       throw new AppError('LOCKED', 'Marks are locked for this offering, so enrollment cannot change.');
 
     const parsed = parseEnrollmentCsv(await file.text());
-    if (!parsed.ok) throw rejected(parsed.errors);
+    if (!parsed.ok) throw csvRejected(formatCsvErrors(parsed.errors));
 
     const students = await User.find(
       { rollNo: { $in: parsed.rows.map((r) => r.rollNo) }, roles: 'student' },
@@ -71,7 +66,7 @@ export const changeEnrollments = action(
         ops.push({ updateOne: { filter: { offeringId, studentId }, update: { $set: { status: 'dropped' } } } });
       }
     }
-    if (errors.length > 0) throw rejected(errors);
+    if (errors.length > 0) throw csvRejected(formatCsvErrors(errors));
 
     if (ops.length > 0) {
       await mongoose.connection.transaction(async (session) => {
