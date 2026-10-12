@@ -1,37 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CUTM LMS
 
-## Getting Started
+Learning Management System for Centurion University of Technology and Management: UGC-aligned degree programs and skill courses — content and live classes, attendance, records and assignments, configurable continuous evaluation, a proctored virtual lab, project tracking (GitHub and a task tracker), CO-PO-PSO attainment, exam-system integration and grade sheets, and engagement dashboards.
 
-First, run the development server:
+**Status:** specification complete; implementation starts at milestone M00. See `docs/PROGRESS.md`.
+
+## Stack
+
+Next.js 16.4 (App Router, Cache Components) · React 19.3 · TypeScript · Tailwind CSS 4 · MongoDB 8 (Mongoose 9) · Redis 8 + BullMQ 6 · S3-compatible storage (Cloudflare R2 in production) · self-hosted LiveKit for live classes · Judge0 CE for the code runner · Vitest 5 · Playwright. Exact versions and reasons: `docs/03-TECH-STACK.md`.
+
+## For AI coding agents and developers
+
+Start with **`AGENTS.md`**, then **`docs/00-START-HERE.md`**. To hand a milestone to any agent, use **`docs/prompts/build-milestone.md`**.
+
+| Doc | Purpose |
+|---|---|
+| `docs/01-PROJECT-CONTEXT.md` | Scope (contractual) and the full requirement register |
+| `docs/02-ARCHITECTURE.md` | Runtimes, folders, request flows, rendering model, decisions |
+| `docs/04-CODING-LAWS.md` | Least-code, reuse and scalability laws; verified canonical patterns |
+| `docs/05-DATA-MODEL.md` | Every collection, field and index |
+| `docs/06-CONTRACTS.md` | Errors, route handlers, adapters, jobs, settings, CSV formats |
+| `docs/07-ALGORITHMS.md` | Marks, CE, attainment, grades, engagement — with test vectors |
+| `docs/08-UI-SYSTEM.md` | Routes, navigation, CSS classes, the shared component inventory |
+| `docs/09-SECURITY.md` | Permissions, scoping, uploads, audit, privacy |
+| `docs/10-TESTING-AND-VALIDATION.md` | Test setup, scripts, CI, release gates |
+| `docs/11-OPERATIONS.md` | Environment variables, local stack, deploy, backups, cost model, support |
+| `docs/milestones/` | M00–M11 build plans with tasks, tests and acceptance criteria |
+
+## Local development (once M00 is built)
+
+Requires Node.js 24 (≥ 22.13) and Docker.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+docker compose up -d            # MongoDB (replica set), Redis, RustFS (S3), Mailpit
+cp .env.example .env.local      # fill in values
+npm run s3:setup                # from M02
+npm run db:indexes
+npm run admin:create -- --email you@cutm.ac.in --name "Your Name"
+npm run dev                     # web on http://localhost:3000
+npm run worker:dev              # background jobs (second terminal)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# LMS-CUTM
+Mail: http://localhost:8025 · Object storage console: http://localhost:9001
