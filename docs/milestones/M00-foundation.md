@@ -7,7 +7,7 @@
 | Release | — (part of R1) |
 | Packages added | 03 §3 rows marked M00 (+ dev dependencies); `@types/node` → 24.19.2 |
 | Env vars added | `NODE_ENV`, `APP_URL`, `MONGODB_URI`, `REDIS_URL`, `SESSION_PASSWORD`, `SMTP_*`, `MAIL_FROM`, `LOG_LEVEL` |
-| Collections | `users`, `auditLogs`, `settings` |
+| Collections | `users`, `auditLogs` |
 
 ## Goal
 
@@ -41,17 +41,17 @@ Files: `package.json`, `next.config.ts`, `tsconfig.json` (unchanged unless neede
 Verify: `npm run lint`, `npm run typecheck`, `npm run build` all succeed.
 
 ### T2 · Core library (pure + infrastructure)
-Files: `lib/env.ts`, `lib/db.ts`, `lib/log.ts`, `lib/errors.ts`, `lib/schemas/common.ts`, `lib/domain/round.ts` (+ test), `lib/domain/time.ts` (+ test), `lib/format.ts`.
+Files: `lib/env.ts`, `lib/db.ts`, `lib/log.ts` (+ test), `lib/errors.ts`, `lib/schemas/common.ts` (`objectId`, `ROLES` only).
 
-- Copy 04 §6.2 (`env`, `db`), 06 §1 (`errors`), 04 §6.3 (`common`), 04 §6.10 (`round`) exactly. `env` contains only the M00 variables listed above (`SMTP_PORT` via `z.coerce.number()`, `SMTP_SECURE` via `z.stringbool()`, `LOG_LEVEL` enum default `info`).
+Helpers whose first caller is a later milestone are created there, not here (deletion test, 04 §1): `lib/format.ts`, `lib/domain/time.ts` and `page`/`pageSize` in M01; `lib/domain/round.ts` in M04; the `settings` model in M02.
+
+- Copy 04 §6.2 (`env`, `db`), 06 §1 (`errors`), 04 §6.3 (`common`, minus `page`/`pageSize`) exactly. `env` contains only the M00 variables listed above (`SMTP_PORT` via `z.coerce.number()`, `SMTP_SECURE` via `z.stringbool()`, `LOG_LEVEL` enum default `info`).
 - `lib/log.ts`: JSON lines to stdout/stderr with `level`, `msg`, `time` and fields; errors serialized as `{ name, message, stack }`; levels below `LOG_LEVEL` are dropped.
-- `lib/domain/time.ts`: `parseIstLocal`, `istDayKey`, with the 07 §11 vectors and `ceilTo`/`roundHalfUp` vectors from 07 §1 as tests.
-- `lib/format.ts`: `formatDateTime(d)` (`12 Oct 2026, 10:30 AM`, IST via `Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', … })`), `formatDate(d)`, `statusTone(status)` → badge tone.
 
 ### T3 · Models and index sync
-Files: `lib/models/user.ts`, `lib/models/audit-log.ts`, `lib/models/setting.ts`, `scripts/sync-indexes.ts`.
+Files: `lib/models/user.ts`, `lib/models/audit-log.ts`, `scripts/sync-indexes.ts`.
 
-- Fields and indexes exactly as 05 §3.1, §7.5, §7.3; pattern 04 §6.1.
+- Fields and indexes exactly as 05 §3.1, §7.5; pattern 04 §6.1.
 - `scripts/sync-indexes.ts`: imports each model file explicitly (no barrel), calls `await db()`, then for each model `createCollection()` and `createIndexes()`; logs each; exits 0. Never `syncIndexes()`.
 
 Verify: `npm run db:indexes` against the compose stack; `mongosh` shows the indexes.

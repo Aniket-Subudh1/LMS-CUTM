@@ -30,7 +30,9 @@ Files: `lib/models/{department,program,batch,term,course,evaluation-scheme,offer
 Exactly 05 §3.2–§3.9 (fields, enums, bounds, indexes). Embedded arrays get `_id` where 05 lists one (`cos`, `modules`, `calendar`).
 
 ### T2 · Schemas and pure functions
-Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/domain/csv.ts` (+ test).
+Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/domain/csv.ts` (+ test), `lib/domain/time.ts` (+ test), `lib/format.ts`, `lib/schemas/common.ts` (+ `page`, `pageSize`, `istDate`).
+
+- First callers arrive here, so create: `lib/domain/time.ts` — `parseIstLocal`, `istDayKey`, `istDateToDate` with the 07 §11 vectors (terms use IST dates); `lib/format.ts` — `formatDateTime(d)` (`12 Oct 2026, 10:30 AM`, IST via `Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', … })`), `formatDate(d)`, `statusTone(status)` → badge tone; `page`/`pageSize` (04 §6.3) for the first lists.
 
 - `structure.ts` (schemas): inputs for every action below; `ASSESSMENT_MODES` (05 §5.1) and `BLOOM_LEVELS` as `as const` arrays (they are used from M01 by schemes and COs).
 - `lib/domain/structure.ts`:
