@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Fixture passwords live only in .env.e2e (10 §3); the specs read E2E_PASSWORD from the environment.
+process.loadEnvFile('.env.e2e');
+
 // Sandboxes with a preinstalled Chromium of another revision set PW_CHROMIUM_PATH.
 const executablePath = process.env.PW_CHROMIUM_PATH;
 // Each run gets its own client IP (clientIp() reads X-Forwarded-For), so repeated runs never share rate-limit counters.

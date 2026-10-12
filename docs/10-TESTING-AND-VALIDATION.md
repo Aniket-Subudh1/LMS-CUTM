@@ -202,8 +202,8 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `dev` | `next dev` | Local web |
 | `build` | `next build` | Production build (standalone output) |
 | `start` | `node .next/standalone/server.js` | Production web (Docker copies `.next/static` — and `public/` once it has files — into the standalone folder) |
-| `start:local` | `cp -r .next/static .next/standalone/.next/ && node --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
-| `start:e2e` | `cp -r .next/static .next/standalone/.next/ && node --env-file=.env.e2e .next/standalone/server.js` (`.env.e2e` sets `PORT=3100`) | Playwright target |
+| `start:local` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
+| `start:e2e` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file=.env.e2e .next/standalone/server.js` (`.env.e2e` sets `PORT=3100`) | Playwright target |
 | `worker` | `tsx --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
 | `worker:dev` | `tsx watch --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
 | `db:indexes` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
