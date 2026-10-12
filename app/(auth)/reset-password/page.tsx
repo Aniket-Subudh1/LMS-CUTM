@@ -2,7 +2,14 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { LinkBreakIcon, LockKeyIcon, PasswordIcon, UserPlusIcon } from '@phosphor-icons/react/ssr';
+import {
+  CheckCircleIcon,
+  CircleIcon,
+  LinkBreakIcon,
+  LockKeyIcon,
+  PasswordIcon,
+  UserPlusIcon,
+} from '@phosphor-icons/react/ssr';
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/password-input';
@@ -63,22 +70,38 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
       </div>
       <ActionForm action={resetPassword} submitLabel="Save password" fullWidth>
         <input type="hidden" name="token" value={token} />
-        <Field name="password" label="New password" hint="10 to 128 characters. Not your email address.">
-          <span className="relative block">
-            <LockKeyIcon
-              aria-hidden="true"
-              className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2"
-            />
-            <PasswordInput
-              name="password"
-              autoComplete="new-password"
-              required
-              minLength={10}
-              maxLength={128}
-              className="h-10 pl-9"
-            />
-          </span>
-        </Field>
+        <div className="group/rules grid gap-2.5">
+          <Field name="password" label="New password">
+            <span className="relative block">
+              <LockKeyIcon
+                aria-hidden="true"
+                className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2"
+              />
+              <PasswordInput
+                name="password"
+                autoComplete="new-password"
+                required
+                minLength={10}
+                maxLength={128}
+                className="h-10 pl-9"
+              />
+            </span>
+          </Field>
+          <ul className="grid gap-1 text-xs" aria-label="Password rules">
+            <li className="text-muted-foreground group-has-[[name=password]:valid]/rules:text-success flex items-center gap-1.5 transition-colors">
+              <CircleIcon className="size-3.5 group-has-[[name=password]:valid]/rules:hidden" />
+              <CheckCircleIcon
+                weight="fill"
+                className="hidden size-3.5 group-has-[[name=password]:valid]/rules:block"
+              />
+              10 to 128 characters
+            </li>
+            <li className="text-muted-foreground flex items-center gap-1.5">
+              <CircleIcon className="size-3.5" />
+              Not your email address
+            </li>
+          </ul>
+        </div>
         <Field name="confirm" label="Repeat the password">
           <span className="relative block">
             <LockKeyIcon
