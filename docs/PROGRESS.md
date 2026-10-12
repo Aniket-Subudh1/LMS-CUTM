@@ -117,6 +117,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-38 | There is no public sign-up: accounts are created by an administrator and the person sets a password from the invitation link (01 §4–§5). The "sign up" screen of the redesign is that page, titled "Set up your account" | auth UI | — |
 | A-39 | Home shows only data that exists today: counts of structure, catalogue, offerings and users for admins; offerings and enrolled students for faculty and HoD; enrolled courses for students; the six latest audit entries for admins. “Enrolled students” is counted as active enrolments across the viewer’s offerings (a student in two of them counts twice), so the count stays one indexed query. Later milestones add their sections | `/home` | — |
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
+| A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's tiles count only active departments and programmes | `/admin`, `/home` | — |
 
 ## 5. Log
 
@@ -473,3 +474,50 @@ Aniket asked (13 Oct 2026) for a complete redesign of the dashboard, the sign-in
 - Every submit shows a loader and cannot be pressed twice. Links and filters show a pending spinner.
 
 Contract change: create actions return `{ next }` instead of calling `redirect()` (06 §1). The build entry follows below.
+
+### 2026-10-13 · UI and UX redesign (build) · Cursor (AI agent), at Aniket's request
+
+The shell, sidebar, sign-in pages, Home and every M01 page are redesigned. Every create/edit form is a dialog that locks while saving, swaps its fields for the success message and closes itself. Fifteen commits, from `a25f3a6 UI(docs)` to the one that adds this entry. Two of them fix M01 defects found during the walkthrough (`M01(offerings)`, and the `(auth)` loading boundary in `UI(auth): sign-in renders without JavaScript again`).
+
+**Created** (new unless marked *changed* or *deleted*)
+- Components: `form-dialog.tsx`, `filter-form.tsx`, `link-spinner.tsx`, `password-input.tsx`, `section.tsx` (`Section`, `Fact`), `offering-card.tsx`; *changed* `action-form.tsx` (fieldset lock, `replaceOnSuccess`, `onSuccess`, `onPendingChange`, `secondary` footer slot), `confirm-submit.tsx` (pending lock), `app-nav.tsx`, `auth-stage.tsx`, `data-table.tsx` (`PageNav`, `EmptyState`), `page-header.tsx` (icon, actions), `tab-nav.tsx` (icons, pill, spinner), `co-po-matrix.tsx`. shadcn `ui/dialog.tsx` (`shadcn@4.21.4`); *changed* `ui/{badge,dropdown-menu,native-select,pagination,sheet,sidebar}.tsx` (Phosphor icons, marked as local changes).
+- Routes: *changed* `(app)/layout.tsx` (grouped sidebar, user card, breadcrumb, IST date), `(app)/{loading,error}.tsx`, `app/not-found.tsx`, `home/page.tsx`, new `home/loading.tsx`; every `admin/**/page.tsx`, `courses/page.tsx`, `courses/[offeringId]/{layout,page}.tsx`, `courses/[offeringId]/people/page.tsx`, `profile/page.tsx`; `(auth)/{layout.tsx,login,forgot-password,reset-password}`. *Deleted*: `admin/layout.tsx` (the sidebar replaces its tabs), `admin/courses/new`, `admin/offerings/new`, `admin/users/new`, `admin/users/import`, `profile/account-actions.tsx`, `(auth)/loading.tsx`, `public/brand/stage-print.jpg`.
+- Actions: `admin/actions.ts`, `admin/courses/actions.ts`, `admin/offerings/actions.ts`, `admin/users/actions.ts` *changed*: creates return `{ next }`, edits call `refresh()`.
+- DAL: `lib/data/workspace.ts` *changed* (`getHomeSummary`, shared `offeringScope`); `lib/data/structure.ts` *changed* (`getStructureCounts`; `getDepartment`, `getBatch`, `getTerm` removed, as edit dialogs take their values from the list row); `lib/data/offerings.ts` *changed* (unset filters are left out of the query). `lib/format.ts` *changed* (`dayGreeting`, `formatLongDate`).
+- Styling and config: `app/globals.css` (cooler neutrals, `--shadow-card`/`--shadow-elevated`, `surface`, `surface-interactive`, `icon-chip`, `auth-aurora`, success and aurora keyframes, gold hairlines removed); `package.json` (`@phosphor-icons/react` 2.1.10 in, `lucide-react` out); `next.config.ts` (`optimizePackageImports` for Phosphor).
+- Tests: integration `{catalog,offerings,structure,users,workspace}.test.ts` and `lib/format.test.ts` *changed*; e2e `auth.spec.ts` and `admin-structure.spec.ts` *changed* for the dialog flows.
+- Docs changed with the code: 03 §3, 04 §1, 06 §1, 08 (§1–§6), M00 (reset page Suspense), M01 (no admin layout, `getHomeSummary`), this file (A-38 to A-41).
+
+**Not done**
+- `auth.spec.ts` › "invited admin sets a password…" fails locally at its first mail read (`fetch failed`): it needs Mailpit, which is not installed here (no Docker). The other seven e2e tests pass.
+- The browser walkthrough was done as an administrator only. The seeded faculty and student passwords live in `.env.e2e`, which this agent does not read; their views are covered by the e2e tests (roster changes as faculty, "only their own course" as a student), not by screenshots.
+- No keyboard-only or screen-reader pass.
+- Deviations from the plan:
+  - Row actions are icon buttons with an accessible label (for example "Edit CSE"), not a three-dot menu, and they have no tooltip. Each row has at most two actions, so a menu would only add a click.
+  - `LinkSpinner` sits inside an ordinary `<Link>` rather than a `NavLink` wrapper, because a wrapper that only forwards is not allowed (04 §1).
+  - Table headers are not sticky. `DataTable` scrolls sideways inside its own box, which becomes the sticky container, so a sticky header would never stick to the page.
+  - Course cards show the offering title, which already carries the course code, plus the term and faculty. They have no student count, which is not in `MyOfferingRow`.
+  - Home's greeting band does not repeat the date, since the top bar shows it on every page.
+  - The sign-in stage's three feature rows describe courses, marks and account protection, not live classes and assessments, which do not exist yet.
+- Aniket's own `npm run dev` on port 3001 was still serving CSS from an old Turbopack cache during this work (the old `#f6f3ee` background). The production build is correct. Restarting `npm run dev` (after deleting `.next/dev` if needed) picks up the new styles.
+
+**Assumptions** — A-38 to A-41 (§4).
+
+**Open questions** — none new.
+
+**Fixes found during the walkthrough**
+| Where | Fix |
+|---|---|
+| `/admin/offerings` | With no filter the page listed nothing: `{ termId: undefined }` reaches MongoDB as `null`. Integration test added (it fails without the fix) |
+| `/login`, `/forgot-password` | A route-level `(auth)/loading.tsx` streamed the form behind a fallback, so without JavaScript it never appeared (`auth.spec.ts` › before hydration) |
+| `ActionForm` | A form of hidden inputs only (row status actions, resend invite) kept an empty fieldset and its gap above the button |
+| `Field`, CO cards | A grid cell stretched to its row spread its own rows apart (an input pushed below its neighbours, a stretched Bloom badge) |
+| `TabNav` | The list kept the primitive's fixed `h-9` (a variant-scoped class `cn` does not merge), so the pills overflowed and showed a scrollbar |
+| `FormDialog` | A `?new=` link back to a page Next kept mounted reopened nothing; the dialog now resets when `router.bfcacheId` changes |
+
+**Verification**
+- `npm run check` → eslint clean; `next typegen && tsc --noEmit` clean; unit `Test Files 10 passed, Tests 59 passed`.
+- `npm run test:integration` → `Test Files 11 passed, Tests 119 passed`.
+- `npx next build` → compiled with no errors; `npm run check:bundle` → `40 files scanned for 4 names and 0 secret values; clean` (no `.env.local` here, so no secret values to look for).
+- `npm run db:seed:e2e`, then `npx playwright test` → `7 passed, 1 failed` (the Mailpit test above). `admin-structure.spec.ts` covers the department dialog (pending, success, auto-close, new card), the user search, the course workspace, the faculty roster dialog and the student's view.
+- Browser, production build on port 3100, as an administrator, at 1440 px: sign-in stage and the "Set up your account" page (fields and button disabled and busy while saving); Home; the quick-action deep link opened and closed three times in a row and stayed closed on Back; department create from Home (fields locked, "Department added." in place of the fields, dialog closed, `?new=` removed from the URL, new card shown); Structure, Departments, Users (table and New user dialog), Offerings, Schemes, My courses, course Overview and People. At 360 px: Home (no horizontal scroll, `scrollWidth` 360) and the sign-in layout. Screenshots were reviewed in the session, not committed.
