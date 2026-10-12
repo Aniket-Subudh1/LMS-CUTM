@@ -59,7 +59,7 @@ async function Overview({ params }: { params: PageProps<'/courses/[offeringId]'>
                 {course.cos.map((co) => (
                   <li key={co.id} className="surface flex gap-3 p-4">
                     <span className="icon-chip h-8 min-w-12 px-2 text-xs font-semibold">{co.code}</span>
-                    <span className="grid gap-1.5 text-sm">
+                    <span className="grid content-start gap-1.5 text-sm">
                       {co.statement}
                       <Badge variant="secondary" className="w-fit capitalize">
                         {co.bloomLevel}

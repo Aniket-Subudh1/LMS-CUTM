@@ -24,8 +24,11 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
     undefined,
   );
   return (
-    <Tabs value={current?.href ?? ''} className="mb-6 max-w-full overflow-x-auto lg:mb-8">
-      <TabsList aria-label="Sections" className="bg-card shadow-card ring-border h-auto gap-1 rounded-xl p-1 ring-1">
+    <Tabs value={current?.href ?? ''} className="-m-1 mb-5 overflow-x-auto p-1 lg:mb-7">
+      <TabsList
+        aria-label="Sections"
+        className="bg-card shadow-card ring-border gap-1 rounded-xl p-1 ring-1 group-data-[orientation=horizontal]/tabs:h-auto"
+      >
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.href}

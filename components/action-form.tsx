@@ -159,7 +159,7 @@ export function Field({
 }) {
   const errors = use(FormErrors)?.[name];
   return (
-    <div className="grid gap-2">
+    <div className="grid content-start gap-2">
       <label className="grid gap-2">
         <span className="text-sm font-medium">{label}</span>
         {children}
