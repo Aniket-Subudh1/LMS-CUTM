@@ -59,9 +59,18 @@ export function FormDialog({
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const [open, setOpen] = useState(() => openParam !== undefined && params.get('new') === openParam);
+  const wanted = openParam !== undefined && params.get('new') === openParam;
+  const [open, setOpen] = useState(wanted);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
+  // Next keeps a visited page mounted but hidden and restores its state. A fresh navigation back to it (a `?new=`
+  // link from Home, again) gets a new bfcacheId, and the dialog starts over from the URL.
+  const [visit, setVisit] = useState(router.bfcacheId);
+  if (visit !== router.bfcacheId) {
+    setVisit(router.bfcacheId);
+    setOpen(wanted);
+    setDone(false);
+  }
 
   function close() {
     setOpen(false);
