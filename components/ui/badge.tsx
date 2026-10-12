@@ -15,6 +15,10 @@ const badgeVariants = cva(
         outline: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
+        // Local change from shadcn 4.21.4: soft status tones for statusTone() (08 §4).
+        success: 'bg-success/12 text-success',
+        warning: 'bg-warning/12 text-warning',
+        danger: 'bg-destructive/10 text-destructive',
       },
     },
     defaultVariants: {

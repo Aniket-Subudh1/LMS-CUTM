@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { ChevronsUpDown, LogOut, UserRound } from 'lucide-react';
+import { CaretUpDownIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
 import { logout } from '@/app/(auth)/actions';
 import { AppBreadcrumb, AppNav } from '@/components/app-nav';
 import { UniversityLogo } from '@/components/university-logo';
@@ -53,13 +53,13 @@ async function UserMenu() {
                 <span className="truncate font-medium">{viewer.name}</span>
                 <span className="truncate text-xs opacity-70">{viewer.email}</span>
               </span>
-              <ChevronsUpDown className="ml-auto" />
+              <CaretUpDownIcon className="ml-auto" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">
             <DropdownMenuItem asChild>
               <Link href="/profile">
-                <UserRound />
+                <UserCircleIcon />
                 Profile
               </Link>
             </DropdownMenuItem>
@@ -67,7 +67,7 @@ async function UserMenu() {
             <form action={logout}>
               <DropdownMenuItem asChild>
                 <button type="submit" className="w-full">
-                  <LogOut />
+                  <SignOutIcon />
                   Sign out
                 </button>
               </DropdownMenuItem>

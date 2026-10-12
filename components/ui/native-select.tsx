@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/cn';
-import { ChevronDownIcon } from 'lucide-react';
+// Local change from shadcn 4.21.4: Phosphor icons.
+import { CaretDownIcon } from '@phosphor-icons/react/ssr';
 
 function NativeSelect({
   className,
@@ -23,7 +24,7 @@ function NativeSelect({
         )}
         {...props}
       />
-      <ChevronDownIcon
+      <CaretDownIcon
         className="text-muted-foreground pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-50 select-none"
         aria-hidden="true"
         data-slot="native-select-icon"

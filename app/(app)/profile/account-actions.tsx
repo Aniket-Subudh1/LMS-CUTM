@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useRef, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { XIcon } from '@phosphor-icons/react';
 import { ActionForm, Field } from '@/components/action-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -100,7 +100,7 @@ function AccountDialog({
           className="absolute top-3 right-3"
           onClick={() => dialog.current?.close()}
         >
-          <X />
+          <XIcon />
         </Button>
       </dialog>
     </div>

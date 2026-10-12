@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRightIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,7 @@ async function Home() {
             <Button asChild variant="outline">
               <Link href="/profile">
                 Open profile
-                <ArrowRight />
+                <ArrowRightIcon />
               </Link>
             </Button>
           </CardContent>
@@ -118,7 +118,7 @@ async function Offerings({ viewer }: { viewer: Viewer }) {
         <Button asChild variant="outline" className="justify-self-start">
           <Link href="/courses">
             All courses
-            <ArrowRight />
+            <ArrowRightIcon />
           </Link>
         </Button>
       </CardContent>

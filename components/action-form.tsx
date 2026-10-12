@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { CheckCircleIcon, CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ConfirmSubmit } from '@/components/confirm-submit';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,7 @@ export function ActionForm({
       disabled={pending || !hydrated}
       className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
     >
-      {pending && <LoaderCircle className="animate-spin" />}
+      {pending && <CircleNotchIcon className="animate-spin" />}
       {submitLabel}
     </Button>
   );
@@ -76,13 +76,13 @@ export function ActionForm({
     >
       {state && !state.ok && (
         <Alert variant="destructive">
-          <CircleAlert />
+          <WarningCircleIcon weight="duotone" />
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
       {state?.ok && successMessage && (
         <Alert role="status" className="border-success/30 text-success">
-          <CircleCheck />
+          <CheckCircleIcon weight="duotone" />
           <AlertDescription className="text-success">{successMessage}</AlertDescription>
         </Alert>
       )}

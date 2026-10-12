@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
+import { CaretLeftIcon, CaretRightIcon, TrayIcon } from '@phosphor-icons/react/ssr';
 import { buttonVariants } from '@/components/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
@@ -36,7 +36,7 @@ export function DataTable<T>({
       <Empty className="bg-card border">
         <EmptyHeader>
           <EmptyMedia variant="icon">
-            <Inbox />
+            <TrayIcon weight="duotone" />
           </EmptyMedia>
           <EmptyTitle>Nothing here yet</EmptyTitle>
           <EmptyDescription>{empty}</EmptyDescription>
@@ -84,7 +84,7 @@ export function DataTable<T>({
             <PaginationContent>
               <PaginationItem>
                 <PageLink href={page > 1 ? href(page - 1) : null}>
-                  <ChevronLeft /> Previous
+                  <CaretLeftIcon /> Previous
                 </PageLink>
               </PaginationItem>
               <PaginationItem className="text-muted-foreground px-2 text-sm">
@@ -92,7 +92,7 @@ export function DataTable<T>({
               </PaginationItem>
               <PaginationItem>
                 <PageLink href={page < pages ? href(page + 1) : null}>
-                  Next <ChevronRight />
+                  Next <CaretRightIcon />
                 </PageLink>
               </PaginationItem>
             </PaginationContent>

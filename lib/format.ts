@@ -29,15 +29,15 @@ export function formatDateTime(date: Date): string {
   return dateTimeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());
 }
 
-type Tone = 'default' | 'secondary' | 'destructive' | 'outline';
+type Tone = 'success' | 'warning' | 'danger' | 'secondary' | 'outline';
 
 const TONE: Record<string, Tone> = {
-  active: 'default',
-  current: 'default',
-  invited: 'secondary',
+  active: 'success',
+  current: 'success',
+  invited: 'warning',
   draft: 'secondary',
   upcoming: 'secondary',
-  disabled: 'destructive',
+  disabled: 'danger',
   archived: 'outline',
   closed: 'outline',
   retired: 'outline',

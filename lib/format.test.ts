@@ -12,8 +12,8 @@ describe('formatting', () => {
   });
 
   it('maps statuses to a badge tone, with a neutral fallback', () => {
-    expect(statusTone('active')).toBe('default');
-    expect(statusTone('disabled')).toBe('destructive');
+    expect(statusTone('active')).toBe('success');
+    expect(statusTone('disabled')).toBe('danger');
     expect(statusTone('something-new')).toBe('secondary');
   });
 });

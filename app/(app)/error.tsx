@@ -1,6 +1,6 @@
 'use client';
 
-import { TriangleAlert } from 'lucide-react';
+import { WarningIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -8,7 +8,7 @@ export default function ErrorPage({ error, retry }: { error: Error & { digest?: 
   return (
     <Card className="mx-auto max-w-lg">
       <CardHeader>
-        <TriangleAlert className="text-warning size-8" />
+        <WarningIcon weight="duotone" className="text-warning size-8" />
         <CardTitle className="text-xl">Something went wrong</CardTitle>
         <CardDescription>
           Try again. If it keeps happening, contact support

@@ -87,7 +87,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   output: 'standalone',
   serverExternalPackages: ['bullmq', 'ioredis'], // bullmq loads ioredis with a dynamic require
-  experimental: { serverActions: { bodySizeLimit: '2mb' } }, // added in M01 for CSV imports; files never go through actions (the key lives under `experimental` in the installed Next 16.4 types)
+  experimental: { serverActions: { bodySizeLimit: '2mb' }, optimizePackageImports: ['@phosphor-icons/react'] }, // body limit added in M01 for CSV imports (files never go through actions; the key lives under `experimental` in the installed Next 16.4 types); the icon barrel is rewritten to per-icon imports (UI redesign)
   turbopack: { rules: { '*.css': { loaders: ['@tailwindcss/turbopack'], as: '*.css' } } },
   headers: async () => [{ source: '/:path*', headers: SECURITY_HEADERS }], // 09 §8
 };

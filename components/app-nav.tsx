@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BookOpen, House, Settings, UserRound, Users, type LucideIcon } from 'lucide-react';
+import { BooksIcon, GearSixIcon, HouseIcon, UserCircleIcon, UsersThreeIcon, type Icon } from '@phosphor-icons/react';
 import type { Role } from '@/lib/schemas/common';
 import {
   SidebarGroup,
@@ -14,12 +14,12 @@ import {
 } from '@/components/ui/sidebar';
 
 // Items by role (08 §3); a user with several roles sees the union. `roles` absent means everyone.
-const NAV: { href: string; label: string; icon: LucideIcon; roles?: Role[] }[] = [
-  { href: '/home', label: 'Home', icon: House },
-  { href: '/courses', label: 'My courses', icon: BookOpen, roles: ['student', 'faculty', 'hod', 'admin'] },
-  { href: '/admin', label: 'Administration', icon: Settings, roles: ['admin'] },
-  { href: '/admin/users', label: 'Users', icon: Users, roles: ['support'] },
-  { href: '/profile', label: 'Profile', icon: UserRound },
+const NAV: { href: string; label: string; icon: Icon; roles?: Role[] }[] = [
+  { href: '/home', label: 'Home', icon: HouseIcon },
+  { href: '/courses', label: 'My courses', icon: BooksIcon, roles: ['student', 'faculty', 'hod', 'admin'] },
+  { href: '/admin', label: 'Administration', icon: GearSixIcon, roles: ['admin'] },
+  { href: '/admin/users', label: 'Users', icon: UsersThreeIcon, roles: ['support'] },
+  { href: '/profile', label: 'Profile', icon: UserCircleIcon },
 ];
 
 // The most specific match wins, so /admin/users highlights Users for a support user and Administration for an admin.

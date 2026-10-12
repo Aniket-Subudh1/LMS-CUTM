@@ -17,8 +17,7 @@ export function AuthStage() {
           .timeline({ defaults: { ease: 'power2.out' } })
           .from('[data-auth-motion="logo"]', { y: 12, opacity: 0, duration: 0.7 }, 0)
           .from('[data-auth-motion="rule"]', { scaleX: 0, duration: 0.55 }, 0.16)
-          .from('[data-auth-motion="line"]', { y: 8, opacity: 0, duration: 0.5, stagger: 0.08 }, 0.24)
-          .from('[data-auth-motion="print"]', { y: 16, opacity: 0, duration: 0.7 }, 0.32);
+          .from('[data-auth-motion="line"]', { y: 8, opacity: 0, duration: 0.5, stagger: 0.08 }, 0.24);
         gsap.to('[data-auth-motion="lotus"]', {
           rotation: 8,
           duration: 22,
@@ -58,7 +57,6 @@ export function AuthStage() {
           The learning system for students, faculty and staff of Centurion University.
         </p>
       </div>
-      <div data-auth-motion="print" aria-hidden="true" className="auth-print relative z-10 h-40 w-full" />
     </aside>
   );
 }
