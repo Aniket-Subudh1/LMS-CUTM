@@ -8,7 +8,6 @@ import {
   BookOpenTextIcon,
   BooksIcon,
   BuildingsIcon,
-  CalendarBlankIcon,
   CalendarPlusIcon,
   ChalkboardTeacherIcon,
   ClockCounterClockwiseIcon,
@@ -27,12 +26,13 @@ import type { Icon } from '@phosphor-icons/react';
 import Loading from './loading';
 import { EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
+import { OfferingCard } from '@/components/offering-card';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { getHomeSummary, listMyOfferings, type HomeSummary } from '@/lib/data/workspace';
-import { dayGreeting, formatDateTime, ROLE_LABEL, statusTone } from '@/lib/format';
+import { dayGreeting, formatDateTime, ROLE_LABEL } from '@/lib/format';
 import { ROLES, type Role } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'Home' };
@@ -311,26 +311,7 @@ async function Offerings({ viewer }: { viewer: Viewer }) {
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-3">
           {rows.slice(0, 6).map((o) => (
             <li key={o.id}>
-              <Link href={`/courses/${o.id}`} className="surface-interactive group flex h-full flex-col gap-3 p-4">
-                <span className="flex items-start justify-between gap-3">
-                  <span className="icon-chip size-10 [&_svg]:size-5">
-                    <BookOpenTextIcon weight="duotone" />
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <LinkSpinner />
-                    <Badge variant={statusTone(o.status)} className="capitalize">
-                      {o.status}
-                    </Badge>
-                  </span>
-                </span>
-                <span className="line-clamp-2 leading-snug font-medium">{o.title}</span>
-                <span className="text-muted-foreground mt-auto flex min-w-0 items-center gap-1.5 text-xs">
-                  <CalendarBlankIcon weight="duotone" className="size-4 shrink-0" />
-                  <span className="truncate">
-                    {o.termCode} · {o.faculty.length > 0 ? o.faculty.join(', ') : 'No faculty assigned'}
-                  </span>
-                </span>
-              </Link>
+              <OfferingCard offering={o} />
             </li>
           ))}
         </ul>

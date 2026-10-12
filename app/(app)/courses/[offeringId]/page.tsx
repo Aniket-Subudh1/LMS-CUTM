@@ -1,7 +1,11 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
+import { GridFourIcon, InfoIcon, TargetIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
 import { CoPoMatrix } from '@/components/co-po-matrix';
+import { EmptyState } from '@/components/data-table';
+import { Fact, Section } from '@/components/section';
+import { Badge } from '@/components/ui/badge';
 import { getOfferingCourse } from '@/lib/data/courses';
 
 export const metadata: Metadata = { title: 'Course overview' };
@@ -17,60 +21,63 @@ export default function OverviewPage({ params }: PageProps<'/courses/[offeringId
 async function Overview({ params }: { params: PageProps<'/courses/[offeringId]'>['params'] }) {
   const course = await getOfferingCourse((await params).offeringId);
   return (
-    <div className="grid gap-6">
-      <section className="bg-card rounded-lg border p-5 sm:p-6">
-        <h2 className="text-base font-semibold">
-          {course.code} · {course.title}
-        </h2>
-        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div>
-            <dt className="text-muted-foreground text-sm">Credits</dt>
-            <dd className="text-sm font-medium">{course.credits}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground text-sm">Components</dt>
-            <dd className="text-sm font-medium capitalize">{course.components.join(', ')}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground text-sm">Programme</dt>
-            <dd className="text-sm font-medium">{course.programCode}</dd>
-          </div>
+    <div className="grid gap-8">
+      <Section
+        icon={<InfoIcon weight="duotone" />}
+        title={`${course.code} · ${course.title}`}
+        description="The catalogue course this offering runs."
+      >
+        <dl className="surface grid gap-4 p-5 sm:grid-cols-3">
+          <Fact label="Credits">{course.credits}</Fact>
+          <Fact label="Components">
+            <span className="capitalize">{course.components.join(', ')}</span>
+          </Fact>
+          <Fact label="Programme">{course.programCode}</Fact>
         </dl>
         {course.objectives.length > 0 && (
-          <>
-            <h3 className="mt-5 text-sm font-semibold">Objectives</h3>
-            <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm">
+          <div className="surface p-5">
+            <h3 className="text-sm font-semibold">Objectives</h3>
+            <ul className="mt-2 grid list-disc gap-1.5 pl-5 text-sm">
               {course.objectives.map((o) => (
                 <li key={o}>{o}</li>
               ))}
             </ul>
-          </>
+          </div>
         )}
-      </section>
+      </Section>
       {course.category === 'ugc' && (
         <>
-          <section className="bg-card rounded-lg border p-5 sm:p-6">
-            <h2 className="mb-4 text-base font-semibold">Course outcomes</h2>
+          <Section
+            icon={<TargetIcon weight="duotone" />}
+            title="Course outcomes"
+            description="What a student can do after this course."
+          >
             {course.cos.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No course outcomes have been defined yet.</p>
+              <EmptyState text="No course outcomes have been defined yet." icon={<TargetIcon weight="duotone" />} />
             ) : (
-              <ul className="grid gap-2 text-sm">
+              <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
                 {course.cos.map((co) => (
-                  <li key={co.id} className="flex gap-3">
-                    <span className="w-12 shrink-0 font-medium">{co.code}</span>
-                    <span>
-                      {co.statement} <span className="text-muted-foreground">({co.bloomLevel})</span>
+                  <li key={co.id} className="surface flex gap-3 p-4">
+                    <span className="icon-chip h-8 min-w-12 px-2 text-xs font-semibold">{co.code}</span>
+                    <span className="grid gap-1.5 text-sm">
+                      {co.statement}
+                      <Badge variant="secondary" className="w-fit capitalize">
+                        {co.bloomLevel}
+                      </Badge>
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Section>
           {course.cos.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-base font-semibold">CO–PO–PSO mapping</h2>
+            <Section
+              icon={<GridFourIcon weight="duotone" />}
+              title="CO–PO–PSO mapping"
+              description="How strongly each course outcome supports each programme outcome (1 low, 3 high)."
+            >
               <CoPoMatrix cos={course.cos} outcomes={course.outcomes} cells={course.cells} mode="levels" />
-            </section>
+            </Section>
           )}
         </>
       )}

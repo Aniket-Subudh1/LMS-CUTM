@@ -1,18 +1,17 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { BooksIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
-import { DataTable } from '@/components/data-table';
+import { EmptyState, PageNav } from '@/components/data-table';
+import { FilterForm } from '@/components/filter-form';
+import { OfferingCard } from '@/components/offering-card';
 import { PageHeader } from '@/components/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { requireViewer } from '@/lib/auth/session';
 import { listTermsForSelect } from '@/lib/data/offerings';
 import { listDepartmentsForSelect } from '@/lib/data/structure';
 import { listMyOfferings } from '@/lib/data/workspace';
-import { statusTone } from '@/lib/format';
 import { objectId, page as pageParam, pageSize } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'My courses' };
@@ -46,6 +45,7 @@ async function Courses({ searchParams }: { searchParams: PageProps<'/courses'>['
   return (
     <>
       <PageHeader
+        icon={<BooksIcon weight="duotone" />}
         title="My courses"
         description={
           isAdmin
@@ -54,7 +54,7 @@ async function Courses({ searchParams }: { searchParams: PageProps<'/courses'>['
         }
       />
       {isAdmin && (
-        <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+        <FilterForm action="/courses">
           <label className="grid gap-1.5 text-sm font-medium">
             Term
             <NativeSelect name="term" defaultValue={term ?? ''}>
@@ -77,34 +77,37 @@ async function Courses({ searchParams }: { searchParams: PageProps<'/courses'>['
               ))}
             </NativeSelect>
           </label>
-          <Button type="submit" variant="secondary">
-            Filter
-          </Button>
-        </form>
+        </FilterForm>
       )}
-      <DataTable
-        columns={[
-          {
-            header: 'Course',
-            cell: (o) => (
-              <Link href={`/courses/${o.id}`} className="font-medium underline-offset-4 hover:underline">
-                {o.title}
-              </Link>
-            ),
-          },
-          { header: 'Term', cell: (o) => o.termCode },
-          { header: 'Faculty', cell: (o) => o.faculty.join(', ') || '—' },
-          { header: 'Status', cell: (o) => <Badge variant={statusTone(o.status)}>{o.status}</Badge> },
-        ]}
-        rows={rows}
-        rowKey={(o) => o.id}
-        total={total}
-        page={page}
-        pageSize={pageSize}
-        query={query}
-        path="/courses"
-        empty="You have no courses yet. They appear here once an administrator enrols you or assigns you to one."
-      />
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<BooksIcon weight="duotone" />}
+          text={
+            isAdmin && Object.keys(query).length > 0
+              ? 'No offerings match these filters.'
+              : 'You have no courses yet. They appear here once an administrator enrols you or assigns you to one.'
+          }
+        />
+      ) : (
+        <>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-3 sm:gap-4">
+            {rows.map((o) => (
+              <li key={o.id}>
+                <OfferingCard offering={o} />
+              </li>
+            ))}
+          </ul>
+          <PageNav
+            shown={rows.length}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            query={query}
+            path="/courses"
+            className="mt-5"
+          />
+        </>
+      )}
     </>
   );
 }

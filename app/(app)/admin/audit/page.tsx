@@ -2,9 +2,10 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { z } from 'zod';
 import Loading from '../../loading';
+import { ClockCounterClockwiseIcon } from '@phosphor-icons/react/ssr';
 import { DataTable } from '@/components/data-table';
+import { FilterForm } from '@/components/filter-form';
 import { PageHeader } from '@/components/page-header';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { listAudit } from '@/lib/data/audit';
 import { formatDateTime } from '@/lib/format';
@@ -39,10 +40,11 @@ async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>
   return (
     <>
       <PageHeader
+        icon={<ClockCounterClockwiseIcon weight="duotone" />}
         title="Audit log"
         description="Every change to marks, structure and access, newest first. Dates are in IST."
       />
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+      <FilterForm action="/admin/audit">
         {(
           [
             ['entity', 'Entity', 'text', 'w-36'],
@@ -58,10 +60,7 @@ async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>
             <Input name={name} type={type} defaultValue={filters[name] ?? ''} className={width} />
           </label>
         ))}
-        <Button type="submit" variant="secondary">
-          Filter
-        </Button>
-      </form>
+      </FilterForm>
       <DataTable
         columns={[
           { header: 'When', cell: (a) => <span className="whitespace-nowrap">{formatDateTime(a.at)}</span> },

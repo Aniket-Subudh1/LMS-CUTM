@@ -17,16 +17,19 @@ async function signIn(page: Page, email: string) {
 
 test('admin adds a department, finds a user and opens a course workspace', async ({ page }) => {
   await signIn(page, 'admin@seed.cutm.test');
-  await page.getByRole('link', { name: 'Administration' }).click();
-  await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible();
+  await page.getByRole('link', { name: 'Structure', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Academic structure' })).toBeVisible();
 
   const code = `T${String(run).slice(-8)}`;
   await page.goto('/admin/departments');
-  await field(page, 'Code').fill(code);
-  await field(page, 'Name').fill(`Department ${code}`);
   await page.getByRole('button', { name: 'Add department' }).click();
-  await expect(page.getByText('Department added.')).toBeVisible();
-  await expect(page.getByRole('cell', { name: code, exact: true })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Add a department' });
+  await dialog.getByLabel('Code', { exact: true }).fill(code);
+  await dialog.getByLabel('Name', { exact: true }).fill(`Department ${code}`);
+  await dialog.getByRole('button', { name: 'Add department' }).click();
+  await expect(dialog.getByText('Department added.')).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(code, { exact: true }).filter({ visible: true })).toBeVisible();
 
   await page.goto('/admin/users');
   await field(page, 'Search').fill('Student 05');
@@ -51,39 +54,38 @@ test('admin adds a department, finds a user and opens a course workspace', async
 
 test('faculty drops and re-adds a student from the roster', async ({ page }) => {
   await signIn(page, 'faculty1@seed.cutm.test');
-  await page.getByRole('link', { name: 'My courses' }).click();
+  await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
   await page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' }).click();
   await page.getByRole('tab', { name: 'People' }).click();
 
   const row = page.getByRole('row', { name: /2501CSE003/ });
-  const apply = async (action: 'drop' | 'add') => {
-    await page.locator('input[type=file]').setInputFiles({
+  const dialog = page.getByRole('dialog', { name: 'Change enrolment' });
+  const upload = async (csv: string) => {
+    await page.getByRole('button', { name: 'Change enrolment' }).click();
+    await dialog.locator('input[type=file]').setInputFiles({
       name: 'enrolment.csv',
       mimeType: 'text/csv',
-      buffer: Buffer.from(`rollNo,action\n2501CSE003,${action}\n`),
+      buffer: Buffer.from(csv),
     });
-    await page.getByRole('button', { name: 'Apply changes' }).click();
-    await expect(page.getByText('Enrolment updated.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Apply changes' }).click();
   };
-  await apply('drop');
+  await upload('rollNo,action\n2501CSE003,drop\n');
+  await expect(dialog.getByText('Enrolment updated.')).toBeVisible();
+  await expect(dialog).toBeHidden();
   await expect(row).toContainText('dropped');
-  await apply('add');
+  await upload('rollNo,action\n2501CSE003,add\n');
+  await expect(dialog).toBeHidden();
   await expect(row).toContainText('active');
 
-  await page.locator('input[type=file]').setInputFiles({
-    name: 'bad.csv',
-    mimeType: 'text/csv',
-    buffer: Buffer.from('rollNo,action\nNOPE,add\n'),
-  });
-  await page.getByRole('button', { name: 'Apply changes' }).click();
-  await expect(page.getByText('No student has roll number NOPE.')).toBeVisible();
+  await upload('rollNo,action\nNOPE,add\n');
+  await expect(dialog.getByText('No student has roll number NOPE.')).toBeVisible();
 });
 
 test('a student sees only their own course and cannot open administration', async ({ page }) => {
   await signIn(page, 'student01@seed.cutm.test');
-  await expect(page.getByRole('link', { name: 'Administration' })).toHaveCount(0);
-  await page.getByRole('link', { name: 'My courses' }).click();
+  await expect(page.getByRole('link', { name: 'Structure', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
   await expect(page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' })).toBeVisible();
   await expect(page.getByRole('link', { name: /Excel Basics/ })).toHaveCount(0);
