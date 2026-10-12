@@ -179,8 +179,8 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 
 | Queue / name | Payload | Job id | Idempotency | Effect |
 |---|---|---|---|---|
-| `mail/send` | `{ to, subject, text, html, ref }` | `mail-<ref>` | id dedupes | one email |
-| `mail/fanout` | `MailJob` union: `coursePlanPublished{offeringId, version}` · `invitation{userIds[]}` · `passwordReset{userId, token}` | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
+| `mail/send` | `MailSend { to, subject, text, html }` (M00) | `mail-<ref>`, `ref` chosen by the producer (e.g. `reset-<userId>-<minuteBucket>`) | id dedupes | one email |
+| `mail/fanout` | `MailJob` union: `invitation{userIds[]}` (M01) · `coursePlanPublished{offeringId, version}` (M02). A single known recipient (password reset) skips the fanout and enqueues `mail/send` directly | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
 | `compute/internalMarks` | `{ offeringId }` | `ce-<offeringId>-<minuteBucket>` | full recompute, upsert | 07 §2 |
 | `compute/attainment` | `{ offeringId }` or `{ programId, batchId, termIds }` | `att-<id>-<minuteBucket>` | full recompute, upsert latest | 07 §4–5 |
 | `media/transcodeLesson` | `{ lessonId }` | `transcode-<lessonId>` | re-running overwrites the same `lowKey` | 480p data-saver copy (M02 T8b) |

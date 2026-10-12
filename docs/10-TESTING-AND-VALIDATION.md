@@ -97,7 +97,7 @@ import { Types } from 'mongoose';
 
 vi.mock('next/cache', () => ({ refresh: vi.fn(), updateTag: vi.fn(), revalidateTag: vi.fn() }));
 vi.mock('@/lib/auth/session', () => ({
-  getViewer: vi.fn(async () => ({ id: new Types.ObjectId().toString(), name: 'Admin', roles: ['admin'], departmentId: null })),
+  getViewer: vi.fn(async () => ({ id: new Types.ObjectId().toString(), name: 'Admin', email: 'admin@cutm.ac.in', roles: ['admin'], departmentId: null })),
 }));
 
 describe('renameOffering', () => {

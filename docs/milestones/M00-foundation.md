@@ -57,24 +57,25 @@ Files: `lib/models/user.ts`, `lib/models/audit-log.ts`, `scripts/sync-indexes.ts
 Verify: `npm run db:indexes` against the compose stack; `mongosh` shows the indexes.
 
 ### T4 · Passwords, sessions, rate limiting, audit
-Files: `lib/auth/password.ts`, `lib/auth/session.ts`, `lib/auth/tokens.ts`, `lib/rate-limit.ts`, `lib/queue.ts`, `lib/audit.ts`, `lib/schemas/auth.ts`, `lib/schemas/jobs.ts`.
+Files: `lib/auth/password.ts`, `lib/auth/session.ts`, `lib/auth/tokens.ts` (+ test), `lib/rate-limit.ts`, `lib/queue.ts`, `lib/audit.ts`, `lib/action.ts` (+ test), `lib/schemas/auth.ts` (+ test), `lib/schemas/jobs.ts`.
 
-- `password.ts`: `hashPassword(pw)` and `verifyPassword(hash, pw)` with `@node-rs/argon2` defaults; `Password` schema (10–128 chars).
+- `password.ts`: `hashPassword(pw)` and `verifyPassword(hash, pw)` with `@node-rs/argon2` defaults.
+- `lib/schemas/auth.ts`: `Email` (trimmed, lower-cased), `Password` (10–128 chars), `LoginInput`, `ResetRequestInput`, `ResetInput`, `ChangePasswordInput` (`confirm` mismatch reported on the `confirm` field). "Must not equal the email" (09 §9) is checked in the actions, which know the email.
 - `session.ts`: exactly 04 §6.4 (including `await connection()`); add `signIn(user)` (sets `uid`, `sv`, saves) and `signOut()` (destroys).
-- `tokens.ts`: `createToken({ uid, sv, purpose }, ttlSec)` / `readToken(token, purpose)` using `sealData`/`unsealData` with `SESSION_PASSWORD`; `purpose` ∈ `reset` (1800 s) · `invite` (604800 s). `readToken` returns `null` for any failure.
-- `rate-limit.ts`: `limit(name, subject, max, windowMs)` per 07 §16 using `redis()`; throws `AppError('RATE_LIMITED', …)`.
+- `tokens.ts`: `createToken({ uid, sv, purpose })` / `readToken(token, purposes)` using `sealData`/`unsealData` with `SESSION_PASSWORD`; `purpose` ∈ `reset` (1800 s) · `invite` (604800 s) and fixes the TTL. `readToken` returns `null` for any failure (tampered, expired, wrong purpose).
+- `rate-limit.ts`: `limit(name, subject, max, windowMs)` per 07 §16 using `redis()`; throws `AppError('RATE_LIMITED', 'Too many attempts. Try again in N minutes.')`. `clientIp()`: first `X-Forwarded-For` entry (09 §4).
 - `queue.ts`: 04 §6.9 (`redis()`, `mailQueue()`).
-- `audit.ts`: 04 §6.13.
-- `lib/schemas/jobs.ts`: `MailJob` union with `invitation { userIds }` and `passwordReset { userId, token }` (06 §6).
+- `audit.ts`: 04 §6.13. `action.ts`: 04 §6.6.
+- `lib/schemas/jobs.ts`: `MailSend` only (04 §6.9). The `fanout` union arrives with its first producer (M01 invitations).
 
-Unit tests: token round-trip with a fixed password; wrong purpose → null; `Password` schema bounds.
+Unit tests: token round-trip, wrong purpose, tampered and expired → null; `Password` bounds, email normalization, `confirm` mismatch path; `action()` wrapper (unauthenticated, wrong role, validation, success).
 
 ### T5 · Mail adapter, templates and worker
 Files: `lib/integrations/mail.ts`, `lib/domain/email-templates.ts` (+ test), `worker/index.ts`, `worker/jobs/mail.ts`.
 
 - `mail.ts`: `sendMail({ to, subject, text, html })` via a lazily created `nodemailer.createTransport({ host, port, secure, auth? })` (verified API).
-- `email-templates.ts`: pure functions `invitationEmail({ name, link })`, `resetEmail({ name, link })` returning `{ subject, text, html }`; every interpolated value HTML-escaped (test: a name containing `<script>` is escaped).
-- `worker/jobs/mail.ts`: processes `fanout` (`invitation`: for each user create a 7-day token and enqueue `send`; `passwordReset`: enqueue `send`) and `send` (calls `sendMail`). Job ids per 06 §6. Logs `job failed`.
+- `email-templates.ts`: pure functions `invitationEmail({ to, name, link })`, `resetEmail({ to, name, link })` returning a `MailSend`; every interpolated value HTML-escaped (test: a name containing `<script>` is escaped). `invitationEmail`'s first caller is `scripts/create-admin.ts` (T8), which prints the link and also enqueues the email.
+- `worker/jobs/mail.ts`: processes `send` (validates `MailSend`, calls `sendMail`). Logs `job failed`. The `fanout` job is added in M01.
 - `worker/index.ts`: 04 §6.9.
 
 Verify: run `npm run worker`, trigger a reset from the UI (T7), see the email in Mailpit.
@@ -88,7 +89,7 @@ These actions are public, so they do **not** use `action()` (which requires a vi
 |---|---|---|---|
 | `login` | `email`, `password` | rate-limit (09 §4) → find user `status: active` with `+passwordHash` → `verifyPassword` → `signIn` → set `lastLoginAt` → `redirect('/home')` | generic "Email or password is incorrect." for every failure; `RATE_LIMITED` |
 | `logout` | — | `signOut()` → `redirect('/login')` | — |
-| `requestPasswordReset` | `email` | rate-limit; if an active or invited user exists, enqueue `mail/fanout passwordReset` with a reset token; always return the same success message | `RATE_LIMITED` |
+| `requestPasswordReset` | `email` | rate-limit; if an active or invited user exists, create a reset token and enqueue `mail/send` with `resetEmail(…)`, job id `mail-reset-<userId>-<minuteBucket>`; always return the same success message | `RATE_LIMITED` |
 | `resetPassword` | `token`, `password`, `confirm` | `readToken(token, 'reset' or 'invite')`; user exists and `sessionVersion === sv`; set `passwordHash`, `status: 'active'` (if invited), `sessionVersion + 1`; `signIn`; `redirect('/home')` | "This link has expired or was already used." |
 
 Pages use `ActionForm`/`Field` (04 §6.8). `/reset-password` reads `token` from `searchParams` inside the page (under the `(auth)` layout's Suspense boundary — add `app/(auth)/loading.tsx`).
@@ -111,8 +112,8 @@ Files: `scripts/create-admin.ts`, `app/api/health/route.ts`, `.github/workflows/
 - `check-bundle.ts`: 09 §7.
 
 ### T9 · Tests
-- Unit: rounding/time vectors; email escaping; token purpose; `action()` wrapper (unauthenticated, wrong role, validation, success — copy the verified test from the PROGRESS log description).
-- Integration: `login` success / wrong password / disabled user / rate limit (11th attempt in window); `resetPassword` single use (second use fails); `changePassword` increments `sessionVersion`; `signOutEverywhere` writes an audit entry.
+- Unit tests are written with their modules (T2, T4, T5).
+- Integration: `login` success / wrong password / disabled user / invited user without a password / rate limit (6th attempt for one email in the window); `resetPassword` single use (second use fails); `changePassword` increments `sessionVersion`; `signOutEverywhere` writes an audit entry.
 - E2E (`tests/e2e/auth.spec.ts`): create-admin link → set password → land on `/home` → sign out → sign in → forgot password → read the link from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>`, verified) → reset → sign in with the new password.
 
 ## Acceptance criteria

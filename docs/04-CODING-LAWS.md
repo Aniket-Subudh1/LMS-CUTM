@@ -219,7 +219,7 @@ import { User } from '@/lib/models/user';
 import type { Role } from '@/lib/schemas/common';
 
 export type SessionData = { uid: string; sv: number };
-export type Viewer = { id: string; name: string; roles: Role[]; departmentId: string | null };
+export type Viewer = { id: string; name: string; email: string; roles: Role[]; departmentId: string | null };
 
 export const SESSION_COOKIE = 'lms_session';
 
@@ -239,14 +239,31 @@ export async function session() {
   return getIronSession<SessionData>(await cookies(), options());
 }
 
+export async function signIn(user: { id: string; sessionVersion: number }): Promise<void> {
+  const s = await session();
+  s.uid = user.id;
+  s.sv = user.sessionVersion;
+  await s.save();
+}
+
+export async function signOut(): Promise<void> {
+  (await session()).destroy();
+}
+
 export const getViewer = cache(async (): Promise<Viewer | null> => {
   await connection();
   const s = await session();
   if (!s.uid || s.sv === undefined) return null;
   await db();
-  const user = await User.findById(s.uid, { name: 1, roles: 1, departmentId: 1, sessionVersion: 1, status: 1 }).lean();
+  const user = await User.findById(s.uid, { name: 1, email: 1, roles: 1, departmentId: 1, sessionVersion: 1, status: 1 }).lean();
   if (!user || user.status !== 'active' || user.sessionVersion !== s.sv) return null;
-  return { id: String(user._id), name: user.name, roles: user.roles, departmentId: user.departmentId ? String(user.departmentId) : null };
+  return {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    roles: user.roles,
+    departmentId: user.departmentId ? String(user.departmentId) : null,
+  };
 });
 
 export async function requireViewer(roles?: readonly Role[]): Promise<Viewer> {
@@ -259,7 +276,7 @@ export async function requireViewer(roles?: readonly Role[]): Promise<Viewer> {
 
 - **`await connection()` comes first.** Without it, Next 16's runtime prerender evaluates the session read (which checks expiry against the clock) and logs "encountered the unstable value `Date.now()` while prerendering" (verified). With it, the read is request-time.
 - `cache()` memoizes the viewer for the request, so pages, layouts and DAL functions can all call `getViewer()` and hit the database once.
-- Login writes `s.uid`, `s.sv` then `await s.save()`; logout calls `s.destroy()` (`(auth)/actions.ts`, M00).
+- `signIn` is called by login, password reset and password change (a change bumps `sessionVersion`, so the current browser re-signs to stay signed in); `signOut` by logout.
 
 ```ts
 // lib/auth/access.ts
@@ -551,17 +568,17 @@ import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
-import type { MailJob } from '@/lib/schemas/jobs';
+import type { MailSend } from '@/lib/schemas/jobs';
 
-const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: Queue<MailJob> };
+const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: Queue<MailSend, void, 'send'> };
 
 export function redis(): Redis {
   globalForQueue.redis ??= new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
   return globalForQueue.redis;
 }
 
-export function mailQueue(): Queue<MailJob> {
-  globalForQueue.mail ??= new Queue<MailJob>('mail', {
+export function mailQueue(): Queue<MailSend, void, 'send'> {
+  globalForQueue.mail ??= new Queue<MailSend, void, 'send'>('mail', {
     connection: redis(),
     defaultJobOptions: { attempts: 5, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: 1000, removeOnFail: 5000 },
   });
@@ -570,21 +587,27 @@ export function mailQueue(): Queue<MailJob> {
 // compute and sync queues follow the same shape.
 ```
 
-```ts
-// lib/schemas/jobs.ts — every job payload has a schema
-import { z } from 'zod';
-import { objectId } from '@/lib/schemas/common';
+The type parameters are `<data, result, job name>`; BullMQ then rejects a wrong job name or payload at compile time. M01 adds the `fanout` job: the queue becomes `Queue<MailSend | MailJob, void, 'send' | 'fanout'>` and the worker dispatches on `job.name`.
 
-export const MailJob = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('coursePlanPublished'), offeringId: objectId, version: z.number().int().min(1) }),
-  z.object({ kind: z.literal('passwordReset'), userId: objectId, token: z.string().min(1) }),
-]);
-export type MailJob = z.infer<typeof MailJob>;
+```ts
+// lib/schemas/jobs.ts — every job payload has a schema (M00 content)
+import { z } from 'zod';
+
+export const MailSend = z.object({
+  to: z.email(),
+  subject: z.string().min(1).max(200),
+  text: z.string().min(1),
+  html: z.string().min(1),
+});
+export type MailSend = z.infer<typeof MailSend>;
+// M01 adds `MailJob`, the `fanout` union (06 §6): z.discriminatedUnion('kind', [z.object({ kind: z.literal('invitation'), … }), …])
 ```
 
 ```ts
-// producer, inside an action
-await mailQueue().add('fanout', { kind: 'coursePlanPublished', offeringId, version: planVersion }, { jobId: `plan-${offeringId}-${planVersion}` });
+// producer, inside an action (M00 password reset)
+await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link }), {
+  jobId: `mail-reset-${user._id}-${Math.floor(Date.now() / 60_000)}`,
+});
 ```
 
 ```ts
