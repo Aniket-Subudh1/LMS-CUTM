@@ -327,7 +327,7 @@ Indexes: `{ kind: 1, startedAt: -1 }` · `{ offeringId: 1, startedAt: -1 }`.
 
 ### 7.5 `auditLogs` (append-only, no `updatedAt`)
 `at` D · `actorId` Id · `action` S (`entity.verb`) · `entity` S · `entityId` Id · `offeringId` Id? · `reason` S? · `before` Mixed? · `after` Mixed?
-Indexes: `{ entity: 1, entityId: 1, at: -1 }` · `{ offeringId: 1, at: -1 }` · `{ actorId: 1, at: -1 }`.
+Indexes: `{ entity: 1, entityId: 1, at: -1 }` · `{ offeringId: 1, at: -1 }` · `{ actorId: 1, at: -1 }` · `{ entity: 1, at: -1 }` and `{ at: -1 }` (added in M01 so the audit page's "entity only" and "date range only" filters are index-backed).
 Invariants: never updated or deleted by application code. `before`/`after` hold only the changed fields (marks, status), never answer text or files.
 
 ## 8. Retention

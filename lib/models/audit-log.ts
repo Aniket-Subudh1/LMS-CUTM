@@ -17,6 +17,8 @@ const auditLogSchema = new Schema(
 );
 
 auditLogSchema.index({ entity: 1, entityId: 1, at: -1 });
+auditLogSchema.index({ at: -1 });
+auditLogSchema.index({ entity: 1, at: -1 });
 auditLogSchema.index({ offeringId: 1, at: -1 });
 auditLogSchema.index({ actorId: 1, at: -1 });
 
