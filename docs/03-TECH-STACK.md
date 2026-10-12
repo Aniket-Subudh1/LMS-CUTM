@@ -87,7 +87,7 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   output: 'standalone',
   serverExternalPackages: ['bullmq', 'ioredis'], // bullmq loads ioredis with a dynamic require
-  serverActions: { bodySizeLimit: '2mb' },       // added in M01 for CSV imports; files never go through actions
+  experimental: { serverActions: { bodySizeLimit: '2mb' } }, // added in M01 for CSV imports; files never go through actions (the key lives under `experimental` in the installed Next 16.4 types)
   turbopack: { rules: { '*.css': { loaders: ['@tailwindcss/turbopack'], as: '*.css' } } },
   headers: async () => [{ source: '/:path*', headers: SECURITY_HEADERS }], // 09 §8
 };

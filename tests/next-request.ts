@@ -28,4 +28,10 @@ vi.mock('next/server', async (importOriginal) => ({
   connection: async () => {},
 }));
 
-vi.mock('next/cache', () => ({ refresh: vi.fn(), updateTag: vi.fn(), revalidateTag: vi.fn() }));
+vi.mock('next/cache', () => ({
+  refresh: vi.fn(),
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
+  cacheLife: vi.fn(),
+  cacheTag: vi.fn(),
+}));

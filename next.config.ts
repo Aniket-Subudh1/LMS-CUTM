@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // bullmq loads ioredis with a dynamic require that the bundler cannot follow.
   serverExternalPackages: ['bullmq', 'ioredis'],
+  // CSV imports (06 §8: 5,000 rows) post the file inside the action request; files themselves never do (04 §3 S6).
+  experimental: { serverActions: { bodySizeLimit: '2mb' } },
   turbopack: {
     rules: {
       '*.css': {
