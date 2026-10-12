@@ -1,10 +1,9 @@
 import { parseArgs } from 'node:util';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { createToken } from '@/lib/auth/tokens';
+import { passwordLink } from '@/lib/auth/tokens';
 import { db } from '@/lib/db';
 import { invitationEmail } from '@/lib/domain/email-templates';
-import { env } from '@/lib/env';
 import { User } from '@/lib/models/user';
 import { mailQueue, redis } from '@/lib/queue';
 import { Email } from '@/lib/schemas/auth';
@@ -31,15 +30,11 @@ const user = await User.findOneAndUpdate(
 ).lean();
 if (!user) throw new Error('upsert returned no user');
 
-const link = new URL('/reset-password', env().APP_URL);
-link.searchParams.set(
-  'token',
-  await createToken({ uid: String(user._id), sv: user.sessionVersion, purpose: 'invite' }),
-);
-await mailQueue().add('send', invitationEmail({ to: email, name, link: link.href }), {
+const link = await passwordLink({ uid: String(user._id), sv: user.sessionVersion, purpose: 'invite' });
+await mailQueue().add('send', invitationEmail({ to: email, name, link }), {
   jobId: `mail-invite-${user._id}-${Math.floor(Date.now() / 60_000)}`,
 });
-console.log(`Invitation for ${email} queued (the worker sends it). The link is valid for 7 days:\n${link.href}`);
+console.log(`Invitation for ${email} queued (the worker sends it). The link is valid for 7 days:\n${link}`);
 
 await mailQueue().close();
 await redis().quit();

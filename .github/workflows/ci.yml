@@ -51,3 +51,58 @@ jobs:
       - run: npm ci
       # Without TEST_MONGODB_URI, tests/setup.ts starts a mongodb-memory-server replica set.
       - run: npm run test:integration
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:8.6
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: supercharge/mongodb-github-action@1.12.0
+        with:
+          mongodb-version: '8.0'
+          mongodb-replica-set: rs0
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The e2e environment (10 §3) holds generated values only; nothing here is a real secret.
+      - name: Write .env.e2e
+        run: |
+          cat > .env.e2e <<ENV
+          PORT=3100
+          APP_URL=http://localhost:3100
+          MONGODB_URI=mongodb://localhost:27017/lms_e2e?replicaSet=rs0&directConnection=true
+          REDIS_URL=redis://localhost:6379/2
+          SESSION_PASSWORD=$(openssl rand -base64 32)
+          SMTP_HOST=localhost
+          SMTP_PORT=1025
+          SMTP_SECURE=false
+          MAIL_FROM="CUTM LMS <lms@localhost>"
+          LOG_LEVEL=info
+          E2E_PASSWORD=$(openssl rand -hex 12)
+          ENV
+      - run: npm run build
+      - run: npm run db:indexes:e2e
+      - run: npm run db:seed:e2e
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/

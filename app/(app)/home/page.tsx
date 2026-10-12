@@ -7,7 +7,8 @@ import Loading from '../loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireViewer } from '@/lib/auth/session';
+import { requireViewer, type Viewer } from '@/lib/auth/session';
+import { listMyOfferings } from '@/lib/data/workspace';
 import { ROLE_LABEL } from '@/lib/format';
 import type { Role } from '@/lib/schemas/common';
 
@@ -52,6 +53,8 @@ async function Home() {
         </div>
       </section>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-4 lg:gap-6">
+        <Offerings viewer={viewer} />
+        <Shortcuts viewer={viewer} />
         <Card className="border-t-gold border-t">
           <CardHeader>
             <CardTitle>Your access</CardTitle>
@@ -84,5 +87,73 @@ async function Home() {
         </Card>
       </div>
     </div>
+  );
+}
+
+const OFFERING_ROLES: Role[] = ['admin', 'hod', 'faculty', 'student'];
+
+// Newest five offerings the viewer teaches, oversees or is enrolled in; the full list is /courses.
+async function Offerings({ viewer }: { viewer: Viewer }) {
+  if (!viewer.roles.some((r) => OFFERING_ROLES.includes(r))) return null;
+  const { rows, total } = await listMyOfferings(1, {});
+  const studentOnly = viewer.roles.every((r) => r === 'student');
+  return (
+    <Card className="border-t-gold border-t">
+      <CardHeader>
+        <CardTitle>{studentOnly ? 'My courses' : 'My offerings'}</CardTitle>
+        <CardDescription>{total === 0 ? 'Nothing yet.' : `${total} in total, newest first.`}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {rows.length > 0 && (
+          <ul className="grid gap-2 text-sm">
+            {rows.slice(0, 5).map((o) => (
+              <li key={o.id}>
+                <Link href={`/courses/${o.id}`} className="font-medium underline-offset-4 hover:underline">
+                  {o.title}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button asChild variant="outline" className="justify-self-start">
+          <Link href="/courses">
+            All courses
+            <ArrowRight />
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Shortcuts({ viewer }: { viewer: Viewer }) {
+  const links = viewer.roles.includes('admin')
+    ? [
+        { href: '/admin', label: 'Structure' },
+        { href: '/admin/offerings', label: 'Offerings' },
+        { href: '/admin/users', label: 'Users' },
+      ]
+    : viewer.roles.includes('support')
+      ? [{ href: '/admin/users', label: 'Users' }]
+      : [];
+  if (links.length === 0) return null;
+  return (
+    <Card className="border-t-gold border-t">
+      <CardHeader>
+        <CardTitle>{viewer.roles.includes('admin') ? 'Administration' : 'Support'}</CardTitle>
+        <CardDescription>
+          {viewer.roles.includes('admin')
+            ? 'Where to set up and look after the LMS.'
+            : 'Find a user and send a password link.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        {links.map((l) => (
+          <Button key={l.href} asChild variant="outline">
+            <Link href={l.href}>{l.label}</Link>
+          </Button>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

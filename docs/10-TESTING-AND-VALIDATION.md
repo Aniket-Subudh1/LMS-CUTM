@@ -172,7 +172,7 @@ For each new DAL read: one test that a user with access gets the data and one th
 ## 3. End-to-end tests (Playwright)
 
 - `playwright.config.ts`: `testDir: 'tests/e2e'`, Chromium only, `baseURL: 'http://localhost:3100'`, `webServer.command: 'npm run start:e2e'` (builds nothing — CI builds first), `reuseExistingServer: !process.env.CI`.
-- `start:e2e` runs the standalone server with `.env.e2e` (database `lms_e2e`) after `scripts/seed.ts --e2e` creates deterministic fixtures: one admin, one HoD, two faculty, twenty students, one department, one ugc program with a batch, one skill program, one term, two offerings.
+- `start:e2e` runs the standalone server with `.env.e2e` (database `lms_e2e`) after `npm run db:indexes:e2e` and `npm run db:seed:e2e` (`scripts/seed.ts --e2e`, safe to repeat) creates deterministic fixtures: one admin, one HoD, two faculty, twenty students, one department, one ugc program with a batch, one skill program, one term, two offerings (CS101 with the twenty students enrolled; SK01 with nobody enrolled). All fixture users share the password `E2E_PASSWORD`; their emails are `admin@`, `hod@`, `faculty1@`, `faculty2@` and `student01@`…`student20@seed.cutm.test`.
 - Seeded e2e passwords exist only in `.env.e2e` (never committed with real values; CI generates them).
 - `.env.e2e` (gitignored; CI generates it) — M00 content:
   ```
@@ -186,6 +186,7 @@ For each new DAL read: one test that a user with access gets the data and one th
   SMTP_SECURE=false
   MAIL_FROM="CUTM LMS <lms@localhost>"
   LOG_LEVEL=info
+  E2E_PASSWORD=<openssl rand -hex 12>
   ```
   `LOG_LEVEL` must be at least `info`: Playwright starts the worker (`npm run worker:e2e`) as a second `webServer` and waits for its `worker started` line.
 - The compose stack must be running (Mongo, Redis, Mailpit) and `npm run build` must have run. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
@@ -206,7 +207,9 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `worker` | `tsx --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
 | `worker:dev` | `tsx watch --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
 | `db:indexes` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
-| `db:seed` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development / e2e fixtures |
+| `db:seed` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development data (users stay invited; needs an existing administrator) |
+| `db:indexes:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/sync-indexes.ts` | Collections and indexes in the e2e database (the production server does not auto-create them) |
+| `db:seed:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e` | e2e fixtures with passwords |
 | `admin:create` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
 | `s3:setup` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
 | `lint` | `eslint` | |
@@ -225,7 +228,7 @@ Journeys added per milestone are listed in each milestone file; together they fo
 On every push and pull request (two parallel jobs, Node 24, `npm ci`):
 1. **verify:** `npm run lint`, `npm run typecheck`, `npm run test`, then `npm run build` with **no** env (the build needs none — 02 §5) and `npm run check:bundle`.
 2. **integration:** a `redis:8.6` service container; `npm run test:integration` **without** `TEST_MONGODB_URI`, so `tests/setup.ts` starts a mongodb-memory-server replica set (GitHub service containers cannot pass `--replSet`). The `mongod` binary is cached at `/home/runner/.cache/mongodb-binaries` (`MONGOMS_DOWNLOAD_DIR`, an absolute path: Node does not expand `~`).
-3. From M01 (when `scripts/seed.ts` exists), on pull requests to `main`: start the stack, `npm run db:seed -- --e2e`, `npm run test:e2e`. Until then e2e runs locally (M00 T9).
+3. From M01 (when `scripts/seed.ts` exists), on pull requests to `main`: start the stack, `npm run db:indexes:e2e`, `npm run db:seed:e2e`, `npm run test:e2e`. Until then e2e runs locally (M00 T9).
 
 ## 6. Release gates
 
