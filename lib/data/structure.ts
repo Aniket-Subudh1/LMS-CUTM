@@ -12,6 +12,17 @@ import { pageSize } from '@/lib/schemas/common';
 
 const skip = (page: number) => (page - 1) * pageSize;
 
+export async function getStructureCounts(): Promise<{ departments: number; programs: number; terms: number }> {
+  await requireViewer(['admin']);
+  await db();
+  const [departments, programs, terms] = await Promise.all([
+    Department.estimatedDocumentCount(),
+    Program.estimatedDocumentCount(),
+    Term.estimatedDocumentCount(),
+  ]);
+  return { departments, programs, terms };
+}
+
 export type DepartmentRow = { id: string; code: string; name: string; status: 'active' | 'archived' };
 
 export async function listDepartments(page: number): Promise<{ rows: DepartmentRow[]; total: number }> {

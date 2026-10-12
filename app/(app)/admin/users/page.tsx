@@ -10,13 +10,14 @@ import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { requireViewer } from '@/lib/auth/session';
 import { getUserFormOptions, listUsers } from '@/lib/data/users';
-import { ROLE_LABEL, statusTone } from '@/lib/format';
+import { initials, ROLE_LABEL, statusTone } from '@/lib/format';
 import { page as pageParam, pageSize, ROLES } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'Users' };
@@ -99,8 +100,13 @@ async function Users({ searchParams }: { searchParams: PageProps<'/admin/users'>
           {
             header: 'Name',
             cell: (u) => (
-              <Link href={`/admin/users/${u.id}`} className="text-primary font-medium hover:underline">
-                {u.name}
+              <Link href={`/admin/users/${u.id}`} className="group flex items-center gap-2.5 font-medium">
+                <Avatar className="size-8 rounded-lg">
+                  <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
+                    {initials(u.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="group-hover:text-primary group-hover:underline">{u.name}</span>
               </Link>
             ),
           },

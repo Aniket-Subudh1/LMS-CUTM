@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { saveBatch, saveDepartment, saveProgram, saveProgramOutcomes, saveTerm } from '@/app/(app)/admin/actions';
 import { db } from '@/lib/db';
-import { getProgram, listDepartments, listPrograms } from '@/lib/data/structure';
+import { getProgram, getStructureCounts, listDepartments, listPrograms } from '@/lib/data/structure';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
@@ -45,8 +45,21 @@ describe('who may change the structure', () => {
     await signInAs(await makeUser({ roles: ['faculty'] }));
     await expect(listDepartments(1)).rejects.toMatchObject(redirectsTo('/home'));
     await expect(listPrograms(1)).rejects.toMatchObject(redirectsTo('/home'));
+    await expect(getStructureCounts()).rejects.toMatchObject(redirectsTo('/home'));
     switchBrowser(new Map());
     await expect(listPrograms(1)).rejects.toMatchObject(redirectsTo('/login'));
+  });
+});
+
+describe('getStructureCounts', () => {
+  it('counts departments, programmes and terms', async () => {
+    await asAdmin();
+    await makeDepartment('CNT');
+    expect(await getStructureCounts()).toEqual({
+      departments: await Department.countDocuments(),
+      programs: await Program.countDocuments(),
+      terms: await Term.countDocuments(),
+    });
   });
 });
 

@@ -11,7 +11,7 @@ import {
 import Loading from '../loading';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
-import { requireViewer } from '@/lib/auth/session';
+import { getStructureCounts } from '@/lib/data/structure';
 
 export const metadata: Metadata = { title: 'Academic structure' };
 
@@ -21,15 +21,23 @@ const SECTIONS = [
     title: 'Departments',
     text: 'The departments that own programmes and courses.',
     icon: BuildingsIcon,
+    count: 'departments',
   },
   {
     href: '/admin/programs',
     title: 'Programmes',
     text: 'Programmes, their batches and their PO and PSO lists.',
     icon: GraduationCapIcon,
+    count: 'programs',
   },
-  { href: '/admin/terms', title: 'Terms', text: 'Academic terms and which one is current.', icon: CalendarDotsIcon },
-];
+  {
+    href: '/admin/terms',
+    title: 'Terms',
+    text: 'Academic terms and which one is current.',
+    icon: CalendarDotsIcon,
+    count: 'terms',
+  },
+] as const;
 
 export default function AdminPage() {
   return (
@@ -40,7 +48,7 @@ export default function AdminPage() {
 }
 
 async function Admin() {
-  await requireViewer(['admin']);
+  const counts = await getStructureCounts();
   return (
     <>
       <PageHeader
@@ -52,8 +60,11 @@ async function Admin() {
         {SECTIONS.map((s) => (
           <li key={s.href}>
             <Link href={s.href} className="surface-interactive group flex h-full flex-col gap-4 p-5">
-              <span className="icon-chip size-12 [&_svg]:size-7">
-                <s.icon weight="duotone" />
+              <span className="flex items-start justify-between gap-3">
+                <span className="icon-chip size-12 [&_svg]:size-7">
+                  <s.icon weight="duotone" />
+                </span>
+                <span className="text-3xl font-semibold tracking-tight tabular-nums">{counts[s.count]}</span>
               </span>
               <div className="grid gap-1">
                 <h2 className="font-semibold">{s.title}</h2>
