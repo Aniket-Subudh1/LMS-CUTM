@@ -374,36 +374,54 @@ function formDataToObject(fd: FormData): Record<string, unknown> {
   return out;
 }
 
+async function settle<R>(work: () => Promise<ActionResult<R>>): Promise<ActionResult<R>> {
+  try {
+    return await work();
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
+    const errorId = crypto.randomUUID();
+    log.error('action failed', { errorId, error });
+    return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };
+  }
+}
+
+async function validated<S extends z.ZodType, R>(
+  schema: S,
+  raw: unknown,
+  run: (input: z.infer<S>) => Promise<R>,
+): Promise<ActionResult<R>> {
+  const parsed = schema.safeParse(raw instanceof FormData ? formDataToObject(raw) : raw);
+  if (!parsed.success) {
+    const { fieldErrors, formErrors } = z.flattenError(parsed.error);
+    return {
+      ok: false,
+      code: 'VALIDATION',
+      message: formErrors[0] ?? 'Please correct the highlighted fields.',
+      fieldErrors,
+    };
+  }
+  return { ok: true, data: await run(parsed.data) };
+}
+
 export function action<S extends z.ZodType, R>(
   config: { input: S; roles: readonly Role[] },
   run: (input: z.infer<S>, viewer: Viewer) => Promise<R>,
 ) {
-  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> => {
-    try {
+  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> =>
+    settle(async () => {
       const viewer = await getViewer();
       if (!viewer) return { ok: false, code: 'UNAUTHENTICATED', message: 'Please sign in again.' };
       if (!viewer.roles.some((r) => config.roles.includes(r))) {
         return { ok: false, code: 'FORBIDDEN', message: 'You do not have access to this action.' };
       }
-      const parsed = config.input.safeParse(raw instanceof FormData ? formDataToObject(raw) : raw);
-      if (!parsed.success) {
-        const { fieldErrors, formErrors } = z.flattenError(parsed.error);
-        return {
-          ok: false,
-          code: 'VALIDATION',
-          message: formErrors[0] ?? 'Please correct the highlighted fields.',
-          fieldErrors,
-        };
-      }
-      return { ok: true, data: await run(parsed.data, viewer) };
-    } catch (error) {
-      unstable_rethrow(error);
-      if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
-      const errorId = crypto.randomUUID();
-      log.error('action failed', { errorId, error });
-      return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };
-    }
-  };
+      return validated(config.input, raw, (input) => run(input, viewer));
+    });
+}
+
+// Only for actions that run before sign-in (login, password reset).
+export function publicAction<S extends z.ZodType, R>(input: S, run: (input: z.infer<S>) => Promise<R>) {
+  return async (raw: z.input<S> | FormData): Promise<ActionResult<R>> => settle(() => validated(input, raw, run));
 }
 ```
 
@@ -436,6 +454,7 @@ export const renameOffering = action(
 Rules:
 - Actions accept either `FormData` (from `ActionForm`) or a plain object (from a client component via `startTransition`). Repeated fields use the `name[]` convention to always arrive as arrays.
 - The role check in `action()` is coarse; the record check inside `run` is mandatory.
+- `publicAction(input, run)` is only for the pre-sign-in actions in `app/(auth)/actions.ts` (login, password reset). Everything else uses `action()`.
 - Expected failures throw `AppError(code, message)`. Never return raw exception text.
 - `unstable_rethrow` lets `redirect()` / `notFound()` thrown inside `run` behave normally. The shared access helpers (`offeringAccess`, `requireTeach`) call `notFound()`, so a tampered or stale id ends in Next's not-found handling rather than an `ActionResult` — intended. Integration tests assert it with `await expect(act(input)).rejects.toThrow('NEXT_HTTP_ERROR_FALLBACK;404')` (verified).
 - Call `refresh()` after a successful mutation unless you `redirect()`.
@@ -530,7 +549,7 @@ export function ActionForm({
       {state?.ok && successMessage && <p role="status" className="form-success">{successMessage}</p>}
       <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
       <button type="submit" className="btn btn-primary" disabled={pending}>
-        {pending ? 'Saving…' : submitLabel}
+        {pending ? 'Please wait…' : submitLabel}
       </button>
     </form>
   );

@@ -83,16 +83,16 @@ Verify: run `npm run worker`, trigger a reset from the UI (T7), see the email in
 ### T6 · Auth actions and public pages
 Files: `app/(auth)/actions.ts`, `app/(auth)/layout.tsx`, `app/(auth)/login/page.tsx`, `app/(auth)/forgot-password/page.tsx`, `app/(auth)/reset-password/page.tsx`, `components/action-form.tsx`.
 
-These actions are public, so they do **not** use `action()` (which requires a viewer); each validates with Zod and returns `ActionResult` itself.
+These actions run before sign-in, so they use `publicAction(input, run)` (04 §6.6): the same validation and error mapping as `action()`, without the viewer check.
 
 | Action | Input | Behaviour | Errors |
 |---|---|---|---|
 | `login` | `email`, `password` | rate-limit (09 §4) → find user `status: active` with `+passwordHash` → `verifyPassword` → `signIn` → set `lastLoginAt` → `redirect('/home')` | generic "Email or password is incorrect." for every failure; `RATE_LIMITED` |
 | `logout` | — | `signOut()` → `redirect('/login')` | — |
 | `requestPasswordReset` | `email` | rate-limit; if an active or invited user exists, create a reset token and enqueue `mail/send` with `resetEmail(…)`, job id `mail-reset-<userId>-<minuteBucket>`; always return the same success message | `RATE_LIMITED` |
-| `resetPassword` | `token`, `password`, `confirm` | `readToken(token, 'reset' or 'invite')`; user exists and `sessionVersion === sv`; set `passwordHash`, `status: 'active'` (if invited), `sessionVersion + 1`; `signIn`; `redirect('/home')` | "This link has expired or was already used." |
+| `resetPassword` | `token`, `password`, `confirm` | `readToken(token, 'reset' or 'invite')`; user active or invited and `sessionVersion === sv`; password ≠ email; one `findOneAndUpdate` conditional on that `sessionVersion` sets `passwordHash`, `status: 'active'`, `sessionVersion + 1` (a racing second use matches nothing); audit `user.password_changed` (status before/after); `signIn`; `redirect('/home')` | "This link has expired or was already used."; "Your password must not be your email address." |
 
-Pages use `ActionForm`/`Field` (04 §6.8). `/reset-password` reads `token` from `searchParams` inside the page (under the `(auth)` layout's Suspense boundary — add `app/(auth)/loading.tsx`).
+Pages use `ActionForm`/`Field` (04 §6.8). `/reset-password` reads `token` from `searchParams` inside the page (under the `(auth)` layout's Suspense boundary — add `app/(auth)/loading.tsx`), calls `await connection()` before `readToken` (unsealing checks expiry against the clock; without it the runtime prerender logs the `Date.now()` error — verified), then shows "Set your password" (invite) or "Choose a new password" (reset), or "Link not valid" with a link to `/forgot-password`. `lib/auth/tokens.ts` itself must not import `next/*` (the worker creates invite tokens from M01).
 
 ### T7 · App shell, home, profile
 Files: `app/layout.tsx`, `app/globals.css`, `app/not-found.tsx`, `app/(app)/layout.tsx`, `app/(app)/loading.tsx`, `app/(app)/error.tsx`, `app/(app)/home/page.tsx`, `app/(app)/profile/page.tsx`, `app/(app)/profile/actions.ts`, `proxy.ts`.
