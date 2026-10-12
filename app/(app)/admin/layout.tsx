@@ -15,11 +15,13 @@ const SCHEMES = { href: '/admin/schemes', label: 'Schemes' };
 
 const OFFERINGS = { href: '/admin/offerings', label: 'Offerings' };
 
+const AUDIT = { href: '/admin/audit', label: 'Audit' };
+
 const USERS = { href: '/admin/users', label: 'Users' };
 
 async function AdminTabs() {
   const viewer = await requireViewer(['admin', 'support']);
-  const tabs = viewer.roles.includes('admin') ? [STRUCTURE, COURSES, SCHEMES, OFFERINGS, USERS] : [USERS];
+  const tabs = viewer.roles.includes('admin') ? [STRUCTURE, COURSES, SCHEMES, OFFERINGS, USERS, AUDIT] : [USERS];
   return <TabNav tabs={tabs} />;
 }
 
