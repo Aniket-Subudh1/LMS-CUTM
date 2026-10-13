@@ -33,15 +33,13 @@ export function DataTable<T>({
 }) {
   if (rows.length === 0) return <EmptyState text={empty} />;
   return (
-    <div className="surface overflow-hidden">
-      <Table className="[&_td]:px-4 [&_td]:py-3 [&_th]:px-4">
-        <TableHeader className="bg-muted/60">
+    <div className="surface px-3 pt-1 pb-3 sm:px-4">
+      {/* Each row is its own rounded, outlined strip, as in the reference's student list. */}
+      <Table className="border-separate border-spacing-y-2 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4">
+        <TableHeader className="[&_tr]:border-0">
           <TableRow className="hover:bg-transparent">
             {columns.map((c) => (
-              <TableHead
-                key={c.header}
-                className={cn('text-muted-foreground h-10 text-xs font-medium tracking-wide uppercase', c.className)}
-              >
+              <TableHead key={c.header} className={cn('text-muted-foreground h-9 text-sm font-medium', c.className)}>
                 {c.header}
               </TableHead>
             ))}
@@ -49,7 +47,10 @@ export function DataTable<T>({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={rowKey(row)} className="hover:bg-primary/[0.03]">
+            <TableRow
+              key={rowKey(row)}
+              className="[&>td]:border-border/80 [&:hover>td]:bg-primary/[0.03] hover:bg-transparent [&>td]:border-y [&>td:first-child]:rounded-l-xl [&>td:first-child]:border-l [&>td:last-child]:rounded-r-xl [&>td:last-child]:border-r"
+            >
               {columns.map((c) => (
                 <TableCell key={c.header} className={c.className}>
                   {c.cell(row)}
@@ -66,7 +67,7 @@ export function DataTable<T>({
         pageSize={pageSize}
         query={query}
         path={path}
-        className="border-t px-4 py-3"
+        className="px-1 pt-2"
       />
     </div>
   );

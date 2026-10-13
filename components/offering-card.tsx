@@ -51,7 +51,11 @@ export function OfferingCard({ offering, featured = false }: { offering: MyOffer
             <CaretRightIcon className="size-4" />
           </span>
         ) : (
-          <LinkSpinner />
+          <span className="bg-foreground text-background inline-flex h-8 shrink-0 items-center gap-0.5 rounded-full pr-2 pl-3 text-[0.8125rem] font-medium">
+            Open
+            <LinkSpinner />
+            <CaretRightIcon className="size-4" />
+          </span>
         )}
       </span>
     </Link>

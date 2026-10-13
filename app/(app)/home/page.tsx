@@ -78,7 +78,7 @@ async function Home() {
                   <li key={t.label}>
                     <Link href={t.href} className="surface-interactive flex h-full flex-col gap-5 p-4">
                       <span className="flex items-start gap-3">
-                        <span className="icon-chip ring-primary/15 size-10 ring-1 [&_svg]:size-5">
+                        <span className="icon-chip size-10 [&_svg]:size-5">
                           <t.icon weight="duotone" />
                         </span>
                         <span className="text-muted-foreground max-w-24 text-sm leading-tight">{t.label}</span>
@@ -197,7 +197,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
       {featured ? (
         <>
           <div className="flex items-start gap-4">
-            <span className="bg-primary text-primary-foreground ring-card grid size-20 shrink-0 place-content-center justify-items-center gap-1 rounded-xl ring-4">
+            <span className="bg-primary text-primary-foreground grid size-20 shrink-0 place-content-center justify-items-center gap-1 rounded-xl">
               <BookOpenTextIcon weight="fill" className="size-7" />
               <span className="max-w-16 truncate text-[0.625rem] font-semibold tracking-wide">{featured.termCode}</span>
             </span>
@@ -219,7 +219,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
         </>
       ) : (
         <div className="flex items-start gap-4">
-          <span className="bg-primary text-primary-foreground ring-card grid size-16 shrink-0 place-items-center rounded-xl ring-4">
+          <span className="bg-primary text-primary-foreground grid size-16 shrink-0 place-items-center rounded-xl">
             <GraduationCapIcon weight="fill" className="size-7" />
           </span>
           <div className="grid min-w-0 gap-1.5">
@@ -237,10 +237,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
       {(featured || second) && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
           {featured && (
-            <Button
-              asChild
-              className="bg-card text-foreground hover:bg-card/80 h-11 rounded-full text-[0.9375rem] shadow-sm"
-            >
+            <Button asChild className="bg-card text-foreground hover:bg-card/80 h-11 rounded-full text-[0.9375rem]">
               <Link href={`/courses/${featured.id}`}>
                 Open course
                 <LinkSpinner />
@@ -248,10 +245,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
             </Button>
           )}
           {second && (
-            <Button
-              asChild
-              className="from-violet to-primary h-12 justify-between rounded-full bg-linear-to-r px-5 text-[0.9375rem] shadow-sm hover:opacity-95"
-            >
+            <Button asChild className="h-12 justify-between rounded-full px-5 text-[0.9375rem]">
               <Link href={second.href}>
                 <span className="flex items-center gap-2.5">
                   <second.icon weight="duotone" className="size-5" />
@@ -273,11 +267,11 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
 const ENTITY: Record<string, { icon: Icon; tone: string }> = {
   user: { icon: UserIcon, tone: 'bg-primary' },
   user_import: { icon: UsersThreeIcon, tone: 'bg-primary' },
-  course: { icon: BookOpenTextIcon, tone: 'bg-violet' },
+  course: { icon: BookOpenTextIcon, tone: 'bg-foreground' },
   offering: { icon: ChalkboardTeacherIcon, tone: 'bg-success' },
   scheme: { icon: SlidersHorizontalIcon, tone: 'bg-gold' },
 };
-const OTHER = { icon: ClockCounterClockwiseIcon, tone: 'bg-foreground' };
+const OTHER = { icon: ClockCounterClockwiseIcon, tone: 'bg-muted-foreground' };
 
 function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>['recent'] }) {
   return (

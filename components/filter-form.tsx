@@ -20,7 +20,16 @@ export function FilterForm({
   children: ReactNode;
 }) {
   return (
-    <Form action={action} scroll={false} className={cn('flex flex-wrap items-end gap-3', !plain && 'surface mb-5 p-4')}>
+    <Form
+      action={action}
+      scroll={false}
+      className={cn(
+        'flex flex-wrap items-end gap-3',
+        // Rounded white fields straight on the page, like the reference's filter pills.
+        !plain &&
+          '[&_input]:bg-card [&_select]:bg-card mb-5 [&_input]:rounded-full [&_input]:px-4 [&_select]:rounded-full [&_select]:pl-4',
+      )}
+    >
       {children}
       <Submit label={submitLabel} />
     </Form>
@@ -30,7 +39,7 @@ export function FilterForm({
 function Submit({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="secondary" disabled={pending} aria-busy={pending}>
+    <Button type="submit" variant="outline" className="rounded-full" disabled={pending} aria-busy={pending}>
       {pending ? <CircleNotchIcon className="animate-spin" /> : <FunnelSimpleIcon weight="duotone" />}
       {label}
     </Button>

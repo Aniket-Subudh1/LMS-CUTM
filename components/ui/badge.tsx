@@ -15,10 +15,13 @@ const badgeVariants = cva(
         outline: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
-        // Local change from shadcn 4.21.4: soft status tones for statusTone() (08 §4).
-        success: 'bg-success/12 text-success',
-        warning: 'bg-warning/12 text-warning',
-        danger: 'bg-destructive/10 text-destructive',
+        // Local change from shadcn 4.21.4: soft status tones for statusTone() (08 §4), with a hairline ring and a dot.
+        success:
+          'bg-success/10 text-success ring-1 ring-success/20 capitalize before:size-1.5 before:rounded-full before:bg-current',
+        warning:
+          'bg-warning/10 text-warning ring-1 ring-warning/20 capitalize before:size-1.5 before:rounded-full before:bg-current',
+        danger:
+          'bg-destructive/10 text-destructive ring-1 ring-destructive/20 capitalize before:size-1.5 before:rounded-full before:bg-current',
       },
     },
     defaultVariants: {

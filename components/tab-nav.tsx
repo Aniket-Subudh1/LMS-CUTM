@@ -27,14 +27,14 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
     <Tabs value={current?.href ?? ''} className="-m-1 mb-5 overflow-x-auto p-1 lg:mb-7">
       <TabsList
         aria-label="Sections"
-        className="bg-card shadow-card ring-border gap-1 rounded-xl p-1 ring-1 group-data-[orientation=horizontal]/tabs:h-auto"
+        className="bg-card ring-border/80 gap-1 rounded-2xl p-1.5 ring-1 group-data-[orientation=horizontal]/tabs:h-auto"
       >
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.href}
             value={tab.href}
             asChild
-            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary h-9 rounded-lg px-3.5 data-[state=active]:shadow-none [&_svg]:size-[1.125rem]"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-9 rounded-xl px-4 data-[state=active]:shadow-none [&_svg]:size-[1.125rem]"
           >
             <Link href={tab.href} aria-current={tab === current ? 'page' : undefined}>
               {tab.icon}

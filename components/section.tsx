@@ -14,12 +14,12 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-4">
+    <section className="surface grid gap-5 p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="icon-chip size-10 [&_svg]:size-5">{icon}</span>
           <div className="min-w-0">
-            <h2 className="font-semibold">{title}</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
             <p className="text-muted-foreground text-sm">{description}</p>
           </div>
         </div>

@@ -38,7 +38,7 @@ async function Profile() {
           <div className="flex flex-wrap items-end gap-4 px-5 pb-5 sm:px-6">
             <p
               aria-hidden="true"
-              className="bg-card text-primary ring-card shadow-elevated -mt-10 grid size-20 shrink-0 place-items-center rounded-2xl text-2xl font-semibold ring-4"
+              className="bg-card text-primary ring-border -mt-10 grid size-20 shrink-0 place-items-center rounded-2xl text-2xl font-semibold ring-1"
             >
               {initials(viewer.name)}
             </p>

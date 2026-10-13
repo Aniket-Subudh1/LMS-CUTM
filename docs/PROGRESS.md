@@ -571,3 +571,21 @@ Aniket reported that the palette had not changed and asked for the original Cent
 
 **Verification** — `npx eslint` and `npx tsc --noEmit` clean on the changed files; `npx next build` compiled; a screenshot of the admin Home at 1440 px on the build shows the lockup and “LMS” in the sidebar header.
 
+### 2026-10-13 · Reference card design across the site · Claude Code, at Aniket's request
+
+Aniket shared four more screens of the reference design (courses, an instructor dashboard, a student list) and asked for three things: no white shadows on buttons, no purple or violet anywhere, and the reference's card design on every page.
+
+**Created** (*changed*)
+- `app/globals.css`: `surface` is flat (`rounded-2xl`, hairline ring, no shadow); `surface-interactive` tints its ring on hover instead of lifting; `icon-chip` is an outlined square; `--violet`, `--elevation-card` and `shadow-card` are removed; the sign-in aurora's violet light is now sky blue.
+- Primitives (marked as local changes): `ui/button.tsx` (outline: white, no shadow), `ui/input.tsx`, `ui/textarea.tsx`, `ui/native-select.tsx` (no shadow), `ui/badge.tsx` (status tones: ring, dot, capitalised).
+- Components: `section.tsx` (a section is one card), `data-table.tsx` (rows as separate outlined strips, sentence-case header), `filter-form.tsx` (rounded white fields on the page, outline submit), `tab-nav.tsx` (solid primary current tab), `offering-card.tsx` (black “Open” pill).
+- Pages: `home/page.tsx` (no white ring around the hero tile, no button shadows, solid primary hero button, course entries in black instead of violet); `profile/page.tsx` (avatar without the white ring and shadow).
+- Docs: 08 §1, §4, §5.1, §5.2, §6.
+
+**Not done** — Page headers keep their icon chip (the reference's have none). Dialogs keep their shadow so they stand off the overlay. `auth.spec.ts` › “invited admin sets a password…” still needs Mailpit.
+
+**Verification**
+- `npm run check` → eslint clean; typecheck clean; unit `Test Files 10 passed, Tests 58 passed`. `npm run test:integration` (local Redis started for the run) → `Test Files 11 passed, Tests 120 passed`. `npx next build` compiled.
+- `npx playwright test` against the build on port 3100. The first run had 6 passed and 2 failed: the Mailpit test, and “phone width: no horizontal scroll…”. That test then passed alone and in a second full run (`7 passed, 1 failed`, the Mailpit test). The cause of its one failure was not captured.
+- Screenshots at 1440 px as an administrator, reviewed in the session: Home, Users, My courses, a course Overview, Profile.
+
