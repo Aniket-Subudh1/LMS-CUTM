@@ -616,3 +616,11 @@ Aniket asked to keep the collapsed rail at its original size and only centre it.
 
 **Verification** — eslint and `tsc --noEmit` clean; `npx next build` compiled. On the build at 1440 px, collapsed, the rail measured 48 px and every menu button and the lockup sat 8 px from each edge; screenshots of both states reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
 
+### 2026-10-13 · Sidebar header spacing · Claude Code, at Aniket's request
+
+The lockup filled its chip edge to edge and looked cropped, and the card sat tight against the top of the sidebar. The chip is now 48 × 64 px with the lockup 32 px wide (51 px tall): 7 px above and below it, 8 px either side. The header has 20 px above the card, the card has a little more padding and a slightly deeper diagonal tint, and the menu starts 16 px below it.
+
+**Created** (*changed*) — `app/(app)/layout.tsx`.
+
+**Verification** — eslint clean; `npx next build` compiled. On the build at 1440 px the lockup's margins in the chip measured 7 / 7 / 8 / 8 px and the card's top 20 px; collapsed, every rail item sat 8 px from each edge of the 48 px rail. Screenshots reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
+

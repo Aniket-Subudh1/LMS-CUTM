@@ -92,23 +92,23 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:16rem]!">
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
-        <SidebarHeader className="p-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
+        <SidebarHeader className="px-3 pt-5 pb-2 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
-            className="focus-visible:ring-ring from-primary/[0.03] to-primary/[0.08] ring-primary/10 flex items-center gap-3 rounded-2xl bg-linear-to-b p-3 ring-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:ring-0 focus-visible:ring-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring from-primary/[0.04] to-primary/[0.11] ring-primary/12 flex items-center gap-3.5 rounded-2xl bg-linear-to-br px-3.5 py-3 ring-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:ring-0 focus-visible:ring-2 focus-visible:outline-none"
           >
-            <span className="bg-card ring-primary/10 grid h-[3.625rem] w-[2.875rem] shrink-0 place-items-center rounded-[0.625rem] ring-1 group-data-[collapsible=icon]:size-auto group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:ring-0">
-              <UniversityLogo priority sizes="36px" className="w-9 group-data-[collapsible=icon]:w-8" />
+            <span className="bg-card ring-primary/12 grid h-16 w-12 shrink-0 place-items-center rounded-xl ring-1 group-data-[collapsible=icon]:size-auto group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:ring-0">
+              <UniversityLogo priority sizes="32px" className="w-8" />
             </span>
             <span className="grid min-w-0 gap-0.5 leading-tight group-data-[collapsible=icon]:sr-only">
               <span className="text-[0.9375rem] font-semibold tracking-tight">
                 Centurion <span className="text-primary font-bold">LMS</span>
               </span>
-              <span className="text-muted-foreground text-xs">Learning Management System</span>
+              <span className="text-muted-foreground text-xs leading-snug">Learning Management System</span>
             </span>
           </Link>
         </SidebarHeader>
-        <SidebarContent className="pt-3">
+        <SidebarContent className="pt-4">
           <Suspense
             fallback={
               <SidebarMenu className="px-3">
