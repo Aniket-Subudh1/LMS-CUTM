@@ -1,10 +1,15 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { CalendarBlankIcon, CaretUpDownIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
+import {
+  CalendarBlankIcon,
+  CaretDownIcon,
+  GraduationCapIcon,
+  SignOutIcon,
+  UserCircleIcon,
+} from '@phosphor-icons/react/ssr';
 import { logout } from '@/app/(auth)/actions';
 import { AppBreadcrumb, AppNav } from '@/components/app-nav';
-import { UniversityLogo } from '@/components/university-logo';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -14,17 +19,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarProvider,
   SidebarRail,
@@ -39,54 +40,41 @@ async function UserMenu() {
   if (!viewer) return null;
   const role = ROLES.find((r) => viewer.roles.includes(r));
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="bg-sidebar-accent/60 hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent ring-sidebar-border h-14 rounded-xl ring-1 group-data-[collapsible=icon]:ring-0"
-            >
-              <Avatar className="size-9 rounded-lg">
-                <AvatarFallback className="from-primary to-primary/75 text-primary-foreground rounded-lg bg-linear-to-br text-sm font-semibold">
-                  {initials(viewer.name)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-sm font-semibold">{viewer.name}</span>
-                <span className="text-muted-foreground truncate text-xs">{role && ROLE_LABEL[role]}</span>
-              </span>
-              <CaretUpDownIcon className="text-muted-foreground ml-auto" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="top"
-            align="start"
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-60 rounded-xl"
-          >
-            <DropdownMenuLabel className="grid font-normal">
-              <span className="truncate font-medium">{viewer.name}</span>
-              <span className="text-muted-foreground truncate text-xs">{viewer.email}</span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/profile">
-                <UserCircleIcon weight="duotone" />
-                Profile
-              </Link>
-            </DropdownMenuItem>
-            <form action={logout}>
-              <DropdownMenuItem asChild variant="destructive">
-                <button type="submit" className="w-full">
-                  <SignOutIcon weight="duotone" />
-                  Sign out
-                </button>
-              </DropdownMenuItem>
-            </form>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+    <DropdownMenu>
+      <DropdownMenuTrigger className="ring-border hover:bg-muted data-[state=open]:bg-muted focus-visible:ring-ring flex shrink-0 items-center gap-2.5 rounded-full p-1 ring-1 transition-colors outline-none focus-visible:ring-2 md:pr-3">
+        <Avatar className="size-9">
+          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+            {initials(viewer.name)}
+          </AvatarFallback>
+        </Avatar>
+        <span className="sr-only grid text-left leading-tight md:not-sr-only">
+          <span className="max-w-44 truncate text-sm font-semibold">{viewer.name}</span>
+          <span className="text-muted-foreground max-w-44 truncate text-xs">{viewer.email}</span>
+        </span>
+        <CaretDownIcon className="text-muted-foreground size-4 max-md:hidden" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60 rounded-xl">
+        <DropdownMenuLabel className="grid font-normal">
+          <span className="truncate font-medium">{viewer.name}</span>
+          <span className="text-muted-foreground truncate text-xs">{role && ROLE_LABEL[role]}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/profile">
+            <UserCircleIcon weight="duotone" />
+            Profile
+          </Link>
+        </DropdownMenuItem>
+        <form action={logout}>
+          <DropdownMenuItem asChild variant="destructive">
+            <button type="submit" className="w-full">
+              <SignOutIcon weight="duotone" />
+              Sign out
+            </button>
+          </DropdownMenuItem>
+        </form>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -98,8 +86,8 @@ async function Nav() {
 async function Today() {
   await connection();
   return (
-    <p className="text-muted-foreground ml-auto flex shrink-0 items-center gap-2 text-sm max-sm:hidden">
-      <CalendarBlankIcon weight="duotone" className="size-4" />
+    <p className="text-muted-foreground ring-border flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm ring-1 max-lg:hidden">
+      <CalendarBlankIcon className="size-4" />
       {formatLongDate(new Date())}
     </p>
   );
@@ -108,22 +96,24 @@ async function Today() {
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:16rem]!">
-      <Sidebar collapsible="icon" className="border-sidebar-border">
-        <SidebarHeader className="px-4 pt-5 pb-3 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
+      <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
+        <SidebarHeader className="h-16 justify-center px-5 group-data-[collapsible=icon]:px-2">
           <Link
             href="/home"
-            className="focus-visible:ring-ring flex flex-col items-center gap-2 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring flex items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
           >
-            <UniversityLogo priority sizes="72px" className="w-[4.5rem] group-data-[collapsible=icon]:w-8" />
-            <span className="bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold tracking-wide group-data-[collapsible=icon]:hidden">
-              Learning Management
+            <span className="bg-primary text-primary-foreground grid size-10 shrink-0 place-items-center rounded-xl group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg">
+              <GraduationCapIcon weight="fill" className="size-6 group-data-[collapsible=icon]:size-5" />
+            </span>
+            <span className="truncate text-[1.625rem] font-semibold tracking-tight group-data-[collapsible=icon]:sr-only">
+              Centurion
             </span>
           </Link>
         </SidebarHeader>
-        <SidebarContent className="px-1.5">
+        <SidebarContent className="pt-3">
           <Suspense
             fallback={
-              <SidebarMenu className="px-2">
+              <SidebarMenu className="px-3">
                 <SidebarMenuSkeleton showIcon />
                 <SidebarMenuSkeleton showIcon />
                 <SidebarMenuSkeleton showIcon />
@@ -133,25 +123,24 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Nav />
           </Suspense>
         </SidebarContent>
-        <SidebarFooter className="p-3">
-          <Suspense fallback={<SidebarMenuSkeleton showIcon />}>
-            <UserMenu />
-          </Suspense>
-        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset>
-        <header className="bg-background/85 sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b px-4 backdrop-blur-md sm:px-6 lg:px-8 xl:px-10">
-          <SidebarTrigger className="-ml-2" />
-          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+      <SidebarInset className="bg-sidebar">
+        <header className="bg-sidebar sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 px-4 sm:px-6 lg:px-8">
+          <SidebarTrigger className="ring-border size-10 rounded-full ring-1" />
           <Suspense fallback={<Skeleton className="h-4 w-24" />}>
             <AppBreadcrumb />
           </Suspense>
-          <Suspense>
-            <Today />
-          </Suspense>
+          <div className="ml-auto flex items-center gap-3">
+            <Suspense>
+              <Today />
+            </Suspense>
+            <Suspense fallback={<Skeleton className="size-11 rounded-full" />}>
+              <UserMenu />
+            </Suspense>
+          </div>
         </header>
-        <div className="motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
+        <div className="bg-background motion-safe:animate-in motion-safe:fade-in-0 min-w-0 flex-1 px-4 py-6 motion-safe:duration-500 sm:px-6 md:rounded-tl-[1.75rem] lg:px-8 lg:py-8 xl:px-10">
           {children}
         </div>
       </SidebarInset>

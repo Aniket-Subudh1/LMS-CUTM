@@ -2,12 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useFormStatus } from 'react-dom';
 import {
   BookOpenTextIcon,
   BooksIcon,
   CaretRightIcon,
   ChalkboardTeacherIcon,
+  CircleNotchIcon,
   ClockCounterClockwiseIcon,
+  SignOutIcon,
   SlidersHorizontalIcon,
   SquaresFourIcon,
   TreeStructureIcon,
@@ -15,6 +18,7 @@ import {
   UsersThreeIcon,
   type Icon,
 } from '@phosphor-icons/react';
+import { logout } from '@/app/(auth)/actions';
 import { LinkSpinner } from '@/components/link-spinner';
 import { cn } from '@/lib/cn';
 import type { Role } from '@/lib/schemas/common';
@@ -34,11 +38,14 @@ type Leaf = { href: string; label: string };
 type Item = Leaf & { icon: Icon; roles?: Role[]; children?: Leaf[] };
 
 // Groups and items by role (08 §3); a user with several roles sees the union. `roles` absent means everyone.
-const NAV: { label: string; items: Item[] }[] = [
-  { label: 'Overview', items: [{ href: '/home', label: 'Home', icon: SquaresFourIcon }] },
+// The `foot` group sits at the bottom of the sidebar, unlabelled, above Sign out.
+const NAV: { label: string; foot?: true; items: Item[] }[] = [
   {
-    label: 'Learning',
-    items: [{ href: '/courses', label: 'My courses', icon: BooksIcon, roles: ['student', 'faculty', 'hod', 'admin'] }],
+    label: 'Menu',
+    items: [
+      { href: '/home', label: 'Dashboard', icon: SquaresFourIcon },
+      { href: '/courses', label: 'My courses', icon: BooksIcon, roles: ['student', 'faculty', 'hod', 'admin'] },
+    ],
   },
   {
     label: 'Administration',
@@ -61,10 +68,15 @@ const NAV: { label: string; items: Item[] }[] = [
       { href: '/admin/users', label: 'Users', icon: UsersThreeIcon, roles: ['admin', 'support'] },
     ],
   },
-  { label: 'Account', items: [{ href: '/profile', label: 'Profile', icon: UserCircleIcon }] },
+  { label: 'Account', foot: true, items: [{ href: '/profile', label: 'Profile', icon: UserCircleIcon }] },
 ];
 
-type Match = { group: string; item: Item; child?: Leaf };
+const PILL =
+  'bg-sidebar-accent hover:bg-sidebar-border data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground';
+const PLAIN = 'data-[active=true]:bg-primary/10 data-[active=true]:text-primary';
+const BUTTON = 'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:p-1.5!';
+
+type Match = { item: Item; child?: Leaf };
 
 // The longest matching href wins, so /admin/programs/… is Structure › Programmes and /admin/users is Users.
 function useCurrent(groups: typeof NAV): Match | undefined {
@@ -73,12 +85,22 @@ function useCurrent(groups: typeof NAV): Match | undefined {
   return groups
     .flatMap((g) =>
       g.items.flatMap((item) => [
-        { group: g.label, item, href: item.href },
-        ...(item.children ?? []).map((child) => ({ group: g.label, item, child, href: child.href })),
+        { item, href: item.href },
+        ...(item.children ?? []).map((child) => ({ item, child, href: child.href })),
       ]),
     )
     .filter((m) => under(m.href))
     .sort((a, b) => b.href.length - a.href.length)[0];
+}
+
+function SignOut() {
+  const { pending } = useFormStatus();
+  return (
+    <SidebarMenuButton type="submit" disabled={pending} tooltip="Sign out" className={BUTTON}>
+      {pending ? <CircleNotchIcon className="animate-spin" /> : <SignOutIcon />}
+      <span>Sign out</span>
+    </SidebarMenuButton>
+  );
 }
 
 export function AppNav({ roles }: { roles: Role[] }) {
@@ -89,11 +111,13 @@ export function AppNav({ roles }: { roles: Role[] }) {
   const current = useCurrent(groups);
   const { setOpenMobile } = useSidebar();
   return groups.map((group) => (
-    <SidebarGroup key={group.label} className="py-1">
-      <SidebarGroupLabel className="text-muted-foreground/80 text-[0.6875rem] font-semibold tracking-wider uppercase">
-        {group.label}
-      </SidebarGroupLabel>
-      <SidebarMenu className="gap-0.5">
+    <SidebarGroup key={group.label} className={cn('px-3', group.foot && 'mt-auto pb-4')}>
+      {!group.foot && (
+        <SidebarGroupLabel className="text-sidebar-foreground/75 mb-1 px-1 text-sm font-medium">
+          {group.label}
+        </SidebarGroupLabel>
+      )}
+      <SidebarMenu className={group.foot ? 'gap-0.5' : 'gap-2'}>
         {group.items.map((item) => {
           const active = item === current?.item;
           return (
@@ -102,23 +126,14 @@ export function AppNav({ roles }: { roles: Role[] }) {
                 asChild
                 isActive={active}
                 tooltip={item.label}
-                className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary h-10 gap-3 rounded-lg px-1.5 font-medium group-data-[collapsible=icon]:p-0.5!"
+                className={cn(BUTTON, group.foot ? PLAIN : PILL)}
               >
                 <Link
                   href={item.href}
                   aria-current={active && !current?.child ? 'page' : undefined}
                   onClick={() => setOpenMobile(false)}
                 >
-                  <span
-                    className={cn(
-                      'grid size-7 shrink-0 place-items-center rounded-md transition-colors',
-                      active
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'bg-sidebar-accent text-muted-foreground',
-                    )}
-                  >
-                    <item.icon weight={active ? 'fill' : 'duotone'} className="size-[1.125rem]" />
-                  </span>
+                  <item.icon />
                   <span className="flex-1 truncate">{item.label}</span>
                   <LinkSpinner />
                 </Link>
@@ -151,6 +166,13 @@ export function AppNav({ roles }: { roles: Role[] }) {
             </SidebarMenuItem>
           );
         })}
+        {group.foot && (
+          <SidebarMenuItem>
+            <form action={logout}>
+              <SignOut />
+            </form>
+          </SidebarMenuItem>
+        )}
       </SidebarMenu>
     </SidebarGroup>
   ));
@@ -160,7 +182,6 @@ export function AppBreadcrumb() {
   const current = useCurrent(NAV);
   if (!current) return null;
   const trail: { label: string; href?: string }[] = [
-    { label: current.group },
     { label: current.item.label, href: current.child ? current.item.href : undefined },
     ...(current.child ? [{ label: current.child.label }] : []),
   ];

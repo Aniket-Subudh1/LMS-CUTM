@@ -129,7 +129,7 @@ describe('getHomeSummary', () => {
     expect(await getHomeSummary()).toEqual({ myOfferings: null, enrolments: null, admin: null });
   });
 
-  it('gives admins the structure, catalogue and user counts and the latest audit entries', async () => {
+  it('gives admins the programme, catalogue and user counts and the latest audit entries', async () => {
     const admin = await makeUser({ roles: ['admin'], name: 'Audit Admin' });
     await signInAs(admin);
     const before = await getHomeSummary();
@@ -145,7 +145,6 @@ describe('getHomeSummary', () => {
     const after = await getHomeSummary();
     expect(after.myOfferings).toBeNull();
     expect(after.admin).toMatchObject({
-      departments: (before.admin?.departments ?? 0) + 2,
       activeOfferings: (before.admin?.activeOfferings ?? 0) + 2,
       invited: (before.admin?.invited ?? 0) + 1,
     });

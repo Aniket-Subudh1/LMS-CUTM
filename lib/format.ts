@@ -36,14 +36,6 @@ export function formatLongDate(date: Date): string {
   return longDateFormat.format(date);
 }
 
-const hourFormat = new Intl.DateTimeFormat('en-IN', { timeZone: IST, hour: 'numeric', hourCycle: 'h23' });
-
-// The Home greeting, by the hour in IST.
-export function dayGreeting(date: Date): string {
-  const hour = Number(hourFormat.format(date));
-  return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-}
-
 // `12 Oct 2026, 10:30 AM` (08 §7); en-IN prints the meridiem in lower case.
 export function formatDateTime(date: Date): string {
   return dateTimeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());

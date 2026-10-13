@@ -8,7 +8,6 @@ import { db } from '@/lib/db';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
-import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
@@ -98,7 +97,6 @@ export type HomeSummary = {
   // Active enrolments across the offerings the viewer teaches or oversees; null without faculty or hod.
   enrolments: number | null;
   admin: {
-    departments: number;
     programs: number;
     courses: number;
     activeOfferings: number;
@@ -138,33 +136,30 @@ async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
   const today = istDateToDate(istDayKey(new Date()));
   const days = Array.from({ length: 7 }, (_, i) => new Date(today.getTime() - (6 - i) * DAY_MS));
   const week = { at: { $gte: days[0] } };
-  const [departments, programs, courses, activeOfferings, users, invited, recent, perDay, perActor] = await Promise.all(
-    [
-      Department.countDocuments({ status: 'active' }),
-      Program.countDocuments({ status: 'active' }),
-      Course.estimatedDocumentCount(),
-      Offering.countDocuments({ status: 'active' }),
-      User.estimatedDocumentCount(),
-      // Every user has a role, so matching all of them lets the { roles, status } index serve a count by status.
-      User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
-      AuditLog.find({}, { at: 1, actorId: 1, action: 1, entity: 1 }).sort({ at: -1 }).limit(6).lean(),
-      AuditLog.aggregate<{ _id: string; count: number }>([
-        { $match: week },
-        {
-          $group: {
-            _id: { $dateToString: { date: '$at', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
-            count: { $sum: 1 },
-          },
+  const [programs, courses, activeOfferings, users, invited, recent, perDay, perActor] = await Promise.all([
+    Program.countDocuments({ status: 'active' }),
+    Course.estimatedDocumentCount(),
+    Offering.countDocuments({ status: 'active' }),
+    User.estimatedDocumentCount(),
+    // Every user has a role, so matching all of them lets the { roles, status } index serve a count by status.
+    User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
+    AuditLog.find({}, { at: 1, actorId: 1, action: 1, entity: 1 }).sort({ at: -1 }).limit(6).lean(),
+    AuditLog.aggregate<{ _id: string; count: number }>([
+      { $match: week },
+      {
+        $group: {
+          _id: { $dateToString: { date: '$at', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
+          count: { $sum: 1 },
         },
-      ]),
-      AuditLog.aggregate<{ _id: Types.ObjectId; count: number }>([
-        { $match: week },
-        { $group: { _id: '$actorId', count: { $sum: 1 } } },
-        { $sort: { count: -1, _id: 1 } },
-        { $limit: 3 },
-      ]),
-    ],
-  );
+      },
+    ]),
+    AuditLog.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: week },
+      { $group: { _id: '$actorId', count: { $sum: 1 } } },
+      { $sort: { count: -1, _id: 1 } },
+      { $limit: 3 },
+    ]),
+  ]);
   const actors = await User.find(
     { _id: { $in: [...recent.map((a) => a.actorId), ...perActor.map((a) => a._id)] } },
     { name: 1 },
@@ -172,7 +167,6 @@ async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
   const names = new Map(actors.map((u) => [String(u._id), u.name]));
   const counts = new Map(perDay.map((d) => [d._id, d.count]));
   return {
-    departments,
     programs,
     courses,
     activeOfferings,
