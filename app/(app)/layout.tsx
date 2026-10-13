@@ -92,13 +92,14 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:16rem]!">
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
-        <SidebarHeader className="px-5 pt-4 pb-2 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
+        <SidebarHeader className="px-4 pt-6 pb-4 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
-            className="focus-visible:ring-ring flex items-center gap-3 rounded-lg group-data-[collapsible=icon]:justify-center focus-visible:ring-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring grid justify-items-center gap-2.5 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
           >
-            <UniversityLogo priority sizes="56px" className="w-14 shrink-0 group-data-[collapsible=icon]:w-8" />
-            <span className="truncate text-[1.75rem] font-semibold tracking-tight group-data-[collapsible=icon]:sr-only">
+            <UniversityLogo priority sizes="68px" className="w-[4.25rem] group-data-[collapsible=icon]:w-8" />
+            {/* Letter spacing trails the last letter, so the right padding is smaller to keep it centred. */}
+            <span className="bg-primary text-primary-foreground rounded-full py-1 pr-3 pl-4 text-[0.8125rem] font-bold tracking-[0.32em] group-data-[collapsible=icon]:sr-only">
               LMS
             </span>
           </Link>

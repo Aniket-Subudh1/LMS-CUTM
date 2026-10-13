@@ -119,7 +119,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
 | A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's Programmes tile counts only active programmes | `/admin`, `/home` | — |
 | A-42 | Home's “top 3” panel (the reference's student leaderboard) ranks the three people with the most audit entries in the last seven days. The planned “largest offerings” would group every active enrolment on each Home view (04 §3 S11), and offerings carry no enrolment counter | `/home` | — |
-| A-43 | The sidebar header is the university lockup beside the name “LMS” (Aniket, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
+| A-43 | The sidebar header is the university lockup, centred, above a primary “LMS” pill (Aniket chose it from four mock-ups, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
 | A-44 | The reference's typeface was not identified; the UI stays on Inter (A-24) | all UI | — |
 
 ## 5. Log
@@ -588,4 +588,12 @@ Aniket shared four more screens of the reference design (courses, an instructor 
 - `npm run check` → eslint clean; typecheck clean; unit `Test Files 10 passed, Tests 58 passed`. `npm run test:integration` (local Redis started for the run) → `Test Files 11 passed, Tests 120 passed`. `npx next build` compiled.
 - `npx playwright test` against the build on port 3100. The first run had 6 passed and 2 failed: the Mailpit test, and “phone width: no horizontal scroll…”. That test then passed alone and in a second full run (`7 passed, 1 failed`, the Mailpit test). The cause of its one failure was not captured.
 - Screenshots at 1440 px as an administrator, reviewed in the session: Home, Users, My courses, a course Overview, Profile.
+
+### 2026-10-13 · Sidebar header: centred lockup with an “LMS” pill · Claude Code, at Aniket's request
+
+Aniket found the side-by-side lockup and “LMS” plain and out of keeping with the theme. Four treatments were mocked up as static HTML in the agent's scratchpad (logo │ LMS; a grey brand panel; a centred lockup with an LMS pill; logo │ blue LMS), and he chose the centred lockup.
+
+**Created** (*changed*) — `app/(app)/layout.tsx` (header: lockup 68 px wide, centred, above a primary pill “LMS” in spaced capitals; collapsed, the lockup shrinks to 32 px and the pill is screen-reader only); 08 §3; A-43.
+
+**Verification** — `npx eslint` and `npx tsc --noEmit` clean; `npx next build` compiled; a screenshot of the admin Home at 1440 px on the build shows the new header.
 
