@@ -597,3 +597,11 @@ Aniket found the side-by-side lockup and “LMS” plain and out of keeping with
 
 **Verification** — `npx eslint` and `npx tsc --noEmit` clean; `npx next build` compiled; a screenshot of the admin Home at 1440 px on the build shows the new header.
 
+### 2026-10-13 · Collapsed sidebar centred · Claude Code, at Aniket's request
+
+Collapsed, the rail was 48 px but the groups kept 12 px side padding, so the 32 px icon buttons spilled 8 px to the right. The rail is now 56 px (`--sidebar-width-icon: 3.5rem`), the groups pad 8 px in icon mode, and each item is a 40 px square; the lockup shrinks to 36 px.
+
+**Created** (*changed*) — `components/app-nav.tsx`, `app/(app)/layout.tsx`, 08 §3.
+
+**Verification** — eslint and `tsc --noEmit` clean; `npx next build` compiled. On the build at 1440 px, with the sidebar collapsed, every menu button measured 8 px from each edge of the 56 px rail and the lockup 10 px (bounding boxes read in the browser); screenshot reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
+

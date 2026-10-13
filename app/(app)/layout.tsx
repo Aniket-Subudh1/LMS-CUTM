@@ -90,14 +90,14 @@ async function Today() {
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
-    <SidebarProvider className="[--sidebar-width:16rem]!">
+    <SidebarProvider className="[--sidebar-width-icon:3.5rem]! [--sidebar-width:16rem]!">
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
         <SidebarHeader className="px-4 pt-6 pb-4 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
             className="focus-visible:ring-ring grid justify-items-center gap-2.5 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
           >
-            <UniversityLogo priority sizes="68px" className="w-[4.25rem] group-data-[collapsible=icon]:w-8" />
+            <UniversityLogo priority sizes="68px" className="w-[4.25rem] group-data-[collapsible=icon]:w-9" />
             {/* Letter spacing trails the last letter, so the right padding is smaller to keep it centred. */}
             <span className="bg-primary text-primary-foreground rounded-full py-1 pr-3 pl-4 text-[0.8125rem] font-bold tracking-[0.32em] group-data-[collapsible=icon]:sr-only">
               LMS

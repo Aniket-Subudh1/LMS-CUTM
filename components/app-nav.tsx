@@ -74,7 +74,9 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
 const PILL =
   'bg-sidebar-accent hover:bg-sidebar-border data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground';
 const PLAIN = 'data-[active=true]:bg-primary/10 data-[active=true]:text-primary';
-const BUTTON = 'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:p-1.5!';
+// Collapsed, each item is a 40 px square centred in the 56 px rail (8 px either side).
+const BUTTON =
+  'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-2.5!';
 
 type Match = { item: Item; child?: Leaf };
 
@@ -111,7 +113,10 @@ export function AppNav({ roles }: { roles: Role[] }) {
   const current = useCurrent(groups);
   const { setOpenMobile } = useSidebar();
   return groups.map((group) => (
-    <SidebarGroup key={group.label} className={cn('px-3', group.foot && 'mt-auto pb-4')}>
+    <SidebarGroup
+      key={group.label}
+      className={cn('px-3 group-data-[collapsible=icon]:px-2', group.foot && 'mt-auto pb-4')}
+    >
       {!group.foot && (
         <SidebarGroupLabel className="text-sidebar-foreground/75 mb-1 px-1 text-sm font-medium">
           {group.label}
