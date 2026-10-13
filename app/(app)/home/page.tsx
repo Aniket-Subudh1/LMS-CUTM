@@ -223,7 +223,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
             <GraduationCapIcon weight="fill" className="size-7" />
           </span>
           <div className="grid min-w-0 gap-1.5">
-            <h2 className="leading-snug font-semibold">Welcome to Centurion</h2>
+            <h2 className="leading-snug font-semibold">Welcome to the LMS</h2>
             <p className="text-foreground/70 text-sm">
               {viewer.roles.includes('support') && !viewer.roles.some((r) => OFFERING_ROLES.includes(r))
                 ? 'Help users with their accounts and sign-in.'
@@ -328,7 +328,8 @@ function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>[
 
 // Changes per IST day as bars; today's bar is striped and labelled, as in the reference dashboard.
 function Activity({ activity }: { activity: NonNullable<HomeSummary['admin']>['activity'] }) {
-  const top = Math.max(4, Math.ceil(Math.max(...activity.map((d) => d.count)) / 4) * 4);
+  // About a fifth of headroom above the tallest bar keeps today's label inside the chart.
+  const top = Math.max(4, Math.ceil((Math.max(...activity.map((d) => d.count)) * 1.2) / 4) * 4);
   const today = activity.length - 1;
   const level = `${(activity[today].count / top) * 100}%`;
   return (

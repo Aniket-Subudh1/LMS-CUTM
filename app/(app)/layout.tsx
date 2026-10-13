@@ -1,15 +1,10 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import {
-  CalendarBlankIcon,
-  CaretDownIcon,
-  GraduationCapIcon,
-  SignOutIcon,
-  UserCircleIcon,
-} from '@phosphor-icons/react/ssr';
+import { CalendarBlankIcon, CaretDownIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
 import { logout } from '@/app/(auth)/actions';
 import { AppBreadcrumb, AppNav } from '@/components/app-nav';
+import { UniversityLogo } from '@/components/university-logo';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -97,16 +92,14 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:16rem]!">
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
-        <SidebarHeader className="h-16 justify-center px-5 group-data-[collapsible=icon]:px-2">
+        <SidebarHeader className="px-5 pt-4 pb-2 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
-            className="focus-visible:ring-ring flex items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring flex items-center gap-3 rounded-lg group-data-[collapsible=icon]:justify-center focus-visible:ring-2 focus-visible:outline-none"
           >
-            <span className="bg-primary text-primary-foreground grid size-10 shrink-0 place-items-center rounded-xl group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-lg">
-              <GraduationCapIcon weight="fill" className="size-6 group-data-[collapsible=icon]:size-5" />
-            </span>
-            <span className="truncate text-[1.625rem] font-semibold tracking-tight group-data-[collapsible=icon]:sr-only">
-              Centurion
+            <UniversityLogo priority sizes="56px" className="w-14 shrink-0 group-data-[collapsible=icon]:w-8" />
+            <span className="truncate text-[1.75rem] font-semibold tracking-tight group-data-[collapsible=icon]:sr-only">
+              LMS
             </span>
           </Link>
         </SidebarHeader>

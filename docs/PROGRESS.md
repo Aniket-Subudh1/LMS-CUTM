@@ -68,7 +68,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
 | Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env | M11 | Open |
-| Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4). **Superseded 13 Oct 2026:** Aniket chose a blue palette and a compact product mark in the app shell (decision in §5); the lockup stays on the sign-in and 404 pages. Worth confirming with the client | — | Answered 13 Oct 2026 |
+| Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4). **Superseded 13 Oct 2026:** Aniket chose a blue palette (decision in §5); the lockup stays in the sidebar, on the sign-in pages and on the 404 page. Worth confirming with the client | — | Answered 13 Oct 2026 |
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 | Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
@@ -119,7 +119,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
 | A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's Programmes tile counts only active programmes | `/admin`, `/home` | — |
 | A-42 | Home's “top 3” panel (the reference's student leaderboard) ranks the three people with the most audit entries in the last seven days. The planned “largest offerings” would group every active enrolment on each Home view (04 §3 S11), and offerings carry no enrolment counter | `/home` | — |
-| A-43 | The sidebar wordmark is “Centurion” beside a graduation-cap glyph, in place of the reference's product name and logo | app shell | Q-32 |
+| A-43 | The sidebar header is the university lockup beside the name “LMS” (Aniket, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
 | A-44 | The reference's typeface was not identified; the UI stays on Inter (A-24) | all UI | — |
 
 ## 5. Log
@@ -562,4 +562,12 @@ Home, the sidebar and the top bar follow the reference. Four commits, `44cc331 U
 - `npx next build` → compiled with no errors.
 - `npm run db:indexes:e2e`, `npm run db:seed:e2e`, then `npx playwright test` against the build on port 3100 → `7 passed, 1 failed` (the Mailpit test above).
 - Screenshots of the production build, reviewed in the session and not committed: admin, faculty and student at 1440 px; admin and student at 390 px (`scrollWidth` 390, no horizontal scroll). The first phone shot overflowed by 17 px (the chart's “n changes” label); it is fixed and was shot again.
+
+### 2026-10-13 · Dashboard follow-up: lockup in the sidebar, blue on the dev server · Claude Code, at Aniket's request
+
+Aniket reported that the palette had not changed and asked for the original Centurion logo, named “LMS”. His `npm run dev` on port 3000 was serving the old CSS from its cache (`--primary: #d5282c`). It was stopped, `.next/dev` deleted and `npm run dev` started again; its CSS now has `--primary: #1c59e4`. That server now runs from the agent's session, so restart it from your own terminal if it stops.
+
+**Created** (*changed*) — `app/(app)/layout.tsx` (sidebar header: `UniversityLogo` and “LMS”); `app/(app)/home/page.tsx` (hero fallback “Welcome to the LMS”; the chart leaves about a fifth of headroom above the tallest bar, because a full-height bar's label overlapped the “Last 7 days” pill); 08 §3, §4, §5.2; A-43 and the Q-32 note.
+
+**Verification** — `npx eslint` and `npx tsc --noEmit` clean on the changed files; `npx next build` compiled; a screenshot of the admin Home at 1440 px on the build shows the lockup and “LMS” in the sidebar header.
 
