@@ -90,17 +90,21 @@ async function Today() {
 
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
-    <SidebarProvider className="[--sidebar-width-icon:3.5rem]! [--sidebar-width:16rem]!">
+    <SidebarProvider className="[--sidebar-width:16rem]!">
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
-        <SidebarHeader className="px-4 pt-6 pb-4 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:py-3">
+        <SidebarHeader className="p-3 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
-            className="focus-visible:ring-ring grid justify-items-center gap-2.5 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring from-primary/[0.03] to-primary/[0.08] ring-primary/10 flex items-center gap-3 rounded-2xl bg-linear-to-b p-3 ring-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:ring-0 focus-visible:ring-2 focus-visible:outline-none"
           >
-            <UniversityLogo priority sizes="68px" className="w-[4.25rem] group-data-[collapsible=icon]:w-9" />
-            {/* Letter spacing trails the last letter, so the right padding is smaller to keep it centred. */}
-            <span className="bg-primary text-primary-foreground rounded-full py-1 pr-3 pl-4 text-[0.8125rem] font-bold tracking-[0.32em] group-data-[collapsible=icon]:sr-only">
-              LMS
+            <span className="bg-card ring-primary/10 grid h-[3.625rem] w-[2.875rem] shrink-0 place-items-center rounded-[0.625rem] ring-1 group-data-[collapsible=icon]:size-auto group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:ring-0">
+              <UniversityLogo priority sizes="36px" className="w-9 group-data-[collapsible=icon]:w-8" />
+            </span>
+            <span className="grid min-w-0 gap-0.5 leading-tight group-data-[collapsible=icon]:sr-only">
+              <span className="text-[0.9375rem] font-semibold tracking-tight">
+                Centurion <span className="text-primary font-bold">LMS</span>
+              </span>
+              <span className="text-muted-foreground text-xs">Learning Management System</span>
             </span>
           </Link>
         </SidebarHeader>

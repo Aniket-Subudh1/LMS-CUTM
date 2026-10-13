@@ -119,7 +119,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
 | A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's Programmes tile counts only active programmes | `/admin`, `/home` | — |
 | A-42 | Home's “top 3” panel (the reference's student leaderboard) ranks the three people with the most audit entries in the last seven days. The planned “largest offerings” would group every active enrolment on each Home view (04 §3 S11), and offerings carry no enrolment counter | `/home` | — |
-| A-43 | The sidebar header is the university lockup, centred, above a primary “LMS” pill (Aniket chose it from four mock-ups, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
+| A-43 | The sidebar header is a light tinted card with the university lockup on a white chip beside “Centurion LMS” and “Learning Management System” (Aniket chose it from mock-ups, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
 | A-44 | The reference's typeface was not identified; the UI stays on Inter (A-24) | all UI | — |
 
 ## 5. Log
@@ -604,4 +604,15 @@ Collapsed, the rail was 48 px but the groups kept 12 px side padding, so the 32 
 **Created** (*changed*) — `components/app-nav.tsx`, `app/(app)/layout.tsx`, 08 §3.
 
 **Verification** — eslint and `tsc --noEmit` clean; `npx next build` compiled. On the build at 1440 px, with the sidebar collapsed, every menu button measured 8 px from each edge of the 56 px rail and the lockup 10 px (bounding boxes read in the browser); screenshot reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
+
+### 2026-10-13 · Sidebar header card; collapsed rail back to 48 px · Claude Code, at Aniket's request
+
+Aniket asked to keep the collapsed rail at its original size and only centre it. He rejected two header treatments: the centred lockup with a spaced “L M S” pill, and a frosted-glass card over blurred blue glows. Three more were mocked up as static HTML in the agent's scratchpad (a blue brand card, a letterhead, a light tinted card), and he chose the light tinted card.
+
+**Created** (*changed*)
+- `components/app-nav.tsx`: collapsed items are the primitive's 32 px squares again, centred by 8 px of group padding in icon mode (the 56 px rail and 40 px items of `e75f364` are undone).
+- `app/(app)/layout.tsx`: the `--sidebar-width-icon` override is removed. The header is a `rounded-2xl` card, `bg-linear-to-b from-primary/[0.03] to-primary/[0.08]` with `ring-primary/10`, holding the lockup on a white 46 × 58 px chip beside “Centurion LMS” (LMS in the primary colour) and “Learning Management System”. Collapsed, the card and chip drop their fill and ring, and the 32 px lockup alone shows.
+- 08 §3; A-43.
+
+**Verification** — eslint and `tsc --noEmit` clean; `npx next build` compiled. On the build at 1440 px, collapsed, the rail measured 48 px and every menu button and the lockup sat 8 px from each edge; screenshots of both states reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
 

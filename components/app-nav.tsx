@@ -74,9 +74,8 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
 const PILL =
   'bg-sidebar-accent hover:bg-sidebar-border data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground';
 const PLAIN = 'data-[active=true]:bg-primary/10 data-[active=true]:text-primary';
-// Collapsed, each item is a 40 px square centred in the 56 px rail (8 px either side).
-const BUTTON =
-  'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-2.5!';
+// Collapsed, each item is the primitive's 32 px square, centred in the 48 px rail by the group's 8 px padding.
+const BUTTON = 'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:p-1.5!';
 
 type Match = { item: Item; child?: Leaf };
 
