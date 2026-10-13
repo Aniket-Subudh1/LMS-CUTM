@@ -1,9 +1,11 @@
 import 'server-only';
 import { cache } from 'react';
 import { notFound } from 'next/navigation';
+import type { Types } from 'mongoose';
 import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
@@ -103,6 +105,10 @@ export type HomeSummary = {
     users: number;
     invited: number;
     recent: { id: string; at: Date; actor: string; action: string; entity: string }[];
+    // Audit entries per IST day for the last seven days, oldest first; `day` is that day's midnight in IST.
+    activity: { day: Date; count: number }[];
+    // The three people with the most audit entries in those seven days.
+    mostActive: { id: string; name: string; count: number }[];
   } | null;
 };
 
@@ -126,19 +132,45 @@ export async function getHomeSummary(): Promise<HomeSummary> {
   return { myOfferings, enrolments, admin };
 }
 
+const DAY_MS = 86_400_000;
+
 async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
-  const [departments, programs, courses, activeOfferings, users, invited, recent] = await Promise.all([
-    Department.countDocuments({ status: 'active' }),
-    Program.countDocuments({ status: 'active' }),
-    Course.estimatedDocumentCount(),
-    Offering.countDocuments({ status: 'active' }),
-    User.estimatedDocumentCount(),
-    // Every user has a role, so matching all of them lets the { roles, status } index serve a count by status.
-    User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
-    AuditLog.find({}, { at: 1, actorId: 1, action: 1, entity: 1 }).sort({ at: -1 }).limit(6).lean(),
-  ]);
-  const actors = await User.find({ _id: { $in: recent.map((a) => a.actorId) } }, { name: 1 }).lean();
+  const today = istDateToDate(istDayKey(new Date()));
+  const days = Array.from({ length: 7 }, (_, i) => new Date(today.getTime() - (6 - i) * DAY_MS));
+  const week = { at: { $gte: days[0] } };
+  const [departments, programs, courses, activeOfferings, users, invited, recent, perDay, perActor] = await Promise.all(
+    [
+      Department.countDocuments({ status: 'active' }),
+      Program.countDocuments({ status: 'active' }),
+      Course.estimatedDocumentCount(),
+      Offering.countDocuments({ status: 'active' }),
+      User.estimatedDocumentCount(),
+      // Every user has a role, so matching all of them lets the { roles, status } index serve a count by status.
+      User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
+      AuditLog.find({}, { at: 1, actorId: 1, action: 1, entity: 1 }).sort({ at: -1 }).limit(6).lean(),
+      AuditLog.aggregate<{ _id: string; count: number }>([
+        { $match: week },
+        {
+          $group: {
+            _id: { $dateToString: { date: '$at', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      AuditLog.aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: week },
+        { $group: { _id: '$actorId', count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+        { $limit: 3 },
+      ]),
+    ],
+  );
+  const actors = await User.find(
+    { _id: { $in: [...recent.map((a) => a.actorId), ...perActor.map((a) => a._id)] } },
+    { name: 1 },
+  ).lean();
   const names = new Map(actors.map((u) => [String(u._id), u.name]));
+  const counts = new Map(perDay.map((d) => [d._id, d.count]));
   return {
     departments,
     programs,
@@ -152,6 +184,12 @@ async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
       actor: names.get(String(a.actorId)) ?? 'Unknown user',
       action: a.action,
       entity: a.entity,
+    })),
+    activity: days.map((day) => ({ day, count: counts.get(istDayKey(day)) ?? 0 })),
+    mostActive: perActor.map((a) => ({
+      id: String(a._id),
+      name: names.get(String(a._id)) ?? 'Unknown user',
+      count: a.count,
     })),
   };
 }

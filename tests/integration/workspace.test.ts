@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getOfferingCourse } from '@/lib/data/courses';
 import { db } from '@/lib/db';
+import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { getHomeSummary, getWorkspace, listMyOfferings, listRoster } from '@/lib/data/workspace';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
@@ -156,6 +157,32 @@ describe('getHomeSummary', () => {
       entity: 'user',
     });
     expect(after.admin?.recent.length).toBeLessThanOrEqual(6);
+  });
+
+  it('counts the last seven days of audit entries by IST day and by person', async () => {
+    const day = 86_400_000;
+    const busy = await makeUser({ roles: ['admin'], name: 'Busy Admin' });
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    const before = await getHomeSummary();
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * day);
+    const entry = (at: Date) => ({ at, actorId: busy._id, action: 'user.created', entity: 'user', entityId: newId() });
+    await AuditLog.create([entry(now), entry(now), entry(threeDaysAgo), entry(new Date(now.getTime() - 8 * day))]);
+    const after = await getHomeSummary();
+
+    const activity = after.admin?.activity ?? [];
+    expect(activity).toHaveLength(7);
+    expect(istDayKey(activity[6].day)).toBe(istDayKey(now));
+    activity.forEach((d, i) => {
+      expect(d.day).toEqual(istDateToDate(istDayKey(d.day)));
+      if (i > 0) expect(d.day.getTime() - activity[i - 1].day.getTime()).toBe(day);
+    });
+    const added = activity.map((d, i) => d.count - (before.admin?.activity[i].count ?? 0));
+    expect(added[activity.findIndex((d) => istDayKey(d.day) === istDayKey(now))]).toBe(2);
+    expect(added[activity.findIndex((d) => istDayKey(d.day) === istDayKey(threeDaysAgo))]).toBe(1);
+    expect(added.reduce((a, b) => a + b, 0)).toBe(3);
+    expect(after.admin?.mostActive[0]).toEqual({ id: String(busy._id), name: 'Busy Admin', count: 3 });
+    expect(after.admin?.mostActive.length).toBeLessThanOrEqual(3);
   });
 });
 
