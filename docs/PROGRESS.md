@@ -68,7 +68,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
 | Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env | M11 | Open |
-| Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4) | — | Answered 13 Oct 2026 |
+| Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4). **Superseded 13 Oct 2026:** Aniket chose a blue palette and a compact product mark in the app shell (decision in §5); the lockup stays on the sign-in and 404 pages. Worth confirming with the client | — | Answered 13 Oct 2026 |
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 | Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
@@ -117,7 +117,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-38 | There is no public sign-up: accounts are created by an administrator and the person sets a password from the invitation link (01 §4–§5). The "sign up" screen of the redesign is that page, titled "Set up your account" | auth UI | — |
 | A-39 | Home shows only data that exists today: counts of structure, catalogue, offerings and users for admins; offerings and enrolled students for faculty and HoD; enrolled courses for students; the six latest audit entries for admins. “Enrolled students” is counted as active enrolments across the viewer’s offerings (a student in two of them counts twice), so the count stays one indexed query. Later milestones add their sections | `/home` | — |
 | A-40 | The large editors of later milestones (assessment builder, attempt runner) stay routes; every other create/edit form is a `FormDialog` (04 §1) | M02+ UI | — |
-| A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's tiles count only active departments and programmes | `/admin`, `/home` | — |
+| A-41 | The Structure cards count every department, programme and term, archived ones included, so each matches the total on its list page; Home's Programmes tile counts only active programmes | `/admin`, `/home` | — |
+| A-42 | Home's “top 3” panel (the reference's student leaderboard) ranks the three people with the most audit entries in the last seven days. The planned “largest offerings” would group every active enrolment on each Home view (04 §3 S11), and offerings carry no enrolment counter | `/home` | — |
+| A-43 | The sidebar wordmark is “Centurion” beside a graduation-cap glyph, in place of the reference's product name and logo | app shell | Q-32 |
+| A-44 | The reference's typeface was not identified; the UI stays on Inter (A-24) | all UI | — |
 
 ## 5. Log
 
@@ -521,3 +524,42 @@ The shell, sidebar, sign-in pages, Home and every M01 page are redesigned. Every
 - `npx next build` → compiled with no errors; `npm run check:bundle` → `40 files scanned for 4 names and 0 secret values; clean` (no `.env.local` here, so no secret values to look for).
 - `npm run db:seed:e2e`, then `npx playwright test` → `7 passed, 1 failed` (the Mailpit test above). `admin-structure.spec.ts` covers the department dialog (pending, success, auto-close, new card), the user search, the course workspace, the faculty roster dialog and the student's view.
 - Browser, production build on port 3100, as an administrator, at 1440 px: sign-in stage and the "Set up your account" page (fields and button disabled and busy while saving); Home; the quick-action deep link opened and closed three times in a row and stayed closed on Back; department create from Home (fields locked, "Department added." in place of the fields, dialog closed, `?new=` removed from the URL, new card shown); Structure, Departments, Users (table and New user dialog), Offerings, Schemes, My courses, course Overview and People. At 360 px: Home (no horizontal scroll, `scrollWidth` 360) and the sign-in layout. Screenshots were reviewed in the session, not committed.
+
+### 2026-10-13 · Decision: dashboard after a reference design · Claude Code, at Aniket's request
+
+Aniket supplied a screenshot of a learning dashboard (13 Oct 2026) and asked for Home, the sidebar (header included) and the top bar to look exactly like it. He decided:
+- The palette changes from the seal crimson to the reference's blue, across the whole app, sign-in included. This supersedes the Q-32 palette.
+- Panels with no data behind them yet are left out rather than shown empty or with sample data. The reference's attendance, learning hours, assignments, schedule and leaderboard map to what M01 has, and each milestone adds its own panel.
+- The shell is restyled too: icon-and-wordmark header, a “Menu” list of grey pills with a solid current pill, Profile and Sign out at the foot, and a user chip in the top bar.
+
+Left out of the reference on purpose: the search box (no search feature), the theme toggle (light only, A-23), the notification bell (M02), certificates (out of scope, 01 §4), leave management (not in scope), and the AI button (no AI feature in M01).
+
+### 2026-10-13 · Dashboard after a reference design (build) · Claude Code, at Aniket's request
+
+Home, the sidebar and the top bar follow the reference. Four commits, `44cc331 UI(home)` to the one that adds this entry.
+
+**Created** (all *changed* unless marked new)
+- DAL: `lib/data/workspace.ts`. `getHomeSummary().admin` gains `activity` (audit entries per IST day, last seven days) and `mostActive` (top three people by audit entries that week); `departments` is removed, since Home no longer shows it. Both aggregations `$match` on the `{ at }` index and return at most seven and three documents.
+- Styling: `app/globals.css` (blue tokens, `--violet`, blue sign-in aurora).
+- Shell: `app/(app)/layout.tsx` (product-mark header, rounded grey content area, top-bar date pill and user chip); `components/app-nav.tsx` (“Menu” pills, Account group and Sign out at the foot, breadcrumb without the group; Home is labelled Dashboard).
+- Home: `app/(app)/home/page.tsx` (hero, tiles, activity bars, most active, recent activity, offerings row), `home/loading.tsx`; `components/offering-card.tsx` (schedule-style card, `featured`); `lib/format.ts` (`dayGreeting` removed, now unused).
+- Tests: `tests/integration/workspace.test.ts` (new test for `activity` and `mostActive`; the admin test no longer checks departments); `lib/format.test.ts` (greeting test removed).
+- Docs: 08 §1, §3, §4, §5.2, §6; M01 T11; this file (Q-32 note, A-41 to A-44).
+
+**Not done**
+- Student and faculty Home is sparse: the reference's attendance, learning hours, assignments and schedule have no data until M02 to M04, so those panels are not there.
+- The hero has no progress bar. Lesson progress arrives in M02.
+- Not run: `auth.spec.ts` › “invited admin sets a password…”, which fails at its first mail read as before, because Mailpit is not installed here. No keyboard-only or screen-reader pass.
+- Your `npm run dev` on port 3000 was not restarted. If it still shows crimson, restart it (delete `.next/dev` first if needed).
+
+**Assumptions** — A-42 to A-44 (§4).
+
+**Open questions** — none new. Q-32's palette is superseded; confirming the change with the client is worth doing.
+
+**Verification**
+- `npm run check` → eslint clean; `next typegen && tsc --noEmit` clean; unit `Test Files 10 passed, Tests 58 passed`.
+- `npm run test:integration` (local Redis started for the run) → `Test Files 11 passed, Tests 120 passed`.
+- `npx next build` → compiled with no errors.
+- `npm run db:indexes:e2e`, `npm run db:seed:e2e`, then `npx playwright test` against the build on port 3100 → `7 passed, 1 failed` (the Mailpit test above).
+- Screenshots of the production build, reviewed in the session and not committed: admin, faculty and student at 1440 px; admin and student at 390 px (`scrollWidth` 390, no horizontal scroll). The first phone shot overflowed by 17 px (the chart's “n changes” label); it is fixed and was shot again.
+
