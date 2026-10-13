@@ -56,14 +56,14 @@ async function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/profile">
-            <UserCircleIcon weight="duotone" />
+            <UserCircleIcon />
             Profile
           </Link>
         </DropdownMenuItem>
         <form action={logout}>
           <DropdownMenuItem asChild variant="destructive">
             <button type="submit" className="w-full">
-              <SignOutIcon weight="duotone" />
+              <SignOutIcon />
               Sign out
             </button>
           </DropdownMenuItem>

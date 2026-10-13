@@ -17,7 +17,7 @@ export function PasswordInput({ className, ...props }: Omit<ComponentProps<typeo
         aria-pressed={shown}
         className="text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-md outline-none focus-visible:ring-[3px] disabled:opacity-50"
       >
-        {shown ? <EyeSlashIcon weight="duotone" className="size-4" /> : <EyeIcon weight="duotone" className="size-4" />}
+        {shown ? <EyeSlashIcon className="size-4" /> : <EyeIcon className="size-4" />}
       </button>
     </span>
   );

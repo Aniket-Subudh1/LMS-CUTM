@@ -624,3 +624,19 @@ The lockup filled its chip edge to edge and looked cropped, and the card sat tig
 
 **Verification** — eslint clean; `npx next build` compiled. On the build at 1440 px the lockup's margins in the chip measured 7 / 7 / 8 / 8 px and the card's top 20 px; collapsed, every rail item sat 8 px from each edge of the 48 px rail. Screenshots reviewed. `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
 
+### 2026-10-13 · No duotone smudge on buttons, tabs and tiles · Claude Code, at Aniket's request
+
+Aniket pointed to a “white shadow” on several pages (the plus on “New offering”) and a grey one on the “Apply” filter button. Neither is a CSS shadow. A Phosphor duotone icon draws a second copy of its shape at `opacity="0.2"` (for `Plus`, a full rounded square). On a solid fill that copy is white, and on a white button it is grey; either way it reads as a smudge.
+
+**Created** (*changed*)
+- `components/ui/button.tsx` (local change): `[&_path[opacity]]:hidden` in the base class, so no button of any variant shows the layer.
+- `components/tab-nav.tsx`: the current (solid primary) tab hides it.
+- `app/globals.css`: a hovered `surface-interactive` hides it inside the filled icon chip.
+- `app/(app)/home/page.tsx` (coloured activity tiles), `components/auth-stage.tsx` (sign-in feature chips), `components/password-input.tsx` (show/hide toggle) and the user menu in `app/(app)/layout.tsx` use the regular weight.
+- 08 §1 and §5.1.
+
+**Verification**
+- `npm run check` → eslint and typecheck clean; unit `Test Files 10 passed, Tests 58 passed`. `npx next build` compiled.
+- On the build at 1440 px, a browser audit visited `/login`, `/home`, `/admin`, `/admin/{departments,programs,terms,courses,schemes,offerings,users,audit}`, `/courses`, `/profile` and a course's Overview and People. It hovered a Home stat tile. It listed every visible `path[opacity]` inside a button, and every one whose nearest filled background has a luminance below 0.7. It found none. (A first run flagged the Overview tab on People while its background was still fading out; it was clean once the transition settled.) Element screenshots of “New offering”, “Apply” and the hovered tile were reviewed.
+- `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
+

@@ -136,6 +136,11 @@
   &:focus-visible .icon-chip {
     @apply bg-primary text-primary-foreground ring-primary;
   }
+  /* A duotone icon's 20% layer turns white on the filled chip and reads as a smudge (08 §1). */
+  &:hover .icon-chip path[opacity],
+  &:focus-visible .icon-chip path[opacity] {
+    display: none;
+  }
 }
 
 /* A small outlined square holding an icon in the primary colour, as on the reference dashboard's stat tiles. */

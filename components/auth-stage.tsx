@@ -88,7 +88,7 @@ export function AuthStage() {
                 className="flex items-start gap-4 rounded-xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur-sm"
               >
                 <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-white/15">
-                  <f.icon weight="duotone" className="size-5" />
+                  <f.icon className="size-5" />
                 </span>
                 <span className="grid gap-0.5">
                   <span className="font-medium">{f.title}</span>

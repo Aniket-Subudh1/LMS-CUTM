@@ -300,7 +300,7 @@ function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>[
                 <span
                   className={cn('text-primary-foreground grid size-14 shrink-0 place-items-center rounded-xl', e.tone)}
                 >
-                  <e.icon weight="duotone" className="size-6" />
+                  <e.icon className="size-6" />
                 </span>
                 <span className="grid min-w-0 flex-1 gap-0.5 leading-tight">
                   <span className="truncate text-sm font-semibold first-letter:uppercase">
