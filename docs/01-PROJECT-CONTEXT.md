@@ -24,7 +24,7 @@
 
 ## 3. Scope — in
 
-Course, content and lecture management (upload and live) · attendance (manual, live-derived, and time-engaged for skill courses) · AI-assisted engagement tracking and dashboards · learning records, lab records, assignments · continuous-evaluation engine (all modes), rubrics, configurable internal marks · virtual lab with compilers and proctoring; proctored quizzes · project tracking (GitHub for CSE, task tracker for non-CSE) and project reviews · CO/PO/PSO definition, mapping, question tagging and attainment · course announcements by email · exam-system integration (pull end-sem marks, push CE marks) and grade sheet · skill / short-term courses · admin configuration · support tooling for a dedicated support person.
+Course, content and lecture management (upload and live) · loading CUTM's course catalogue from its Course Repository list (CSV) and its public courseware pages (ADM-06, ADM-07) · attendance (manual, live-derived, and time-engaged for skill courses) · AI-assisted engagement tracking and dashboards · learning records, lab records, assignments · continuous-evaluation engine (all modes), rubrics, configurable internal marks · virtual lab with compilers and proctoring; proctored quizzes · project tracking (GitHub for CSE, task tracker for non-CSE) and project reviews · CO/PO/PSO definition, mapping, question tagging and attainment · course announcements by email · exam-system integration (pull end-sem marks, push CE marks) and grade sheet · skill / short-term courses · admin configuration · support tooling for a dedicated support person.
 
 ## 4. Scope — out (contractual)
 
@@ -47,7 +47,8 @@ Nothing in this section is built without written client approval recorded in `PR
 - Chat / poll / hand-raise analytics, AI review of code diffs, AI-written feedback to students, any AI that writes marks or attendance.
 - Multi-language UI. The UI is English.
 - Language switching, translation, ambient monitoring beyond the proctoring set in M05.
-- The third course category mentioned in the call (pending Q-01). Google Meet scheduling for reviews (pending Q-03).
+- Google Meet scheduling for reviews (pending Q-03).
+- Writing course content back to courseware.cutm.ac.in (the import reads it; export later, decision of 15 Oct 2026).
 
 ## 5. Users and roles
 
@@ -55,21 +56,24 @@ A user has one or more roles (`roles: Role[]`). A head of department usually als
 
 | Role | Who | What they do in the LMS |
 |---|---|---|
-| `admin` | University LMS administrators | Configure programs, courses, schemes, CO/PO/PSO masters, users, terms, offerings, integrations, settings; see everything; unlock marks with a reason |
+| `admin` | University LMS administrators | Configure programs, the course catalogue and its imports, the evaluation policy, users, terms, offerings, integrations, settings; see everything; unlock marks with a reason |
 | `hod` | Program / department head (SRS: Recommended) | Read-only oversight of every offering in their department: attainment, CE, engagement, projects |
-| `faculty` | Teachers | Course plan and calendar, content, live classes, attendance, assessments, grading, records, projects (as project manager), CE review, CO tagging |
+| `faculty` | Teachers | Course plan and calendar, content, live classes, attendance, assessments, grading, records, projects (as project manager), CE review, CO tagging. A faculty member who is a course's **coordinator** also edits that catalogue course (CRS-07) |
 | `student` | Learners | Attend live or recorded lectures, submit records/assignments, take quizzes and lab tests, work on projects, see own results and grade sheet |
 | `support` | Vendor-side support executive (SUP-01) | Find users, reset passwords, see a student's enrollments and submission statuses (not answers or marks edits) |
 
 The **university exam system** is an external system, not a login role. The full permission matrix is in `09-SECURITY.md` §2.
 
-## 6. Course categories
+## 6. Course modes and types
 
-| Category | Code | Description | Features |
+A course's credits are written T-P-Pj: theory, practice and project credits, as in CUTM's Course Repository (e.g. `CUTM1535 · 3-0-1`, 4 credits). **The credits decide what the LMS does with a course** (decision of 15 Oct 2026, M01b):
+
+| Mode | Credits | Offering `category` | Features |
 |---|---|---|---|
-| UGC-aligned | `ugc` | BBA, online BBA, online MCA, B.Tech-type programs; same syllabus as offline | Everything: content, live, attendance, records, assignments, CE, virtual lab, projects, CO-PO-PSO, exam integration, grade sheet |
-| Skill / short-term | `skill` | Short courses ("just like UDP [?]" — Q-02) | Videos, quizzes, engagement traceability, attendance derived from time engaged. No CE scheme, no CO/PO, no exam integration |
-| Third category | — | Mentioned, not described | **Blocked on Q-01** |
+| Credit course | T+P+Pj > 0 | `ugc` | Everything: content, live, attendance, records, assignments, CE by the evaluation policy, virtual lab, projects (when Pj > 0), CO-PO-PSO, exam integration, grade sheet |
+| Non-credit course | 0-0-0 | `skill` | Videos, quizzes, engagement traceability, attendance derived from time engaged. No CE, no CO/PO, no exam integration |
+
+The six courseware types — Core, Domain, Skill, Certificate, Advanced certificate, Diploma — are **labels** shown on the course; a Skill course with credits (e.g. CUTM3073, 0-3-1) is a credit course. Whether Certificate and Diploma courses carry credits is Q-45.
 
 ## 7. Requirement register
 
@@ -79,11 +83,12 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | ID | Requirement | Priority | Milestone | Decision |
 |---|---|---|---|---|
 | CRS-01 | Programs (BBA, online BBA, online MCA, B.Tech) containing courses mirroring the offline syllabus | Must | M01 | Build |
-| CRS-02 | Each course classified by components: theory, practice (lab), project; components drive which records and evaluations apply | Must | M01 | Build |
+| CRS-02 | Each course classified by components: theory, practice (lab), project; components drive which records and evaluations apply | Must | M01, M01b | Build — since M01b the components are the T-P-Pj credits (a component applies when its credits are above 0) |
 | CRS-03 | Faculty upload recorded lectures (video and materials) | Must | M02 | Build |
 | CRS-04 | Faculty schedule and conduct live classes inside the platform | Must | M03 | Build |
-| CRS-05 | Each course stores syllabus, calendar, objectives, COs and linked POs | Must | M01, M02 | Build |
+| CRS-05 | Each course stores syllabus, calendar, objectives, COs and linked POs | Must | M01, M02, M01b | Build — M01b: the syllabus is modules (with hours, practicals and projects), plus books and a session plan, importable from courseware |
 | CRS-06 | Faculty submit a course plan and calendar; the system requests them at course start | Must | M02 | Build |
+| CRS-07 | Each course has a coordinator (a faculty member) who keeps its catalogue content: objectives, COs, mapping, syllabus, books, session plan | Must | M01b | Build (product-owner decision, 15 Oct 2026) |
 
 ### 7.2 Communication
 | ID | Requirement | Priority | Milestone | Decision |
@@ -120,7 +125,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | CE-04 | Quizzes configurable (questions, timing, attempts) and may be proctored | Must | M04, M05 | Build |
 | CE-05 | Faculty define the evaluation rubric | Must | M04 | Build |
 | CE-06 | Component scores mapped to the internal maximum (e.g. out of 50) | Must | M06 | Build |
-| CE-07 | Evaluation system dynamic, configured by admin per subject type and component combination (total internal and component weights) | Must | M01 (config), M06 (compute) | Build |
+| CE-07 | Evaluation system dynamic, configured by admin per subject type and component combination (total internal and component weights) | Must | M01b (config), M06 (compute) | Build — since M01b one evaluation policy in Settings, from CUTM's Examination Policy (each component out of 100), copied onto each offering when it is created |
 | CE-08 | CE results entered by faculty or recorded automatically; kept as a complete record | Must | M04 | Build |
 | CE-09 | Dashboards show whether each student's performance is dropping or rising | Must | M06 | Build |
 | CE-10 | Mark entry supports the CE workflow (to be detailed by the client) | Must | M06 | Build the faculty marks view; specifics **Blocked on Q-06** |
@@ -155,7 +160,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | ID | Requirement | Priority | Milestone | Decision |
 |---|---|---|---|---|
 | CPP-01 | COs per course, each tagged with a Bloom's taxonomy level | Must | M01 | Build |
-| CPP-02 | POs per program (default 12 for B.Tech) and PSOs (Higher education, Entrepreneurship, Placement), editable per program | Must | M01 | Build |
+| CPP-02 | POs per program (default 12 for B.Tech) and PSOs (Higher education, Entrepreneurship, Placement), editable per program | Must | M01, M01b | Build — since M01b the codes are fixed (PO1–PO12, PSO1–PSO3) and each programme titles them |
 | CPP-03 | CO-PO matrix and CO-PO-PSO matrix per course | Must | M01 | Build |
 | CPP-04 | Each cell holds a correlation level 1–3 (3 = highly linked) | Must | M01 | Build |
 | CPP-05 | Every question records which CO it belongs to | Must | M04 | Build |
@@ -179,7 +184,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 ### 7.10 Skill courses
 | ID | Requirement | Priority | Milestone | Decision |
 |---|---|---|---|---|
-| SKL-01 | Second category: skill / short-term courses | Must | M01, M02 | Build |
+| SKL-01 | Second category: skill / short-term courses | Must | M01, M02 | Build — since M01b: non-credit (0-0-0) courses |
 | SKL-02 | Traceability: how engaged each learner is and how many quizzes attempted | Must | M02, M04, M10 | Build |
 | SKL-03 | Faculty easily upload videos and quiz materials | Must | M02, M04 | Build |
 | SKL-04 | No manual attendance; attendance derived from time engaged | Must | M02 | Build |
@@ -212,11 +217,13 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 ### 7.13 Administration, support, non-functional
 | ID | Requirement | Priority | Milestone | Decision |
 |---|---|---|---|---|
-| ADM-01 | Configure the evaluation scheme dynamically without code changes | Must | M01 | Build |
-| ADM-02 | Manage programs, courses, categories, components | Must | M01 | Build |
-| ADM-03 | Manage CO/PO/PSO masters and mapping | Must | M01 | Build |
+| ADM-01 | Configure the evaluation scheme dynamically without code changes | Must | M01, M01b | Build — the evaluation policy in Settings (M01b) |
+| ADM-02 | Manage programs, courses, categories, components | Must | M01, M01b | Build |
+| ADM-03 | Manage CO/PO/PSO masters and mapping | Must | M01, M01b | Build |
 | ADM-04 | Configure integrations (exam API, GitHub, email) | Should | M00, M07, M08 | Build endpoints and toggles as settings; **secrets stay in env** (A-05) |
 | ADM-05 | User and role management, bulk import, academic calendar | Should | M00, M01 | Build |
+| ADM-06 | Load and update the course catalogue from CUTM's Course Repository as a CSV (programme, stream, basket, type, code, title, credits, T+P+Pj) | Must | M01b | Build (product-owner decision, 15 Oct 2026) |
+| ADM-07 | Import course content from courseware.cutm.ac.in, flagging anything that needs review and never overwriting content edited in the LMS | Must | M01b | Build (product-owner decision, 15 Oct 2026) |
 | SUP-01 | Dedicated support person handles student queries | Must | M00 (role), M11 (runbook) | Build tooling; staffing is commercial |
 | SUP-02 | Separate maintenance charge | Must | — | Commercial, no code |
 | SUP-03 | In-app helpdesk / ticketing | Could | — | Backlog |
@@ -224,7 +231,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | NFR-01 | Scalability: grow in users, courses, concurrent live classes | Must | all; verified M11 | Build |
 | NFR-02 | No dependency on third-party meeting APIs | Must | M03 | Constraint |
 | NFR-03 | Integrity: proctoring; audit trail for marks | Must | M00, M05, M06, M08 | Build |
-| NFR-04 | Configurability: evaluation rules by admin config, not code | Must | M01, M06 | Build |
+| NFR-04 | Configurability: evaluation rules by admin config, not code | Must | M01b, M06 | Build |
 | NFR-05 | Interoperability: reliable exam-system integration | Must | M08 | Build |
 | NFR-06 | Security & privacy: RBAC, TLS, secure storage, backups | Should | M00, M11 | Build |
 | NFR-07 | Usability: desktop and mobile browsers; uploads work on low bandwidth | Should | all; verified M11 | Build |
@@ -237,9 +244,16 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | UGC | University Grants Commission (India) |
 | CE / CIE | Continuous (internal) evaluation across the semester |
 | SEE / End-sem | Semester-end examination, conducted offline by the university |
-| Internal max | Maximum internal (CE) marks for a course, set by the evaluation scheme (e.g. 50) |
-| Evaluation scheme | Admin-defined rule set: internal max, components, weights, aggregation, rounding. Versioned |
-| Component | A slice of internal marks (e.g. quizzes 15) fed by one or more assessment modes |
+| Internal max | The internal share of a component's 100 marks under the evaluation policy: theory 40, practice 50, project 50 |
+| Evaluation policy | CUTM's Examination Policy as one Settings form (M01b): each component marked out of 100, the course percentage the credit-weighted average, rounded up. Each offering keeps a copy made when it is created |
+| Evaluation scheme | M01's admin-built rule sets; replaced by the evaluation policy in M01b |
+| Component | Theory, practice or project; a course has a component when its credits for it are above 0 |
+| T-P-Pj | A course's theory, practice and project credits, e.g. 3-0-1 (4 credits) |
+| Course Repository | CUTM's published list of every programme's courses with their codes and T-P-Pj credits |
+| Courseware | courseware.cutm.ac.in, CUTM's public course pages; the LMS imports from it |
+| Curriculum | The courses a programme lists, each optionally in a basket |
+| Basket | A group in a programme's structure (Basket I–VI), core or choice, with a minimum of credits |
+| Coordinator | The faculty member who keeps a catalogue course's content (CRS-07) |
 | Assessment | Any gradable activity: quiz, written test, coding test, lab test, competition, assignment, learning record, lab record, project review |
 | Item | One gradable unit inside an assessment: a question, a coding problem, or a rubric criterion. Every item carries CO tags |
 | Offering | One run of a course in a term for a batch/section, taught by named faculty. Most data hangs off an offering |

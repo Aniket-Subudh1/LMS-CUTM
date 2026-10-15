@@ -21,6 +21,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M00 Foundation | Done — awaiting human validation | | shadcn/ui adopted at the client's request (entry below) |
 | M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
+| M01b Catalogue v2 | In progress | | Decision entry 2026-10-15 · M01b. Replaces M01's catalogue, schemes and offering creation |
 | M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
@@ -37,14 +38,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 
 | ID | Question | Owner | Default until answered | Blocks | Status |
 |---|---|---|---|---|---|
-| Q-01 | The call mentioned three course types; only UGC-aligned and skill were described. What is the third? | @client | Not built | — | Open |
-| Q-02 | Skill courses "just like UDP": which program or platform is meant? | @client | Existing LMS feature set (SKL-03) | — | Open |
+| Q-01 | The call mentioned three course types; only UGC-aligned and skill were described. What is the third? | @client | Not built | — | Answered 15 Oct 2026 (Aniket, M01b): CUTM's courseware has six type labels (Core, Domain, Skill, Certificate, Advanced certificate, Diploma); the LMS has two modes decided by credits (01 §6) |
+| Q-02 | Skill courses "just like UDP": which program or platform is meant? | @client | Existing LMS feature set (SKL-03) | — | Answered 15 Oct 2026 (Aniket, M01b): the skill mode is for non-credit (0-0-0) courses |
 | Q-03 | Project reviews through Google Meet (07:19) or the in-house live class, given "no Meet API"? | @client | In-house live class | PRJ-10 | Open |
 | Q-04 | Exam-system API: provider, documentation, authentication, data format, pull/push frequency | @client | CSV import/export | M08 API adapter | Open |
-| Q-05 | Is the internal maximum always 50? Default component weights per subject type? | @client | Admin enters schemes | — | Open |
+| Q-05 | Is the internal maximum always 50? Default component weights per subject type? | @client | Admin enters schemes | — | Answered 15 Oct 2026 (Aniket, M01b): CUTM's Examination Policy marks each component out of 100 — theory internal 40 + end-semester 60, practice and project 50 + 50 by rubric (evaluation policy in Settings) |
 | Q-06 | Exact workflow for "continuous evaluation in mark entry" (CE-10) | @client | M06 marks view | CE-10 specifics | Open |
 | Q-07 | Attainment formula: target %, level thresholds, CIE:SEE weights, direct/indirect, NBA format? | @client | 07 §4 defaults (60 %; 70/60/50; 0.5/0.5; direct only) | M09 sign-off | Open |
-| Q-08 | Are PSOs the same for all programs or program-specific? | @client | Editable per program (defaults: Higher education, Entrepreneurship, Placement) | — | Open |
+| Q-08 | Are PSOs the same for all programs or program-specific? | @client | Since M01b: the codes PO1–PO12 and PSO1–PSO3 are fixed and each programme gives them titles (defaults for PSO1–3: Higher education, Entrepreneurship, Placement) | — | Open (changed 15 Oct 2026) |
 | Q-09 | Which proctoring features (webcam, screen, tab switch, AI flags)? | @client | Full-screen, tab-switch, paste block, optional webcam snapshots; no AI flags | — | Open |
 | Q-10 | Languages and lab types beyond C, C++, Java? | @client | C, C++, Java only | LAB-06 | Open |
 | Q-11 | Expected scale: students, faculty, programs, concurrent live-class users | @client | 02 §11 targets (A-03) | M11 sizing | Open |
@@ -54,16 +55,16 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-15 | Target go-live date; which semester/batch first | @client | R1 pilot after M04 | Release plan | Open |
 | Q-16 | Format and deadline of the D2L review report | @client | — (not code) | — | Open |
 | Q-17 | Lesson completion threshold (90 %) and live-attendance threshold (75 %) | @client | 90 % / 75 % | — | Open |
-| Q-18 | Internal-marks rounding: integer or decimals; half-up or ceiling? | @client | Per scheme; seed 0 dp half-up | — | Open |
-| Q-19 | Grading scale, grade points and pass rules (e.g. minimum end-sem %) | @client | UGC CBCS letters (06 §7); no separate pass rule | Grade-sheet sign-off | Open |
-| Q-20 | A course shared by several programs: acceptable to create it once per program (A-12)? | @client | One course per program | — | Open |
+| Q-18 | Internal-marks rounding: integer or decimals; half-up or ceiling? | @client | The course percentage rounds up once (Examination Policy); component rounding is Q-39 | — | Answered in part 15 Oct 2026 |
+| Q-19 | Grading scale, grade points and pass rules (e.g. minimum end-sem %) | @client | UGC CBCS letters (06 §7); no separate pass rule | Grade-sheet sign-off | Answered in part 15 Oct 2026: O from 90 % (policy example DECT0901); the rest is Q-40 |
+| Q-20 | A course shared by several programs: acceptable to create it once per program (A-12)? | @client | One course per program | — | Answered 15 Oct 2026 (Aniket, M01b): one course per code, listed by many programmes (A-54) |
 | Q-21 | Should the LMS grade sheet show SGPA, or grades only? | @client | Show SGPA | — | Open |
 | Q-22 | Does CUTM have a GitHub organization for student repos; private repos allowed? | @client | GitHub App installed on a CUTM org; private repos supported | M07 setup | Open |
 | Q-23 | Are excused absences (medical leave) from assessments needed? | @client | No; missed = 0 (A-14) | — | Open |
 | Q-24 | Retention period for proctoring snapshots | @client | 90 days after results (A-13) | — | Open |
 | Q-25 | (a) Live engine — **decided by dev 12 Oct 2026: self-hosted LiveKit** (ADR-18); confirm with the client that this satisfies LIV-02 "reuse the previous solution". (b) The recruitment platform's compiler service: technology and repository access | @dev (Aniket) | (a) LiveKit; (b) Judge0 CE reference adapter | M05 adapter choice | (a) Decided · (b) Open |
 | Q-26 | What must "AI" in engagement tracking mean? Is a deterministic score plus an AI-written explanation acceptable? | @client | Yes (ADR-16) | — | Open |
-| Q-27 | Who edits CO-PO-PSO matrices: admin only, or faculty with HoD approval? | @client | Admin only | — | Open |
+| Q-27 | Who edits CO-PO-PSO matrices: admin only, or faculty with HoD approval? | @client | Admin only | — | Answered 15 Oct 2026 (Aniket, M01b): the course coordinator and admins (CRS-07) |
 | Q-28 | Login identifier: email or roll number? University email domain? | @client | Email | — | Open |
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
@@ -72,6 +73,18 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 | Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
+| Q-37 | Can CUTM IT provide an official courseware export? Pages take about 30 s each, so importing all ~1,284 pages takes 5–6 hours | @client | The page importer, two pages at a time | — | Open |
+| Q-38 | Is the Examination Policy university-wide? CUTM AP's ASAG 1101 course file shows Theory 80 / Practice 20 with other parts | @client | One policy, copied onto each offering | M06 | Open |
+| Q-39 | Does "round up" mean ceiling (89.2 → 90) or nearest? Are component marks rounded too? | @client | Ceiling, once, at the course percentage | M08 | Open |
+| Q-40 | The full grade table and pass rules (the rest of Q-19) | @client | 06 §7 scale | M08 | Open |
+| Q-41 | How do assessments map to the policy's parts — Mid-term I (online), Mid-term II (presentation), assignment, attendance points from M03, the practice and project rubrics — and who enters the external practice and project marks? | @client / @dev | — | **M06** | Open |
+| Q-42 | What must the LMS do with the 75 % attendance minimum: show it, or produce an eligibility list? | @client | Stored only | M06, M08 | Open |
+| Q-43 | Programmes with fewer than 12 POs (MBA, BBA, M.Sc): may codes stay unused? Who supplies non-engineering PO titles? (Agriculture pages carry their own) | @client | An untitled code shows the code itself | M09 | Open |
+| Q-44 | Who maintains the course-list CSV after the first load, and how do the repository's "programme + stream" values map to LMS programmes? | @client | Converted once by the developer; admins keep that CSV | — | Open |
+| Q-45 | Are Certificate, Advanced certificate and Diploma courses credit-bearing? Which courses are 0-0-0? | @client | The credits in the course list decide | — | Open |
+| Q-46 | Should courseware session links (YouTube, slides) become lesson links? | @client | Not imported (backlog) | — | Open |
+| Q-47 | An offering's department comes from the batch's programme, so a Mathematics HoD does not see maths taught to B.Tech CSE. Acceptable? | @dev | As described (A-56) | — | Open |
+| Q-48 | Is the courseware "Faculty" the course coordinator? | @client | Prefilled only when exactly one faculty member has that name | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -89,11 +102,11 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-09 | Live classes use self-hosted LiveKit (now a decision: ADR-18) | M03 | Q-25 (a) |
 | A-10 | Judge0 CE is the reference code runner until Q-25 is answered | M05 | Q-25 |
 | A-11 | Late submissions are flagged, not penalized automatically | M04, M06 | Q-30 |
-| A-12 | A course belongs to exactly one program | data model | Q-20 |
+| A-12 | A course belongs to exactly one program — **replaced by A-54 (15 Oct 2026)** | data model | Q-20 |
 | A-13 | Proctoring snapshots are deleted 90 days after results | M05 | Q-24 |
 | A-14 | A missed assessment counts as 0 in CE | M06 | Q-23 |
 | A-15 | HoD access is read-only oversight of their department | auth | — |
-| A-16 | Skill courses have no CE scheme, CO/PO or grade sheet; attendance = lesson completion | M02, M06, M08 | Q-02 |
+| A-16 | Non-credit (0-0-0) courses have no evaluation policy, CO/PO or grade sheet; attendance = lesson completion (updated 15 Oct 2026) | M02, M06, M08 | Q-02, Q-45 |
 | A-17 | Multiple-select questions score all-or-nothing | M04 | — |
 | A-18 | Imported users receive an invitation email to set their own password | M00, M01 | Q-28 |
 | A-19 | Students do not see engagement scores | M10 | Q-29 |
@@ -131,6 +144,17 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-51 | A lesson cannot be deleted once any student has a progress row for it (opened, watched or completed); it can still be unpublished | M02 | — |
 | A-52 | Opening a notification marks it read (the row is a form that goes to its page); "Mark all as read" covers the rest | M02 | — |
 | A-53 | Teachers and admins get a "Course plan" tab in the course workspace, after Overview; students get "Lessons" where teachers see "Content" | M02 UI | — |
+| A-54 | A course is university-wide (one per code); programmes list it in their curriculum, optionally in a basket | M01b | Q-20 |
+| A-55 | `offering.category` keeps `ugc`/`skill`, now derived from the credits (`skill` = 0-0-0), so M02–M04 code keeps working | M01b | Q-45 |
+| A-56 | An offering's programme and department come from the batch, and the course must be in that programme's curriculum | M01b | Q-47 |
+| A-57 | The courseware import never overwrites content edited in the LMS; an admin's forced re-import does, and keeps CO ids by code | M01b | — |
+| A-58 | A plain list of learning outcomes becomes COs numbered in order; a Bloom level guessed from the first verb is only a suggestion until someone saves it | M01b | — |
+| A-59 | Two-part credits ("3 (2+1)") are read as theory + practice and flagged for review | M01b | — |
+| A-60 | Contact details on courseware pages (emails, phone numbers) are never stored | M01b | — |
+| A-61 | Programmes created by the course-list upload have no department until an admin sets it; offerings need one | M01b | — |
+| A-62 | A course code is fixed once the course has an offering | M01b | — |
+| A-63 | A change to the evaluation policy applies to offerings created afterwards | M01b | Q-38 |
+| A-64 | The course-list upload never deletes anything; links are removed by hand on the programme page | M01b | Q-44 |
 
 ## 5. Log
 
@@ -708,3 +732,15 @@ Cursor (AI agent) wrote most of T1–T9 on 13 Oct 2026 and stopped before tests,
 - In the browser: a 204.8 MB, 60 s lecture uploaded through the Add a lesson dialog; the largest request body that reached the app was 1,091 bytes (AC-M02-01), and its 480p copy was `ready` when checked a few minutes later. A student who played 5 s of the 6 s fixture had `[0, 5]`, 83.33 % after a reload. At 390 px a phone starts in Data saver (AC-M02-09).
 - Screenshots at 1440 px and 390 px (faculty, student, admin; Overview, Course plan, Content, lesson, dialogs, settings, notifications, Home, the plan email), reviewed in the session and not committed. 21 role-and-page combinations measured `scrollWidth` 390 at 390 px; Home tiles fit at 360 px.
 - One false alarm worth knowing: `pkill -f standalone/server.js` does not stop the e2e server (Next renames the process `next-server`); a rebuilt app served by the old process links CSS and scripts that no longer exist. Stop it by port (`lsof -tiTCP:3100 -sTCP:LISTEN | xargs kill`).
+
+### 2026-10-15 · Decision: M01b catalogue v2 from CUTM's real data · Claude Code, at Aniket's request
+
+Aniket pointed at courseware.cutm.ac.in and CUTM1535 (3-0-1) and asked for the CO–PO design to follow CUTM's real catalogue: the M01 version was "too complex, hard to understand, so many boxes to fill", every course should be in the LMS, and the architecture should be simple to use. The session read the courseware site (12 pages sampled), the Course Repository PDFs (programme, stream, basket, type, code, title, credits, T+P+Pj), the Programme Structure PDF (baskets I–VI, core or choice, minimum credits) and the 2020 Examination Policy. Decided, with Aniket's answers to the questions put to him:
+- **Course data:** an importer now (courseware pages, by an admin), export later.
+- **Catalogue:** university-wide, one course per code; programmes list courses in baskets; fixed outcome codes PO1–PO12 and PSO1–PSO3 with titles per programme.
+- **Course types:** the credits decide the features (a credit course gets everything; 0-0-0 is non-credit and uses M02's skill mode); the six courseware types are labels.
+- **Marking:** built in from the Examination Policy as one Settings form; each offering keeps a copy. Evaluation schemes and `/admin/schemes` go.
+- **Course owner:** a course coordinator (faculty) edits the course's content with the admins (new CRS-07).
+- **Course list:** a CSV upload (new ADM-06); the repository PDFs are converted to it once, offline. Courseware import is ADM-07.
+
+The build plan is `docs/milestones/M01b-catalog-v2.md`. Questions answered or changed: Q-01, Q-02, Q-05, Q-08, Q-18, Q-19, Q-20, Q-27; new questions Q-37 – Q-48; assumptions A-12 and A-16 updated, A-54 – A-64 added.
