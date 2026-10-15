@@ -60,7 +60,7 @@ const asAdmin = async () => {
 // The ids named by invitation jobs still waiting in the queue.
 async function invited(): Promise<string[]> {
   const jobs = await mailQueue().getJobs(['waiting', 'delayed', 'prioritized']);
-  return jobs.flatMap((j) => ('kind' in j.data ? j.data.userIds : []));
+  return jobs.flatMap((j) => ('kind' in j.data && j.data.kind === 'invitation' ? j.data.userIds : []));
 }
 
 describe('createUser', () => {

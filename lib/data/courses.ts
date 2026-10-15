@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import { Course } from '@/lib/models/course';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
-import { pageSize } from '@/lib/schemas/common';
+import { pageSize, RichTextDoc } from '@/lib/schemas/common';
 import type { BLOOM_LEVELS, CATEGORIES, COMPONENTS } from '@/lib/schemas/structure';
 
 async function readProgramOptions() {
@@ -76,6 +76,8 @@ export type CourseDetail = {
   components: (typeof COMPONENTS)[number][];
   category: (typeof CATEGORIES)[number];
   status: 'draft' | 'active' | 'archived';
+  syllabusText: RichTextDoc | null;
+  syllabusFileKey: string | null;
   objectives: string[];
   cos: { id: string; code: string; statement: string; bloomLevel: (typeof BLOOM_LEVELS)[number] }[];
   // The programme's PO codes, then its PSO codes: the matrix columns.
@@ -101,6 +103,8 @@ async function readCourse(id: string): Promise<CourseDetail> {
     components: course.components,
     category: course.category,
     status: course.status,
+    syllabusText: course.syllabusText ? RichTextDoc.parse(course.syllabusText) : null,
+    syllabusFileKey: course.syllabusFileKey ?? null,
     objectives: course.objectives,
     cos: course.cos.map((c) => ({
       id: String(c._id),

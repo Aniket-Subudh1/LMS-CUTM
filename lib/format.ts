@@ -24,6 +24,13 @@ export function formatDate(date: Date): string {
   return dateFormat.format(date);
 }
 
+const dayFormat = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric', month: 'short' });
+
+// `Wed, 14 Oct`: a session in a course calendar.
+export function formatDay(date: Date): string {
+  return dayFormat.format(date);
+}
+
 const longDateFormat = new Intl.DateTimeFormat('en-IN', {
   timeZone: IST,
   weekday: 'long',
@@ -71,4 +78,34 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join('');
+}
+
+const pctFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
+// `74%`, `66.67%` (08 §7): up to two decimals, no trailing zeros.
+export function formatPct(value: number): string {
+  return `${pctFormat.format(value)}%`;
+}
+
+const sizeFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });
+
+// File sizes in decimal units, as phones and upload limits state them: `640 MB`, `1.5 GB`.
+export function formatBytes(bytes: number): string {
+  const [value, unit] =
+    bytes >= 1e9
+      ? [bytes / 1e9, 'GB']
+      : bytes >= 1e6
+        ? [bytes / 1e6, 'MB']
+        : bytes >= 1e3
+          ? [bytes / 1e3, 'KB']
+          : [bytes, 'bytes'];
+  return `${sizeFormat.format(value)} ${unit}`;
+}
+
+// Video lengths: `45 s`, `12 min`, `1 h 5 min`.
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return minutes % 60 === 0 ? `${minutes / 60} h` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }

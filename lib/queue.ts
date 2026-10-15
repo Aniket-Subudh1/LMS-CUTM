@@ -2,10 +2,11 @@ import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
-import type { MailJob, MailSend } from '@/lib/schemas/jobs';
+import type { MailJob, MailSend, MediaJob } from '@/lib/schemas/jobs';
 
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
-const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: MailQueue };
+type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
+const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: MailQueue; media?: MediaQueue };
 
 export function redis(): Redis {
   globalForQueue.redis ??= new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
@@ -23,4 +24,17 @@ export function mailQueue(): MailQueue {
     },
   });
   return globalForQueue.mail;
+}
+
+export function mediaQueue(): MediaQueue {
+  globalForQueue.media ??= new Queue<MediaJob, void, 'transcodeLesson'>('media', {
+    connection: redis(),
+    defaultJobOptions: {
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 30_000 },
+      removeOnComplete: 1000,
+      removeOnFail: 5000,
+    },
+  });
+  return globalForQueue.media;
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Email } from '@/lib/schemas/auth';
-import { istDate, objectId, ROLES } from '@/lib/schemas/common';
+import { istDate, objectId, richText, ROLES } from '@/lib/schemas/common';
+import { uploadedFiles } from '@/lib/schemas/uploads';
 
 export const CATEGORIES = ['ugc', 'skill'] as const;
 export const COMPONENTS = ['theory', 'practice', 'project'] as const;
@@ -179,6 +180,14 @@ export const SaveObjectives = z.object({
         .array(z.string().max(500, 'Each objective uses at most 500 characters.'))
         .max(20, 'A course has at most 20 objectives.'),
     ),
+});
+
+// CRS-05. The PDF is optional: keep the current one, replace it with a new upload, or remove it.
+export const SaveSyllabus = z.object({
+  courseId: objectId,
+  syllabusText: richText,
+  'syllabusFile[]': uploadedFiles(1),
+  removeFile: z.stringbool().default(false),
 });
 
 export const AddCo = z.object({

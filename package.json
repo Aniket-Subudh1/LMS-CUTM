@@ -19,6 +19,8 @@
     "db:seed": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts",
     "db:seed:e2e": "tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e",
     "db:indexes": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts",
+    "s3:setup": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts",
+    "s3:setup:e2e": "tsx --env-file=.env.e2e --conditions=react-server scripts/s3-setup.ts",
     "admin:create": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
@@ -30,12 +32,20 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1149.0",
+    "@aws-sdk/s3-request-presigner": "3.1149.0",
     "@node-rs/argon2": "2.2.2",
     "@phosphor-icons/react": "2.1.10",
+    "@tiptap/html": "3.31.4",
+    "@tiptap/pm": "3.31.4",
+    "@tiptap/react": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
     "bullmq": "6.3.13",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "ffmpeg-static": "5.3.0",
     "gsap": "3.15.0",
+    "happy-dom": "20.14.6",
     "ioredis": "6.0.0",
     "iron-session": "9.0.1",
     "mongoose": "9.11.1",
@@ -73,6 +83,7 @@
     "fsevents@2.3.3": true,
     "mongodb-memory-server@11.3.0": true,
     "msgpackr-extract@3.0.4": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "ffmpeg-static@5.3.0": true
   }
 }
