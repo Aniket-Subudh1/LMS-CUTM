@@ -4,16 +4,19 @@ import Link from 'next/link';
 import {
   ArrowRightIcon,
   ArrowUpRightIcon,
+  BellIcon,
   BookOpenTextIcon,
   BooksIcon,
   CalendarBlankIcon,
   CaretRightIcon,
   ChalkboardTeacherIcon,
+  ClipboardTextIcon,
   ClockCounterClockwiseIcon,
   GraduationCapIcon,
   MagnifyingGlassIcon,
   MedalIcon,
   PencilSimpleLineIcon,
+  PlayCircleIcon,
   PlusIcon,
   SlidersHorizontalIcon,
   UserIcon,
@@ -27,8 +30,18 @@ import { OfferingCard } from '@/components/offering-card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
-import { getHomeSummary, listMyOfferings, type HomeSummary, type MyOfferingRow } from '@/lib/data/workspace';
+import { listContinueLearning, type ContinueRow } from '@/lib/data/content';
+import { unreadCount } from '@/lib/data/notifications';
+import {
+  getHomeSummary,
+  listMyOfferings,
+  listPlanRequests,
+  type HomeSummary,
+  type MyOfferingRow,
+  type PlanRequestRow,
+} from '@/lib/data/workspace';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime, initials, statusTone } from '@/lib/format';
 import type { Role } from '@/lib/schemas/common';
@@ -54,14 +67,22 @@ export default function HomePage() {
 
 async function Home() {
   const viewer = await requireViewer();
-  const [summary, offerings] = await Promise.all([
+  const [summary, offerings, continueLearning, planRequests, unread] = await Promise.all([
     getHomeSummary(),
     viewer.roles.some((r) => OFFERING_ROLES.includes(r)) ? listMyOfferings(1, {}) : null,
+    viewer.roles.includes('student') ? listContinueLearning() : [],
+    viewer.roles.includes('faculty') ? listPlanRequests() : [],
+    unreadCount(),
   ]);
   const [featured, ...rest] = offerings?.rows ?? [];
   const next = rest.slice(0, 3);
-  const tiles = tilesFor(viewer, summary);
-  const side = tiles.length > 0 || summary.admin !== null || next.length > 0;
+  const tiles = tilesFor(viewer, summary, unread);
+  const side =
+    tiles.length > 0 ||
+    summary.admin !== null ||
+    next.length > 0 ||
+    continueLearning.length > 0 ||
+    planRequests.length > 0;
   return (
     <div className="grid gap-6">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Hello, {viewer.name.split(' ')[0]}</h1>
@@ -72,17 +93,20 @@ async function Home() {
         </div>
         {side && (
           <div className="grid gap-5">
+            {planRequests.length > 0 && <PlanRequests rows={planRequests} />}
+            {continueLearning.length > 0 && <ContinueLearning rows={continueLearning} />}
             {tiles.length > 0 && (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9.5rem),1fr))] gap-4">
                 {tiles.map((t) => (
                   <li key={t.label}>
-                    <Link href={t.href} className="surface-interactive flex h-full flex-col gap-5 p-4">
-                      <span className="flex items-start gap-3">
+                    <Link href={t.href} className="surface-interactive relative flex h-full flex-col gap-5 p-4">
+                      {/* On a phone a tile is about 150 px wide: the label goes under its icon so one long word fits. */}
+                      <span className="flex items-start gap-3 max-sm:flex-col max-sm:gap-2">
                         <span className="icon-chip size-10 [&_svg]:size-5">
                           <t.icon weight="duotone" />
                         </span>
-                        <span className="text-muted-foreground max-w-24 text-sm leading-tight">{t.label}</span>
-                        <LinkSpinner className="ml-auto" />
+                        <span className="text-muted-foreground text-sm leading-tight sm:max-w-24">{t.label}</span>
+                        <LinkSpinner className="absolute top-4 right-4" />
                       </span>
                       <span className="flex flex-wrap items-baseline gap-x-2">
                         <span className="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
@@ -141,7 +165,7 @@ async function Home() {
   );
 }
 
-function tilesFor(viewer: Viewer, summary: HomeSummary): Tile[] {
+function tilesFor(viewer: Viewer, summary: HomeSummary, unread: number): Tile[] {
   const studentOnly = viewer.roles.every((r) => r === 'student');
   return [
     ...(summary.myOfferings !== null
@@ -176,6 +200,14 @@ function tilesFor(viewer: Viewer, summary: HomeSummary): Tile[] {
           { href: '/admin/programs', label: 'Programmes', value: summary.admin.programs, icon: GraduationCapIcon },
         ]
       : []),
+    // T10: every role sees its unread notifications.
+    {
+      href: '/notifications',
+      label: 'Notifications',
+      value: unread,
+      note: unread === 0 ? 'all caught up' : 'unread',
+      icon: BellIcon,
+    },
   ];
 }
 
@@ -460,6 +492,84 @@ function MostActive({
         Open the audit log
         <ArrowRightIcon className="size-4" />
       </Link>
+    </section>
+  );
+}
+
+// T10: up to five videos the student started and has not finished, most recently watched first.
+function ContinueLearning({ rows }: { rows: ContinueRow[] }) {
+  return (
+    <section className="surface grid gap-4 p-5">
+      <div className="min-w-0">
+        <h2 className="text-lg font-semibold tracking-tight">Continue learning</h2>
+        <p className="text-muted-foreground text-sm">Pick up the videos you started where you left off.</p>
+      </div>
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.lessonId}>
+            <Link
+              href={`/courses/${row.offeringId}/content/${row.lessonId}`}
+              className="surface-interactive group flex items-center gap-4 p-3"
+            >
+              <span className="icon-chip size-10 [&_svg]:size-5">
+                <PlayCircleIcon weight="duotone" />
+              </span>
+              <span className="grid min-w-0 flex-1 gap-1.5">
+                <span className="grid min-w-0">
+                  <span className="truncate text-sm font-medium">{row.lessonTitle}</span>
+                  <span className="text-muted-foreground truncate text-xs">{row.offeringTitle}</span>
+                </span>
+                <Progress
+                  value={row.progressPct}
+                  className="bg-muted h-1.5"
+                  aria-label={`${Math.floor(row.progressPct)}% watched`}
+                />
+              </span>
+              <span className="text-muted-foreground w-10 text-right text-xs tabular-nums">
+                {Math.floor(row.progressPct)}%
+              </span>
+              <LinkSpinner />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// CRS-06, T10: active offerings the faculty member teaches without a published course plan.
+function PlanRequests({ rows }: { rows: PlanRequestRow[] }) {
+  return (
+    <section className="surface ring-warning/30 grid gap-4 p-5">
+      <div className="flex items-start gap-3">
+        <span className="bg-warning/10 text-warning grid size-10 shrink-0 place-items-center rounded-xl">
+          <ClipboardTextIcon weight="duotone" className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold tracking-tight">Publish your course plan</h2>
+          <p className="text-muted-foreground text-sm">
+            {rows.length === 1 ? 'This course has started' : 'These courses have started'} without a published plan.
+            Students receive it by email once you publish.
+          </p>
+        </div>
+      </div>
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <Link
+              href={`/courses/${row.id}/plan`}
+              className="surface-interactive group flex items-center gap-3 px-4 py-3"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</span>
+              <span className="text-primary flex shrink-0 items-center gap-1 text-sm font-medium">
+                Write plan
+                <LinkSpinner />
+                <CaretRightIcon className="size-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

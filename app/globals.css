@@ -157,3 +157,69 @@
     radial-gradient(70% 60% at 60% 45%, oklch(0.3 0.13 266 / 0.85), transparent 75%);
   background-size: 160% 160%;
 }
+
+/* Rendered rich text (08 §4): the course plan, syllabus and lesson descriptions, and the editor's own surface. */
+.prose-lms {
+  display: grid;
+  gap: 0.75rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.prose-lms h1,
+.prose-lms h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.prose-lms h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.prose-lms ul,
+.prose-lms ol {
+  display: grid;
+  gap: 0.25rem;
+  padding-left: 1.25rem;
+}
+
+.prose-lms ul {
+  list-style: disc;
+}
+
+.prose-lms ol {
+  list-style: decimal;
+}
+
+.prose-lms a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+/* A quote is a tinted box, not a side stripe (08 §1). */
+.prose-lms blockquote {
+  border-radius: 0.75rem;
+  background: var(--muted);
+  padding: 0.75rem 1rem;
+  color: var(--muted-foreground);
+}
+
+.prose-lms code,
+.prose-lms pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.prose-lms pre {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: var(--muted);
+  padding: 0.75rem 1rem;
+}
+
+.prose-lms hr {
+  border-color: var(--border);
+}

@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { CalendarBlankIcon, CaretDownIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
+import { BellIcon, CalendarBlankIcon, CaretDownIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
 import { logout } from '@/app/(auth)/actions';
 import { AppBreadcrumb, AppNav } from '@/components/app-nav';
 import { UniversityLogo } from '@/components/university-logo';
@@ -27,49 +27,66 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { getViewer } from '@/lib/auth/session';
+import { unreadCount } from '@/lib/data/notifications';
 import { formatLongDate, initials, ROLE_LABEL } from '@/lib/format';
 import { ROLES } from '@/lib/schemas/common';
 
 async function UserMenu() {
   const viewer = await getViewer();
   if (!viewer) return null;
+  const unread = await unreadCount();
   const role = ROLES.find((r) => viewer.roles.includes(r));
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className="ring-border hover:bg-muted data-[state=open]:bg-muted focus-visible:ring-ring flex shrink-0 items-center gap-2.5 rounded-full p-1 ring-1 transition-colors outline-none focus-visible:ring-2 md:pr-3">
-        <Avatar className="size-9">
-          <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
-            {initials(viewer.name)}
-          </AvatarFallback>
-        </Avatar>
-        <span className="sr-only grid text-left leading-tight md:not-sr-only">
-          <span className="max-w-44 truncate text-sm font-semibold">{viewer.name}</span>
-          <span className="text-muted-foreground max-w-44 truncate text-xs">{viewer.email}</span>
-        </span>
-        <CaretDownIcon className="text-muted-foreground size-4 max-md:hidden" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60 rounded-xl">
-        <DropdownMenuLabel className="grid font-normal">
-          <span className="truncate font-medium">{viewer.name}</span>
-          <span className="text-muted-foreground truncate text-xs">{role && ROLE_LABEL[role]}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/profile">
-            <UserCircleIcon />
-            Profile
-          </Link>
-        </DropdownMenuItem>
-        <form action={logout}>
-          <DropdownMenuItem asChild variant="destructive">
-            <button type="submit" className="w-full">
-              <SignOutIcon />
-              Sign out
-            </button>
+    <>
+      {/* COM-03: the unread count sits on a bell beside the user chip, inside this Suspense boundary (T6). */}
+      <Link
+        href="/notifications"
+        aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        className="ring-border hover:bg-muted focus-visible:ring-ring relative grid size-10 shrink-0 place-items-center rounded-full ring-1 transition-colors outline-none focus-visible:ring-2"
+      >
+        <BellIcon className="size-5" />
+        {unread > 0 && (
+          <span className="bg-primary text-primary-foreground ring-sidebar absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full px-1 text-[0.6875rem] font-semibold tabular-nums ring-2">
+            {unread > 99 ? '99+' : unread}
+          </span>
+        )}
+      </Link>
+      <DropdownMenu>
+        <DropdownMenuTrigger className="ring-border hover:bg-muted data-[state=open]:bg-muted focus-visible:ring-ring flex shrink-0 items-center gap-2.5 rounded-full p-1 ring-1 transition-colors outline-none focus-visible:ring-2 md:pr-3">
+          <Avatar className="size-9">
+            <AvatarFallback className="bg-primary text-primary-foreground text-sm font-semibold">
+              {initials(viewer.name)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="sr-only grid text-left leading-tight md:not-sr-only">
+            <span className="max-w-44 truncate text-sm font-semibold">{viewer.name}</span>
+            <span className="text-muted-foreground max-w-44 truncate text-xs">{viewer.email}</span>
+          </span>
+          <CaretDownIcon className="text-muted-foreground size-4 max-md:hidden" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60 rounded-xl">
+          <DropdownMenuLabel className="grid font-normal">
+            <span className="truncate font-medium">{viewer.name}</span>
+            <span className="text-muted-foreground truncate text-xs">{role && ROLE_LABEL[role]}</span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/profile">
+              <UserCircleIcon />
+              Profile
+            </Link>
           </DropdownMenuItem>
-        </form>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <form action={logout}>
+            <DropdownMenuItem asChild variant="destructive">
+              <button type="submit" className="w-full">
+                <SignOutIcon />
+                Sign out
+              </button>
+            </DropdownMenuItem>
+          </form>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
 
@@ -133,7 +150,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Suspense>
               <Today />
             </Suspense>
-            <Suspense fallback={<Skeleton className="size-11 rounded-full" />}>
+            <Suspense fallback={<Skeleton className="h-11 w-24 rounded-full" />}>
               <UserMenu />
             </Suspense>
           </div>

@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useFormStatus } from 'react-dom';
 import {
+  BellIcon,
   BookOpenTextIcon,
   BooksIcon,
   CaretRightIcon,
   ChalkboardTeacherIcon,
   CircleNotchIcon,
   ClockCounterClockwiseIcon,
+  GearSixIcon,
   SignOutIcon,
   SlidersHorizontalIcon,
   SquaresFourIcon,
@@ -45,6 +47,7 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
     items: [
       { href: '/home', label: 'Dashboard', icon: SquaresFourIcon },
       { href: '/courses', label: 'My courses', icon: BooksIcon, roles: ['student', 'faculty', 'hod', 'admin'] },
+      { href: '/notifications', label: 'Notifications', icon: BellIcon },
     ],
   },
   {
@@ -64,6 +67,7 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/admin/courses', label: 'Courses', icon: BookOpenTextIcon, roles: ['admin'] },
       { href: '/admin/schemes', label: 'Schemes', icon: SlidersHorizontalIcon, roles: ['admin'] },
       { href: '/admin/offerings', label: 'Offerings', icon: ChalkboardTeacherIcon, roles: ['admin'] },
+      { href: '/admin/settings', label: 'Settings', icon: GearSixIcon, roles: ['admin'] },
       { href: '/admin/audit', label: 'Audit log', icon: ClockCounterClockwiseIcon, roles: ['admin'] },
       { href: '/admin/users', label: 'Users', icon: UsersThreeIcon, roles: ['admin', 'support'] },
     ],

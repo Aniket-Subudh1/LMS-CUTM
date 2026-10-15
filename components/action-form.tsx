@@ -27,6 +27,8 @@ export function ActionForm({
   successMessage,
   submitVariant = 'default',
   submitSize = 'default',
+  submitIcon,
+  iconOnly = false,
   fullWidth = false,
   confirm,
   replaceOnSuccess = false,
@@ -38,8 +40,11 @@ export function ActionForm({
   action: (input: FormData) => Promise<ActionResult<unknown>>;
   submitLabel: string;
   successMessage?: string;
-  submitVariant?: 'default' | 'destructive';
+  submitVariant?: 'default' | 'destructive' | 'outline';
   submitSize?: 'default' | 'sm';
+  // An icon before the label; with `iconOnly` the label becomes the button's accessible name and tooltip.
+  submitIcon?: ReactNode;
+  iconOnly?: boolean;
   fullWidth?: boolean;
   // Asks first: the submit button opens a dialog and only its confirm button submits the form.
   confirm?: { title: string; message: string };
@@ -71,13 +76,15 @@ export function ActionForm({
     <Button
       type={confirm ? 'button' : 'submit'}
       variant={submitVariant}
-      size={submitSize}
+      size={iconOnly ? 'icon-sm' : submitSize}
       disabled={pending || !hydrated}
       aria-busy={pending}
+      aria-label={iconOnly ? submitLabel : undefined}
+      title={iconOnly ? submitLabel : undefined}
       className={cn(fullWidth && 'h-10 w-full')}
     >
-      {pending && <CircleNotchIcon className="animate-spin" />}
-      {submitLabel}
+      {pending ? <CircleNotchIcon className="animate-spin" /> : submitIcon}
+      {!iconOnly && submitLabel}
     </Button>
   );
   // `<form action>` would make React clear every field after each submit, including a failed one.

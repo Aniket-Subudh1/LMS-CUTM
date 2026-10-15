@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import {
   BookOpenTextIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
   GridFourIcon,
   ListChecksIcon,
   PencilSimpleIcon,
@@ -9,11 +11,14 @@ import {
   TargetIcon,
 } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
-import { addCo, deleteCo, saveCoMap, saveCourse, saveObjectives, updateCo } from '../actions';
+import { addCo, deleteCo, saveCoMap, saveCourse, saveObjectives, saveSyllabus, updateCo } from '../actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { CoPoMatrix } from '@/components/co-po-matrix';
+import { FileUpload } from '@/components/file-upload';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { RichTextEditor } from '@/components/rich-text-editor';
+import { RichTextView } from '@/components/rich-text-view';
 import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -100,6 +105,70 @@ async function Course({ params }: { params: PageProps<'/admin/courses/[id]'>['pa
                 </li>
               ))}
             </ol>
+          )}
+        </Section>
+
+        <Section
+          icon={<FileTextIcon weight="duotone" />}
+          title="Syllabus"
+          description="Students see it on every offering's overview, and it is part of the course plan email."
+          action={
+            <FormDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <PencilSimpleIcon weight="duotone" /> Edit syllabus
+                </Button>
+              }
+              size="wide"
+              icon={<FileTextIcon weight="duotone" />}
+              title="Edit syllabus"
+              description="Write the units and topics, and attach the official PDF if there is one."
+              action={saveSyllabus}
+              submitLabel="Save syllabus"
+              successMessage="Syllabus saved."
+            >
+              <input type="hidden" name="courseId" value={course.id} />
+              <div className="grid gap-2">
+                <span className="text-sm font-medium">Units and topics</span>
+                <RichTextEditor
+                  name="syllabusText"
+                  initial={course.syllabusText}
+                  placeholder="Unit 1 · Introduction: …"
+                />
+                <FieldErrors name="syllabusText" />
+              </div>
+              <div className="grid gap-2">
+                <span className="text-sm font-medium">PDF (optional)</span>
+                {course.syllabusFileKey && (
+                  <label className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="removeFile" value="true" className="accent-primary size-4" />
+                    Remove the current PDF
+                  </label>
+                )}
+                <FileUpload name="syllabusFile" purpose="syllabus" contextId={course.id} />
+                <p className="text-muted-foreground text-xs">
+                  {course.syllabusFileKey
+                    ? 'Uploading a new PDF replaces the current one.'
+                    : 'Students can download it from the course overview.'}
+                </p>
+                <FieldErrors name="syllabusFile[]" />
+              </div>
+            </FormDialog>
+          }
+        >
+          {course.syllabusText || course.syllabusFileKey ? (
+            <div className="surface grid gap-4 p-5">
+              {course.syllabusText && <RichTextView doc={course.syllabusText} />}
+              {course.syllabusFileKey && (
+                <Button asChild variant="outline" size="sm" className="w-fit">
+                  <a href={`/api/files/${course.syllabusFileKey}`} target="_blank" rel="noreferrer">
+                    <DownloadSimpleIcon weight="duotone" /> Download the PDF
+                  </a>
+                </Button>
+              )}
+            </div>
+          ) : (
+            <p className="surface text-muted-foreground p-5 text-sm">No syllabus yet. Add it with Edit syllabus.</p>
           )}
         </Section>
 

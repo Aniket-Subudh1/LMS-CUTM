@@ -27,7 +27,7 @@ export function ConfirmSubmit({
   title: string;
   message: string;
   confirmLabel: string;
-  variant?: 'default' | 'destructive';
+  variant?: 'default' | 'destructive' | 'outline';
   pending: boolean;
   children: ReactNode;
 }) {
