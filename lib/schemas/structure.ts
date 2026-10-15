@@ -30,6 +30,28 @@ export const COMPONENT_KEYS = [
 export const AGGREGATIONS = ['average', 'sum', 'best_n'] as const;
 export const ROUNDING_MODES = ['half_up', 'ceil'] as const;
 export const TERM_STATUSES = ['upcoming', 'current', 'closed'] as const;
+// The six course types of CUTM's courseware (labels only; credits decide the features, decision of 15 Oct 2026).
+export const COURSE_TYPES = ['core', 'domain', 'skill', 'certificate', 'advanced_certificate', 'diploma'] as const;
+// CO-PO-PSO maps use these fixed codes; each programme gives them its own titles (CPP-02, Q-08).
+export const OUTCOME_CODES = [
+  'PO1',
+  'PO2',
+  'PO3',
+  'PO4',
+  'PO5',
+  'PO6',
+  'PO7',
+  'PO8',
+  'PO9',
+  'PO10',
+  'PO11',
+  'PO12',
+  'PSO1',
+  'PSO2',
+  'PSO3',
+] as const;
+export const SESSION_KINDS = ['theory', 'practice', 'project'] as const;
+export const BASKET_SCOPES = ['core', 'choice'] as const;
 export const OFFERING_STATUSES = ['draft', 'active', 'completed'] as const;
 export const PROJECT_MODES = ['github', 'tracker'] as const;
 
@@ -348,3 +370,28 @@ export const EnrollmentCsvRow = z.object({
   action: z.enum(['add', 'drop'], 'Action must be add or drop.'),
 });
 export type EnrollmentCsvRow = z.infer<typeof EnrollmentCsvRow>;
+
+const csvOptional = (max: number, message: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, message)
+    .transform((v) => v || undefined);
+
+// 06 §8.5, one row per programme × course of CUTM's Course Repository. lib/domain/csv.ts normalises the code
+// and reads `tpp` (T+P+Pj), which must add up to `credits`.
+export const CourseListCsvRow = z.object({
+  programme: csvText(160, 'Programme is required (up to 160 characters).'),
+  stream: csvOptional(60, 'Stream uses at most 60 characters.'),
+  basket: csvOptional(60, 'Basket uses at most 60 characters.'),
+  type: csvOptional(80, 'Course type uses at most 80 characters.'),
+  code: csvText(20, 'Course code is required, such as CUTM1535.'),
+  title: csvText(160, 'Course title is required (up to 160 characters).'),
+  credits: z.coerce
+    .number('Credits must be a number such as 4.')
+    .min(0, 'Credits must be between 0 and 30.')
+    .max(30, 'Credits must be between 0 and 30.')
+    .multipleOf(0.5, 'Credits go in steps of 0.5.'),
+  tpp: csvText(20, 'T+P+Pj is required, such as 3+0+1.'),
+});
+export type CourseListCsvRow = z.infer<typeof CourseListCsvRow>;

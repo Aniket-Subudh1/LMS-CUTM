@@ -5,3 +5,9 @@ export function roundHalfUp(value: number, decimals: number): number {
   const rounded = Math.round(Number(shifted.toPrecision(15)));
   return (Math.sign(value) * rounded) / factor;
 }
+
+// 07 §1: the smallest value at `decimals` places that is not below `value`, with the same binary-noise guard.
+export function ceilTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.ceil(Number((value * factor).toPrecision(15))) / factor;
+}

@@ -8,7 +8,7 @@ Where a threshold or weight is configurable it is read from settings (06 §7) by
 
 - `roundHalfUp(x, d)`: half away from zero at `d` decimals, robust to binary floating-point noise (code in 04 §6.10).
 - `ceilTo(x, d)`: `Math.ceil(Number((x * 10**d).toPrecision(15))) / 10**d`.
-- **Where rounding happens:** item marks entered by hand → 2 dp on input. Attempt totals → 2 dp. Component marks → kept unrounded internally, displayed at 2 dp. Internal total → the scheme's rounding, **once**, at the end. Percentages → 2 dp. Attainment values → 2 dp. Engagement score → integer. Never round twice.
+- **Where rounding happens:** item marks entered by hand → 2 dp on input. Attempt totals → 2 dp. Component marks (theory, practice, project, each out of 100) → kept unrounded internally, displayed at 2 dp. The **course percentage rounds up once**, with `ceilTo(x, 0)` (Examination Policy, §2; ceiling or nearest is Q-39). Other percentages → 2 dp. Attainment values → 2 dp. Engagement score → integer. Never round twice.
 
 | x | d | roundHalfUp | ceilTo |
 |---|---|---|---|
@@ -21,50 +21,39 @@ Where a threshold or weight is configurable it is read from settings (06 §7) by
 | 14.999999999999998 | 2 | 15 | 15 |
 | −1.005 | 2 | −1.01 | — |
 
-## 2. Internal marks (continuous evaluation) — `lib/domain/internal-marks.ts`
+## 2. Evaluation policy — `lib/domain/evaluation.ts`
 
-`computeInternalMarks(scheme, assessments, scoresByAssessment) → { components, total, complete }`
+Since M01b the marking follows CUTM's Examination Policy (2020), held as the settings key `evaluation` (06 §7) and copied onto each offering when it is created (05 §3.7). Every **component** a course has (credits above 0) is marked **out of 100**:
 
-**Inputs**
-- `scheme`: the offering's bound version (`internalMax`, `components[]`, `rounding`).
-- `assessments`: the offering's assessments with `status = results_published` (`{ id, mode, maxMarks }`). Assessments in other states never count.
-- The student's **counted score** per assessment:
-  - `attemptPolicy = best` → the highest `total` among graded attempts; `last` → the `total` of the graded attempt with the highest `attemptNo`.
-  - No graded attempt → **0** (a missed assessment counts as zero).
-
-**Per component `c`**
-1. `A_c` = counted assessments whose `mode ∈ c.modes`.
-2. If `A_c` is empty → `pct = null`, `marks = 0`.
-3. `p_i = score_i / maxMarks_i`.
-4. `pct` by `c.aggregation`:
-   - `average` → mean of `p_i`
-   - `sum` → `Σ score_i / Σ maxMarks_i`
-   - `best_n` → mean of the top `min(bestN, |A_c|)` values of `p_i`
-5. `marks_c = pct × c.weight` (unrounded).
-
-**Total:** `raw = Σ marks_c`; `total = ceilTo(raw, decimals)` if `rounding.mode = 'ceil'`, else `roundHalfUp(raw, decimals)`; clamp to `[0, internalMax]`.
-**Complete:** every component has `|A_c| ≥ 1` (`≥ bestN` for `best_n`). Locking and export (M08) require `complete` for every enrolled student, or an admin override with a reason.
-
-**Worked example** — scheme `theory+practice`, `internalMax` 50: quiz 15 (`average`, modes `quiz`), assignment 10 (`best_n`, n = 2, modes `assignment`), learning record 5 (`average`), lab record 5 (`sum`), lab test 15 (`average`, modes `lab_test`, `coding_test`); rounding 0 dp half-up.
-
-| Component | Counted scores | pct | marks |
+| Component | Internal | External | Parts (policy defaults) |
 |---|---|---|---|
-| quiz | 8/10, 15/20, 0/10 (missed) | (0.8 + 0.75 + 0)/3 = 0.51667 | 7.75 |
-| assignment | 18/20, 12/20, 20/25 | best two of 0.9, 0.6, 0.8 → 0.85 | 8.5 |
-| learning_record | 4/5 | 0.8 | 4 |
-| lab_record | 9/10, 7/10 | 16/20 = 0.8 | 4 |
-| lab_test | 30/40 | 0.75 | 11.25 |
-| **total** | | | raw 35.5 → **36** |
+| Theory | 40 | 60 (end-semester, offline) | Mid-term I 15 · Mid-term II 15 · assignment 5 · attendance 5 |
+| Practice | 50 | 50 (external examiner) | rubric: concept 5 · planning and execution 10 · result and interpretation 10 · record 10 · conduct 5 · viva 10 (the external examiner uses the same rubric) |
+| Project | 50 | 50 | internal rubric: relevance 5 · literature 5 · methodology 10 · analysis and results 10 · interpretation 10 · report 10; external: relevance 10 · report 20 · defence 20 |
 
-| Case | Expected |
-|---|---|
-| Example above, rounding `{0, half_up}` | total 36, complete true |
-| Same, rounding `{0, ceil}` | 36 |
-| Same, rounding `{2, half_up}` | 35.5 |
-| Same without any published lab test | lab_test `pct` null, raw 24.25 → total 24, complete false |
-| Quiz attempts 6/10, 8/10, 7/10 with policy `best` | counted 8 |
-| Same with policy `last` | counted 7 |
-| `best_n` n = 2 with only one assessment published (0.9) | pct 0.9, complete false |
+How assessments feed these parts (which mid-term is which assessment, who enters the external marks) is **Q-41**; M06 computes the internal parts only after it is answered.
+
+**`coursePercentage(credits, marks)`** — the credit-weighted average of the component marks, rounded up once:
+
+`ceilTo((Wt·T + Wp·P + Wpr·Pj) / (Wt + Wp + Wpr), 0)`, over components with credits > 0. A missing mark for a weighted component → `null`; a 0-0-0 course → `null` (it has no marks).
+
+| Credits | Marks | Raw | Result |
+|---|---|---|---|
+| **1-2-2 (DECT0901, the policy's example)** | T 87, P 89, Pj 92 | 89.8 | **90** |
+| 3-0-1 | T 72.5, Pj 80 | 74.375 | 75 |
+| 1.5-0-1.5 | T 60, Pj 61 | 60.5 | 61 |
+| 2-0-0 | T 90 | 90 | 90 |
+| 3-1-0 | T 89.2, P 89.2 | 89.2 | 90 |
+| 3-0-1 | T 80, Pj missing | — | null |
+| 0-0-0 | — | — | null |
+
+**`attendancePoints(pct, bands)`** — the theory attendance part from the attendance percentage; bands are `{ minPct, marks }` from the highest down, and below the last band it is 0. Default bands 90 → 5, 85 → 4, 80 → 3, 75 → 2:
+
+| Attendance % | 100 | 90 | 89.99 | 85 | 84.99 | 80 | 79.99 | 75 | 74.99 | 0 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Marks | 5 | 5 | 4 | 4 | 3 | 3 | 2 | 2 | 0 | 0 |
+
+The policy's 75 % minimum is stored only (Q-42).
 
 ## 3. Performance trend (CE-09) — `lib/domain/trend.ts`
 
@@ -154,23 +143,24 @@ For program P, batch B and a set of terms: take the latest offering-scope attain
 
 ## 6. Grade sheet (EXM-05) — `lib/domain/grades.ts`
 
-For each **ugc** offering of the student in the term:
-- `internal` = locked `internalMarks.total`; `internalMax` = scheme `internalMax`.
-- `external` = end-sem `marks` (absent → 0); `externalMax` = the imported `maxMarks`.
-- `total = internal + external`; `pct = roundHalfUp(100 × total / (internalMax + externalMax), 2)`.
-- Grade = the first scale entry (sorted by `minPct` descending) with `pct ≥ minPct`, compared **after** rounding `pct`. End-sem absent → `absentGrade` ("Ab", grade point 0).
+For each **credit** offering of the student in the term (non-credit offerings have no grade):
+- Each component the offering's credits snapshot has (credits > 0) gets its mark out of 100: theory = locked internal (out of 40) + end-semester (out of 60); practice and project = internal (out of 50) + external (out of 50). An absent end-semester counts 0 and the grade is `absentGrade`.
+- `pct = coursePercentage(credits, marks)` (§2: credit-weighted, rounded up once).
+- Grade = the first scale entry (sorted by `minPct` descending) with `pct ≥ minPct`. End-sem absent → "Ab", grade point 0.
 - `SGPA = roundHalfUp(Σ credits × gradePoint / Σ credits, 2)` over rows with credits > 0; `null` if no credits or `showSgpa` is false.
 
-Default scale (06 §7): O ≥ 90 (10) · A+ ≥ 80 (9) · A ≥ 70 (8) · B+ ≥ 60 (7) · B ≥ 50 (6) · C ≥ 45 (5) · P ≥ 40 (4) · F (0).
+Default scale (06 §7): O ≥ 90 (10) · A+ ≥ 80 (9) · A ≥ 70 (8) · B+ ≥ 60 (7) · B ≥ 50 (6) · C ≥ 45 (5) · P ≥ 40 (4) · F (0). Only O ≥ 90 is confirmed by the policy; the rest is Q-40.
 
-| Course | Credits | Internal | External | pct | Grade | GP |
+| Course | T-P-Pj | Credits | Marks | pct | Grade | GP |
 |---|---|---|---|---|---|---|
-| C Programming | 4 | 36/50 | 38/50 | 74 | A | 8 |
-| Mathematics | 3 | 30/50 | 20/50 | 50 | B | 6 |
-| C Lab | 2 | 45/50 | 40/50 | 85 | A+ | 9 |
-| **SGPA** | | | | | | **7.56** |
+| DECT0901 | 1-2-2 | 5 | T 87, P 89, Pj 92 | 89.8 → 90 | O | 10 |
+| CUTM1535 | 3-0-1 | 4 | T 74, Pj 80 | 75.5 → 76 | A | 8 |
+| CUTM1014 | 1.5-0-1.5 | 3 | T 60, Pj 61 | 60.5 → 61 | B+ | 7 |
+| **SGPA** | | | | | | **103 / 12 = 8.58** |
 
-Boundary vectors: pct 90 → O; 89.99 → A+; 39.99 → F; raw 44.995 → pct 45 → C; end-sem absent → Ab, GP 0, counted in the SGPA denominator.
+(Computed with `coursePercentage` by script, 15 Oct 2026.)
+
+Boundary vectors: pct 90 → O; 89 → A+; 39 → F; end-sem absent → Ab, GP 0, counted in the SGPA denominator.
 
 ## 7. Engagement score (ENG-01/02) — `lib/domain/engagement.ts`
 
@@ -262,6 +252,14 @@ Session 10:00–11:00 (3600 s), threshold 75 % (2700 s):
 | istDayKey(2026-10-12T18:30:00Z) | 2026-10-13 |
 | istDayKey(2026-03-31T18:30:00Z) | 2026-04-01 |
 
+- `classDates(startDay, weekdays, count)` → `count` IST day keys from `startDay` on the given weekdays (0 = Sunday … 6 = Saturday); a start on a non-class day moves to the next class day; an empty or invalid weekday list throws `RangeError`. Used by "Start from the course's session plan" (M01b).
+
+| Input | Output |
+|---|---|
+| 2026-07-06, [Mon, Wed, Fri], 5 | 07-06, 07-08, 07-10, 07-13, 07-15 |
+| 2026-07-07 (a Tuesday), [Mon, Wed, Fri], 2 | 07-08, 07-10 |
+| [] | RangeError |
+
 ## 12. Commit metrics (PRJ-03/04) — `lib/domain/commits.ts`
 
 Inputs: the project's commits (merge commits — more than one parent — excluded), members, `startsOn`, `dueOn`, `now`, `projects` settings.
@@ -324,3 +322,43 @@ Event types: `fullscreen_exit`, `tab_hidden`, `paste_blocked`, `webcam_unavailab
 Fixed window: key `rl:<name>:<subject>:<floor(now / windowMs)>`; `INCR`; on the first increment `PEXPIRE windowMs`; allowed while the count ≤ limit. Limits per action are in 09 §4.
 
 The attempt is counted **before** the check, so parallel guesses are limited too. `limit()` returns `{ refund }` bound to the key it incremented (`DECR` + `PEXPIRE` in one `MULTI`); login calls it after a correct password, so only failures count toward the login limits (AC-M00-04) and a student signing in on several lab machines is never blocked.
+
+## 17. Credits, codes and Bloom levels — `lib/domain/catalog.ts` (M01b)
+
+**`parseCredits(text)` → `{ credits, twoPart } | null`** reads a T-P-Pj split anywhere in a text: separators `+`, `-`, `--`, `–`, `—`, optional `hr`/`hours` units; each part 0–20 in 0.5 steps, total ≤ 30. A two-part split is read as theory + practice and flagged (A-59).
+
+| Input | Result |
+|---|---|
+| `3+0+1` · `(3-0-1)` · `Code(Credit) : CUTM1535(3-0-1)` | 3-0-1 |
+| `2--2--2` | 2-2-2 |
+| `1.5+0+1.5` | 1.5-0-1.5 |
+| `CUTM 3114 (0-3-1)` | 0-3-1 |
+| `3 – 1 – 0` | 3-1-0 |
+| `3 (2+1)` | 2-1-0, `twoPart` |
+| `4` · `1.25+0+1` · `2021-2022` · empty | null |
+
+`creditTotal` sums the parts; `formatCredits` prints `3-0-1`; `courseMode` is `credit` when the total is above 0, else `noncredit` (01 §6).
+
+**Codes and names.** `normalizeCode`: upper case without spaces, `-` or `_` (` cutm 1535 ` → `CUTM1535`, `ASAG 1101` → `ASAG1101`, `SK01` stays). `extractCode` finds 2–6 letters plus exactly 4 digits in free text (`ADVANCED JAVA-CUST1051` → `CUST1051`; `SGJ/N0101`, `PO12`, `26507` → null). `normalizeTitle` compares titles loosely (`SKILL: Solar PV Installation` = `solar pv installation`; `&` = `and`). `normalizePersonName` drops titles (`Dr. Goutam Kumar  Mahato` → `goutam kumar mahato`). `programmeCode('M.Sc Mathematics', taken)` → `MSC-MATHEMATICS`, then `-2` on a collision, ≤ 20 characters. `courseTypeFromLabel` maps the courseware and repository type labels to the six types (`Domain Elective` → domain; unknown → null).
+
+**Bloom.** `inferBloom(statement)` skips a lead-in ("CO1:", "Students will be able to", "The student will", "To") and an adverb ("Critically"), then reads the first verb against a fixed verb list: `Explain …` → understand, `Evaluate …` → evaluate, `Design …` → create, `Analyze …` → analyse, `Get a deep understanding …` → understand, `Read and interpret …` → null. The result is only a **suggestion** shown pre-ticked; it becomes the CO's level when a person saves (A-58). `parseBloomLevels` reads stated levels in order — `Apply, Create`, `L2 - Understand`, `K3` (K1–K6 in order), `Analyzing` — keeping at most three (`extra` says more were given).
+
+**Session plan text.** `parseSessionLines`: one session per line; a `Practice:`/`Practical:`/`Lab:` prefix makes a practice session and `Project:` a project session; blank lines are ignored. `formatSessionLines` is its inverse.
+
+**Outcomes.** `nextCoCode` never reuses a code (CO7 after CO1–CO6 even if CO3 was deleted). `mergeCos(existing, imported, newId)` keeps each CO's id by its code, so a re-import leaves calendar rows and question tags pointing at the same CO.
+
+**`courseReadiness(course)`** — the course page's checklist, in order: review the import (only while review notes exist) · coordinator · objectives · outcomes · Bloom levels (every CO) · mapping (every CO linked at least once) · syllabus (a module or the PDF) · books · session plan. A non-credit course drops outcomes, Bloom levels, mapping and books. CUTM1535 freshly imported: 5 of 8 done.
+
+**Course-list CSV — `parseCourseListCsv` in `lib/domain/csv.ts`** (06 §8.5): `credits` must equal the T+P+Pj total (`Credits 4 do not match T+P+Pj 2-0-1.`); `tpp` must have three parts; one code keeps one title and one credit split across rows; a programme lists a code once.
+
+**Courseware pages — `normalizeCourseware` in `lib/domain/courseware.ts`** reads the lines and tables the adapter extracts (06 §4.8):
+- Hard-wrapped lines are joined (a line starting in lower case or after "of", "and" or a comma continues the previous one); bullets start entries; lead-ins ("Students will be able to:") are dropped.
+- Code, credits and faculty from `Code(Credit) : …`, `CODE:`, `Credits:`, `Faculty:` lines or a descriptor table; the code falls back to the slug or the title.
+- Outcomes from a CO table if there is one, otherwise from the outcomes list, numbered in order (a review note says so). Stated levels ("(Apply, Analyze)") are kept; otherwise a suggestion from the verb.
+- Mapping from a table with PO/PSO columns: 3/2/1 or H/M/L; other columns are left out with a note; a mapping where every CO has the same row gets a note.
+- Modules `Module II (4hr+0hr+2hr)` → title "Module II", hours `4+0+2`; `Practice n:` and experiment lists are practicals; `PROJECT n:` lines and project lists are projects; a course-level practical list becomes a module "Practicals".
+- Books: `Chapters:` lines join the book above; numbered entries run on across wrapped lines.
+- Sessions: `Session 8 & 9` → two sessions with the same topic; tables by their header (`Lect. No`, `Points To Covered`, `Methodology`); a `Project…`/`Practice…` prefix or type cell sets the kind; links are dropped.
+- Sizes follow `CATALOG_LIMITS`; anything cut gets a note.
+
+Fixture vectors (`lib/integrations/courseware.test.ts`): page 836 → CUTM1535, 3-0-1, 2 objectives, 2 COs, no mapping, 7 modules, 6 projects, 1 textbook with chapters, 43 sessions (31 theory, 12 project); 500 → CUTM3073, 0-3-1, skill, 6 modules, 12 projects, 20 practice sessions; 1250 → ASAG1101, `3 (2+1)` → 2-1-0 with a note, H/M/L mapping, and no phone number or email in the output.

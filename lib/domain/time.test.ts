@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { istDateToDate, istDayKey, parseIstLocal } from './time';
+import { classDates, istDateToDate, istDayKey, parseIstLocal } from './time';
 
 describe('parseIstLocal', () => {
   it.each([
@@ -27,5 +27,26 @@ describe('istDayKey', () => {
     ['2026-03-31T18:30:00Z', '2026-04-01'],
   ])('istDayKey(%s) = %s', (input, expected) => {
     expect(istDayKey(new Date(input))).toBe(expected);
+  });
+});
+
+describe('classDates', () => {
+  it('lists class days from the first date on the chosen weekdays', () => {
+    expect(classDates('2026-07-06', [1, 3, 5], 5)).toEqual([
+      '2026-07-06',
+      '2026-07-08',
+      '2026-07-10',
+      '2026-07-13',
+      '2026-07-15',
+    ]);
+  });
+
+  it('moves a start on a non-class day to the next class day', () => {
+    expect(classDates('2026-07-07', [1, 3, 5], 2)).toEqual(['2026-07-08', '2026-07-10']);
+  });
+
+  it('refuses an empty or impossible weekday list', () => {
+    expect(() => classDates('2026-07-06', [], 3)).toThrow(RangeError);
+    expect(() => classDates('2026-07-06', [7], 3)).toThrow(RangeError);
   });
 });

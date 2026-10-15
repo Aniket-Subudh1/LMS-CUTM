@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
-import { EnrollmentCsvRow, UserCsvRow } from '@/lib/schemas/structure';
+import { creditTotal, formatCredits, normalizeCode, parseCredits, type Credits } from '@/lib/domain/catalog';
+import { CourseListCsvRow, EnrollmentCsvRow, UserCsvRow } from '@/lib/schemas/structure';
 
 // `row` is 1-based and excludes the header; 0 means the file as a whole (06 §8).
 export type CsvError = { row: number; message: string };
@@ -128,6 +129,57 @@ export function parseEnrollmentCsv(text: string): CsvResult<EnrollmentRow> {
     const clash = claim(rollNos, parsed.data.rollNo, row, 'Roll number');
     if (clash) errors.push(clash);
     else rows.push({ ...parsed.data, row });
+  });
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
+}
+
+export type CourseListRow = Omit<CourseListCsvRow, 'credits' | 'tpp'> & { row: number; credits: Credits };
+
+// 06 §8.5 (CUTM's Course Repository). A course may appear under several programmes, but always with the same
+// title and credits; the action matches programmes and baskets.
+export function parseCourseListCsv(text: string): CsvResult<CourseListRow> {
+  const read = readCsv(text);
+  if (!read.ok) return read;
+  const { columns, records } = read.data;
+  const missing = missingColumns(columns, ['programme', 'code', 'title', 'credits', 'tpp']);
+  if (missing.length > 0) return { ok: false, errors: missing };
+
+  const errors: CsvError[] = [];
+  const rows: CourseListRow[] = [];
+  const courses = new Map<string, { row: number; title: string; credits: string }>();
+  const links = new Map<string, number>();
+  records.forEach((record, i) => {
+    const row = i + 1;
+    const parsed = CourseListCsvRow.safeParse(
+      Object.fromEntries(['programme', 'stream', 'basket', 'type', 'code', 'title', 'credits', 'tpp'].map((c) => [c, cell(record, c)])),
+    );
+    if (!parsed.success) {
+      errors.push({ row, message: [...new Set(parsed.error.issues.map((issue) => issue.message))].join(' ') });
+      return;
+    }
+    const { tpp, credits: total, ...rest } = parsed.data;
+    const code = normalizeCode(rest.code);
+    const split = parseCredits(tpp);
+    const problems: string[] = [];
+    if (!/^[A-Z0-9]{2,20}$/.test(code)) problems.push('Course code must be letters and digits, such as CUTM1535.');
+    if (!split || split.twoPart) problems.push(`T+P+Pj "${tpp}" must be three numbers, such as 3+0+1.`);
+    else if (creditTotal(split.credits) !== total) {
+      problems.push(`Credits ${total} do not match T+P+Pj ${formatCredits(split.credits)}.`);
+    }
+    if (problems.length > 0 || !split) {
+      errors.push({ row, message: problems.join(' ') });
+      return;
+    }
+    const credits = formatCredits(split.credits);
+    const first = courses.get(code);
+    if (!first) courses.set(code, { row, title: rest.title, credits });
+    else if (first.title !== rest.title) errors.push({ row, message: `${code} has a different title in row ${first.row}.` });
+    else if (first.credits !== credits) errors.push({ row, message: `${code} has different credits in row ${first.row}.` });
+    const link = `${rest.programme.toLowerCase()} ${code}`;
+    const twice = links.get(link);
+    if (twice) errors.push({ row, message: `${code} is already listed under ${rest.programme} in row ${twice}.` });
+    else links.set(link, row);
+    rows.push({ ...rest, code, credits: split.credits, row });
   });
   return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
 }

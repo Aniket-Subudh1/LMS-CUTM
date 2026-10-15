@@ -19,3 +19,22 @@ export function istDateToDate(day: string): Date {
 export function istDayKey(date: Date): string {
   return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
+
+const DAY_MS = 86_400_000;
+
+// The dates of `count` classes from `startDay` (YYYY-MM-DD, IST) on the given weekdays (0 = Sunday … 6 =
+// Saturday): "start from the course's session plan" on the Course plan page. A start on a non-class day moves to
+// the next class day.
+export function classDates(startDay: string, weekdays: readonly number[], count: number): string[] {
+  const days = new Set(weekdays);
+  if (days.size === 0 || [...days].some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+    throw new RangeError('Pick at least one weekday.');
+  }
+  const start = istDateToDate(startDay);
+  const out: string[] = [];
+  for (let t = start.getTime() + 330 * 60_000; out.length < count; t += DAY_MS) {
+    const day = new Date(t);
+    if (days.has(day.getUTCDay())) out.push(day.toISOString().slice(0, 10));
+  }
+  return out;
+}
