@@ -193,12 +193,12 @@ describe('getWorkspace', () => {
       title: w.offA.title,
       termName: 'Odd 2026',
       access: 'teach',
-      canChangeEnrollments: true,
+      canTeach: true,
     });
     await signInAs(w.hodA);
-    expect(await getWorkspace(String(w.offA._id))).toMatchObject({ access: 'oversee', canChangeEnrollments: false });
+    expect(await getWorkspace(String(w.offA._id))).toMatchObject({ access: 'oversee', canTeach: false });
     await signInAs(await makeUser({ roles: ['admin'] }));
-    expect(await getWorkspace(String(w.offB._id))).toMatchObject({ access: 'oversee', canChangeEnrollments: true });
+    expect(await getWorkspace(String(w.offB._id))).toMatchObject({ access: 'oversee', canTeach: true });
   });
 
   it('answers 404 for another department, an unenrolled student, a draft, and a malformed id', async () => {

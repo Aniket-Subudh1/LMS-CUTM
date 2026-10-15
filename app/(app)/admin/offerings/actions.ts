@@ -4,6 +4,7 @@ import { refresh } from 'next/cache';
 import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
+import { notify } from '@/lib/data/notifications';
 import { db, isDuplicateKey } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { Batch } from '@/lib/models/batch';
@@ -159,10 +160,22 @@ export const setOfferingStatus = action(
   async ({ offeringId, status }) => {
     await db();
     const from = status === 'active' ? 'draft' : 'active';
-    const updated = await Offering.updateOne({ _id: offeringId, status: from }, { $set: { status } });
-    if (updated.matchedCount === 0) {
+    const offering = await Offering.findOneAndUpdate(
+      { _id: offeringId, status: from },
+      { $set: { status } },
+      { returnDocument: 'after', projection: { facultyIds: 1, title: 1, plan: 1 } },
+    ).lean();
+    if (!offering) {
       if (!(await Offering.exists({ _id: offeringId }))) throw new AppError('NOT_FOUND', 'Offering not found.');
       throw new AppError('CONFLICT', `Only a ${from} offering can become ${status}.`);
+    }
+    // CRS-06: the system requests the plan from the faculty when teaching starts without one.
+    if (status === 'active' && !offering.plan.publishedAt) {
+      await notify(offering.facultyIds.map(String), {
+        kind: 'plan.requested',
+        title: `Publish the course plan and calendar for ${offering.title}`,
+        href: `/courses/${offeringId}/plan`,
+      });
     }
     refresh();
   },

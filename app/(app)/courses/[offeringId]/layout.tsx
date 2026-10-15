@@ -3,6 +3,8 @@ import {
   BookOpenTextIcon,
   CalendarBlankIcon,
   ChalkboardTeacherIcon,
+  CalendarDotsIcon,
+  PlayCircleIcon,
   SquaresFourIcon,
   UsersThreeIcon,
 } from '@phosphor-icons/react/ssr';
@@ -15,8 +17,17 @@ import { statusTone } from '@/lib/format';
 async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offeringId]'>['params'] }) {
   const workspace = await getWorkspace((await params).offeringId);
   const base = `/courses/${workspace.id}`;
+  // 08 §3. Teachers get the Plan tab after Overview: write the plan first, then add lessons.
   const tabs = [
     { href: base, label: 'Overview', icon: <SquaresFourIcon weight="duotone" /> },
+    ...(workspace.canTeach
+      ? [{ href: `${base}/plan`, label: 'Course plan', icon: <CalendarDotsIcon weight="duotone" /> }]
+      : []),
+    {
+      href: `${base}/content`,
+      label: workspace.access === 'learn' ? 'Lessons' : 'Content',
+      icon: <PlayCircleIcon weight="duotone" />,
+    },
     ...(workspace.access === 'learn'
       ? []
       : [{ href: `${base}/people`, label: 'People', icon: <UsersThreeIcon weight="duotone" /> }]),

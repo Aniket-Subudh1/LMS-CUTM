@@ -6,10 +6,19 @@ import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { db, isDuplicateKey } from '@/lib/db';
 import { componentKey, nextCoCode } from '@/lib/domain/structure';
+import { parseKey } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
 import { Course } from '@/lib/models/course';
 import { Program } from '@/lib/models/program';
-import { AddCo, DeleteCo, SaveCoMap, SaveCourse, SaveObjectives, UpdateCo } from '@/lib/schemas/structure';
+import {
+  AddCo,
+  DeleteCo,
+  SaveCoMap,
+  SaveCourse,
+  SaveObjectives,
+  SaveSyllabus,
+  UpdateCo,
+} from '@/lib/schemas/structure';
 
 const MAX_COS = 15;
 
@@ -61,6 +70,35 @@ export const saveObjectives = action({ input: SaveObjectives, roles: ['admin'] }
   if (updated.matchedCount === 0) throw new AppError('NOT_FOUND', 'Course not found.');
   refresh();
 });
+
+// CRS-05: the syllabus text and an optional PDF. The PDF's key must be this course's and this admin's (09 §5).
+export const saveSyllabus = action(
+  { input: SaveSyllabus, roles: ['admin'] },
+  async ({ courseId, syllabusText, 'syllabusFile[]': [file], removeFile }, viewer) => {
+    const owner = file && parseKey(file.key);
+    if (
+      file &&
+      (!owner || owner.purpose !== 'syllabus' || owner.contextId !== courseId || owner.userId !== viewer.id)
+    ) {
+      throw new AppError('VALIDATION', 'Upload the PDF again.', { 'syllabusFile[]': ['Upload the PDF again.'] });
+    }
+    const set = { ...(syllabusText ? { syllabusText } : {}), ...(file ? { syllabusFileKey: file.key } : {}) };
+    const unset = {
+      ...(syllabusText ? {} : { syllabusText: 1 }),
+      ...(removeFile && !file ? { syllabusFileKey: 1 } : {}),
+    };
+    await db();
+    const updated = await Course.updateOne(
+      { _id: courseId },
+      {
+        ...(Object.keys(set).length > 0 ? { $set: set } : {}),
+        ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
+      },
+    );
+    if (updated.matchedCount === 0) throw new AppError('NOT_FOUND', 'Course not found.');
+    refresh();
+  },
+);
 
 export const addCo = action({ input: AddCo, roles: ['admin'] }, async ({ courseId, statement, bloomLevel }, viewer) => {
   await db();

@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { FileArrowUpIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
@@ -11,8 +11,9 @@ import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { getWorkspace, listRoster } from '@/lib/data/workspace';
-import { statusTone } from '@/lib/format';
+import { formatDateTime, formatPct, statusTone } from '@/lib/format';
 import { page as pageParam, pageSize } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'People' };
@@ -36,14 +37,66 @@ async function People({
 }) {
   const { offeringId } = await params;
   const { page } = Search.parse(await searchParams);
-  const [workspace, { rows, total }] = await Promise.all([getWorkspace(offeringId), listRoster(offeringId, page)]);
+  const [workspace, { rows, total, publishedLessons }] = await Promise.all([
+    getWorkspace(offeringId),
+    listRoster(offeringId, page),
+  ]);
+  type Row = (typeof rows)[number];
+  // T9 (SKL-02, SKL-04): on a skill course, attendance is completed lessons over published lessons; there is no
+  // attendance register to fill in.
+  const skill: { header: string; cell: (s: Row) => ReactNode; className?: string }[] =
+    publishedLessons === null
+      ? []
+      : [
+          {
+            header: 'Lessons done',
+            cell: (s) => (
+              <span className="tabular-nums">
+                {s.skill?.completed ?? 0} / {publishedLessons}
+              </span>
+            ),
+          },
+          {
+            header: 'Attendance',
+            cell: (s) =>
+              s.skill?.attendancePct == null ? (
+                '–'
+              ) : (
+                <span className="flex min-w-28 items-center gap-2">
+                  <Progress value={s.skill.attendancePct} className="bg-muted h-1.5 w-16" aria-hidden="true" />
+                  <span className="tabular-nums">{formatPct(s.skill.attendancePct)}</span>
+                </span>
+              ),
+          },
+          { header: 'Watched', cell: (s) => <span className="tabular-nums">{s.skill?.watchedMin ?? 0} min</span> },
+          {
+            header: 'Last active',
+            cell: (s) =>
+              s.skill?.lastActiveAt ? (
+                <span className="whitespace-nowrap">{formatDateTime(s.skill.lastActiveAt)}</span>
+              ) : (
+                'Not yet'
+              ),
+          },
+        ];
+  const columns: { header: string; cell: (s: Row) => ReactNode; className?: string }[] = [
+    { header: 'Roll no.', cell: (s) => s.rollNo },
+    { header: 'Name', cell: (s) => <span className="font-medium">{s.name}</span> },
+    { header: 'Email', cell: (s) => s.email },
+    { header: 'Status', cell: (s) => <Badge variant={statusTone(s.status)}>{s.status}</Badge> },
+    ...skill,
+  ];
   return (
     <Section
       icon={<UsersThreeIcon weight="duotone" />}
       title="Roster"
-      description={`${total} ${total === 1 ? 'student' : 'students'} on this offering.`}
+      description={
+        publishedLessons === null
+          ? `${total} ${total === 1 ? 'student' : 'students'} on this offering.`
+          : `${total} ${total === 1 ? 'student' : 'students'}. On a skill course, attendance is the share of the ${publishedLessons} published lessons each student has completed.`
+      }
       action={
-        workspace.canChangeEnrollments && (
+        workspace.canTeach && (
           <FormDialog
             trigger={
               <Button variant="outline" size="sm">
@@ -66,12 +119,7 @@ async function People({
       }
     >
       <DataTable
-        columns={[
-          { header: 'Roll no.', cell: (s) => s.rollNo },
-          { header: 'Name', cell: (s) => <span className="font-medium">{s.name}</span> },
-          { header: 'Email', cell: (s) => s.email },
-          { header: 'Status', cell: (s) => <Badge variant={statusTone(s.status)}>{s.status}</Badge> },
-        ]}
+        columns={columns}
         rows={rows}
         rowKey={(s) => s.id}
         total={total}
