@@ -14,7 +14,8 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="surface grid gap-5 p-5 sm:p-6">
+    // Children may shrink below their content, so a wide table scrolls inside the card, not the page (People, 390 px).
+    <section className="surface grid gap-5 p-5 sm:p-6 [&>*]:min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="icon-chip size-10 [&_svg]:size-5">{icon}</span>
