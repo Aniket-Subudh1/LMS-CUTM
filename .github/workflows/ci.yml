@@ -69,6 +69,14 @@ jobs:
         ports:
           - 1025:1025
           - 8025:8025
+      # M02: lecture uploads go straight to object storage (presigned PUT), as in compose.yaml.
+      s3:
+        image: rustfs/rustfs:1.0.1
+        env:
+          RUSTFS_ACCESS_KEY: lmsdev
+          RUSTFS_SECRET_KEY: lmsdev-secret-key
+        ports:
+          - 9000:9000
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -96,9 +104,16 @@ jobs:
           MAIL_FROM="CUTM LMS <lms@localhost>"
           LOG_LEVEL=info
           E2E_PASSWORD=$(openssl rand -hex 12)
+          S3_ENDPOINT=http://localhost:9000
+          S3_REGION=us-east-1
+          S3_BUCKET=cutm-lms-e2e
+          S3_ACCESS_KEY_ID=lmsdev
+          S3_SECRET_ACCESS_KEY=lmsdev-secret-key
+          S3_FORCE_PATH_STYLE=true
           ENV
       - run: npm run build
       - run: npm run db:indexes:e2e
+      - run: npm run s3:setup:e2e
       - run: npm run db:seed:e2e
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
