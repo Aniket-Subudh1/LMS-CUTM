@@ -49,7 +49,7 @@ export type ActionResult<T> =
 |---|---|---|
 | `objectId` | `z.string().regex(/^[a-f\d]{24}$/i)` | |
 | `page` | `z.coerce.number().int().min(1).max(10_000).default(1)` | `pageSize = 25`; `max per page = 100` |
-| `richText` | `z.json()` refined by size (≤ 100 KB serialized) | Rendered server-side on write to validate nodes (`lib/domain/rich-text.ts`) |
+| `richText` | the editor's hidden input (a JSON string, `''` when empty), ≤ 100 KB, parsed into `RichTextDoc`: a `doc` whose nodes and marks are StarterKit's (`paragraph text heading bulletList orderedList listItem blockquote codeBlock hardBreak horizontalRule`; marks `bold italic underline strike code link`), any other type → "Unsupported content." A document without text becomes `null` | `lib/schemas` may import only `zod`, so the type list stands in for a test render; `lib/domain/rich-text.ts` renders with `@tiptap/html/server` and its tests prove the output is inert. DAL reads parse stored documents with `RichTextDoc` |
 | `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)` transformed with `parseIstLocal` | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z` |
 | `istDate` | `YYYY-MM-DD` string, checked to be a real date | for calendar dates; `lib/schemas` imports `zod` only, so the action converts it with `istDateToDate` (`lib/domain/time.ts`) to a `Date` at 00:00 IST |
 | `marks` | `z.coerce.number().min(0).max(1000)` then `roundHalfUp(x, 2)` | all hand-entered marks |
@@ -203,7 +203,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 
 ## 7. Settings registry — `lib/schemas/settings.ts`
 
-Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schema.parse(stored ?? {})`. Admins edit them on `/admin/settings/<key>` (M01). Every change is audited (`settings.updated`).
+Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schema.parse(stored ?? {})`. Admins edit them on `/admin/settings/<key>` (M02) with a plain form written for that key: a labelled field per value with its help text and the recommended value, never raw JSON (at Aniket's request, 13 Oct 2026). `saveSettings` parses the posted fields with the key's schema and returns field errors under the field names. Every change is audited (`settings.updated`, entity `<key>_settings`, the changed fields before and after).
 
 | Key | Fields (default) | Used by | Status |
 |---|---|---|---|

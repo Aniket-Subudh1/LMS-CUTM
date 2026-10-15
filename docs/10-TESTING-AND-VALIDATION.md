@@ -187,9 +187,15 @@ For each new DAL read: one test that a user with access gets the data and one th
   MAIL_FROM="CUTM LMS <lms@localhost>"
   LOG_LEVEL=info
   E2E_PASSWORD=<openssl rand -hex 12>
+  S3_ENDPOINT=http://localhost:9000        # M02: the compose stack's RustFS
+  S3_REGION=us-east-1
+  S3_BUCKET=cutm-lms-e2e
+  S3_ACCESS_KEY_ID=lmsdev
+  S3_SECRET_ACCESS_KEY=lmsdev-secret-key
+  S3_FORCE_PATH_STYLE=true
   ```
   `LOG_LEVEL` must be at least `info`: Playwright starts the worker (`npm run worker:e2e`) as a second `webServer` and waits for its `worker started` line.
-- The compose stack must be running (Mongo, Redis, Mailpit) and `npm run build` must have run. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
+- The compose stack must be running (Mongo, Redis, Mailpit, RustFS), `npm run s3:setup:e2e` must have created the e2e bucket with its CORS rule (M02), and `npm run build` must have run. The worker that Playwright starts transcodes uploaded lectures with the bundled ffmpeg. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
 - Next keeps the previous page mounted but hidden after a client navigation, and `getByLabel` matches hidden elements: look fields up with `page.getByLabel(label).filter({ visible: true })` (the `field()` helper in `tests/e2e/auth.spec.ts`); `getByRole` already ignores hidden elements. Use `exact: true` when one label is a prefix of another ("New password" / "Repeat the new password"). After a click that navigates client-side, wait for the new page (`toHaveURL` or its heading) before filling: for a moment both forms are visible and a fill can bind to the old one as it is hidden (verified failure, with trace).
 - Run `npx playwright install chromium` once. In a sandbox with a preinstalled Chromium of another revision, set `PW_CHROMIUM_PATH` to its executable; `playwright.config.ts` passes it as `launchOptions.executablePath` only when set.
 
@@ -210,6 +216,7 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `db:seed` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development data (users stay invited; needs an existing administrator) |
 | `db:indexes:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/sync-indexes.ts` | Collections and indexes in the e2e database (the production server does not auto-create them) |
 | `db:seed:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e` | e2e fixtures with passwords |
+| `s3:setup:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/s3-setup.ts` | The e2e bucket and its CORS rule (M02) |
 | `admin:create` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
 | `s3:setup` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
 | `lint` | `eslint` | |

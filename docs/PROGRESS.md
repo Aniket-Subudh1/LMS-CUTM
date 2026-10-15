@@ -20,7 +20,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 |---|---|---|---|
 | M00 Foundation | Done — awaiting human validation | | shadcn/ui adopted at the client's request (entry below) |
 | M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
-| M02 Content, plan, announcements, skill progress | Not started | | |
+| M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
 | M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
@@ -72,6 +72,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 | Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
+| Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
 
@@ -121,6 +122,15 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-42 | Home's “top 3” panel (the reference's student leaderboard) ranks the three people with the most audit entries in the last seven days. The planned “largest offerings” would group every active enrolment on each Home view (04 §3 S11), and offerings carry no enrolment counter | `/home` | — |
 | A-43 | The sidebar header is a light tinted card with the university lockup on a white chip beside “Centurion LMS” and “Learning Management System” (Aniket chose it from mock-ups, 13 Oct 2026), in place of the reference's logo and product name | app shell | Q-32 |
 | A-44 | The reference's typeface was not identified; the UI stays on Inter (A-24) | all UI | — |
+| A-45 | A settings audit entry names the key in `entity` (`lessons_settings`) and gets a fresh ObjectId as `entityId`, because a settings key is a string (the `user_import` pattern) | M02 settings | — |
+| A-46 | An offering holds at most 300 lessons, so the content index and the lesson outline are single bounded reads | M02 | — |
+| A-47 | Rich text with no text is not stored: an untouched editor leaves the field unset, so an empty course plan counts as not written | M02 | — |
+| A-48 | Skill-course attendance counts completions of lessons that are published now; unpublishing a lesson removes it from both sides of the fraction | M02 | Q-02 |
+| A-49 | The plan and calendar a teacher saves are what students see once any version is published; publishing again re-notifies and re-emails (see Q-36) | M02 | Q-36 |
+| A-50 | Only students' viewing is recorded: teachers and heads of department preview a lecture in a plain player that sends no beacons | M02 | — |
+| A-51 | A lesson cannot be deleted once any student has a progress row for it (opened, watched or completed); it can still be unpublished | M02 | — |
+| A-52 | Opening a notification marks it read (the row is a form that goes to its page); "Mark all as read" covers the rest | M02 | — |
+| A-53 | Teachers and admins get a "Course plan" tab in the course workspace, after Overview; students get "Lessons" where teachers see "Content" | M02 UI | — |
 
 ## 5. Log
 
@@ -640,3 +650,61 @@ Aniket pointed to a “white shadow” on several pages (the plus on “New offe
 - On the build at 1440 px, a browser audit visited `/login`, `/home`, `/admin`, `/admin/{departments,programs,terms,courses,schemes,offerings,users,audit}`, `/courses`, `/profile` and a course's Overview and People. It hovered a Home stat tile. It listed every visible `path[opacity]` inside a button, and every one whose nearest filled background has a luminance below 0.7. It found none. (A first run flagged the Overview tab on People while its background was still fading out; it was clean once the transition settled.) Element screenshots of “New offering”, “Apply” and the hovered tile were reviewed.
 - `npx playwright test` → `7 passed, 1 failed` (the Mailpit test, as before).
 
+### 2026-10-15 · Decision: M02 review, plain language and dialog design · Claude Code, at Aniket's request
+
+Aniket asked for M02 (built by Cursor, uncommitted, no report) to be checked and corrected, for every screen to speak to the person using it rather than show technical detail, for the flow to read as connected steps, for the dialogs to stop cropping fields and to look professional, and for Cursor's unfinished parts to be completed. Decided in this session:
+- **Dialogs:** three static mock-ups of the "Add a lesson" dialog were shown (clean, guided with a side panel, tinted header) and Aniket chose **A · Clean**: a header with a hairline, a body that scrolls, a grey button bar that stays put, full-width fields, and a bottom sheet on phones (08 §5.2 `FormDialog`). The cropping came from native selects sizing themselves to their longest option inside the dialog's grid.
+- **Settings:** the JSON text box of T3 is replaced by a plain form per key (06 §7, M02 T3, AC-M02-08 reworded).
+- **Steps:** the course Overview starts with a "Get this course ready" checklist for teachers (syllabus, plan, sessions, publish, lessons; each step links to where it is done) and "Your progress" with Start/Continue for students; the Course plan tab is three numbered steps; the lesson page has the course outline and Previous/Next.
+- **Notifications** get a bell with the unread count in the top bar.
+
+### 2026-10-15 · M02 Content, plan, notifications, settings, video progress (T1–T11) · Claude Code, at Aniket's request
+
+Cursor (AI agent) wrote most of T1–T9 on 13 Oct 2026 and stopped before tests, docs and a report; the code had 3 lint errors and 6 type errors. This entry covers the review, the corrections and the completion. Defects found and fixed:
+- Saving any setting failed: the audit entry put the key `lessons` into an ObjectId field (A-45).
+- Pressing Ctrl+U in the editor made the document unsaveable (StarterKit 3 includes Underline; the hand-written type list lacked it). StarterKit also already includes Link, so `@tiptap/extension-link` was an unneeded dependency (removed). The toolbar's active states never updated (Tiptap 3 does not re-render per transaction).
+- The node whitelist existed three times (schema, renderer, editor); it is now one Zod schema (06 §2).
+- `media/transcodeLesson` had the wrong job name and payload (06 §6); a failed-status write was a floating promise.
+- The beacon's rate limit was 600/hour per lesson instead of 120 per 10 minutes per user (09 §4); merged ranges were not bounded to 200 (05 §4.2).
+- Skill attendance counted completions of lessons since unpublished, so it could pass 100 %; the aggregation also counted rows without `completedAt` as complete.
+- `completeLesson` read, then wrote: a double click could count a lesson twice. It is now one conditional upsert.
+- Downloads were named by the storage uuid instead of the file's name, and `/api/files` repeated the access rules in three helpers; it now has one, mirroring `offeringAccess`, with a test for each case.
+- A 2 GB lecture would have been read into memory twice by the transcode (download and upload); both now stream through the disk.
+- `lib/domain/ranges.ts` had its own rounding; `roundHalfUp` now lives in `lib/domain/round.ts` with the 07 §1 vectors.
+- Forbidden casts (`as UploadPurpose`, the purpose tuple, `as never` and `as Buffer` in tests), `findOneAndUpdate({ new: true })` (Mongoose 9 uses `returnDocument`), `ffmpeg-static` pinned with `^`, and setState in an effect in the player.
+- A requirement ID and storage-status words had reached user-facing text; copy was rewritten for the person on screen throughout.
+- Two pre-existing M01 layout bugs found on the way: the People roster widened the page at 390 px (fixed in `Section`), and the Home "Programmes" tile overflowed at 360 px (labels stack under the icon on phones). The M01 auth journey still asserted the pre-redesign Home; it never reached that line before because Mailpit was missing (assertion updated).
+
+**Created** (*changed* unless marked new)
+- Dependencies: `package.json`, `package-lock.json` (Tiptap 3.31.4, `@tiptap/html`, `happy-dom`, `ffmpeg-static` 5.3.0 exact with its install script approved in `allowScripts`, AWS SDK; `@tiptap/extension-link` removed; `s3:setup`, `s3:setup:e2e`).
+- Storage and uploads (T1, T2): `lib/env.ts`, `.env.example`, `tests/setup.ts`, `lib/integrations/storage.ts` (new), `scripts/s3-setup.ts` (new), `lib/schemas/uploads.ts` (new), `lib/domain/uploads.ts` + test (new), `app/(app)/actions.ts` (new, `createUpload`), `app/api/files/[...key]/route.ts` (new), `components/file-upload.tsx` (new), `components/ui/progress.tsx` (new, shadcn 4.21.4).
+- Settings (T3): `lib/schemas/settings.ts`, `lib/models/setting.ts`, `lib/data/settings.ts`, `app/(app)/admin/settings/page.tsx`, `[key]/page.tsx`, `actions.ts` (all new); `scripts/sync-indexes.ts`; `components/app-nav.tsx` (Settings and Notifications items).
+- Rich text (T4): `lib/schemas/common.ts` (`RichTextDoc`, `richText`), `lib/domain/rich-text.ts` + test, `components/rich-text-editor.tsx`, `components/rich-text-view.tsx` (new), `app/globals.css` (`.prose-lms`; Cursor's `btn-sm` and editor rules removed).
+- Syllabus (T5): `lib/schemas/structure.ts`, `app/(app)/admin/courses/actions.ts`, `app/(app)/admin/courses/[id]/page.tsx` (read-only section with an Edit syllabus dialog), `lib/data/courses.ts`.
+- Notifications (T6): `lib/models/notification.ts`, `lib/data/notifications.ts`, `app/(app)/notifications/page.tsx`, `actions.ts` (new); `app/(app)/layout.tsx` (bell).
+- Plan and calendar (T7): `app/(app)/courses/[offeringId]/plan/page.tsx`, `actions.ts` (new); `lib/data/workspace.ts` (plan, setup checklist, roster; `canChangeEnrollments` renamed `canTeach`); `app/(app)/admin/offerings/actions.ts` (`plan.requested`); `lib/schemas/jobs.ts`, `lib/queue.ts`, `worker/jobs/mail.ts`, `lib/domain/email-templates.ts` + test.
+- Content and video (T8, T8b): `lib/schemas/content.ts`, `lib/models/lesson.ts`, `lesson-progress.ts`, `engagement-daily.ts`, `lib/domain/ranges.ts` + test, `lib/domain/round.ts` + test, `lib/data/content.ts`, `app/(app)/courses/[offeringId]/content/page.tsx`, `[lessonId]/page.tsx`, `actions.ts`, `app/api/beacon/route.ts`, `components/video-player.tsx`, `worker/jobs/media.ts`, `worker/index.ts` (all new except the worker index).
+- Skill progress and Home (T9, T10): `app/(app)/courses/[offeringId]/page.tsx`, `people/page.tsx`, `layout.tsx`, `app/(app)/home/page.tsx`, `lib/format.ts` + test (`formatPct`, `formatBytes`, `formatDuration`, `formatDay`).
+- Dialogs: `components/form-dialog.tsx` (design A), `components/action-form.tsx` (`submitIcon`, `iconOnly`, `outline`), `components/confirm-submit.tsx`, `components/section.tsx`.
+- Tests (T11): `tests/integration/content.test.ts`, `media-worker.test.ts` (new), `mail-worker.test.ts`, `users.test.ts`, `workspace.test.ts`; `tests/e2e/content.spec.ts`, `tests/e2e/fixtures/lecture.mp4` (new, a generated 6 s test pattern), `tests/e2e/auth.spec.ts`; `.github/workflows/ci.yml` (RustFS service, S3 env, `s3:setup:e2e`).
+- Docs: 03 §3, 05 §1 §4.1 §4.2 §7.2, 06 §2 §7, 08 §2 §3 §5.1 §5.2 §6, 10 §3 §4, M02 T2 T3 T4 T7 T8 T11 and AC-M02-08, this file (Q-36, A-45 to A-53).
+
+**Not done**
+- Human validation checklist: not performed (slow-4G upload with a forced failure, a real phone's pagehide beacon, reading the email in a mail client, the faculty prompt by eye). Partly covered by machine checks below.
+- The CI e2e job with the RustFS service has not run on GitHub.
+- No keyboard-only or screen-reader pass. The upload and beacon rate limits are implemented but not exercised by a test.
+- `/courses/[offeringId]/content/new` (08 §2) is not a route: adding a lesson is a dialog (A-40); the route map row is removed.
+- Production storage (Cloudflare R2) was not tried; RustFS 1.0.1 was.
+
+**Assumptions** — A-45 to A-53 (§4).
+
+**Open questions** — Q-36 (§3).
+
+**Verification** (13–15 Oct 2026, this machine: no Docker, so RustFS 1.0.1 and Mailpit 1.31.0 ran from their official macOS release binaries in the agent's scratchpad; Redis from Homebrew; MongoDB local)
+- `npm run check` → eslint clean; `next typegen && tsc --noEmit` clean; unit `Test Files 14 passed, Tests 110 passed`. `npx prettier --check .` clean.
+- `npm run test:integration` (local Redis) → `Test Files 13 passed, Tests 140 passed`. Includes: per-purpose upload authorization; `/api/files` for teacher, enrolled student, outsider, draft and data-saver key; one fan-out and one notification per enrolled student per version, second click deduped; beacon 401/400/404, replayed minute counted once, faster-than-real-time claim ignored, two simultaneous beacons merged through the retry (three writes asserted), completion counted once; settings field error with nothing saved; lesson deletion guards; skill attendance over published lessons; the worker emailing all five sections once per student; a real ffmpeg transcode producing H.264 Main at 480p, and a corrupt file ending `failed`.
+- `npm run build` → compiled. `npm run db:indexes:e2e`, `npm run s3:setup:e2e` (bucket created, CORS set on RustFS), `npm run db:seed:e2e`.
+- `npx playwright test` → `10 passed` (the M01 "invited admin" journey passes for the first time); `tests/e2e/content.spec.ts --repeat-each=3` → `6 passed`.
+- In the browser: a 204.8 MB, 60 s lecture uploaded through the Add a lesson dialog; the largest request body that reached the app was 1,091 bytes (AC-M02-01), and its 480p copy was `ready` when checked a few minutes later. A student who played 5 s of the 6 s fixture had `[0, 5]`, 83.33 % after a reload. At 390 px a phone starts in Data saver (AC-M02-09).
+- Screenshots at 1440 px and 390 px (faculty, student, admin; Overview, Course plan, Content, lesson, dialogs, settings, notifications, Home, the plan email), reviewed in the session and not committed. 21 role-and-page combinations measured `scrollWidth` 390 at 390 px; Home tiles fit at 360 px.
+- One false alarm worth knowing: `pkill -f standalone/server.js` does not stop the e2e server (Next renames the process `next-server`); a rebuilt app served by the old process links CSS and scripts that no longer exist. Stop it by port (`lsof -tiTCP:3100 -sTCP:LISTEN | xargs kill`).

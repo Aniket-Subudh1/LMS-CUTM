@@ -9,7 +9,7 @@ MongoDB 8.0 replica set, Mongoose 9. This document is the source of truth for ev
 - **References** are `ObjectId` fields named `<entity>Id` / `<entity>Ids`. No Mongoose `populate`; load related records with one `$in` query (04 §3 S4).
 - **Bounded arrays only.** Every embedded array lists its maximum; the Zod input schema enforces it.
 - **No hard deletes of academic records** (submissions, attendance, marks, grade sheets, audit). Records change `status`. Hard delete is allowed only where a section says so.
-- **Rich text** (`RichText` below) is Tiptap JSON (`{ type: 'doc', content: [...] }`), at most 100 KB serialized, validated on write by rendering it with `@tiptap/html/server` (unknown node types throw). Never store HTML.
+- **Rich text** (`RichText` below) is Tiptap JSON (`{ type: 'doc', content: [...] }`), at most 100 KB serialized. On write the `richText` schema (06 §2) accepts only StarterKit's node and mark types, so every stored document renders with `@tiptap/html/server` (which throws on an unknown type); a document with no text is not stored (the field is unset). Never store HTML.
 - **Enums** are listed inline; the same literals live in `lib/schemas/` as `as const` arrays.
 - **Denormalized fields** (marked *denorm*) are copied at creation and never edited independently; they exist so a hot query uses one index.
 - Types: `S` String · `N` Number · `B` Boolean · `D` Date · `Id` ObjectId · `[T]` array · `?` optional/nullable.
@@ -161,6 +161,7 @@ Indexes: `{ offeringId: 1, studentId: 1 }` unique · `{ studentId: 1, status: 1 
 | publishedAt | D? | |
 
 Indexes: `{ offeringId: 1, moduleId: 1, order: 1 }` · `{ offeringId: 1, published: 1 }`.
+Invariants: an offering holds at most 300 lessons (`createLesson` refuses the 301st), so its content index is one bounded read. `fileName` is the sanitized display name (≤ 120, 06 §5).
 Hard delete allowed while unpublished and without progress rows (then the object is deleted from storage).
 
 ### 4.2 `lessonProgress`
@@ -174,7 +175,7 @@ Hard delete allowed while unpublished and without progress rows (then the object
 | openedAt | D? | first open (documents/links) |
 | lastBeaconAt | D? | anti-inflation (07 §9) |
 
-Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 1 }`.
+Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 1 }` · `{ studentId: 1, lastBeaconAt: -1 }` (Home's “Continue learning”, M02).
 
 ### 4.3 `liveSessions`
 | Field | Type | Rules |
@@ -314,7 +315,7 @@ Indexes: `{ offeringId: 1, studentId: 1, day: 1 }` unique · `{ offeringId: 1, d
 Invariants: written only with `$inc` upserts (04 §3 S9).
 
 ### 7.2 `notifications`
-`userId` Id · `kind` S · `title` S (≤ 160) · `href` S (app-relative path) · `readAt` D? · `expiresAt` D (createdAt + 90 days).
+`userId` Id · `kind` S (one of the kinds in 06 §9 that exist so far; each milestone adds its own to the enum) · `title` S (≤ 160) · `href` S (app-relative path) · `readAt` D? · `expiresAt` D (createdAt + 90 days).
 Indexes: `{ userId: 1, readAt: 1, createdAt: -1 }` · TTL `{ expiresAt: 1 }`.
 
 ### 7.3 `settings`
