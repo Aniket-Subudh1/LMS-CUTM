@@ -91,6 +91,7 @@ The client IP is the first entry of `X-Forwarded-For`, which the production load
 - A key is accepted by a consuming action only if its prefix matches `<purpose>/<contextId>/<viewer.id>/`.
 - `/api/files/<key>` re-runs the download rule from 06 §5 on every request.
 - Downloads set `Content-Disposition: inline; filename="<sanitized>"`; never serve user uploads from the app's own origin.
+- **Imported courseware pages (M01b):** their HTML is never rendered or stored; the adapter turns it into plain lines and tables with scripts off, and the catalogue stores only plain text. Email addresses and phone numbers on those pages are removed before anything else sees them, so contact details are never stored (A-60). The importer only fetches pages on the `COURSEWARE_URL` host.
 
 ## 6. Audit log
 

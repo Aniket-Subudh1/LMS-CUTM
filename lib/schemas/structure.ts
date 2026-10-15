@@ -52,6 +52,42 @@ export const OUTCOME_CODES = [
 ] as const;
 export const SESSION_KINDS = ['theory', 'practice', 'project'] as const;
 export const BASKET_SCOPES = ['core', 'choice'] as const;
+// Sizes of a catalogue course's content (05 §3.3); the editors' schemas and the courseware import share them.
+export const CATALOG_LIMITS = {
+  objectives: 20,
+  objective: 500,
+  cos: 15,
+  coStatement: 500,
+  coMap: 225,
+  modules: 20,
+  moduleTitle: 200,
+  moduleHours: 30,
+  moduleTopics: 3000,
+  practicals: 30,
+  practical: 300,
+  projects: 30,
+  project: 300,
+  textbooks: 20,
+  references: 30,
+  book: 500,
+  // A session becomes a calendar row, whose topic holds 200 characters.
+  sessions: 200,
+  sessionTopic: 200,
+  // Review notes on a course ("Credits changed by the course list from 4 to 3-0-1").
+  issues: 20,
+  issue: 300,
+} as const;
+
+// lib/integrations/courseware.ts flattens a courseware page into these; lib/domain/courseware.ts reads them.
+export type CoursewareBlock = { kind: 'line'; text: string; bold: boolean } | { kind: 'table'; rows: string[][] };
+export type CoursewarePage = {
+  title: string;
+  // The two labels above the title: the course type ("Core", "Skill") and a code or slug ("ASEC 3103",
+  // "advanced-java-cust1051", "26507").
+  typeLabel: string | null;
+  identifier: string | null;
+  blocks: CoursewareBlock[];
+};
 export const OFFERING_STATUSES = ['draft', 'active', 'completed'] as const;
 export const PROJECT_MODES = ['github', 'tracker'] as const;
 

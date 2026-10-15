@@ -29,6 +29,7 @@ beforeAll(async () => {
     SMTP_PORT: '1025',
     SMTP_SECURE: 'false',
     MAIL_FROM: 'CUTM LMS <lms@test.local>',
+    COURSEWARE_URL: 'http://courseware.test',
     LOG_LEVEL: 'error',
   });
   // Redis database 1 belongs to the tests: start every file without rate-limit counters or queued jobs.

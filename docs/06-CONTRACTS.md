@@ -166,6 +166,20 @@ return res.parsed_output; // already validated against the Zod schema; null if p
 ```
 Rules: never send names, roll numbers, emails or answers — only question text, CO statements, outcome titles and numeric metrics. `null` means "no suggestion" and the UI says so. Rate-limited (09 §4). The server-side refusal fallback is enabled (`fallbacks: 'default'`).
 
+### 4.8 Courseware — `courseware.ts` (M01b; courseware.cutm.ac.in, read only)
+```ts
+coursewareUrl(path?: string): string                                   // COURSEWARE_URL + path
+listCourseIds(page: number): Promise<{ ids: number[]; lastPage: number }>   // /courses?page=n; a missing page → no ids
+fetchCoursePage(id: number): Promise<CoursewarePage | null>             // /course/{id}; 404 → null
+parseCoursePage(html: string): CoursewarePage                           // exported for the fixture tests
+type CoursewareBlock = { kind: 'line'; text: string; bold: boolean } | { kind: 'table'; rows: string[][] };
+type CoursewarePage = { title: string; typeLabel: string | null; identifier: string | null; blocks: CoursewareBlock[] };
+```
+- Requests time out after 90 s (pages are rendered on request and take 30–60 s) and send `User-Agent: CUTM-LMS catalogue importer (<APP_URL>)`.
+- happy-dom parses the page with scripts off (03); the adapter flattens the course body into lines (text, `<br>`, block elements; a list item stays one line starting with `• `) and tables (rows of cell text, a cell's own line breaks as `\n`). It does not interpret anything: `lib/domain/courseware.ts` reads the course out of the blocks (07 §17).
+- **Contact details never leave the adapter:** email addresses and Indian mobile numbers are cut out of every line and cell, and a line or table row labelled as contact details (contact, phone, mobile, email, …) is dropped (09 §5).
+- "One page" imports accept only a numeric id or a URL on the `COURSEWARE_URL` host whose path is `/course/<id>` (`coursewarePageId` in `lib/domain/courseware.ts`), so the importer cannot be pointed at another host.
+
 ## 5. Upload purposes
 
 Uploads are authorized per purpose by `createUpload` (02 §4.3). The key prefix encodes ownership; `/api/files` authorizes downloads from the same table.

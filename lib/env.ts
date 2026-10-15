@@ -19,6 +19,7 @@ const Env = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().min(3),
+  COURSEWARE_URL: z.url().default('https://courseware.cutm.ac.in'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

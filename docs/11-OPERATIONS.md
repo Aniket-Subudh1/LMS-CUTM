@@ -29,6 +29,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | M00 | `localhost`, `1025`, `false` | Mailpit locally |
 | `SMTP_USER`, `SMTP_PASSWORD` | M00 | | Optional (Mailpit needs none) |
 | `MAIL_FROM` | M00 | `CUTM LMS <lms@cutm.ac.in>` | Sender domain needs SPF/DKIM (Q-31) |
+| `COURSEWARE_URL` | M01b | `https://courseware.cutm.ac.in` | CUTM's public course pages, read by the courseware import; the default is the real site |
 | `LOG_LEVEL` | M00 | `info` | `debug` · `info` · `warn` · `error` |
 | `LIVEKIT_URL` | M03 | `wss://live.cutm.ac.in` | Passed to the browser as a prop, not `NEXT_PUBLIC_` |
 | `LIVEKIT_API_URL` | M03 | `http://livekit:7880` | Server-side Room Service URL |

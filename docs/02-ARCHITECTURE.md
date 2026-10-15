@@ -235,6 +235,7 @@ Each external system sits behind one file in `lib/integrations/` exposing a type
 | GitHub | `github.ts` | `octokit` App (installation token) + OAuth (identity link) | M07 |
 | Exam system | `exam-api.ts` | — | **Blocked on Q-04**. CSV import/export ships in M08 without an adapter |
 | AI | `ai.ts` | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output | M09 |
+| CUTM courseware | `courseware.ts` | `fetch` + `happy-dom` (scripts off); read only | M01b |
 
 ## 10. Conventions
 
