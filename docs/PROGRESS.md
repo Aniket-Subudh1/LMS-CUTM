@@ -907,3 +907,13 @@ Where the build differs from the plan or the spec:
   - Edit and cancel of a scheduled class, with the change and cancellation notifications.
   - At 390 px: Live tab, waiting page and the room all measured `scrollWidth` 390.
 - Fixes found by the walk and made: the student's result waited for the teacher's mark but not for the time in class (now waits for finalization); a refresh minted a new token and would have reconnected the teacher (the room keeps its token); notification titles started with the date and were cut before the class name.
+
+### 2026-10-16 · Local scripts read `.env` as well as `.env.local` · Cursor (AI agent), at Aniket's request
+
+`npm run worker:dev` failed on every variable because it loaded only `.env.local`, while this machine's settings are in `.env` (the last item under M03 "Not done"). Every local script in `package.json` now passes `--env-file-if-exists=.env --env-file-if-exists=.env.local`, so `.env.local` overrides `.env`, as with `next dev`. The `:e2e` scripts still read only `.env.e2e`.
+
+**Created** (*changed*) — `package.json` (`start:local`, `worker`, `worker:dev`, `db:seed`, `db:indexes`, `db:migrate:catalog-v2`, `s3:setup`, `admin:create`, `check:bundle`); 10 §3 (the scripts table and the note below it).
+
+**Assumptions** — none. **Open questions** — none.
+
+**Verification** — `node --env-file-if-exists=a --env-file-if-exists=b` and the same through `npx tsx` with `A` in both files → the value from `b`, `B` only in `a` → kept. `npm run worker` with only `.env` present → `worker started` with queues `mail, media, sync, compute`, then stopped.

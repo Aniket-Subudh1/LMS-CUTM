@@ -214,28 +214,28 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `dev` | `next dev` | Local web |
 | `build` | `next build` | Production build (standalone output) |
 | `start` | `node .next/standalone/server.js` | Production web (Docker copies `.next/static` — and `public/` once it has files — into the standalone folder) |
-| `start:local` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
+| `start:local` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
 | `start:e2e` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file=.env.e2e .next/standalone/server.js` (`.env.e2e` sets `PORT=3100`) | Playwright target |
-| `worker` | `tsx --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
-| `worker:dev` | `tsx watch --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
-| `db:indexes` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
-| `db:seed` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development data (users stay invited; needs an existing administrator) |
+| `worker` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
+| `worker:dev` | `tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
+| `db:indexes` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
+| `db:seed` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development data (users stay invited; needs an existing administrator) |
 | `db:indexes:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/sync-indexes.ts` | Collections and indexes in the e2e database (the production server does not auto-create them) |
 | `db:seed:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e` | e2e fixtures with passwords |
-| `db:migrate:catalog-v2` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/migrate-catalog-v2.ts` | One-off move of an M01/M02 database to catalogue v2 (11 §5.1); a second run changes nothing |
+| `db:migrate:catalog-v2` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/migrate-catalog-v2.ts` | One-off move of an M01/M02 database to catalogue v2 (11 §5.1); a second run changes nothing |
 | `s3:setup:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/s3-setup.ts` | The e2e bucket and its CORS rule (M02) |
-| `admin:create` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
-| `s3:setup` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
+| `admin:create` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
+| `s3:setup` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
 | `lint` | `eslint` | |
 | `typecheck` | `next typegen && tsc --noEmit` | `typegen` generates `PageProps`/`LayoutProps` |
 | `test` | `vitest run --project unit` | |
 | `test:integration` | `vitest run --project integration` | |
 | `test:e2e` | `playwright test` | |
 | `check` | `npm run lint && npm run typecheck && npm run test` | Run after every task |
-| `check:bundle` | `tsx --env-file-if-exists=.env.local scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7): forbidden names always; the values of secret variables when they are set (locally, from `.env.local`) |
+| `check:bundle` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7): forbidden names always; the values of secret variables when they are set (locally, from `.env` or `.env.local`) |
 | `format` | `prettier --write .` | |
 
-`--env-file-if-exists` loads `.env.local` when present (Next.js loads it automatically for `next dev`; the worker and scripts do not). A missing variable fails loudly through `env()`.
+`--env-file-if-exists` loads `.env` and then `.env.local` when present, so `.env.local` wins — the same order `next dev` uses (Next.js loads them itself; the worker and scripts do not). A missing variable fails loudly through `env()`.
 
 ## 5. Continuous integration — `.github/workflows/ci.yml` (M00)
 
