@@ -308,7 +308,7 @@ function Past({ list, base, page }: { list: SessionList; base: string; page: num
           {
             header: 'Time in class',
             cell: (s) =>
-              s.mine?.status ? <span className="tabular-nums">{formatDuration(s.mine.presenceSec)}</span> : '—',
+              s.mine?.presenceSec ? <span className="tabular-nums">{formatDuration(s.mine.presenceSec)}</span> : '—',
           },
         ]
       : [

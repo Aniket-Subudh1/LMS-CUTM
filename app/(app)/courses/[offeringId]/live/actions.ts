@@ -10,7 +10,7 @@ import { notify } from '@/lib/data/notifications';
 import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatDay, formatTime } from '@/lib/format';
 import { closeRoom } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -52,6 +52,9 @@ function notInPast(start: Date, now: Date) {
   }
 }
 
+// `Fri, 17 Oct at 4:49 PM`. Notification titles start with the class, as a narrow list cuts them short.
+const when = (start: Date) => `${formatDay(start)} at ${formatTime(start)}`;
+
 // COM-03: one notification per enrolled student; a long class or course title is cut to fit (05 §7.2).
 async function tellStudents(offeringId: string, kind: NotificationKind, title: string, sessionId: string) {
   const students = await Enrollment.distinct('studentId', { offeringId, status: 'active' });
@@ -91,7 +94,7 @@ export const scheduleSession = action({ input: ScheduleSession, roles: TEACH }, 
   await tellStudents(
     input.offeringId,
     'live.scheduled',
-    `Live class on ${formatDateTime(start)}: ${input.title} (${offering.title})`,
+    `${input.title} — ${when(start)} (${offering.title})`,
     String(_id),
   );
   refresh();
@@ -127,7 +130,7 @@ export const updateSession = action({ input: UpdateSession, roles: TEACH }, asyn
     await tellStudents(
       input.offeringId,
       'live.changed',
-      `Live class changed: ${input.title}, now ${formatDateTime(start)} (${offering.title})`,
+      `${input.title} is now ${when(start)} (${offering.title})`,
       input.sessionId,
     );
   }
@@ -146,7 +149,7 @@ export const cancelSession = action({ input: SessionRef, roles: TEACH }, async (
     await tellStudents(
       offeringId,
       'live.cancelled',
-      `Live class cancelled: ${session.title} on ${formatDateTime(session.scheduledStart)} (${offering.title})`,
+      `${session.title} on ${when(session.scheduledStart)} is cancelled (${offering.title})`,
       sessionId,
     );
   } else if (session.status !== 'cancelled') {
