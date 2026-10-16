@@ -81,7 +81,7 @@ export function ActionForm({
       aria-busy={pending}
       aria-label={iconOnly ? submitLabel : undefined}
       title={iconOnly ? submitLabel : undefined}
-      className={cn(fullWidth && 'h-10 w-full')}
+      className={cn(fullWidth && 'h-12 w-full rounded-full text-[0.9375rem]')}
     >
       {pending ? <CircleNotchIcon className="animate-spin" /> : submitIcon}
       {!iconOnly && submitLabel}

@@ -604,7 +604,7 @@ export function ActionForm({
       variant={submitVariant}
       disabled={pending || !hydrated}
       aria-busy={pending}
-      className={cn(fullWidth && 'h-10 w-full')}
+      className={cn(fullWidth && 'h-12 w-full rounded-full text-[0.9375rem]')}
     >
       {pending && <CircleNotchIcon className="animate-spin" />}
       {submitLabel}

@@ -34,7 +34,7 @@ async function Profile() {
       />
       <div className="grid gap-8">
         <section className="surface relative overflow-hidden">
-          <div aria-hidden="true" className="auth-aurora h-20 sm:h-24" />
+          <div aria-hidden="true" className="brand-aurora h-20 sm:h-24" />
           <div className="flex flex-wrap items-end gap-4 px-5 pb-5 sm:px-6">
             <p
               aria-hidden="true"

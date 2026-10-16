@@ -172,6 +172,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-75 | The four CSE courses read from courseware are development seed data only; the e2e fixtures stay as 10 §3 lists them | dev seed | — |
 | A-76 | In the development seed a courseware page's credits stand in for the Course Repository's until the course list is uploaded | dev seed | — |
 | A-77 | The test server at lms.devsomeware.com runs Ubuntu's Redis 8.0.6 instead of the pinned 8.6 | test deployment | — |
+| A-78 | Generated imagery (a photo of students, three 3D icons) is acceptable on the sign-in screens until CUTM supplies campus photography | sign-in redesign | — |
 
 ## 5. Log
 
@@ -966,3 +967,19 @@ On the server, all as systemd services: `cutm-lms-web` (the standalone build on 
 **Open questions** — none new; Q-12 still decides production.
 
 **Verification** — `GET https://lms.devsomeware.com/api/health` → `{"ok":true,"mongo":"up","redis":"up"}`; `/login` 200; `/home` signed out → 307 to `/login`; `http://` → 308 to `https://`; response headers include HSTS, `frame-ancestors 'none'` and `nosniff`. Playwright from the developer Mac: `hod@seed.cutm.test` with the seed password lands on `/home`, cookie `lms_session` is `Secure`, `HttpOnly`, `SameSite=Lax`; `/courses` lists 6 courses and CUTM1019's page returns 200. The rate-limit key in Redis carries the Mac's public address, not 127.0.0.1. Worker log: `worker started` with queues `mail, media, sync, compute`. `scripts/sync-indexes.ts` against Atlas → `indexes ensured` for every collection; Uploads are served from the bucket's own origin, `gttech-assests.s3.ap-south-1.amazonaws.com`, never the app's (09 §5): links from `presignUpload` and `presignDownload`, run with the server's `app.env` and with the developer's `.env.local` → PUT 200, GET 200 with the uploaded text and `content-disposition: inline; filename="check.txt"`, `deleteObjects` → GET 404. (A first setup on a local RustFS behind `files.devsomeware.com` passed the same checks plus a cross-origin `fetch` from an `https://lms.devsomeware.com` page and a 403 for a PUT link reused with another `Content-Type`; it was then stopped and removed from Caddy.) A live class and a lesson upload through the UI were not walked on the deployed app.
+
+### 2026-10-16 · Sign-in screens redesigned after a reference · Cursor (AI agent), at Aniket's request
+
+Aniket supplied a reference sign-in design (a form beside a large rounded photo with floating cards) and asked for the sign-in page in that style, in the product palette, full screen, with generated assets and smoother, more premium motion. The `(auth)` layout now fills the screen: the left column is a new `.auth-wash` (page grey warmed by flame gold) with the lockup and “Centurion LMS” on it, a centred form with white pill fields and a primary pill button, and the university's name at the foot; from 1024 px the right column is `AuthStage`, a generated photo of students pinned to the viewport with three floating feature cards, each with a generated 3D icon. Forgot password and set password share the layout and got the same heading and field style. The reference's Apple/Google buttons and sign-up link are left out: SSO is out of scope (01 §4) and the university creates accounts.
+
+Motion: the cards used to render visible, vanish when GSAP took over, then animate in, and the full-screen gradient animated `background-position` (a repaint every frame). The cards are now hidden by CSS (`motion-safe:invisible`) until GSAP fades them in once, the drift starts only after the entrance, and the background is static; the `aurora` keyframes are removed.
+
+**Created** (*changed*) — `public/auth/students.jpg`, `public/auth/icon-courses.jpg`, `public/auth/icon-shield.jpg`, `public/auth/icon-marks.jpg` (generated images, no real people); *changed* `app/(auth)/layout.tsx`, `app/(auth)/login/page.tsx`, `app/(auth)/forgot-password/page.tsx`, `app/(auth)/reset-password/page.tsx`, `components/auth-stage.tsx`, `components/action-form.tsx` (`fullWidth` is a 48 px pill; used only by the auth forms), `app/globals.css` (`.auth-wash`; the profile banner's blue gradient renamed `.brand-aurora`; `aurora` keyframes removed), `app/(app)/profile/page.tsx` (class rename); *deleted* `public/brand/lotus.svg` (no longer used); 08 §1, §4, §5.2 (`AuthStage`), 04 §6.8 snippet, 03 (`gsap` row).
+
+**Not done** — The photo is 864 × 1152, so it is slightly soft on a 2× display at panel widths above ~430 px; a larger render or a licensed campus photo can replace `public/auth/students.jpg` with no code change.
+
+**Assumptions** — A-78: generated imagery (students, icons) is acceptable on the sign-in screens until CUTM supplies campus photography.
+
+**Open questions** — none.
+
+**Verification** — `npm run check` → lint and typecheck clean, `Tests 258 passed`. `npm run build` → compiled; the standalone build served on port 3101 and captured with Playwright at 1920, 1440, 1280, 1024 and 390 px: `/login`, `/forgot-password` and `/reset-password?token=x` render, `scrollWidth` equals the viewport at every width. Card opacity sampled every 100 ms after load: each card stays at 0 until hydration, rises once to 1 by 1.4 s, never dips; with `reducedMotion: reduce` all three are visible with no animation. Signing in through the new form was not walked (the form, field names and action are unchanged). The running `next dev` kept serving the old `globals.css` rule after the edit; restarting it picks up the change.
