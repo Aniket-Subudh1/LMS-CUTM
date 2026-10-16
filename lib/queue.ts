@@ -88,3 +88,15 @@ export function computeQueue(): ComputeQueue {
   );
   return globalForQueue.compute;
 }
+
+// 06 §6: finalize a class once it has ended. A failed job keeps its id and BullMQ ignores a new job with that id, so a
+// failed one is retried instead.
+export async function queueLiveFinalize(sessionId: string): Promise<void> {
+  const jobId = `live-final-${sessionId}`;
+  const existing = await computeQueue().getJob(jobId);
+  if (existing && (await existing.isFailed())) {
+    await existing.retry('failed');
+    return;
+  }
+  await computeQueue().add('finalizeLiveSession', { sessionId }, { jobId });
+}

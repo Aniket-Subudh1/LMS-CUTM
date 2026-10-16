@@ -2,7 +2,7 @@ import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeftIcon, CalculatorIcon, ExamIcon, InfoIcon, VideoIcon } from '@phosphor-icons/react/ssr';
+import { ArrowLeftIcon, BroadcastIcon, CalculatorIcon, ExamIcon, InfoIcon, VideoIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { saveSettings } from '../actions';
 import { ActionForm, Field } from '@/components/action-form';
@@ -25,15 +25,18 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
   );
 }
 
-// Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`.
+// Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
-  return key.data === 'lessons' ? (
-    <Lessons page={await getSettingsPage('lessons')} />
-  ) : (
-    <Evaluation page={await getSettingsPage('evaluation')} />
-  );
+  switch (key.data) {
+    case 'lessons':
+      return <Lessons page={await getSettingsPage('lessons')} />;
+    case 'evaluation':
+      return <Evaluation page={await getSettingsPage('evaluation')} />;
+    case 'attendance':
+      return <Attendance page={await getSettingsPage('attendance')} />;
+  }
 }
 
 function Header({ page, icon }: { page: { label: string; description: string }; icon: ReactNode }) {
@@ -109,6 +112,69 @@ function Lessons({ page }: { page: SettingsPage<'lessons'> }) {
             <li>
               <span className="text-foreground font-medium">Documents and links.</span> Not affected: they are complete
               when the student marks them done.
+            </li>
+          </ul>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M03: when a student counts as present in a class whose attendance is automatic (07 §10).
+function Attendance({ page }: { page: SettingsPage<'attendance'> }) {
+  const minutes = Math.ceil((60 * page.value.liveThresholdPct) / 100);
+  return (
+    <>
+      <Header page={page} icon={<BroadcastIcon weight="duotone" />} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Section
+          icon={<BroadcastIcon weight="duotone" />}
+          title="When is a student present?"
+          description={changed(page)}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Classes that end from now on follow this rule."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            <Field
+              name="liveThresholdPct"
+              label="Time in class needed to count as present"
+              hint={`${page.fieldHelp.liveThresholdPct} Recommended: ${formatPct(page.defaults.liveThresholdPct)}.`}
+            >
+              <span className="relative block w-40">
+                <Input
+                  name="liveThresholdPct"
+                  type="number"
+                  inputMode="decimal"
+                  min={1}
+                  max={100}
+                  step="any"
+                  required
+                  defaultValue={page.value.liveThresholdPct}
+                  className="pr-9 tabular-nums"
+                />
+                <span className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm">
+                  %
+                </span>
+              </span>
+            </Field>
+          </ActionForm>
+        </Section>
+
+        <Section icon={<InfoIcon weight="duotone" />} title="For example" description="With the value saved now.">
+          <ul className="text-muted-foreground grid gap-3 text-sm leading-relaxed">
+            <li>
+              <span className="text-foreground font-medium">A 60-minute class:</span> present after {minutes} minutes in
+              the room, counted from when the teacher starts it to when it ends.
+            </li>
+            <li>
+              <span className="text-foreground font-medium">Two tabs or a reconnect:</span> the same minute counts once.
+            </li>
+            <li>
+              <span className="text-foreground font-medium">Classes the teacher marks:</span> not affected; the
+              teacher&apos;s marks stand, and anyone left unmarked is recorded absent.
             </li>
           </ul>
         </Section>

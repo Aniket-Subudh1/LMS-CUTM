@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import { attendancePct } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { formatDate } from '@/lib/format';
+import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -357,6 +358,8 @@ export type RosterRow = {
   status: 'active' | 'dropped';
   // Skill offerings only (SKL-02, T9); null for UGC offerings.
   skill: { completed: number; attendancePct: number | null; watchedMin: number; lastActiveAt: Date | null } | null;
+  // Credit offerings only (ATT-02, M03 T9): finished live classes the student attended; null for skill offerings.
+  live: { attended: number; held: number; pct: number | null } | null;
 };
 
 export async function listRoster(
@@ -406,10 +409,31 @@ export async function listRoster(
       ])
     : [];
   const statsById = new Map(stats.map((row) => [String(row._id), row]));
+  // M03 T9: each student's rows of finished classes (a row has a status once its class is finalized or marked, A-72).
+  const live = skill
+    ? []
+    : await Attendance.aggregate<{ _id: Types.ObjectId; attended: number; held: number }>([
+        {
+          $match: {
+            offeringId: new Types.ObjectId(offeringId),
+            studentId: { $in: studentIds },
+            status: { $in: ['present', 'absent'] },
+          },
+        },
+        {
+          $group: {
+            _id: '$studentId',
+            attended: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+            held: { $sum: 1 },
+          },
+        },
+      ]);
+  const liveById = new Map(live.map((row) => [String(row._id), row]));
   return {
     rows: docs.map((e) => {
       const student = byId.get(String(e.studentId));
       const stat = statsById.get(String(e.studentId));
+      const { attended = 0, held = 0 } = liveById.get(String(e.studentId)) ?? {};
       return {
         id: String(e._id),
         rollNo: student?.rollNo ?? '—',
@@ -424,6 +448,7 @@ export async function listRoster(
               lastActiveAt: stat?.lastActiveAt ?? null,
             }
           : null,
+        live: skill ? null : { attended, held, pct: attendancePct(attended, held) },
       };
     }),
     total,

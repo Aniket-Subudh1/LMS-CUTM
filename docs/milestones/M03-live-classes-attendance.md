@@ -83,7 +83,7 @@ File: `app/api/webhooks/live/route.ts`.
 - Teachers' identities are ignored. Return `200` for ignored or unknown rooms (never make the engine retry forever); `401` on a bad signature.
 
 ### T6 · Finalization job and scheduler
-Files: `worker/jobs/compute.ts` (`finalizeLiveSession`, `liveSweep`), `worker/index.ts` (scheduler `live-finalize-hourly`, 02 §8).
+Files: `worker/jobs/compute.ts` (`finalizeLiveSession`, `liveSweep`), `worker/index.ts` (scheduler `liveSweep`, hourly at :05, 02 §8).
 1. Read the `attendance` settings, then in **one transaction**: claim with `findOneAndUpdate({ _id, status: 'ended', finalizedAt: null }, { $set: { finalizedAt: now } })`; nothing returned → already finalized, stop (idempotent). A crash rolls the claim back with everything else, so a retry redoes the work.
 2. For every active enrollment: compute `presenceSec` with `deriveAttendance`; upsert the row with `presenceSec`, then set the status — `derived` mode on every row whose `source` is not `manual`; `manual` mode only on rows without a status (unmarked students become `absent`).
 3. `$inc engagementDaily.liveSec` by `presenceSec` for `istDayKey(startedAt)`.

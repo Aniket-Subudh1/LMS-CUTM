@@ -839,7 +839,7 @@ Rules:
 - **Job ids:** deterministic, built with `-` separators, never containing `:` and never a bare integer. BullMQ 6 rejects `:` in custom ids (except a legacy three-part form its source marks for removal) and rejects integer strings (verified).
 - A duplicate `jobId` is ignored; the *returned* job object echoes your new payload, but the stored job keeps the original (verified). Never rely on the returned payload.
 - An invalid payload fails the job with the Zod error as `failedReason` (verified) — it surfaces on the admin integrations page; it is not retried into success.
-- Schedulers: `queue.upsertJobScheduler(id, { pattern, tz: 'Asia/Kolkata' }, { name, data })` — idempotent, safe to call on every worker start (verified next-run computation in IST).
+- Schedulers: `queue.upsertJobScheduler(id, { pattern, tz: 'Asia/Kolkata' }, { name, data })` — idempotent, safe to call on every worker start (verified next-run computation in IST). BullMQ 6 types the scheduler `id` as one of the queue's job names, so a scheduler is named after the job it adds (`liveSweep`, M03).
 - `worker/` imports from `lib/` with the `@/` alias (`tsx` honours `tsconfig` paths). It must not import `next/*` or anything that does (`lib/auth/session.ts`, `lib/auth/access.ts`, `lib/action.ts`).
 
 ### 6.10 Pure domain function — `lib/domain/<area>.ts` + test

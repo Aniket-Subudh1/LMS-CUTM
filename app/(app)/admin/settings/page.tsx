@@ -1,14 +1,21 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRightIcon, ExamIcon, GearSixIcon, VideoIcon } from '@phosphor-icons/react/ssr';
+import { ArrowRightIcon, BroadcastIcon, ExamIcon, GearSixIcon, VideoIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
 import { listSettings } from '@/lib/data/settings';
 import { formatDateTime } from '@/lib/format';
+import type { SettingsKey } from '@/lib/schemas/settings';
 
 export const metadata: Metadata = { title: 'Settings' };
+
+const ICON: Record<SettingsKey, ReactNode> = {
+  lessons: <VideoIcon weight="duotone" />,
+  evaluation: <ExamIcon weight="duotone" />,
+  attendance: <BroadcastIcon weight="duotone" />,
+};
 
 export default function SettingsPage() {
   return (
@@ -34,9 +41,7 @@ async function Settings() {
               href={`/admin/settings/${card.key}`}
               className="surface-interactive group flex h-full flex-col gap-4 p-5"
             >
-              <span className="icon-chip size-12 [&_svg]:size-7">
-                {card.key === 'evaluation' ? <ExamIcon weight="duotone" /> : <VideoIcon weight="duotone" />}
-              </span>
+              <span className="icon-chip size-12 [&_svg]:size-7">{ICON[card.key]}</span>
               <span className="grid gap-1">
                 <span className="font-semibold">{card.label}</span>
                 <span className="text-muted-foreground text-sm">{card.description}</span>
