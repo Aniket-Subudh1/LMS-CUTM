@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import mongoose, { Types } from 'mongoose';
 import { hashPassword } from '@/lib/auth/password';
 import { db } from '@/lib/db';
-import { DEFAULT_OUTCOME_TITLES } from '@/lib/domain/catalog';
+import { DEFAULT_OUTCOME_TITLES, mergeCos } from '@/lib/domain/catalog';
 import { normalizeCourseware } from '@/lib/domain/courseware';
 import { parseCoursePage } from '@/lib/integrations/courseware';
 import { Batch } from '@/lib/models/batch';
@@ -20,10 +20,11 @@ import { SETTINGS } from '@/lib/schemas/settings';
 
 // Development data (10 §3). Safe to run again: every record is inserted only if it is missing.
 // With --e2e the fixture users also get a password (E2E_PASSWORD, set in .env.e2e) and an active account, and an
-// administrator is created; without it they stay invited.
+// administrator is created; without it they stay invited unless SEED_PASSWORD is set, which does the same.
 // The courses are real CUTM courses (codes, titles and T-P-Pj from the Course Repository); CUTM1535's content is
 // its public courseware page (tests/fixtures/courseware/836.html). CUTM1602's outcomes, mapping, modules and
-// sessions are fixtures for the tests, not CUTM's.
+// sessions are fixtures for the tests, not CUTM's. Without --e2e, four CSE courses are added whose code, credits
+// and content are their courseware pages, each offered to section A.
 const { values } = parseArgs({ options: { e2e: { type: 'boolean' } } });
 const e2e = values.e2e === true;
 
@@ -39,12 +40,13 @@ if (process.env.NODE_ENV === 'production' || !['localhost', '127.0.0.1'].include
   process.exit(1);
 }
 
-const password = Password.safeParse(process.env.E2E_PASSWORD);
-if (e2e && !password.success) {
-  console.error('--e2e needs E2E_PASSWORD (at least 10 characters) in .env.e2e.');
+const wanted = e2e ? process.env.E2E_PASSWORD : process.env.SEED_PASSWORD;
+const password = Password.safeParse(wanted);
+if ((e2e || wanted !== undefined) && !password.success) {
+  console.error(`${e2e ? 'E2E_PASSWORD' : 'SEED_PASSWORD'} needs at least 10 characters.`);
   process.exit(1);
 }
-const passwordHash = e2e && password.success ? await hashPassword(password.data) : undefined;
+const passwordHash = password.success ? await hashPassword(password.data) : undefined;
 
 await db();
 
@@ -149,7 +151,7 @@ const staff = [
   person('hod@seed.cutm.test', 'Hema Mishra', ['hod', 'faculty'], { employeeId: 'E001', departmentId: department._id }),
   person('faculty1@seed.cutm.test', 'Farhan Khan', ['faculty'], { employeeId: 'E002', departmentId: department._id }),
   person('faculty2@seed.cutm.test', 'Fatima Das', ['faculty'], { employeeId: 'E003', departmentId: department._id }),
-  ...(e2e ? [person('admin@seed.cutm.test', 'Anil Admin', ['admin'])] : []),
+  ...(passwordHash ? [person('admin@seed.cutm.test', 'Anil Admin', ['admin'])] : []),
 ];
 const students = Array.from({ length: 20 }, (_, i) => {
   const n = String(i + 1).padStart(2, '0');
@@ -359,8 +361,94 @@ await Enrollment.bulkWrite(
   })),
 );
 
+const hod = found(await User.findOne({ email: 'hod@seed.cutm.test' }, { _id: 1 }).lean(), 'hod');
+const csePages = e2e
+  ? []
+  : [
+      { page: 1137, facultyIds: [faculty1._id], projectMode: null },
+      { page: 750, facultyIds: [faculty2._id], projectMode: 'github' as const },
+      { page: 334, facultyIds: [faculty1._id, faculty2._id], projectMode: 'tracker' as const },
+      { page: 461, facultyIds: [hod._id], projectMode: 'github' as const },
+    ];
+for (const { page, facultyIds, projectMode } of csePages) {
+  const imported = normalizeCourseware(parseCoursePage(readFileSync(`tests/fixtures/courseware/${page}.html`, 'utf8')));
+  const { code, credits } = imported;
+  if (!code || !credits) throw new Error(`seed: courseware page ${page} gives no course code or credits`);
+  const cos = mergeCos([], imported.cos, () => new Types.ObjectId());
+  const idOf = new Map(cos.map((c) => [c.code, c._id]));
+  const course = found(
+    await upsert(
+      Course,
+      { code },
+      {
+        code,
+        title: imported.title,
+        type: imported.type,
+        credits,
+        status: 'active',
+        coordinatorId: facultyIds[0],
+        objectives: imported.objectives,
+        cos,
+        coMap: imported.coMap.flatMap((cell) => {
+          const coId = idOf.get(cell.co);
+          return coId ? [{ coId, outcome: cell.outcome, level: cell.level }] : [];
+        }),
+        modules: imported.modules,
+        projects: imported.projects,
+        textbooks: imported.textbooks,
+        references: imported.references,
+        sessionPlan: imported.sessionPlan,
+        issues: imported.issues,
+        reviewNeeded: imported.issues.length > 0,
+      },
+    ),
+    `course ${code}`,
+  );
+  await CurriculumEntry.updateOne(
+    { programId: program._id, courseId: course._id },
+    {
+      $setOnInsert: { programId: program._id, courseId: course._id, courseCode: code, basket: null, courseType: null },
+    },
+    { upsert: true },
+  );
+  const cse = found(
+    await upsert(
+      Offering,
+      { courseId: course._id, termId: term._id, batchId: batch._id, section: 'A' },
+      {
+        courseId: course._id,
+        termId: term._id,
+        batchId: batch._id,
+        section: 'A',
+        programId: program._id,
+        departmentId: department._id,
+        category: 'ugc',
+        credits: course.credits,
+        evaluation: SETTINGS.evaluation.schema.parse({}),
+        title: `${code} · ${course.title} · ${term.code} · A`,
+        facultyIds,
+        projectMode: course.credits.project > 0 ? projectMode : null,
+        modules: course.modules.slice(0, 40).map((m, order) => ({ title: m.title.slice(0, 160), order })),
+        status: 'active',
+      },
+    ),
+    `offering ${code} A`,
+  );
+  await Enrollment.bulkWrite(
+    enrolled.map((s) => ({
+      updateOne: {
+        filter: { offeringId: cse._id, studentId: s._id },
+        update: { $setOnInsert: { offeringId: cse._id, studentId: s._id, status: 'active' } },
+        upsert: true,
+      },
+    })),
+  );
+}
+
+const cseNote = csePages.length ? ` and the ${csePages.length} CSE courses from courseware` : '';
 console.log(
-  `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, 5 courses, 2 offerings, ` +
-    `${enrolled.length} students enrolled in CUTM1602.`,
+  `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, ${5 + csePages.length} courses, ` +
+    `${2 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602${cseNote}` +
+    `${passwordHash ? '; every account signs in with the seed password' : ''}.`,
 );
 await mongoose.disconnect();

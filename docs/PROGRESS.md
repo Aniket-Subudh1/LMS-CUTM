@@ -169,6 +169,8 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-72 | A student's live attendance % counts only finalized classes and only their own rows, so a student enrolled later is not marked absent for earlier classes | M03, M06 | Q-42 |
 | A-73 | An offering holds at most 500 live sessions, so its session reads are bounded | M03 | — |
 | A-74 | Only the offering's faculty join a class as host; admins start and end classes without joining (09 §2) | M03 | — |
+| A-75 | The four CSE courses read from courseware are development seed data only; the e2e fixtures stay as 10 §3 lists them | dev seed | — |
+| A-76 | In the development seed a courseware page's credits stand in for the Course Repository's until the course list is uploaded | dev seed | — |
 
 ## 5. Log
 
@@ -917,3 +919,17 @@ Where the build differs from the plan or the spec:
 **Assumptions** — none. **Open questions** — none.
 
 **Verification** — `node --env-file-if-exists=a --env-file-if-exists=b` and the same through `npx tsx` with `A` in both files → the value from `b`, `B` only in `a` → kept. `npm run worker` with only `.env` present → `worker started` with queues `mail, media, sync, compute`, then stopped.
+
+### 2026-10-16 · Development seed: four CSE courses from courseware, sign-in with a seed password · Cursor (AI agent), at Aniket's request
+
+Aniket asked for a few CSE courses from courseware.cutm.ac.in with everything around them, ready to test. `npm run db:seed` (not `--e2e`) now adds four courses whose code, title, credits, objectives, outcomes, mapping, modules, books and session plan come from their courseware pages through `parseCoursePage` and `normalizeCourseware`, with no edits: CUCS1002 Data Structures with Competitive Coding 2-4-0 (page 1137; 5 COs and a 46-cell CO–PO mapping, 30 sessions), CUTM1884 Operating System Concepts 2-2-2 (750; 50 sessions), CUTM1900 Computer Networks 3-2-1 (334; 47 sessions) and CUTM1019 Machine Learning using Python 1-2-1 (461; no session plan). Each is listed by BTECH-CSE and offered in 2026-ODD to section A with the twenty students: CUCS1002 by faculty1, CUTM1884 by faculty2 (GitHub projects), CUTM1900 by both (tracker projects), CUTM1019 by the HoD (GitHub projects). Courses whose pages give no credits (CUCS1003, CUCS1004, CUCS1005, CUCS1011, CUAI1001) were left out rather than given invented credits. With `SEED_PASSWORD` set, every seeded account is active with that password and `admin@seed.cutm.test` is created, as `--e2e` does with `E2E_PASSWORD`.
+
+**Created** (*changed*) — `tests/fixtures/courseware/{1137,750,334,461}.html` (fetched 16 Oct 2026; only `<main>`, icons removed; none had contact details); *changed* `scripts/seed.ts`, `.env.example` (commented `SEED_PASSWORD`), 10 §3 (`db:seed` row).
+
+**Not done** — No calendar, lessons or live classes are seeded: the faculty builds them in the Plan, Content and Live tabs, which is what is being tested. The courses carry no `source` binding, so a later courseware import matches them by code and binds them then.
+
+**Assumptions** — A-75: the CSE courses are development data only; the e2e fixtures stay as 10 §3 lists them, so no e2e spec changes. A-76: the courseware page's credits stand in for the Course Repository's until the course list is uploaded (the import then reports any difference).
+
+**Open questions** — none.
+
+**Verification** — Each fixture parses exactly like its live page (same code, credits and counts). `npm run db:indexes` then `npm run db:seed` twice against local `lms_dev` → both print `Seeded development data: 2 departments, 2 programmes, 9 courses, 6 offerings, 20 students enrolled in CUTM1602 and the 4 CSE courses from courseware; every account signs in with the seed password.`; counts after the second run: users 24 (all active), courses 9, curriculum entries 9, offerings 6, enrollments 100. `verifyPassword` accepts `SEED_PASSWORD` for admin, HoD, faculty1 and student01. `npm run db:seed:e2e` → `… 5 courses, 2 offerings …` (unchanged). `npm run check` → lint and typecheck clean, `Tests 258 passed`. Not walked in the browser.
