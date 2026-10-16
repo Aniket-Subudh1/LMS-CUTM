@@ -266,11 +266,16 @@ describe('normalizeCourseware: the session plan', () => {
     expect(unheaded.sessionPlan.map((s) => s.topic)).toEqual(['Concept of costing', 'Budgets']);
   });
 
-  it('cuts what is too long and says so', () => {
-    const course = page([line('Session Plan', true), line('Session 1'), line(`Topic ${'x'.repeat(400)}`)]);
-    expect(course.sessionPlan[0].topic).toHaveLength(200);
-    expect(course.sessionPlan[0].topic.endsWith('…')).toBe(true);
-    expect(course.issues).toContain(
+  it('cuts what is too long; a long session description quietly, anything else with a note', () => {
+    const sessions = page([line('Session Plan', true), line('Session 1'), line(`Topic ${'x'.repeat(400)}`)]);
+    expect(sessions.sessionPlan[0].topic).toHaveLength(200);
+    expect(sessions.sessionPlan[0].topic.endsWith('…')).toBe(true);
+    expect(sessions.issues).not.toContain(
+      'Some entries were too long or too many and were cut; check them against the page.',
+    );
+    const objectives = page([line('Course Objectives', true), line(`To ${'learn '.repeat(100)}`)]);
+    expect(objectives.objectives[0]).toHaveLength(500);
+    expect(objectives.issues).toContain(
       'Some entries were too long or too many and were cut; check them against the page.',
     );
   });

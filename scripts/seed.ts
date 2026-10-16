@@ -224,7 +224,7 @@ const [cutm1602, , , , sk01] = await Promise.all([
         { topic: 'Control flow', kind: 'theory' },
         { topic: 'Arrays and functions', kind: 'practice' },
         { topic: 'Pointers', kind: 'theory' },
-        { topic: 'Project: student records manager', kind: 'project' },
+        { topic: 'Student records manager', kind: 'project' },
       ],
     },
   ),

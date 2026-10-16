@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BooksIcon, MagnifyingGlassIcon, PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react/ssr';
+import { BooksIcon, PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { saveCourse } from './actions';
@@ -104,10 +104,7 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
       <FilterForm action="/catalog" submitLabel="Search">
         <label className="grid min-w-56 flex-1 gap-1.5 text-sm font-medium">
           Code or title
-          <span className="relative">
-            <MagnifyingGlassIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
-            <Input name="q" defaultValue={search.q} placeholder="CUTM1535 or complex analysis" className="pl-9" />
-          </span>
+          <Input name="q" defaultValue={search.q} placeholder="CUTM1535 or complex analysis" />
         </label>
         <label className="grid gap-1.5 text-sm font-medium">
           Programme

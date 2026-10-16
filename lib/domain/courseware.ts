@@ -54,7 +54,7 @@ const SECTIONS: [Section, RegExp][] = [
     /^(?:co\s*[-,/\\]?\s*po(?:\s*[-,/\\]?\s*pso)?(?:\s+mapping)?(?:\s+matrix)?|mapping(?:\s+of\s+cos?\s+(?:with|to|and)\s+pos?)?(?:\s+matrix)?|course\s+outcomes?\s+to\s+program(?:me)?\s+outcomes?(?:\s+mapping)?)$/i,
   ],
   ['syllabus', /^(?:(?:course|detailed)\s+)?syllabus(?:\s*\/\s*contents?)?$|^course\s+contents?(?:\s+including.*)?$/i],
-  ['projects', /^(?:list\s+of\s+)?projects?(?:\s*\/\s*\w+)*$|^project\s+(?:topics|list|work)$/i],
+  ['projects', /^(?:list\s+of\s+)?projects?(?:\s*\/\s*\w+)*$|^project\s+(?:topics|list|work|ideas)$/i],
   [
     'textbooks',
     /^(?:text\s*books?|books?\s+prescribed|prescribed\s+(?:text\s*)?books?|books?\s+recommended|recommended\s+books?|books?(?:\s*(?:&|and)\s*journals)?|text\s*books?\s*(?:&|and)\s*references?)$/i,
@@ -66,12 +66,13 @@ const SECTIONS: [Section, RegExp][] = [
   ['sessions', /^(?:session|lesson|lecture|teaching)\s+plan(?:\s*(?:&|and)\s*materials?)?$/i],
   [
     'other',
-    /^(?:introduction|course\s+(?:description|descriptor|materials?)|contents|list\s+of\s+assignments|assignments?|journals?|web\s*links?|e-?resources?|pre-?requisites?|program(?:me)?\s+outcomes?|pos?\s+and\s+psos?|scheme\s+of\s+(?:assessment|evaluation)|question\s+bank|study\s+materials?|guidelines\b.*)$/i,
+    /^(?:introduction|course\s+(?:description|descriptor|materials?)|contents|list\s+of\s+assignments|assignments?|journals?|web\s*links?|e-?resources?|pre-?requisites?|program(?:me)?\s+outcomes?|pos?\s+and\s+psos?|scheme\s+of\s+(?:assessment|evaluation)|question\s+bank|study\s+materials?|(?:project\s+)?evaluation\s+criteria|guidelines\b.*)$/i,
   ],
 ];
 
 function sectionOf(text: string): { section: Section; rest: string } | null {
-  if (text.length > 160) return null;
+  // "Project (1 hour):" or "Practical (4 hours):" labels a part of a module or a week, not a section.
+  if (text.length > 160 || /^(?:projects?|practi(?:ce|cal)s?|theory|lab)\s*\(\s*\d/i.test(text)) return null;
   const colon = text.indexOf(':');
   for (const [head, rest] of colon > 0
     ? [
@@ -91,8 +92,10 @@ function sectionOf(text: string): { section: Section; rest: string } | null {
 }
 
 const URL_TEXT = /\b(?:https?:\/\/|www\.)\S+/gi;
+// What is left of "PPT Link: https://…", "Video Link:", "E-material (ICAR e-Krishi Shiksha): …" or "material:1-" once
+// the address is gone: a label with nothing after it.
 const LINK_LABEL =
-  /^(?:web\s*links?|e-?materials?|youtube(?:\s+video)?|videos?|ppts?|links?|resources?|(?:study\s+)?materials?(?:\s*[-:]?\s*\d+)?)(?:\s*\([^)]*\))?\s*[-:]?$/i;
+  /^(?:[a-z-]+\s){0,2}(?:links?|videos?|ppts?|e-?materials?|materials?|resources?)(?:\s*\([^)]*\))?\s*(?:[-:]\s*\d*\s*[-:]?|\d+\s*[-:]?)$|^(?:web\s*links?|e-?materials?|youtube(?:\s+video)?|videos?|ppts?|links?)$/i;
 const BULLET =
   /^(?:[●•▪◦∙·*➢►✓✔](?:\s+|$)|-\s+|\(?\d{1,2}[.)](?!\d)\s*|\(?[a-h]\)\s*|\(?(?:i{1,3}|iv|vi{0,3}|ix|x)\)\s*)/i;
 const JOINER =
@@ -488,9 +491,10 @@ export function normalizeCourseware(page: CoursewarePage): ImportedCourse {
   const issues = new Set<string>();
   const note: Note = (issue) => issues.add(issue);
   let trimmed = false;
-  const cut = (text: string, max: number) => {
+  // A cut ends in "…"; it is noted for review, except a long session description, which is common and harmless.
+  const cut = (text: string, max: number, note = true) => {
     if (text.length <= max) return text;
-    trimmed = true;
+    trimmed ||= note;
     return `${text.slice(0, max - 1).trimEnd()}…`;
   };
   const fit = <T>(list: readonly T[], max: number) => {
@@ -507,6 +511,13 @@ export function normalizeCourseware(page: CoursewarePage): ImportedCourse {
   for (const [i, item] of items.entries()) {
     if (item.kind === 'table') {
       tables.push(item.rows);
+      // A header row over a value row: "Subject Code | Name | T-Pr-Pi | Credits" above "CUTM 2603 | … | 3-2-0 | 5".
+      const [header = [], values = []] = item.rows;
+      header.forEach((field, c) => {
+        const value = values[c] ?? '';
+        if (/^(?:subject|course)\s*code$/i.test(field)) code ??= extractCode(value);
+        if (/^(?:t\s*-\s*p\w*\s*-\s*p\w*|l\s*-\s*t\s*-\s*p)$/i.test(field)) credits ??= parseCredits(value);
+      });
       // Descriptor tables pair a field with its value: "Course Code | ASAG 1101 | Credits | 3 (2+1)".
       for (const row of item.rows) {
         for (let c = 0; c + 1 < row.length; c += 2) {
@@ -545,6 +556,11 @@ export function normalizeCourseware(page: CoursewarePage): ImportedCourse {
       continue;
     }
     if (FACTS.name.test(text)) continue;
+    // Some pages go straight from the outcomes to "Module 1" with no syllabus heading.
+    const current = runs.at(-1)?.section;
+    if (item.bold && MODULE.test(text) && current && !['syllabus', 'sessions', 'projects'].includes(current)) {
+      runs.push({ section: 'syllabus', items: [] });
+    }
     // Some pages list "Session 1", "Session 2" … with no "Session plan" heading above them.
     const session = SESSION.exec(text);
     if (session && /^1(?!\d)/.test(session[1]) && runs.at(-1)?.section !== 'sessions') {
@@ -642,14 +658,17 @@ export function normalizeCourseware(page: CoursewarePage): ImportedCourse {
         const wrapped = all[i - 1].split(' ').length <= 2 || line.split(' ').length <= 2;
         return `${text}${/[.;:!?]$/.test(text) || wrapped ? '' : ';'} ${line}`;
       }, '');
-    const topic = cut(joined || 'Session', LIMIT.sessionTopic);
+    const topic = cut(joined || 'Session', LIMIT.sessionTopic, false);
     return Array.from({ length: draft.count }, () => ({ topic, kind }));
   });
 
   const result: ImportedCourse = {
     code,
     title: tidy(
-      page.title.replace(/^\s*(?:skill|course)\s*:\s*/i, '').replace(/[\s\-–:(]*\b[A-Z]{2,6}\s?-?\d{4}\b\)?/i, ''),
+      page.title
+        .replace(/^\s*(?:skill|course)\s*:\s*/i, '')
+        .replace(/[\s\-–:(]*\b[A-Z]{2,6}\s?-?\d{4}\b\)?/i, '')
+        .replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, ''),
     ),
     type: page.typeLabel ? courseTypeFromLabel(page.typeLabel) : null,
     credits: credits?.credits ?? null,

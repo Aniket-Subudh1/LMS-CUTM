@@ -106,8 +106,10 @@ const MOBILE = /(?<![\d-])(?:\+91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?![\d-])/g;
 const CONTACT_LABEL = /^\s*(?:contact|phone|mobile|mob|ph|tel|telephone|whatsapp|e-?mail)\b/i;
 const redact = (text: string) => text.replace(EMAIL, '').replace(MOBILE, '');
 
+// Some pages escape "&" twice, so "&amp;" survives parsing as text.
 const clean = (text: string) =>
   redact(text)
+    .replace(/&amp;/g, '&')
     .replace(/[\s ​]+/g, ' ')
     .trim();
 

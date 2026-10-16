@@ -131,11 +131,9 @@ describe('courseware pages as catalogue courses', () => {
   it('1173: numbered COs, a 1–3 mapping and a session table split by module rows', () => {
     const c = course(1173);
     expect(c.code).toBe('ASEC3103');
-    // Its practice sessions are described at length, so their topics are cut to 200 characters.
-    expect(c.issues).toEqual([
-      'The courseware page gives no credits (T-P-Pj).',
-      'Some entries were too long or too many and were cut; check them against the page.',
-    ]);
+    // Its practice sessions are described at length; their topics are cut to 200 characters without a note.
+    expect(c.issues).toEqual(['The courseware page gives no credits (T-P-Pj).']);
+    expect(c.sessionPlan.some((s) => s.topic.length === 200 && s.topic.endsWith('…'))).toBe(true);
     expect(c.objectives).toHaveLength(5);
     expect(c.cos.map((co) => co.code)).toEqual(['CO1', 'CO2', 'CO3', 'CO4', 'CO5']);
     expect(c.coMap.filter((cell) => cell.co === 'CO1')).toHaveLength(8);
@@ -160,5 +158,47 @@ describe('courseware pages as catalogue courses', () => {
     expect(c.modules.at(-1)?.practicals).toHaveLength(12);
     expect(c.references).toHaveLength(6);
     expect(c.sessionPlan).toHaveLength(27);
+  });
+
+  it('1084: modules straight after the outcomes, levels written after each outcome, a weekly plan', () => {
+    const c = course(1084);
+    expect(c).toMatchObject({ code: 'CUDM2516', credits: { theory: 0, practice: 2, project: 1 }, issues: [] });
+    expect(c.cos).toHaveLength(7);
+    expect(c.cos[0]).toMatchObject({ code: 'CO1', bloomLevels: ['remember', 'understand'], suggestedBloom: null });
+    expect(c.modules.map((m) => [m.title, m.practicals.length])).toEqual([
+      ['ReactJS Basics and Setup', 3],
+      ['Props, State, and Events', 3],
+      ['Conditional Rendering and Lists', 3],
+      ['Forms and Controlled Components', 3],
+      ['Routing with React Router', 3],
+      ['API Integration and Hooks', 3],
+      ['Mini Project + Deployment', 0],
+    ]);
+    // "Project Ideas" is the project list; "Project (1 hour):" inside the weekly plan is not.
+    expect(c.projects).toEqual([
+      'Personal Portfolio Website',
+      'Task Manager App',
+      'E-commerce Product Viewer',
+      'Blog Post UI Client',
+      'Weather Dashboard',
+    ]);
+    expect(c.coMap.filter((cell) => cell.co === 'CO1')).toHaveLength(6);
+    // The plan is written by week, with no numbered sessions; the coordinator adds them.
+    expect(c.sessionPlan).toEqual([]);
+  });
+
+  it('1115: credits in a header-row table, and session lines whose links are only labels', () => {
+    const c = course(1115);
+    expect(c).toMatchObject({
+      code: 'CUTM2603',
+      title: 'GENERAL ANATOMY',
+      credits: { theory: 3, practice: 2, project: 0 },
+    });
+    expect(c.modules).toHaveLength(8);
+    expect(c.modules[0].title).toBe('INTRODUCTION TO ANATOMY AND SKELETON');
+    expect(c.sessionPlan.slice(0, 2)).toEqual([
+      { topic: 'Introduction to Anatomy & its Branches', kind: 'theory' },
+      { topic: 'Terminologies, Body Cavities, Membranes', kind: 'theory' },
+    ]);
   });
 });
