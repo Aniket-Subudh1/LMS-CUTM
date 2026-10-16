@@ -5,7 +5,8 @@ import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { offeringAccess, requireTeach } from '@/lib/auth/access';
-import { addEngagement, MAX_LESSONS } from '@/lib/data/content';
+import { MAX_LESSONS } from '@/lib/data/content';
+import { addEngagement } from '@/lib/data/engagement';
 import { db, isDuplicateKey } from '@/lib/db';
 import { parseKey, sanitizeFileName } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
@@ -269,7 +270,7 @@ export const completeLesson = action(
       if (isDuplicateKey(error)) return;
       throw error;
     }
-    await addEngagement(offeringId, viewer.id, now, { lessonsCompleted: 1 });
+    await addEngagement([{ offeringId, studentId: viewer.id, at: now, inc: { lessonsCompleted: 1 } }]);
     refresh();
   },
 );

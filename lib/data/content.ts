@@ -4,8 +4,6 @@ import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { skillAttendancePct } from '@/lib/domain/ranges';
-import { istDateToDate, istDayKey } from '@/lib/domain/time';
-import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
@@ -15,7 +13,6 @@ import type { LessonKind } from '@/lib/schemas/content';
 
 // 05 §4.1: an offering holds at most this many lessons, so its content index is one bounded read.
 export const MAX_LESSONS = 300;
-const DAY_MS = 86_400_000;
 
 export type ContentLesson = {
   id: string;
@@ -228,19 +225,4 @@ export async function listContinueLearning(): Promise<ContinueRow[]> {
       ];
     })
     .slice(0, 5);
-}
-
-// The daily engagement counters (05 §7.1), one $inc upsert per event; written by the beacon and completeLesson.
-export async function addEngagement(
-  offeringId: string,
-  studentId: string,
-  now: Date,
-  inc: { videoSec?: number; lessonsCompleted?: number },
-): Promise<void> {
-  const day = istDayKey(now);
-  await EngagementDaily.updateOne(
-    { offeringId, studentId, day },
-    { $inc: inc, $setOnInsert: { expiresAt: new Date(istDateToDate(day).getTime() + 400 * DAY_MS) } },
-    { upsert: true },
-  );
 }

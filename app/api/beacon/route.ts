@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getViewer } from '@/lib/auth/session';
-import { addEngagement } from '@/lib/data/content';
+import { addEngagement } from '@/lib/data/engagement';
 import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { acceptVideoBeacon, mergeRanges, type Range } from '@/lib/domain/ranges';
@@ -72,12 +72,9 @@ async function storeVideo(beacon: VideoBeacon, retried = false): Promise<void> {
     log.warn('video beacon lost to concurrent writes', { lessonId, studentId });
     return;
   }
-  if (verdict.newSec > 0 || completedNow) {
-    await addEngagement(offeringId, studentId, now, {
-      videoSec: verdict.newSec,
-      ...(completedNow ? { lessonsCompleted: 1 } : {}),
-    });
-  }
+  await addEngagement([
+    { offeringId, studentId, at: now, inc: { videoSec: verdict.newSec, lessonsCompleted: completedNow ? 1 : 0 } },
+  ]);
 }
 
 export async function POST(request: Request): Promise<Response> {
