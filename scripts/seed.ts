@@ -25,7 +25,7 @@ import { SETTINGS } from '@/lib/schemas/settings';
 // its public courseware page (tests/fixtures/courseware/836.html). CUTM1602's outcomes, mapping, modules and
 // sessions are fixtures for the tests, not CUTM's. Without --e2e, four CSE courses are added whose code, credits
 // and content are their courseware pages, each offered to section A.
-const { values } = parseArgs({ options: { e2e: { type: 'boolean' } } });
+const { values } = parseArgs({ options: { e2e: { type: 'boolean' }, 'allow-remote': { type: 'boolean' } } });
 const e2e = values.e2e === true;
 
 function found<T>(doc: T | null, what: string): T {
@@ -33,10 +33,14 @@ function found<T>(doc: T | null, what: string): T {
   return doc;
 }
 
-// Fixture data must never reach a shared or hosted database.
+// Fixture data must never reach a shared or hosted database unless the developer names it with --allow-remote, and
+// never a production one.
 const host = new URL(process.env.MONGODB_URI ?? 'mongodb://invalid').hostname;
-if (process.env.NODE_ENV === 'production' || !['localhost', '127.0.0.1'].includes(host)) {
-  console.error(`Refusing to seed "${host}": the seed only runs against a local MongoDB.`);
+const local = ['localhost', '127.0.0.1'].includes(host);
+if (process.env.NODE_ENV === 'production' || (!local && values['allow-remote'] !== true)) {
+  console.error(
+    `Refusing to seed "${host}": the seed only runs against a local MongoDB unless --allow-remote is given.`,
+  );
   process.exit(1);
 }
 

@@ -933,3 +933,11 @@ Aniket asked for a few CSE courses from courseware.cutm.ac.in with everything ar
 **Open questions** — none.
 
 **Verification** — Each fixture parses exactly like its live page (same code, credits and counts). `npm run db:indexes` then `npm run db:seed` twice against local `lms_dev` → both print `Seeded development data: 2 departments, 2 programmes, 9 courses, 6 offerings, 20 students enrolled in CUTM1602 and the 4 CSE courses from courseware; every account signs in with the seed password.`; counts after the second run: users 24 (all active), courses 9, curriculum entries 9, offerings 6, enrollments 100. `verifyPassword` accepts `SEED_PASSWORD` for admin, HoD, faculty1 and student01. `npm run db:seed:e2e` → `… 5 courses, 2 offerings …` (unchanged). `npm run check` → lint and typecheck clean, `Tests 258 passed`. Not walked in the browser.
+
+### 2026-10-16 · `db:seed -- --allow-remote` for a hosted development database · Cursor (AI agent), at Aniket's request
+
+Aniket's development database is the `test` database on a shared Atlas cluster (other apps keep their own databases there; `test` holds only LMS collections). The seed still refuses any non-local MongoDB, and always under `NODE_ENV=production`, but `--allow-remote` now lets a developer name a hosted development database.
+
+**Created** (*changed*) — `scripts/seed.ts` (the `--allow-remote` flag), 10 §3 (`db:seed` row).
+
+**Verification** — `npm run db:seed` against the Atlas URI → `Refusing to seed "prapp.nypjwvu.mongodb.net": … unless --allow-remote is given.` `npm run db:indexes`, then `npm run db:seed -- --allow-remote` twice → both print the same `Seeded development data: … 9 courses, 6 offerings …` line; in `test`: users 25 (the existing admin plus the 24 seeded, all active), courses 9, offerings 6, enrollments 100. `verifyPassword` accepts `SEED_PASSWORD` for admin, faculty1 and student01. `tsc` and `eslint` clean.
