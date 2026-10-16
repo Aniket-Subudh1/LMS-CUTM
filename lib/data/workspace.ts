@@ -5,7 +5,7 @@ import { Types } from 'mongoose';
 import { offeringAccess, requireTeach, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
-import { skillAttendancePct } from '@/lib/domain/ranges';
+import { attendancePct } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { formatDate } from '@/lib/format';
 import { AuditLog } from '@/lib/models/audit-log';
@@ -419,7 +419,7 @@ export async function listRoster(
         skill: skill
           ? {
               completed: stat?.completed ?? 0,
-              attendancePct: skillAttendancePct(stat?.completed ?? 0, publishedIds.length),
+              attendancePct: attendancePct(stat?.completed ?? 0, publishedIds.length),
               watchedMin: Math.round((stat?.watchedSec ?? 0) / 60),
               lastActiveAt: stat?.lastActiveAt ?? null,
             }

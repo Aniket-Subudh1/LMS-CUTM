@@ -30,6 +30,10 @@ beforeAll(async () => {
     SMTP_SECURE: 'false',
     MAIL_FROM: 'CUTM LMS <lms@test.local>',
     COURSEWARE_URL: 'http://courseware.test',
+    LIVEKIT_URL: 'ws://live.test',
+    LIVEKIT_API_URL: 'http://live.test',
+    LIVEKIT_API_KEY: 'test-live-key',
+    LIVEKIT_API_SECRET: 'test-live-secret-at-least-32-characters',
     LOG_LEVEL: 'error',
   });
   // Redis database 1 belongs to the tests: start every file without rate-limit counters or queued jobs.

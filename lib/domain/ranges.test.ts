@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acceptVideoBeacon, mergeRanges, skillAttendancePct } from './ranges';
+import { acceptFocusBeacon, acceptVideoBeacon, mergeRanges } from './ranges';
 
 const mergeCases = [
   { existing: [], incoming: [[0, 30]], duration: 100, ranges: [[0, 30]], watched: 30, pct: 30 },
@@ -63,12 +63,16 @@ describe('acceptVideoBeacon', () => {
   });
 });
 
-describe('skillAttendancePct', () => {
-  it('returns null when nothing is published', () => {
-    expect(skillAttendancePct(0, 0)).toBeNull();
-  });
-
-  it('rounds attendance to two decimals', () => {
-    expect(skillAttendancePct(2, 3)).toBe(66.67);
+describe('acceptFocusBeacon (07 §9)', () => {
+  const at = (time: string) => new Date(`2026-10-16T${time}+05:30`);
+  it.each([
+    [null, at('10:00:30'), 120, true],
+    [null, at('10:00:30'), 121, false],
+    [at('10:00:00'), at('10:01:00'), 65, true],
+    [at('10:00:00'), at('10:01:00'), 66, false],
+    [at('10:00:00'), at('10:05:00'), 120, true],
+    [at('10:00:00'), at('10:05:00'), 121, false],
+  ])('last beacon %o, now %o, %d focused seconds → accepted %s', (lastFocusAt, now, focusedSec, accepted) => {
+    expect(acceptFocusBeacon({ focusedSec, lastFocusAt, now })).toBe(accepted);
   });
 });

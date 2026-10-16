@@ -206,12 +206,14 @@ The AI explanation (M10) receives only these numbers and labels; it never change
 | — | [40,40] | 100 | — | 0 | 0 |
 | — | [60,80], [70,90], [0,10] | 100 | [0,10], [60,90] | 40 | 40 |
 
-**Skill-course attendance (SKL-04):** `100 × lessons with completedAt / published lessons`, 2 dp; no published lessons → null.
+**Skill-course attendance (SKL-04):** `attendancePct(lessons with completedAt, published lessons)` (`lib/domain/attendance.ts`, §10): 2 dp; no published lessons → null.
 
 ## 9. Beacon anti-inflation — `lib/domain/ranges.ts`
 
 - **Video:** `newSec = watchedAfter − watchedBefore`. Allowed `= 2 × (now − lastBeaconAt) / 1000 + 30` (playback up to 2×, 30 s slack); first beacon (no `lastBeaconAt`) allows 120. If `newSec > allowed` the beacon is ignored (204, logged at `warn`). Otherwise store the merged ranges, set `lastBeaconAt = now`, and `$inc engagementDaily.videoSec` by `newSec` (only new unique seconds — re-watching never inflates).
-- **Live focus:** accepted only while the session is `live` and the student has an open presence interval; `focusedSec ≤ min(120, (now − lastFocusAt) / 1000 + 5)`; `$inc` `attendance.focusedSec` and `engagementDaily.focusedSec`.
+- **Live focus** (`acceptFocusBeacon`, M03): accepted only while the session is `live` and the student has an open presence interval; `focusedSec ≤ min(120, (now − lastFocusAt) / 1000 + 5)`, first beacon ≤ 120; `$inc` `attendance.focusedSec` and `engagementDaily.focusedSec`.
+
+Video:
 
 | lastBeaconAt | now | newSec | accepted |
 |---|---|---|---|
@@ -220,14 +222,27 @@ The AI explanation (M10) receives only these numbers and labels; it never change
 | 10:00:00 | 10:00:30 | 90 | yes (allowed 90) |
 | 10:00:00 | 10:00:30 | 91 | no |
 
+Live focus:
+
+| lastFocusAt | now | focusedSec | accepted |
+|---|---|---|---|
+| none | — | 120 | yes |
+| none | — | 121 | no |
+| 10:00:00 | 10:01:00 | 65 | yes (allowed 65) |
+| 10:00:00 | 10:01:00 | 66 | no |
+| 10:00:00 | 10:05:00 | 120 | yes (capped at 120) |
+| 10:00:00 | 10:05:00 | 121 | no |
+
 ## 10. Derived live attendance (ATT-03, LIV-04) — `lib/domain/attendance.ts`
 
 `deriveAttendance(presence, startedAt, endedAt, thresholdPct) → { presenceSec, status }`
 
 1. Close open intervals at `endedAt`; intersect each with `[startedAt, endedAt]`; take the **union** (overlaps count once).
-2. `presenceSec` = union length; `status = presenceSec ≥ thresholdPct / 100 × (endedAt − startedAt) ? 'present' : 'absent'`.
-3. Finalization writes a row for every active enrolled student (no presence → absent). Rows with `source = manual` are never overwritten.
+2. `presenceSec` = union length in whole seconds; `status = presenceSec ≥ thresholdPct / 100 × (endedAt − startedAt) ? 'present' : 'absent'`. A session of no length (`endedAt ≤ startedAt`) marks everyone absent.
+3. Finalization writes a row for every active enrolled student (no presence → absent). Rows with `source = manual` are never overwritten; in a `manual`-mode session only rows without a status get one (unmarked → absent).
 4. A session that never started (`startedAt` null) produces no rows.
+
+`attendancePct(attended, held)` → `roundHalfUp(100 × attended / held, 2)`, null when `held` is 0; the same function gives skill-course attendance (§8).
 
 Session 10:00–11:00 (3600 s), threshold 75 % (2700 s):
 
@@ -238,6 +253,7 @@ Session 10:00–11:00 (3600 s), threshold 75 % (2700 s):
 | 10:10–10:40, 10:20–10:50 | 2400 | absent |
 | 10:15–(open) | 2700 | present (exactly at threshold) |
 | none | 0 | absent |
+| 10:00–(open), session 10:00–10:00 | 0 | absent (no length) |
 
 ## 11. Time helpers — `lib/domain/time.ts`
 

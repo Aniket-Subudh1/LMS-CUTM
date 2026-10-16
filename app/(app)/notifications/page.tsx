@@ -1,6 +1,16 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { BellIcon, CalendarCheckIcon, CaretRightIcon, ChecksIcon, ClipboardTextIcon } from '@phosphor-icons/react/ssr';
+import {
+  BellIcon,
+  BroadcastIcon,
+  CalendarCheckIcon,
+  CalendarPlusIcon,
+  CalendarXIcon,
+  CaretRightIcon,
+  ChecksIcon,
+  ClipboardTextIcon,
+  ClockClockwiseIcon,
+} from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { markAllRead, openNotification } from './actions';
@@ -20,6 +30,10 @@ const Search = z.object({ page: pageParam.catch(1) });
 const KIND: Record<NotificationKind, { label: string; icon: typeof BellIcon }> = {
   'plan.requested': { label: 'Course plan needed', icon: ClipboardTextIcon },
   'plan.published': { label: 'Course plan published', icon: CalendarCheckIcon },
+  'live.scheduled': { label: 'Live class scheduled', icon: CalendarPlusIcon },
+  'live.changed': { label: 'Live class changed', icon: ClockClockwiseIcon },
+  'live.cancelled': { label: 'Live class cancelled', icon: CalendarXIcon },
+  'live.started': { label: 'Live class started', icon: BroadcastIcon },
 };
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {

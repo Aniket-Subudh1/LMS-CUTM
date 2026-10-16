@@ -983,7 +983,7 @@ Rules: use a transaction only when two or more writes must commit together (lock
 - Never `catch` without rethrowing, converting to `AppError`, or returning a typed failure. Never `catch {}`.
 - User-facing messages are written in plain English for the person on screen; vendor or stack details go to `log.error` with an `errorId`.
 - Background jobs throw on failure (BullMQ retries); they never swallow.
-- Route handlers return precise status codes (`400` invalid, `401` no session, `403` bad signature, `404` not found, `409` conflict, `429` rate-limited).
+- Route handlers return precise status codes (`400` invalid, `401` no session or a bad webhook signature (06 §3), `404` not found, `409` conflict, `429` rate-limited).
 - `notFound()` for missing or inaccessible records (never `403`, which leaks existence).
 
 ## 8. Comments and documentation

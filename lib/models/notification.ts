@@ -1,7 +1,14 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 
 // 06 §9. Each milestone adds the kinds it creates.
-export const NOTIFICATION_KINDS = ['plan.requested', 'plan.published'] as const;
+export const NOTIFICATION_KINDS = [
+  'plan.requested',
+  'plan.published',
+  'live.scheduled',
+  'live.changed',
+  'live.cancelled',
+  'live.started',
+] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 const notificationSchema = new Schema(

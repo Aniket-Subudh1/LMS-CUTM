@@ -1,8 +1,15 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// 09 §7. Later milestones add their secret variables (S3_SECRET_ACCESS_KEY, LIVEKIT_API_SECRET, …) here.
-const SECRET_VARS = ['SESSION_PASSWORD', 'SMTP_PASSWORD', 'MONGODB_URI', 'REDIS_URL'];
+// 09 §7. Each milestone adds the secret variables it introduces here.
+const SECRET_VARS = [
+  'SESSION_PASSWORD',
+  'SMTP_PASSWORD',
+  'MONGODB_URI',
+  'REDIS_URL',
+  'S3_SECRET_ACCESS_KEY',
+  'LIVEKIT_API_SECRET',
+];
 const FORBIDDEN_NAMES = ['SESSION_PASSWORD', 'S3_SECRET', 'PRIVATE_KEY', 'ANTHROPIC_API_KEY'];
 
 const values = SECRET_VARS.flatMap((name) => {

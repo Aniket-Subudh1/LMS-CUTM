@@ -115,8 +115,18 @@ export const SETTINGS = {
       "How credit courses are marked: CUTM's Examination Policy. Each offering keeps the policy as it was when the offering was created.",
     fieldHelp: {},
   },
+  attendance: {
+    // Q-17: 75 % is the proposed threshold until the client confirms it.
+    schema: z.object({ liveThresholdPct: percent(75) }),
+    label: 'Live-class attendance',
+    description: 'When a student counts as present in a live class whose attendance is taken automatically.',
+    fieldHelp: {
+      liveThresholdPct:
+        'A student is present when they were in the class for at least this share of the time from its start to its end. Time in two tabs at once counts once. A teacher can still change any student by hand.',
+    },
+  },
 } as const;
 
-export const settingsKey = z.enum(['lessons', 'evaluation']);
+export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance']);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

@@ -35,3 +35,9 @@ export const CoursewarePageJob = z.object({
   force: z.boolean(),
 });
 export type CoursewarePageJob = z.infer<typeof CoursewarePageJob>;
+
+// `compute/finalizeLiveSession` and the hourly `compute/liveSweep` (06 §6, M03): derived attendance for a class.
+export const FinalizeLiveJob = z.object({ sessionId: objectId });
+export type FinalizeLiveJob = z.infer<typeof FinalizeLiveJob>;
+export const LiveSweepJob = z.object({});
+export type LiveSweepJob = z.infer<typeof LiveSweepJob>;

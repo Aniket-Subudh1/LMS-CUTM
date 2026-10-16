@@ -199,7 +199,7 @@ Two checks, always both:
 | Queue | Job names | Concurrency / instance | Producers |
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
-| `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `assessmentSweep`, `gradeCode`, `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
+| `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
 | `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 
@@ -209,7 +209,7 @@ Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone 
 |---|---|---|
 | `github-nightly` | `30 1 * * *` | enqueue `sync/githubProject` for every active GitHub project |
 | `internal-marks-nightly` | `0 2 * * *` | enqueue `compute/internalMarks` for every active UGC offering (safety net) |
-| `live-finalize-hourly` | `5 * * * *` | finalize live sessions past scheduled end + 30 min that never received `room_finished` |
+| `live-finalize-hourly` | `5 * * * *` | `compute/liveSweep`: end live sessions still open 30 min after their scheduled end and finalize ended sessions left unfinalized (M03) |
 | `assessment-sweep` | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) |
 | `engagement-nightly` | `30 2 * * *` | `compute/engagementSnapshot` per active offering (M10) |
 | `proctor-retention` | `0 3 * * *` | `compute/proctorRetention` (M05) |

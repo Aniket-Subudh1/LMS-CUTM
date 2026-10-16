@@ -1,0 +1,17 @@
+# LiveKit server for local development and the e2e run (11 §3.1). DEVELOPMENT KEYS ONLY: production runs its own key
+# pair and webhook URL (11 §4.1). Start it with `livekit-server --config livekit.yaml` (macOS release binary) or
+# `docker compose --profile live up -d livekit` (Linux; the service uses the host network).
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50060
+  use_external_ip: false
+keys:
+  lmsdevkey: lms-dev-livekit-secret-at-least-32-chars
+webhook:
+  api_key: lmsdevkey
+  # `npm run dev` listens on 3000 and the e2e build on 3100; the engine sends every event to both.
+  urls:
+    - http://localhost:3000/api/webhooks/live
+    - http://localhost:3100/api/webhooks/live

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
-import { skillAttendancePct } from '@/lib/domain/ranges';
+import { attendancePct } from '@/lib/domain/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
@@ -175,7 +175,7 @@ export async function getMyProgress(offeringId: string): Promise<LearnerProgress
   return {
     completed,
     published: lessons.length,
-    attendancePct: content.category === 'skill' ? skillAttendancePct(completed, lessons.length) : null,
+    attendancePct: content.category === 'skill' ? attendancePct(completed, lessons.length) : null,
     watchedMin: Math.round(watched.reduce((sum, p) => sum + p.watchedSec, 0) / 60),
     next: next && { id: next.id, title: next.title },
   };

@@ -105,35 +105,12 @@ If Docker Hub rate-limits anonymous pulls, the Google mirror serves the same off
 
 ### 3.1 Live engine locally (M03, reference LiveKit — verified with v1.13.9)
 
-```yaml
-# livekit.yaml
-port: 7880
-rtc:
-  tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50060
-  use_external_ip: false
-keys:
-  lmsdevkey: lms-dev-livekit-secret-at-least-32-chars
-webhook:
-  api_key: lmsdevkey
-  urls:
-    - http://host.docker.internal:3000/api/webhooks/live
-```
+`livekit.yaml` in the repository holds the development keys (`lmsdevkey`, matching `.env.example`) and sends webhooks to `http://localhost:3000/api/webhooks/live` (`npm run dev`) and `http://localhost:3100/api/webhooks/live` (the e2e build). Start the engine one of two ways:
 
-Add to `compose.yaml` under a profile so it starts only when needed:
+- **Without Docker (macOS):** `brew install livekit`, or download `livekit_<version>_darwin_arm64.tar.gz` from the LiveKit server releases on GitHub; then `livekit-server --config livekit.yaml`.
+- **Docker (Linux):** `docker compose --profile live up -d livekit`. The service uses the host network, so the webhook URLs reach the app on `localhost` and WebRTC needs no port mapping (on Docker Desktop, turn host networking on first).
 
-```yaml
-  livekit:
-    image: livekit/livekit-server:v1.13
-    profiles: ['live']
-    command: ['--config', '/livekit.yaml']
-    volumes: ['./livekit.yaml:/livekit.yaml:ro']
-    ports: ['7880:7880', '7881:7881', '50000-50060:50000-50060/udp']
-    extra_hosts: ['host.docker.internal:host-gateway']
-```
-
-`docker compose --profile live up -d`. Env: `LIVEKIT_URL=ws://localhost:7880`, `LIVEKIT_API_URL=http://localhost:7880`, key/secret as in the file. Verified behaviour: tokens with the grants in 06 §4.3 connect; the webhook receiver gets `room_started`, `participant_joined` (identity = user id), `participant_left`, `room_finished`, each signed and accepted by `WebhookReceiver.receive`. Event `createdAt` is **Unix seconds** — convert with `new Date(Number(createdAt) * 1000)`.
+Env: `LIVEKIT_URL=ws://localhost:7880`, `LIVEKIT_API_URL=http://localhost:7880`, key/secret as in the file. Run the worker too (`npm run worker:dev`): it finalizes attendance after a class ends. Verified behaviour: tokens with the grants in 06 §4.3 connect; the webhook receiver gets `room_started`, `participant_joined` (identity = user id), `participant_left`, `room_finished`, each signed and accepted by `WebhookReceiver.receive`. Event `createdAt` is **Unix seconds** — convert with `new Date(Number(createdAt) * 1000)`. The engine closes a room about 20 s after its last participant leaves and sends `room_finished`; before the class's scheduled end the LMS keeps the class live and the room opens again when someone rejoins (Q-50).
 
 ### 3.2 Code runner locally (M05, reference Judge0 CE 1.13.1)
 

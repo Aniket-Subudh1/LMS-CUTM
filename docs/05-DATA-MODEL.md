@@ -190,25 +190,26 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | status | S | `scheduled` · `live` · `ended` · `cancelled` |
 | roomName | S | `ls-<sessionId>`; unique |
 | attendanceMode | S | `manual` · `derived` (skill offerings: always `derived`) |
-| finalizedAt | D? | derived attendance computed (07 §10) |
+| finalizedAt | D? | derived attendance computed (07 §10); stored as `null` until then |
 | createdBy | Id | |
 
-Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ roomName: 1 }` unique.
+Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique.
+Invariants: an offering holds at most 500 sessions (`scheduleSession` refuses the 501st, A-73), so its session reads are bounded. A `scheduled` session whose `scheduledEnd` has passed was never held; it keeps its status and produces no attendance.
 
 ### 4.4 `attendance`
 | Field | Type | Rules |
 |---|---|---|
 | sessionId, offeringId, studentId | Id | |
-| status | S | `present` · `absent` |
+| status | S? | `present` · `absent`; unset while the class runs, set when it is finalized or the teacher marks the student (M03) |
 | source | S | `manual` · `derived` |
-| presence | `[{ joinedAt: D, leftAt: D? }]` | from live-engine webhooks; max 50 (reconnects) |
+| presence | `[{ sid: S, joinedAt: D, leftAt: D? }]` | from live-engine webhooks, one entry per connection (`sid` is the engine's connection id, so a repeated or reordered event changes nothing); max 50, the oldest dropped (Q-52) |
 | presenceSec | N | computed at finalize |
 | focusedSec | N | Σ from focus beacons |
 | lastFocusAt | D? | last accepted focus beacon (anti-inflation, 07 §9) |
 | markedBy, markedAt | Id?, D? | manual marks and overrides |
 
 Indexes: `{ sessionId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 1 }`.
-Invariants: a manual mark overrides a derived one and is audited (`attendance.marked`).
+Invariants: a manual mark overrides a derived one and is audited (`attendance.marked`). A student's attendance % counts only rows with a status (A-72).
 
 ## 5. Assessment and marks
 

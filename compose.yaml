@@ -41,6 +41,15 @@ services:
     image: axllent/mailpit:v1.31
     ports: ['1025:1025', '8025:8025']
 
+  # Live classes (M03): `docker compose --profile live up -d livekit`. Host networking, so the webhooks in livekit.yaml
+  # reach the app on localhost and WebRTC needs no port mapping (Linux, or Docker Desktop with host networking on).
+  livekit:
+    image: livekit/livekit-server:v1.13
+    profiles: ['live']
+    command: ['--config', '/livekit.yaml']
+    volumes: ['./livekit.yaml:/livekit.yaml:ro']
+    network_mode: host
+
 volumes:
   mongo-data:
   redis-data:

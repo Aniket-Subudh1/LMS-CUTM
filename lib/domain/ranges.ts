@@ -44,8 +44,16 @@ export function acceptVideoBeacon({
   return { accepted: newSec <= allowedSec, newSec, allowedSec };
 }
 
-// SKL-04: a skill course's attendance is the share of its published lessons the student has completed.
-export function skillAttendancePct(completedLessons: number, publishedLessons: number): number | null {
-  if (publishedLessons <= 0) return null;
-  return roundHalfUp((100 * completedLessons) / publishedLessons, 2);
+// 07 §9 (LIV-03): focused seconds may grow at most with real time plus 5 s of slack, and 120 s per beacon.
+export function acceptFocusBeacon({
+  focusedSec,
+  lastFocusAt,
+  now,
+}: {
+  focusedSec: number;
+  lastFocusAt: Date | null;
+  now: Date;
+}): boolean {
+  const allowedSec = lastFocusAt ? Math.min(120, (now.getTime() - lastFocusAt.getTime()) / 1000 + 5) : 120;
+  return focusedSec <= allowedSec;
 }

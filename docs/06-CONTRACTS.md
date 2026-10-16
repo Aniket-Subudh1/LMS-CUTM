@@ -50,7 +50,8 @@ export type ActionResult<T> =
 | `objectId` | `z.string().regex(/^[a-f\d]{24}$/i)` | |
 | `page` | `z.coerce.number().int().min(1).max(10_000).default(1)` | `pageSize = 25`; `max per page = 100` |
 | `richText` | the editor's hidden input (a JSON string, `''` when empty), ≤ 100 KB, parsed into `RichTextDoc`: a `doc` whose nodes and marks are StarterKit's (`paragraph text heading bulletList orderedList listItem blockquote codeBlock hardBreak horizontalRule`; marks `bold italic underline strike code link`), any other type → "Unsupported content." A document without text becomes `null` | `lib/schemas` may import only `zod`, so the type list stands in for a test render; `lib/domain/rich-text.ts` renders with `@tiptap/html/server` and its tests prove the output is inert. DAL reads parse stored documents with `RichTextDoc` |
-| `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)` transformed with `parseIstLocal` | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z` |
+| `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)`; the action converts it with `parseIstLocal` (`lib/schemas` imports only `zod`) | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z`. Added with its first caller (M04) |
+| `istTime` | `HH:mm`, 00:00–23:59 (M03) | `<input type="time">`; the action joins it to an `istDate` and converts with `parseIstLocal` (scheduling a live class: date, start time and length, A-68) |
 | `istDate` | `YYYY-MM-DD` string, checked to be a real date | for calendar dates; `lib/schemas` imports `zod` only, so the action converts it with `istDateToDate` (`lib/domain/time.ts`) to a `Date` at 00:00 IST |
 | `marks` | `z.coerce.number().min(0).max(1000)` then `roundHalfUp(x, 2)` | all hand-entered marks |
 | `ids[]` | `z.array(objectId).max(n)` with the `name[]` form convention | |
@@ -108,11 +109,12 @@ closeRoom(roomName: string): Promise<void>
 parseWebhook(rawBody: string, authorization: string | null): Promise<LiveEvent>   // throws AppError('FORBIDDEN') if the signature is invalid
 
 type LiveEvent =
-  | { type: 'joined' | 'left'; roomName: string; userId: string; at: Date }
+  | { type: 'joined'; roomName: string; userId: string; sid: string; at: Date }
+  | { type: 'left'; roomName: string; userId: string; sid: string; joinedAt: Date; at: Date }
   | { type: 'room_finished'; roomName: string; at: Date }
   | { type: 'ignored' };
 ```
-LiveKit mapping (verified against `livekit-server-sdk` 2.19.1 types): `new AccessToken(key, secret, { identity: userId, name, ttl })`, `addGrant({ roomJoin: true, room, canPublish, canSubscribe: true, canPublishData: true, roomAdmin: role === 'host' })`, `await toJwt()`. Webhooks: `new WebhookReceiver(key, secret)`, `await receive(body, authHeader)`; events `participant_joined`, `participant_left`, `room_finished`; others → `ignored`. Students get `canPublish: true` (they may speak when the teacher allows in the room UI); `roomAdmin` only for hosts.
+LiveKit mapping (verified against `livekit-server-sdk` 2.19.1 types): `new AccessToken(key, secret, { identity: userId, name, ttl })`, `addGrant({ roomJoin: true, room, canPublish, canSubscribe: true, canPublishData: true, roomAdmin: role === 'host' })`, `await toJwt()`. Webhooks: `new WebhookReceiver(key, secret)`, `await receive(body, authHeader)`; events `participant_joined`, `participant_left`, `room_finished`; others (including `participant_connection_aborted`) → `ignored`. `sid` is `event.participant.sid`, one per connection (a reconnect or a second tab is a new one); a `left` carries the connection's own `participant.joinedAtMs`, so a leave whose join never arrived still gives its interval. `closeRoom` treats the engine's `ServerError` with status 404 (`not_found`) as already closed. Students get `canPublish: true` (they may speak when the teacher allows in the room UI); `roomAdmin` only for hosts.
 
 ### 4.4 Code runner — `code-runner.ts` (M05; reference: Judge0 CE 1.13.1)
 ```ts
@@ -205,7 +207,8 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `compute/internalMarks` | `{ offeringId }` | `ce-<offeringId>-<minuteBucket>` | full recompute, upsert | 07 §2 |
 | `compute/attainment` | `{ offeringId }` or `{ programId, batchId, termIds }` | `att-<id>-<minuteBucket>` | full recompute, upsert latest | 07 §4–5 |
 | `media/transcodeLesson` | `{ lessonId }` | `transcode-<lessonId>` | re-running overwrites the same `lowKey` | 480p data-saver copy (M02 T8b) |
-| `compute/finalizeLiveSession` | `{ sessionId }` | `live-final-<sessionId>` | sets `finalizedAt`; manual marks untouched | 07 §10 |
+| `compute/finalizeLiveSession` | `FinalizeLiveJob { sessionId }` (M03) | `live-final-<sessionId>` | one transaction: the claim on `finalizedAt` and every write commit together, so a crash is retried from the start and a second run finds nothing to claim; manual marks untouched | 07 §10 |
+| `compute/liveSweep` | `LiveSweepJob {}` (M03) | scheduler `live-finalize-hourly` | ends a session only while it is `live`; re-adding a finalize job is deduped by its id, and a failed one is retried instead | ends classes still live 30 min after `scheduledEnd` (at `scheduledEnd`, closing their rooms) and finalizes ended sessions left unfinalized for 10 min (02 §8) |
 | `compute/assessmentSweep` | `{}` | scheduler | `dueNotifiedAt` guards reminders; auto-submit is idempotent | 24 h reminders (COM-03) + auto-submit expired attempts (M04) |
 | `compute/gradeCode` | `{ submissionId }` | `code-<submissionId>` | overwrites the same results | M05 |
 | `compute/engagementSnapshot` | `{ offeringId }` | `eng-<offeringId>-<day>` | overwrites `enrollments.engagement` | M10 |
@@ -225,7 +228,7 @@ Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schem
 |---|---|---|---|
 | `lessons` | `completePct` (90) | 07 §8, skill attendance | proposed — confirm Q-17 |
 | `evaluation` (M01b) | theory `theoryMidTerm1` 15, `theoryMidTerm2` 15, `theoryAssignment` 5, `theoryAttendance` 5, `theoryEndSem` 60; attendance `attendanceMinPct` 75 and bands `band1Pct` 90 → `band1Marks` 5, 85 → 4, 80 → 3, 75 → 2; practice rubric `practiceConcept` 5, `practicePlanning` 10, `practiceResult` 10, `practiceRecord` 10, `practiceConduct` 5, `practiceViva` 10; project rubrics `projectRelevance` 5, `projectLiterature` 5, `projectMethodology` 10, `projectAnalysis` 10, `projectInterpretation` 10, `projectReport` 10, `projectExtRelevance` 10, `projectExtReport` 20, `projectExtDefence` 20 | 07 §2; copied onto each credit offering at creation (05 §3.7) | CUTM's Examination Policy (2020). Rules: theory parts total 100; bands fall and their marks do not rise or exceed the attendance part; the practice rubric totals 50; the project rubrics total 100. Q-38, Q-41 |
-| `attendance` | `liveThresholdPct` (75) | 07 §10 | proposed — confirm Q-17 |
+| `attendance` (M03) | `liveThresholdPct` (75) | 07 §10; read by the finalize job | proposed — confirm Q-17 |
 | `ceTrend` | `window` (6), `minPoints` (3), `slopeThreshold` (2) | 07 §3 | proposed |
 | `attainment` | `targetPct` (60), `level3Pct` (70), `level2Pct` (60), `level1Pct` (50), `cieWeight` (0.5), `seeWeight` (0.5), `defaultTargetLevel` (2) | 07 §4 | proposed — confirm Q-07 |
 | `grading` | `scale` (O ≥ 90 → 10, A+ ≥ 80 → 9, A ≥ 70 → 8, B+ ≥ 60 → 7, B ≥ 50 → 6, C ≥ 45 → 5, P ≥ 40 → 4, F < 40 → 0), `absentGrade` ("Ab", 0), `showSgpa` (true) | 07 §6 | proposed (UGC CBCS letter grades) — confirm Q-19, Q-21 |
@@ -278,5 +281,8 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 | `assessment.dueSoon` | students without a submission | closes within 24 h (hourly scheduler) | same |
 | `results.published` | students with a submission | results published | same |
 | `live.scheduled` | enrolled students | session scheduled | `/courses/<id>/live/<sid>` |
+| `live.changed` | enrolled students | a scheduled session's title, time, length or attendance mode changed (M03 decision 1) | same |
+| `live.cancelled` | enrolled students | a scheduled session cancelled (M03 decision 1) | same |
+| `live.started` | enrolled students | the teacher started the session (M03 decision 1) | same |
 | `task.assigned` | assignee | tracker task assigned | `/courses/<id>/projects/<pid>` |
 | `gradeSheet.published` | students in the term | grade sheet published | `/results` |

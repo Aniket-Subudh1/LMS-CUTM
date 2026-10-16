@@ -70,5 +70,8 @@ export const istDate = z
     return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
   }, 'Enter a real date.');
 
+// A wall-clock time typed into <input type="time"> (HH:mm); the action reads it as IST with parseIstLocal (06 §2).
+export const istTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Enter a time.');
+
 export const ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
 export type Role = (typeof ROLES)[number];

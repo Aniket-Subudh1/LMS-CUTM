@@ -43,3 +43,13 @@ describe('evaluation policy (07 §2)', () => {
     });
   });
 });
+
+describe('live-class attendance (07 §10)', () => {
+  const attendance = SETTINGS.attendance.schema;
+  it('defaults to 75 % of the class and takes a percentage', () => {
+    expect(attendance.parse({})).toEqual({ liveThresholdPct: 75 });
+    expect(attendance.parse({ liveThresholdPct: '80' })).toEqual({ liveThresholdPct: 80 });
+    expect(attendance.safeParse({ liveThresholdPct: '0' }).success).toBe(false);
+    expect(attendance.safeParse({ liveThresholdPct: '101' }).success).toBe(false);
+  });
+});

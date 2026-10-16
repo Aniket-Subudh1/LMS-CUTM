@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { db } from '@/lib/db';
 import { log } from '@/lib/log';
+import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
@@ -10,6 +11,7 @@ import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
+import { LiveSession } from '@/lib/models/live-session';
 import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
@@ -32,6 +34,8 @@ const models = [
   LessonProgress,
   Offering,
   Enrollment,
+  LiveSession,
+  Attendance,
   EngagementDaily,
   Notification,
   Setting,

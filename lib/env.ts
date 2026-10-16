@@ -20,6 +20,11 @@ const Env = z.object({
   SMTP_PASSWORD: z.string().optional(),
   MAIL_FROM: z.string().min(3),
   COURSEWARE_URL: z.url().default('https://courseware.cutm.ac.in'),
+  // 11 §2: the browser connects to LIVEKIT_URL (ws/wss); the server calls the room service at LIVEKIT_API_URL.
+  LIVEKIT_URL: z.url(),
+  LIVEKIT_API_URL: z.url(),
+  LIVEKIT_API_KEY: z.string().min(1),
+  LIVEKIT_API_SECRET: z.string().min(32),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
