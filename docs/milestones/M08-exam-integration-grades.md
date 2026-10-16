@@ -1,5 +1,7 @@
 # M08 · Exam-system integration, marks lock, grade sheet
 
+> **Changed by M01b.** The export has columns per component the offering has (theory internal /40, practice internal /50, project internal /50) instead of scheme components, and the import takes the matching external marks (theory end-semester /60, practice and project external /50). The grade sheet follows 07 §6: each component out of 100, `coursePercentage` credit-weighted and rounded up once; non-credit offerings get no grade. `assertUnlocked` guards "refresh evaluation copy" instead of `rebindScheme`. The full grade table and pass rules are Q-40.
+
 | | |
 |---|---|
 | Depends on | M06 |

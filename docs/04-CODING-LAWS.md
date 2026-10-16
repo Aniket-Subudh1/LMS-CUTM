@@ -68,7 +68,7 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 
 | Thing | Convention | Example |
 |---|---|---|
-| Files | kebab-case | `evaluation-scheme.ts` |
+| Files | kebab-case | `curriculum-entry.ts` |
 | React components | PascalCase, one exported component per shared file | `ActionForm` in `components/action-form.tsx` |
 | Models | Singular PascalCase model, plural camelCase collection (Mongoose default) | `Offering` → `offerings` |
 | DAL functions | verb + noun, describing the result | `listOfferingAssessments`, `getGradeSheet` |
@@ -350,12 +350,12 @@ export async function listMyOfferings(page: number): Promise<{ rows: OfferingRow
 Rules: exported DAL functions begin with `requireViewer()` and, for offering-scoped data, `offeringAccess()`. They return DTOs (string ids, no Mongoose documents, no `ObjectId`). Students' data is filtered by `studentId: viewer.id` when access is `'learn'`. When a function uses `use cache` (only those listed in 02 §5), the cached part is an unexported inner function taking ids:
 
 ```ts
-async function readSchemeVersion(id: string) {
+async function readCurriculumOptions(programId: string) {
   'use cache';
-  cacheLife('max');
-  cacheTag(`scheme:${id}`);
+  cacheLife('minutes');
+  cacheTag('catalog');
   await db();
-  return EvaluationScheme.findById(id, { /* projection */ }).lean();
+  return CurriculumEntry.find({ programId }, { /* projection */ }).limit(1000).lean();
 }
 ```
 

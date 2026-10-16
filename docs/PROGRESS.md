@@ -21,7 +21,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M00 Foundation | Done — awaiting human validation | | shadcn/ui adopted at the client's request (entry below) |
 | M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
-| M01b Catalogue v2 | In progress | | Decision entry 2026-10-15 · M01b. Replaces M01's catalogue, schemes and offering creation |
+| M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
@@ -80,11 +80,12 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-41 | How do assessments map to the policy's parts — Mid-term I (online), Mid-term II (presentation), assignment, attendance points from M03, the practice and project rubrics — and who enters the external practice and project marks? | @client / @dev | — | **M06** | Open |
 | Q-42 | What must the LMS do with the 75 % attendance minimum: show it, or produce an eligibility list? | @client | Stored only | M06, M08 | Open |
 | Q-43 | Programmes with fewer than 12 POs (MBA, BBA, M.Sc): may codes stay unused? Who supplies non-engineering PO titles? (Agriculture pages carry their own) | @client | An untitled code shows the code itself | M09 | Open |
-| Q-44 | Who maintains the course-list CSV after the first load, and how do the repository's "programme + stream" values map to LMS programmes? | @client | Converted once by the developer; admins keep that CSV | — | Open |
+| Q-44 | Who maintains the course-list CSV after the first load, and how do the repository's "programme + stream" values map to LMS programmes? The 2021 repository spells one programme several ways (BTech / B.Tech / B Tech; M.Sc / MSc; B.Sc / B.Sc. / B.SC) and lists courses open to all under "All", "CUTM" and "MOOC"; converted as written it gives 39 programmes | @client | Converted once by the developer; admins keep that CSV | — | Open |
 | Q-45 | Are Certificate, Advanced certificate and Diploma courses credit-bearing? Which courses are 0-0-0? | @client | The credits in the course list decide | — | Open |
 | Q-46 | Should courseware session links (YouTube, slides) become lesson links? | @client | Not imported (backlog) | — | Open |
 | Q-47 | An offering's department comes from the batch's programme, so a Mathematics HoD does not see maths taught to B.Tech CSE. Acceptable? | @dev | As described (A-56) | — | Open |
 | Q-48 | Is the courseware "Faculty" the course coordinator? | @client | Prefilled only when exactly one faculty member has that name | — | Open |
+| Q-49 | A courseware page with no course code is matched only by a title that exactly one catalogue course has; 49 of the first 264 live pages had neither, so no import can reach them. Should an admin be able to attach a page to a course by hand, or will CUTM add codes to those pages? | @client / @dev | Not built; the run lists each such page | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -747,3 +748,85 @@ Aniket pointed at courseware.cutm.ac.in and CUTM1535 (3-0-1) and asked for the C
 - **Course list:** a CSV upload (new ADM-06); the repository PDFs are converted to it once, offline. Courseware import is ADM-07.
 
 The build plan is `docs/milestones/M01b-catalog-v2.md`. Questions answered or changed: Q-01, Q-02, Q-05, Q-08, Q-18, Q-19, Q-20, Q-27; new questions Q-37 – Q-48; assumptions A-12 and A-16 updated, A-54 – A-64 added.
+
+### 2026-10-16 · M01b Catalogue v2 (T1–T14) · Claude Code, at Aniket's request
+
+Built to `docs/milestones/M01b-catalog-v2.md` in six commits: docs → domain → courseware → core → courseware fixes → real-data fixes, plus this report. At the end, loading CUTM's own data exposed three defects, all fixed in `M01b(import)`:
+- A credit part could not exceed 20, but CUTM lists 0+0+24 internships, 2+0+21 domain tracks and 0+0+30 workshops (A-65).
+- A second upload of the real list linked 7 "MSc" courses to "M.Sc", because programmes were looked up by code before name (A-66, new test).
+- The courseware import read 2.6 pages a second until the site stopped answering. It now reads at most one page a second (A-67, Q-37).
+
+Where the build differs from the plan:
+- Import notes on a course (`issues`) are plain sentences, not codes.
+- A run's failed pages are stored as `failures` (Mongoose reserves `errors`).
+- There is no separate `saveModules` or `saveSyllabusFile`: `saveSyllabus` saves the modules, the projects and the PDF from one dialog.
+- The readiness "Books" step counts textbooks and references together.
+- Courseware pages that give a weekly plan instead of numbered sessions (like page 1084) produce no session plan.
+
+**Created** (new unless marked *changed* or *deleted*)
+- Docs: `docs/milestones/M01b-catalog-v2.md`. *Changed:* 00–11 and this file. Each later milestone (M01, M02, M03, M04, M06, M07, M08, M09, M10, M11) now opens with a note on what M01b changed for it.
+- Schemas: *changed* `lib/schemas/structure.ts` (+ test), `settings.ts` (+ `settings.test.ts`, new) and `jobs.ts`.
+- Domain:
+  - New: `lib/domain/catalog.ts`, `evaluation.ts` and `courseware.ts`, each with tests.
+  - *Changed:* `csv.ts`, `round.ts`, `time.ts` and `email-templates.ts` (with their tests).
+  - *Deleted:* `lib/domain/structure.ts` (+ test).
+- Courseware adapter:
+  - New: `lib/integrations/courseware.ts` (+ test) and `tests/fixtures/courseware/{500,836,1084,1114,1115,1160,1173,1250}.html` (trimmed real pages, contact details replaced).
+  - *Changed:* `lib/env.ts`, `.env.example`, `tests/setup.ts` (`COURSEWARE_URL`) and `.prettierignore`.
+- Models: new `lib/models/curriculum-entry.ts` and `sync-run.ts`. *Changed:* `course.ts`, `program.ts`, `offering.ts`, `user.ts` and `scripts/sync-indexes.ts`. *Deleted:* `evaluation-scheme.ts`.
+- Scripts: new `scripts/migrate-catalog-v2.ts` (`npm run db:migrate:catalog-v2`). *Changed:* `scripts/seed.ts` and `package.json`.
+- Access and data:
+  - *Changed* `lib/auth/access.ts` (`canEditCourse`, `requireCourseEditor`).
+  - New `lib/data/imports.ts`.
+  - *Changed* `courses.ts`, `structure.ts`, `offerings.ts`, `workspace.ts` and `settings.ts`.
+  - *Deleted:* `lib/data/schemes.ts`.
+- Actions:
+  - New: `app/(app)/catalog/actions.ts` and `app/(app)/admin/imports/actions.ts`.
+  - *Changed:* `app/(app)/admin/actions.ts`, `admin/offerings/actions.ts`, `admin/settings/actions.ts`, `courses/[offeringId]/plan/actions.ts` and `app/(app)/actions.ts`.
+  - *Deleted:* the `admin/courses` and `admin/schemes` actions.
+- Worker: new `worker/jobs/sync.ts`. *Changed:* `worker/index.ts`, `worker/jobs/mail.ts` and `lib/queue.ts`.
+- Screens:
+  - New: `app/(app)/catalog/page.tsx`, `[id]/page.tsx` and `course-fields.tsx`; `app/(app)/admin/imports/page.tsx` and `[runId]/page.tsx`; `components/checklist.tsx` and `components/co-po-editor.tsx`.
+  - *Changed:* the programme pages, the offerings page, the settings pages, the workspace Overview and plan page, the home page, `components/app-nav.tsx`, `components/co-po-matrix.tsx` and `lib/format.ts`.
+  - *Deleted:* `/admin/courses` and `/admin/schemes`.
+- Tests:
+  - Integration: new `course-list.test.ts` and `courseware-import.test.ts`; *changed* `catalog`, `content`, `mail-worker`, `offerings`, `structure`, `users` and `workspace`; *deleted* `schemes.test.ts`.
+  - E2E: new `catalog.spec.ts` and `fixtures/course-list.csv`; *changed* `admin-structure.spec.ts` and `content.spec.ts`.
+  - *Changed:* `tests/factories.ts`.
+
+**Not done**
+- No human has worked through the M01b validation checklist yet, and the CI e2e job has not run on GitHub.
+- The 2021 Course Repository was converted only to test the import. The CSV is not in the repository and has not been loaded into any real database.
+  - Its programme names need Q-44 answered before a real first load.
+  - The 2020 repository was not converted.
+- A full courseware import has not been run. The first run handled 235 pages before the site stopped answering; the second, rate-limited run handled 78. Both were stopped by hand.
+- M06 and M08 must be reworked for the evaluation policy before they start, and that rework waits on Q-41; notes are at the top of both files.
+- Two kinds of page are not handled: pages that cannot be matched to a course (Q-49) and courseware session links (Q-46).
+- No keyboard-only or screen-reader pass was done.
+
+**Assumptions** — A-54 to A-67 (§4). A-65, A-66 and A-67 come from the real data.
+
+**Open questions** — Q-37 to Q-49 (§3). Q-37 and Q-44 now include what the real data showed; Q-49 is new.
+
+**Verification** (14–16 Oct 2026, on this machine: MongoDB and Redis local; RustFS 1.0.1 and Mailpit 1.31.6 from their macOS release binaries)
+- `npm run check` → eslint clean, typecheck clean, unit `Test Files 18 passed, Tests 233 passed`. `npx prettier --check` on every changed file → clean.
+- `npm run test:integration` → `Test Files 14 passed, Tests 140 passed`.
+  - The new `course-list` test fails with the old code-first lookup and passes with the fix.
+- `npm run build` → compiled. The e2e database was dropped, given its indexes and reseeded.
+- `npx playwright test` → `11 passed, 1 failed` on the first run: the student's click on the new lesson in `content.spec.ts`. The error details were lost before they were read. The next three runs (one of that file, two of the full suite) gave `12 passed` each.
+- Migration (earlier in this session): on a scratch database shaped like M01/M02 data, including two courses with one code, the first run printed `{"coursesMerged":1,"coursesChanged":2,"linksCreated":3,"programmesChanged":2,"offeringsChanged":3}` and the second `nothing to change`. The scratch database was then dropped.
+- Live courseware, one page: `/course/836` gave exactly the AC-M01b-02 values. A sample of 35 live pages: 31 had outcomes and modules, 30 had sessions, 24 had codes.
+- Real course list: CUTM's `CUTM_Course-Repository-2021_26.02-1.pdf` (54 pages), converted offline by a throwaway script.
+  - Merged cells take their value from the row above. Rows the script could not settle went to a review file instead of being guessed.
+  - Result: 1,756 PDF rows → 1,705 CSV rows (sha256 `1641c684…`), with 1,629 codes and 39 programme names.
+  - 127 rows were held back: 79 with no T+P+Pj in the PDF, 37 unreadable programme cells, 6 whose credits differ from T+P+Pj, 4 with no credits, and 1 code listed twice with different titles.
+- Uploading it on `/admin/imports` (scratch database with the e2e fixtures):
+  - First try: refused, with every bad row named and nothing written. Causes: a credit part above 20, and type cells the converter had run together.
+  - After the fixes: 1,705 rows in 0.8 s, giving 1,625 new courses (4 seeded codes matched), 1,705 links and 39 new programmes.
+  - Same file again: 0 new courses, 0 updated, 0 new links. Before the name-first fix it added 7 links.
+  - Catalogue with 1,630 courses: 66 pages of 25, each in about 0.3 s. At 390 px only the table scrolls sideways (`scrollWidth` 390).
+- Live courseware with that catalogue, "Pages not imported yet":
+  - First 90 s: 264 pages listed, 164 imported and 71 failed with a plain reason (49 with no code and no unique title, 22 with codes outside the catalogue and no credits). Then the site timed out (90 s) and jobs retried as designed.
+  - With the one-a-second limit: 78 jobs in 88 s.
+  - Of the 175 pages imported: 168 have outcomes, 156 modules and 163 a session plan, but only 8 a CO–PO mapping. 30 became drafts (codes not in the 2021 list).
+- Screenshots at 1440 and 390 px (catalogue, a 0-0-24 course, imports): reviewed in the session, not committed.

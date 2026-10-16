@@ -1,5 +1,7 @@
 # M11 · Hardening, load, security, backups, launch
 
+> **Changed by M01b.** The pilot's structure is loaded, not typed: back up, run `db:migrate:catalog-v2`, upload CUTM's course list CSV on `/admin/imports`, run the courseware import ("Pages not imported yet") overnight, then coordinators finish each course through its readiness checklist (11 §5.1). The Examination Policy is reviewed in Settings → Evaluation instead of building schemes (Q-38, Q-41).
+
 | | |
 |---|---|
 | Depends on | all previous milestones in the release being launched |

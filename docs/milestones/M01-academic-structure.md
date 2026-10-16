@@ -1,5 +1,7 @@
 # M01 · Academic structure & administration
 
+> **Superseded in part by M01b (catalogue v2, 15 Oct 2026).** This file records what M01 built. Since M01b a course exists once per code with T-P-Pj credits and reaches programmes through curriculum entries (with baskets); programmes have no category and only title the fixed codes PO1–PO12, PSO1–PSO3; evaluation schemes, `/admin/schemes` and `/admin/courses` are gone — the Examination Policy is one Settings form copied onto each offering — and offerings are created per section from the batch's curriculum. For the current model read `M01b-catalog-v2.md`, 05 and 06; AC-M01-01/02 no longer apply.
+
 | | |
 |---|---|
 | Depends on | M00 |

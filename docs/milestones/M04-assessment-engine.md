@@ -1,5 +1,7 @@
 # M04 · Assessment engine
 
+> **Changed by M01b.** "ugc" means a credit offering and "skill" a non-credit (0-0-0) one (`offering.category` is derived from credits). Course outcomes carry one to three Bloom levels (`bloomLevels`); an item still has its own single Bloom level. Which assessments count as Mid-term I/II, assignment or practice/project rubric marks is decided with M06 (Q-41) — keep `mode` as specified here.
+
 | | |
 |---|---|
 | Depends on | M02 (M03 not required) |

@@ -1,5 +1,7 @@
 # M02 · Content, course plan, announcements, skill-course progress
 
+> **Changed by M01b.** The rich-text syllabus (`syllabusText`, T3) is replaced by the course's modules, practicals, projects and books on `/catalog/[id]`, kept by the course coordinator or an admin; the syllabus PDF stays (in the catalogue's syllabus dialog). Overview setup step 1 is "Catalogue course ready (n of m)"; the course plan can be filled from the course's session plan; the plan email lists modules, books, Bloom levels and the programme's outcome titles. The light skill mode applies to non-credit (0-0-0) offerings.
+
 | | |
 |---|---|
 | Depends on | M01 |

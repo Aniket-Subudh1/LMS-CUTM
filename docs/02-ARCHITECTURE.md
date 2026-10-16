@@ -166,8 +166,7 @@ Producer: `await mailQueue().add(name, payload, { jobId })` with a deterministic
    | Function (in `lib/data/`) | Directive | `cacheLife` | Tag | Invalidated by |
    |---|---|---|---|---|
    | `getSettings(key)` inner reader | `'use cache'` | `'minutes'` | `settings:<key>` | `updateTag` in the settings action |
-   | `getSchemeVersion(id)` inner reader | `'use cache'` | `'max'` | `scheme:<id>` | never (versions are immutable) |
-   | `listProgramsForSelect()` / `listCoursesForSelect()` | `'use cache'` | `'minutes'` | `catalog` | `updateTag('catalog')` in admin actions |
+   | `listProgramsForSelect()` / `listCurriculumForSelect(programId)` inner readers | `'use cache'` | `'minutes'` | `catalog` | `updateTag('catalog')` in the catalogue, programme and course-list actions (the courseware worker cannot, so its new courses appear within the window) |
 
    Cached functions take ids, never the viewer, and are not exported directly — an exported wrapper does the access check first (pattern in 04 §6.4). Other instances see a change within the profile's revalidate window (1 minute for `'minutes'`); this is acceptable only for the reference data above.
 4. **After a mutation** the action calls `refresh()` from `next/cache` (unless it redirects). If it changed cached reference data it also calls `updateTag(tag)`.

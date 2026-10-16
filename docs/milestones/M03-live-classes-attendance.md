@@ -1,5 +1,7 @@
 # M03 · Live classes & attendance
 
+> **Changed by M01b.** `offering.category` is still `ugc`/`skill` but is derived from the course credits: "skill offering" here means a non-credit (0-0-0) one. The Examination Policy's attendance part (bands 90/85/80/75 % → 5/4/3/2 marks of the theory internal, minimum 75 %) lives in Settings → Evaluation and each offering's copy (07 §2); this milestone only records attendance, and what the LMS does with the 75 % minimum is Q-42.
+
 | | |
 |---|---|
 | Depends on | M02 |

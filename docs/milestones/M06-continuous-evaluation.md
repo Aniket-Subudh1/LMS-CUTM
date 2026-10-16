@@ -1,5 +1,7 @@
 # M06 · Continuous evaluation
 
+> **Changed by M01b — rework before starting; blocked on Q-41.** There are no evaluation schemes: each credit offering carries `credits` and an `evaluation` copy of the Examination Policy (05 §3.7). Internal marks are computed per component the offering has (07 §2): theory internal out of 40 (Mid-term I 15, Mid-term II 15, assignment 5, attendance points 5 from `attendancePoints`), practice and project internal out of 50 from their rubrics; the course percentage is `coursePercentage` (credit-weighted, rounded up once). `getSchemeVersion` and `rebindScheme` become "refresh the offering's evaluation copy from Settings" (admin, only while unlocked, audited `offering.evaluation_refreshed`). How assessments map to these parts, and who enters external practice/project marks, is Q-41; rewrite T1–T5 and the 07 §2 worked example once it is answered.
+
 | | |
 |---|---|
 | Depends on | M04 (M05 for coding modes) |

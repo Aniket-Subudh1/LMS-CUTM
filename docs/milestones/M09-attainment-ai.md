@@ -1,5 +1,7 @@
 # M09 · CO-PO-PSO attainment & AI tagging assistance
 
+> **Changed by M01b.** Outcome codes are fixed (PO1–PO12, PSO1–PSO3) and the course's CO–PO map is shared by every programme that lists the course; a programme only titles the codes (`outcomeTitles`). Programme attainment reads the curriculum entries (05 §3.6a) for its courses. AI suggestions for the map are applied through the catalogue's `CoPoEditor` by the course coordinator or an admin, never written directly.
+
 | | |
 |---|---|
 | Depends on | M04, M08 |

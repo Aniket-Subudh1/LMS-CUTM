@@ -1,5 +1,7 @@
 # M07 · Projects: GitHub analytics, task tracker, reviews
 
+> **Changed by M01b.** Project mode is required exactly when the offering's credits include project credits. Project review marks feed the project component's internal rubric (out of 50, 07 §2) rather than a scheme component; the mapping is part of Q-41.
+
 | | |
 |---|---|
 | Depends on | M03, M04 |
