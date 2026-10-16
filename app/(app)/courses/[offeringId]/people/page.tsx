@@ -79,11 +79,36 @@ async function People({
               ),
           },
         ];
+  // M03 T9 (ATT-02): on a credit course, each student's share of the finished live classes they attended.
+  const live: { header: string; cell: (s: Row) => ReactNode; className?: string }[] =
+    publishedLessons === null
+      ? [
+          {
+            header: 'Live attendance',
+            cell: (s) =>
+              s.live?.pct == null ? (
+                '–'
+              ) : (
+                <span
+                  className="flex min-w-36 items-center gap-2"
+                  title={`${s.live.attended} of ${s.live.held} classes`}
+                >
+                  <Progress value={s.live.pct} className="bg-muted h-1.5 w-16" aria-hidden="true" />
+                  <span className="tabular-nums">{formatPct(s.live.pct)}</span>
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {s.live.attended}/{s.live.held}
+                  </span>
+                </span>
+              ),
+          },
+        ]
+      : [];
   const columns: { header: string; cell: (s: Row) => ReactNode; className?: string }[] = [
     { header: 'Roll no.', cell: (s) => s.rollNo },
     { header: 'Name', cell: (s) => <span className="font-medium">{s.name}</span> },
     { header: 'Email', cell: (s) => s.email },
     { header: 'Status', cell: (s) => <Badge variant={statusTone(s.status)}>{s.status}</Badge> },
+    ...live,
     ...skill,
   ];
   return (
@@ -92,7 +117,7 @@ async function People({
       title="Roster"
       description={
         publishedLessons === null
-          ? `${total} ${total === 1 ? 'student' : 'students'} on this offering.`
+          ? `${total} ${total === 1 ? 'student' : 'students'} on this offering. Live attendance counts the classes that have finished.`
           : `${total} ${total === 1 ? 'student' : 'students'}. On a skill course, attendance is the share of the ${publishedLessons} published lessons each student has completed.`
       }
       action={

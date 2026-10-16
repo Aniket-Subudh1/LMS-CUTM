@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classDates, istDateToDate, istDayKey, parseIstLocal } from './time';
+import { classDates, istDateToDate, istDayKey, istTimeOfDay, parseIstLocal } from './time';
 
 describe('parseIstLocal', () => {
   it.each([
@@ -48,5 +48,12 @@ describe('classDates', () => {
   it('refuses an empty or impossible weekday list', () => {
     expect(() => classDates('2026-07-06', [], 3)).toThrow(RangeError);
     expect(() => classDates('2026-07-06', [7], 3)).toThrow(RangeError);
+  });
+});
+
+describe('istTimeOfDay', () => {
+  it('gives the IST time for a time input', () => {
+    expect(istTimeOfDay(new Date('2026-10-12T05:00:00.000Z'))).toBe('10:30');
+    expect(istTimeOfDay(new Date('2026-10-12T18:45:00.000Z'))).toBe('00:15');
   });
 });

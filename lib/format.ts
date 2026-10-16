@@ -54,6 +54,18 @@ export function formatLongDate(date: Date): string {
   return longDateFormat.format(date);
 }
 
+const timeFormat = new Intl.DateTimeFormat('en-IN', {
+  timeZone: IST,
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+
+// `10:30 AM`: a live class's start and end on the day it is listed under.
+export function formatTime(date: Date): string {
+  return timeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());
+}
+
 // `12 Oct 2026, 10:30 AM` (08 §7); en-IN prints the meridiem in lower case.
 export function formatDateTime(date: Date): string {
   return dateTimeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());
@@ -74,6 +86,10 @@ const TONE: Record<string, Tone> = {
   dropped: 'outline',
   graduated: 'outline',
   completed: 'outline',
+  scheduled: 'secondary',
+  live: 'danger',
+  ended: 'outline',
+  cancelled: 'outline',
   running: 'warning',
   succeeded: 'success',
   partial: 'warning',

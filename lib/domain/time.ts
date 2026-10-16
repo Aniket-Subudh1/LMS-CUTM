@@ -20,6 +20,11 @@ export function istDayKey(date: Date): string {
   return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+// The IST wall-clock time (`HH:mm`) of `date`, for an <input type="time"> (M03).
+export function istTimeOfDay(date: Date): string {
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(11, 16);
+}
+
 const DAY_MS = 86_400_000;
 
 // The dates of `count` classes from `startDay` (YYYY-MM-DD, IST) on the given weekdays (0 = Sunday … 6 =

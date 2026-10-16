@@ -7,6 +7,7 @@ import {
   BellIcon,
   BookOpenTextIcon,
   BooksIcon,
+  BroadcastIcon,
   CalendarBlankIcon,
   CaretRightIcon,
   ChalkboardTeacherIcon,
@@ -33,6 +34,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { listContinueLearning, type ContinueRow } from '@/lib/data/content';
+import { listTodaysLiveSessions, type TodayClass } from '@/lib/data/live';
 import { unreadCount } from '@/lib/data/notifications';
 import {
   getHomeSummary,
@@ -43,7 +45,7 @@ import {
   type PlanRequestRow,
 } from '@/lib/data/workspace';
 import { cn } from '@/lib/cn';
-import { formatDate, formatDateTime, initials, statusTone } from '@/lib/format';
+import { formatDate, formatDateTime, formatTime, initials, statusTone } from '@/lib/format';
 import type { Role } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -67,12 +69,13 @@ export default function HomePage() {
 
 async function Home() {
   const viewer = await requireViewer();
-  const [summary, offerings, continueLearning, planRequests, unread] = await Promise.all([
+  const [summary, offerings, continueLearning, planRequests, unread, today] = await Promise.all([
     getHomeSummary(),
     viewer.roles.some((r) => OFFERING_ROLES.includes(r)) ? listMyOfferings(1, {}) : null,
     viewer.roles.includes('student') ? listContinueLearning() : [],
     viewer.roles.includes('faculty') ? listPlanRequests() : [],
     unreadCount(),
+    viewer.roles.includes('student') || viewer.roles.includes('faculty') ? listTodaysLiveSessions() : [],
   ]);
   const [featured, ...rest] = offerings?.rows ?? [];
   const next = rest.slice(0, 3);
@@ -82,7 +85,8 @@ async function Home() {
     summary.admin !== null ||
     next.length > 0 ||
     continueLearning.length > 0 ||
-    planRequests.length > 0;
+    planRequests.length > 0 ||
+    today.length > 0;
   return (
     <div className="grid gap-6">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Hello, {viewer.name.split(' ')[0]}</h1>
@@ -93,6 +97,7 @@ async function Home() {
         </div>
         {side && (
           <div className="grid gap-5">
+            {today.length > 0 && <TodaysClasses rows={today} student={viewer.roles.includes('student')} />}
             {planRequests.length > 0 && <PlanRequests rows={planRequests} />}
             {continueLearning.length > 0 && <ContinueLearning rows={continueLearning} />}
             {tiles.length > 0 && (
@@ -497,6 +502,55 @@ function MostActive({
 }
 
 // T10: up to five videos the student started and has not finished, most recently watched first.
+// M03 T9 (A-70): today's live classes of the viewer's courses, the ones running now first with a way in.
+function TodaysClasses({ rows, student }: { rows: TodayClass[]; student: boolean }) {
+  const live = rows.filter((row) => row.status === 'live');
+  const later = rows.filter((row) => row.status !== 'live');
+  return (
+    <section className="surface grid gap-4 p-5">
+      <div className="min-w-0">
+        <h2 className="text-lg font-semibold tracking-tight">Today&apos;s live classes</h2>
+        <p className="text-muted-foreground text-sm">
+          {live.length > 0
+            ? `${live.length === 1 ? 'A class is' : `${live.length} classes are`} running now.`
+            : student
+              ? 'You can join from here once your teacher starts the class.'
+              : 'Start each class from its page, up to 15 minutes early.'}
+        </p>
+      </div>
+      <ul className="grid gap-2">
+        {[...live, ...later].map((row) => (
+          <li key={row.id}>
+            <Link
+              href={`/courses/${row.offeringId}/live/${row.id}`}
+              className={cn(
+                'surface-interactive group flex items-center gap-4 p-3',
+                row.status === 'live' && 'ring-destructive/30 bg-destructive/[0.03]',
+              )}
+            >
+              <span className="icon-chip size-10 [&_svg]:size-5">
+                <BroadcastIcon weight="duotone" />
+              </span>
+              <span className="grid min-w-0 flex-1">
+                <span className="truncate text-sm font-medium">{row.title}</span>
+                <span className="text-muted-foreground truncate text-xs">{row.offeringTitle}</span>
+              </span>
+              {row.status === 'live' ? (
+                <Badge variant="danger">{student ? 'Join now' : 'Live'}</Badge>
+              ) : (
+                <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
+                  {formatTime(row.scheduledStart)}
+                </span>
+              )}
+              <LinkSpinner />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function ContinueLearning({ rows }: { rows: ContinueRow[] }) {
   return (
     <section className="surface grid gap-4 p-5">

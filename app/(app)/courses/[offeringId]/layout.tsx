@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import {
   BookOpenTextIcon,
+  BroadcastIcon,
   CalendarBlankIcon,
   ChalkboardTeacherIcon,
   CalendarDotsIcon,
@@ -28,6 +29,7 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
       label: workspace.access === 'learn' ? 'Lessons' : 'Content',
       icon: <PlayCircleIcon weight="duotone" />,
     },
+    { href: `${base}/live`, label: 'Live', icon: <BroadcastIcon weight="duotone" /> },
     ...(workspace.access === 'learn'
       ? []
       : [{ href: `${base}/people`, label: 'People', icon: <UsersThreeIcon weight="duotone" /> }]),
