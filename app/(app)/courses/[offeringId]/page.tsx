@@ -4,7 +4,6 @@ import Link from 'next/link';
 import {
   ArrowRightIcon,
   CalendarDotsIcon,
-  CheckIcon,
   DownloadSimpleIcon,
   FileTextIcon,
   GridFourIcon,
@@ -14,6 +13,7 @@ import {
   TargetIcon,
 } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
+import { Checklist } from '@/components/checklist';
 import { CoPoMatrix } from '@/components/co-po-matrix';
 import { EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
@@ -23,7 +23,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { getMyProgress, type LearnerProgress } from '@/lib/data/content';
-import { getOfferingCourse, type CourseDetail } from '@/lib/data/courses';
+import { getOfferingCourse, type OfferingCourse } from '@/lib/data/courses';
+import { creditTotal, formatCredits } from '@/lib/domain/catalog';
 import {
   getCourseSetup,
   getPublishedPlan,
@@ -32,7 +33,7 @@ import {
   type CourseSetup,
 } from '@/lib/data/workspace';
 import { cn } from '@/lib/cn';
-import { formatDay, formatDate, formatPct } from '@/lib/format';
+import { COURSE_TYPE_LABEL, formatDay, formatDate, formatPct } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Course overview' };
 
@@ -56,147 +57,79 @@ async function Overview({ params }: { params: PageProps<'/courses/[offeringId]'>
   const base = `/courses/${offeringId}`;
   return (
     <div className="grid gap-6">
-      {setup && (
-        <Setup
-          setup={setup}
-          base={base}
-          canTeach={workspace.canTeach}
-          courseId={course.id}
-          isAdmin={workspace.access === 'oversee' && workspace.canTeach}
-        />
-      )}
+      {setup && <Setup setup={setup} base={base} canTeach={workspace.canTeach} course={course} />}
       {progress && <MyProgress progress={progress} base={base} />}
       <PlanSection plan={plan} course={course} canTeach={workspace.canTeach} base={base} />
       <Syllabus course={course} />
       <About course={course} />
-      {course.category === 'ugc' && <Outcomes course={course} />}
+      {course.mode === 'credit' && <Outcomes course={course} />}
     </div>
   );
 }
 
-// The teacher's path through M02, in the order students need it. Each step says where it is done.
+// The teacher's path, in the order students need it. Each step says where it is done; the catalogue course is kept
+// by its coordinator (CRS-07), so a teacher who is not the coordinator waits for that step.
 function Setup({
   setup,
   base,
   canTeach,
-  courseId,
-  isAdmin,
+  course,
 }: {
   setup: CourseSetup;
   base: string;
   canTeach: boolean;
-  courseId: string;
-  isAdmin: boolean;
+  course: OfferingCourse;
 }) {
-  const steps = [
-    {
-      ...setup.syllabus,
-      title: 'Syllabus',
-      todo: isAdmin
-        ? 'Add the syllabus to the catalogue course.'
-        : 'The administrator adds it to the catalogue course.',
-      href: isAdmin ? `/admin/courses/${courseId}` : null,
-      action: 'Add syllabus',
-    },
-    {
-      ...setup.plan,
-      title: 'Write the course plan',
-      todo: 'Describe how the course will run.',
-      href: `${base}/plan#plan`,
-      action: 'Write plan',
-    },
-    {
-      ...setup.calendar,
-      title: 'Schedule the sessions',
-      todo: 'List each class date and its topic.',
-      href: `${base}/plan#calendar`,
-      action: 'Add sessions',
-    },
-    {
-      ...setup.published,
-      title: 'Publish to students',
-      todo: 'Students are notified and emailed the plan.',
-      href: `${base}/plan#publish`,
-      action: 'Publish',
-    },
-    {
-      ...setup.content,
-      title: 'Add and publish lessons',
-      todo: 'Upload lecture videos, PDFs or links.',
-      href: `${base}/content`,
-      action: 'Add lessons',
-    },
-  ];
-  const done = steps.filter((step) => step.done).length;
-  // The highlighted step is the first unfinished one this viewer can do; the syllabus waits on the administrator.
-  const next = steps.findIndex((step) => !step.done && canTeach && step.href);
+  const ready = course.readiness.filter((step) => step.done).length;
+  const link = (href: string) => (canTeach ? href : null);
   return (
-    <section className="surface grid gap-5 p-5 sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="icon-chip size-10 [&_svg]:size-5">
-            <RocketLaunchIcon weight="duotone" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight">
-              {done === steps.length ? 'This course is ready' : 'Get this course ready'}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {done} of {steps.length} steps done.{' '}
-              {done < steps.length && canTeach && 'Follow them in order; each one links to where it is done.'}
-            </p>
-          </div>
-        </div>
-        <Progress
-          value={(100 * done) / steps.length}
-          className="bg-muted h-2 w-full sm:w-48"
-          aria-label="Setup progress"
-        />
-      </div>
-      <ol className="grid gap-2">
-        {steps.map((step, index) => {
-          const current = index === next;
-          return (
-            <li
-              key={step.title}
-              className={cn(
-                'flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl px-4 py-3 ring-1',
-                current ? 'bg-primary/4 ring-primary/25' : 'ring-border/80',
-              )}
-            >
-              <span
-                className={cn(
-                  'grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold',
-                  step.done
-                    ? 'bg-success text-white'
-                    : current
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {step.done ? <CheckIcon weight="bold" className="size-3.5" /> : index + 1}
-                <span className="sr-only">{step.done ? ' (done)' : ''}</span>
-              </span>
-              <span className="grid min-w-0 flex-1 gap-0.5">
-                <span className="text-sm font-medium">{step.title}</span>
-                <span className="text-muted-foreground text-xs">{step.done ? step.detail : step.todo}</span>
-              </span>
-              {canTeach && step.href ? (
-                <Button asChild size="sm" variant={current ? 'default' : 'outline'}>
-                  <Link href={step.href}>
-                    {step.done ? 'Open' : step.action}
-                    <LinkSpinner />
-                  </Link>
-                </Button>
-              ) : (
-                !step.done &&
-                canTeach && <span className="text-muted-foreground text-xs">Waiting for the administrator</span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </section>
+    <Checklist
+      icon={<RocketLaunchIcon weight="duotone" />}
+      title="Get this course ready"
+      readyTitle="This course is ready"
+      hint={canTeach ? 'Follow them in order; each one links to where it is done.' : undefined}
+      steps={[
+        {
+          title: 'Catalogue course ready',
+          done: ready === course.readiness.length,
+          detail:
+            ready === course.readiness.length
+              ? 'Outcomes, syllabus and session plan are in place'
+              : `${ready} of ${course.readiness.length} parts ready: outcomes, mapping, syllabus, books, session plan`,
+          href: course.canEdit ? `/catalog/${course.id}` : null,
+          action: 'Complete it',
+          waiting: 'Waiting for the course coordinator',
+        },
+        {
+          ...setup.plan,
+          title: 'Write the course plan',
+          detail: setup.plan.done ? setup.plan.detail : 'Describe how the course will run.',
+          href: link(`${base}/plan#plan`),
+          action: 'Write plan',
+        },
+        {
+          ...setup.calendar,
+          title: 'Schedule the sessions',
+          detail: setup.calendar.done ? setup.calendar.detail : 'Date each session, or start from the session plan.',
+          href: link(`${base}/plan#calendar`),
+          action: 'Add sessions',
+        },
+        {
+          ...setup.published,
+          title: 'Publish to students',
+          detail: setup.published.done ? setup.published.detail : 'Students are notified and emailed the plan.',
+          href: link(`${base}/plan#publish`),
+          action: 'Publish',
+        },
+        {
+          ...setup.content,
+          title: 'Add and publish lessons',
+          detail: setup.content.done ? setup.content.detail : 'Upload lecture videos, PDFs or links.',
+          href: link(`${base}/content`),
+          action: 'Add lessons',
+        },
+      ]}
+    />
   );
 }
 
@@ -248,7 +181,7 @@ function PlanSection({
   base,
 }: {
   plan: CoursePlan | null;
-  course: CourseDetail;
+  course: OfferingCourse;
   canTeach: boolean;
   base: string;
 }) {
@@ -320,12 +253,13 @@ function PlanSection({
   );
 }
 
-function Syllabus({ course }: { course: CourseDetail }) {
+function Syllabus({ course }: { course: OfferingCourse }) {
+  const books = [...course.textbooks, ...course.references];
   return (
     <Section
       icon={<FileTextIcon weight="duotone" />}
       title="Syllabus"
-      description="The units and topics this course covers."
+      description="The modules this course covers, in order, with their practicals, the projects and the books."
       action={
         course.syllabusFileKey && (
           <Button asChild variant="outline" size="sm">
@@ -337,23 +271,60 @@ function Syllabus({ course }: { course: CourseDetail }) {
         )
       }
     >
-      {course.syllabusText ? (
-        <div className="surface p-5">
-          <RichTextView doc={course.syllabusText} />
-        </div>
-      ) : (
+      {course.modules.length === 0 && books.length === 0 ? (
         !course.syllabusFileKey && (
           <EmptyState
             icon={<FileTextIcon weight="duotone" />}
             text="The syllabus has not been added to this course yet."
           />
         )
+      ) : (
+        <div className="grid gap-3">
+          {course.modules.map((m, i) => (
+            <details key={m.id} className="surface p-4" open={i === 0}>
+              <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2">
+                <span className="font-medium">
+                  {i + 1}. {m.title}
+                </span>
+                {m.hours && <span className="text-muted-foreground text-sm tabular-nums">{m.hours} hours</span>}
+              </summary>
+              {m.topics && <p className="mt-3 text-sm whitespace-pre-line">{m.topics}</p>}
+              {m.practicals.length > 0 && (
+                <ul className="mt-3 list-disc pl-5 text-sm">
+                  {m.practicals.map((p) => (
+                    <li key={p}>Practical: {p}</li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          ))}
+          {course.projects.length > 0 && (
+            <div className="surface p-4">
+              <h3 className="text-sm font-semibold">Projects</h3>
+              <ul className="mt-2 list-disc pl-5 text-sm">
+                {course.projects.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {books.length > 0 && (
+            <div className="surface p-4">
+              <h3 className="text-sm font-semibold">Books</h3>
+              <ul className="mt-2 grid list-disc gap-1 pl-5 text-sm">
+                {books.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </Section>
   );
 }
 
-function About({ course }: { course: CourseDetail }) {
+function About({ course }: { course: OfferingCourse }) {
   return (
     <Section
       icon={<InfoIcon weight="duotone" />}
@@ -361,11 +332,12 @@ function About({ course }: { course: CourseDetail }) {
       description="The catalogue course this offering runs."
     >
       <dl className="surface grid gap-4 p-5 sm:grid-cols-3">
-        <Fact label="Credits">{course.credits}</Fact>
-        <Fact label="Components">
-          <span className="capitalize">{course.components.join(', ')}</span>
+        <Fact label="Credits">
+          {formatCredits(course.credits)}{' '}
+          <span className="text-muted-foreground font-normal">({creditTotal(course.credits)} in all)</span>
         </Fact>
-        <Fact label="Programme">{course.programCode}</Fact>
+        <Fact label="Type">{course.type ? COURSE_TYPE_LABEL[course.type] : '—'}</Fact>
+        <Fact label="Course coordinator">{course.coordinator?.name ?? 'Not assigned'}</Fact>
       </dl>
       {course.objectives.length > 0 && (
         <div className="surface p-5">
@@ -381,7 +353,7 @@ function About({ course }: { course: CourseDetail }) {
   );
 }
 
-function Outcomes({ course }: { course: CourseDetail }) {
+function Outcomes({ course }: { course: OfferingCourse }) {
   return (
     <>
       <Section
@@ -398,9 +370,13 @@ function Outcomes({ course }: { course: CourseDetail }) {
                 <span className="icon-chip h-8 min-w-12 px-2 text-xs font-semibold">{co.code}</span>
                 <span className="grid content-start gap-1.5 text-sm">
                   {co.statement}
-                  <Badge variant="secondary" className="w-fit capitalize">
-                    {co.bloomLevel}
-                  </Badge>
+                  <span className="flex flex-wrap gap-1.5">
+                    {co.bloomLevels.map((level) => (
+                      <Badge key={level} variant="secondary" className="w-fit capitalize">
+                        {level}
+                      </Badge>
+                    ))}
+                  </span>
                 </span>
               </li>
             ))}
@@ -411,9 +387,9 @@ function Outcomes({ course }: { course: CourseDetail }) {
         <Section
           icon={<GridFourIcon weight="duotone" />}
           title="CO–PO–PSO mapping"
-          description="How strongly each course outcome supports each programme outcome (1 low, 3 high)."
+          description="How strongly each course outcome supports each programme outcome (1 low, 3 high). Hover a code for its title."
         >
-          <CoPoMatrix cos={course.cos} outcomes={course.outcomes} cells={course.cells} mode="levels" />
+          <CoPoMatrix cos={course.cos} outcomes={course.outcomes} cells={course.cells} />
         </Section>
       )}
     </>

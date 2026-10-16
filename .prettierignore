@@ -1,3 +1,5 @@
 **/*.md
 .next
 package-lock.json
+# Real courseware pages, kept exactly as captured (10 §3).
+tests/fixtures/courseware

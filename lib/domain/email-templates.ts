@@ -1,6 +1,3 @@
-import 'server-only';
-import { renderRichText } from '@/lib/domain/rich-text';
-import type { RichTextDoc } from '@/lib/schemas/common';
 import type { MailSend } from '@/lib/schemas/jobs';
 
 type Recipient = { to: string; name: string; link: string };
@@ -55,22 +52,29 @@ export type CoursePlanMail = {
   courseHref: string;
   courseCode: string;
   courseTitle: string;
+  // T-P-Pj, as CUTM prints it ("3-0-1").
+  credits: string;
   calendar: { date: Date; topic: string; cos: string[] }[];
-  syllabus: RichTextDoc | null;
+  modules: { title: string; hours: string | null; topics: string; practicals: string[] }[];
+  projects: string[];
+  textbooks: string[];
+  references: string[];
   syllabusPdfHref: string | null;
   objectives: string[];
-  cos: { code: string; statement: string; bloomLevel: string }[];
-  pos: { code: string; title: string }[];
-  psos: { code: string; title: string }[];
+  cos: { code: string; statement: string; bloomLevels: string[] }[];
+  // The offering programme's titled outcomes (PO1–PO12, PSO1–PSO3).
+  outcomes: { code: string; title: string }[];
 };
 
 // Inline styles only: mail clients drop <style> blocks.
 const H2 = 'font-size:16px;margin:28px 0 10px;color:#1f2430';
+const H3 = 'font-size:14px;margin:16px 0 4px;color:#1f2430';
+const MUTED = 'color:#646a7a';
 const CELL = 'padding:8px 10px;border-bottom:1px solid #e6e8ee;text-align:left;vertical-align:top;font-size:14px';
 const HEAD = `${CELL};color:#646a7a;font-weight:600;font-size:12px`;
 
 function table(headers: string[], rows: string[][]): string {
-  if (rows.length === 0) return '<p style="color:#646a7a">None yet.</p>';
+  if (rows.length === 0) return `<p style="${MUTED}">None yet.</p>`;
   const tr = (cells: string[], style: string, tag: string) =>
     `<tr>${cells.map((cell) => `<${tag} style="${style}">${escapeHtml(cell)}</${tag}>`).join('')}</tr>`;
   return (
@@ -79,28 +83,43 @@ function table(headers: string[], rows: string[][]): string {
   );
 }
 
+const list = (items: readonly string[]) =>
+  `<ul style="margin:4px 0;padding-left:20px">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
 const lines = (rows: string[][]) => rows.map((row) => `- ${row.join(' · ')}`).join('\n') || '- None yet.';
+const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+const moduleHeading = (m: CoursePlanMail['modules'][number]) => `${m.title}${m.hours ? ` (${m.hours} hours)` : ''}`;
 
-// The plain-text part: the document's text, one block per line (inline text runs join without a break).
-type TextNode = { text?: string; content?: TextNode[] };
-function plain(node: TextNode): string {
-  const children = node.content ?? [];
-  return node.text ?? children.map(plain).join(children.some((c) => c.text !== undefined) ? '' : '\n');
-}
-
-// COM-01: calendar, syllabus, objectives, course outcomes and programme outcomes, emailed to each student.
+// COM-01: calendar, syllabus, objectives, course outcomes and programme outcomes, emailed to each student. Since
+// M01b the syllabus is the catalogue course's modules, projects and books.
 export function coursePlanEmail(mail: CoursePlanMail): MailSend {
   const course = `${mail.courseCode} ${mail.courseTitle}`;
   const calendar = mail.calendar.map((row) => [dateFormat.format(row.date), row.topic, row.cos.join(', ') || '–']);
-  const cos = mail.cos.map((co) => [
-    co.code,
-    co.statement,
-    co.bloomLevel.charAt(0).toUpperCase() + co.bloomLevel.slice(1),
-  ]);
-  const outcomes = [...mail.pos, ...mail.psos].map((o) => [o.code, o.title]);
+  const cos = mail.cos.map((co) => [co.code, co.statement, co.bloomLevels.map(capital).join(', ') || '–']);
+  const outcomes = mail.outcomes.map((o) => [o.code, o.title]);
   const objectives = mail.objectives.map((objective, i) => [String(i + 1), objective]);
-  const intro = `Your teacher has published the course plan for ${course}. It lists every session in order, the syllabus and what you will be able to do by the end of the course.`;
-  const syllabusText = mail.syllabus ? plain(mail.syllabus).trim() : '';
+  const intro = `Your teacher has published the course plan for ${course} (credits ${mail.credits}). It lists every session in order, the syllabus and what you will be able to do by the end of the course.`;
+  const hasSyllabus = mail.modules.length > 0 || mail.projects.length > 0;
+
+  const syllabusText = [
+    ...mail.modules.map((m) =>
+      [moduleHeading(m), m.topics, ...m.practicals.map((p) => `  Practical: ${p}`)].filter(Boolean).join('\n'),
+    ),
+    ...(mail.projects.length ? [`Projects:\n${mail.projects.map((p) => `  - ${p}`).join('\n')}`] : []),
+    ...(mail.textbooks.length ? [`Textbooks:\n${mail.textbooks.map((b) => `  - ${b}`).join('\n')}`] : []),
+    ...(mail.references.length ? [`References:\n${mail.references.map((b) => `  - ${b}`).join('\n')}`] : []),
+  ].join('\n\n');
+  const syllabusHtml =
+    mail.modules
+      .map(
+        (m) =>
+          `<h3 style="${H3}">${escapeHtml(moduleHeading(m))}</h3>` +
+          (m.topics ? `<p style="margin:0;white-space:pre-line">${escapeHtml(m.topics)}</p>` : '') +
+          (m.practicals.length ? `<p style="margin:8px 0 0;${MUTED}">Practicals</p>${list(m.practicals)}` : ''),
+      )
+      .join('') +
+    (mail.projects.length ? `<h3 style="${H3}">Projects</h3>${list(mail.projects)}` : '') +
+    (mail.textbooks.length ? `<h3 style="${H3}">Textbooks</h3>${list(mail.textbooks)}` : '') +
+    (mail.references.length ? `<h3 style="${H3}">References</h3>${list(mail.references)}` : '');
 
   const text = [
     `Hello ${mail.name},`,
@@ -115,17 +134,17 @@ export function coursePlanEmail(mail: CoursePlanMail): MailSend {
 
   const html =
     '<div style="font-family:Arial,Helvetica,sans-serif;color:#1f2430;max-width:640px;margin:0 auto;line-height:1.5">' +
-    `<p style="font-size:12px;color:#646a7a;margin:0">Course plan</p>` +
+    `<p style="font-size:12px;${MUTED};margin:0">Course plan</p>` +
     `<h1 style="font-size:20px;margin:4px 0 16px">${escapeHtml(course)}</h1>` +
     `<p>Hello ${escapeHtml(mail.name)},</p><p>${escapeHtml(intro)}</p>` +
     `<p><a href="${escapeHtml(mail.courseHref)}" style="display:inline-block;background:#1c59e4;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Open the course</a></p>` +
     `<h2 style="${H2}">Course calendar</h2>${table(['Date', 'Topic', 'Outcomes'], calendar)}` +
-    `<h2 style="${H2}">Syllabus</h2>${mail.syllabus ? renderRichText(mail.syllabus) : '<p style="color:#646a7a">Not added yet.</p>'}` +
+    `<h2 style="${H2}">Syllabus</h2>${hasSyllabus || mail.textbooks.length || mail.references.length ? syllabusHtml : `<p style="${MUTED}">Not added yet.</p>`}` +
     (mail.syllabusPdfHref
       ? `<p><a href="${escapeHtml(mail.syllabusPdfHref)}">Download the syllabus (PDF)</a></p>`
       : '') +
     `<h2 style="${H2}">Course objectives</h2>${table(['#', 'Objective'], objectives)}` +
-    `<h2 style="${H2}">Course outcomes</h2>${table(['Code', 'By the end you can', 'Level'], cos)}` +
+    `<h2 style="${H2}">Course outcomes</h2>${table(['Code', 'By the end you can', 'Bloom level'], cos)}` +
     `<h2 style="${H2}">Program outcomes</h2>${table(['Code', 'Outcome'], outcomes)}` +
     '</div>';
 

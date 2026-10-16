@@ -1,7 +1,7 @@
 'use server';
 
 import { action } from '@/lib/action';
-import { requireTeach } from '@/lib/auth/access';
+import { requireCourseEditor, requireTeach } from '@/lib/auth/access';
 import { db } from '@/lib/db';
 import { buildKey } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
@@ -28,7 +28,8 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
       await requireTeach(viewer, input.contextId);
       break;
     case 'syllabus':
-      if (!viewer.roles.includes('admin')) throw new AppError('FORBIDDEN', 'You do not have access to this action.');
+      // CRS-07: the course's coordinator or an administrator (who may still name a course that does not exist).
+      await requireCourseEditor(viewer, input.contextId);
       await db();
       if (!(await Course.exists({ _id: input.contextId }))) throw new AppError('NOT_FOUND', 'Course not found.');
       break;

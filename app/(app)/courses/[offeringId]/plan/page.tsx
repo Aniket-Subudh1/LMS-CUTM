@@ -2,7 +2,7 @@ import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { CalendarDotsIcon, CheckIcon, PaperPlaneTiltIcon, WarningCircleIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
-import { publishPlan, saveCalendar, savePlan } from './actions';
+import { fillCalendarFromCourse, publishPlan, saveCalendar, savePlan } from './actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { PageHeader } from '@/components/page-header';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -73,6 +73,7 @@ async function Plan({ params }: { params: PageProps<'/courses/[offeringId]/plan'
           title="Schedule the sessions"
           description="One row per class: its date, its topic and the course outcomes it covers. Rows are sorted by date when you save."
         >
+          {plan.sessionPlan > 0 && <FromSessionPlan plan={plan} />}
           <Calendar plan={plan} />
         </Step>
 
@@ -178,6 +179,56 @@ function Check({ ok, children }: { ok: boolean; children: ReactNode }) {
       </span>
       {children}
     </li>
+  );
+}
+
+// Monday to Saturday, numbered as Date.getDay() does (classDates, 07 §11).
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+// M01b: the catalogue course's session plan, dated from the first class on the weekdays classes are held.
+function FromSessionPlan({ plan }: { plan: CoursePlan }) {
+  return (
+    <div className="bg-primary/4 ring-primary/20 mb-4 grid gap-3 rounded-xl p-4 ring-1">
+      <div>
+        <p className="text-sm font-medium">Start from the course&apos;s session plan</p>
+        <p className="text-muted-foreground text-sm">
+          The course has {plan.sessionPlan} sessions in order. Choose the first class and the days you teach, and they
+          are dated for you; then adjust any row below.
+        </p>
+      </div>
+      <ActionForm action={fillCalendarFromCourse} submitLabel="Fill sessions" successMessage="Sessions filled.">
+        <input type="hidden" name="offeringId" value={plan.offeringId} />
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="grid gap-1.5 text-sm font-medium">
+            First class
+            <Input type="date" name="firstDay" required className="w-44" />
+            <FieldErrors name="firstDay" />
+          </label>
+          <fieldset className="grid gap-1.5">
+            <legend className="mb-1.5 text-sm font-medium">Class days</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {WEEKDAYS.map((day, i) => (
+                <label
+                  key={day}
+                  className="ring-border has-checked:bg-primary has-checked:text-primary-foreground has-checked:ring-primary cursor-pointer rounded-md px-2.5 py-1 text-sm ring-1 transition-colors"
+                >
+                  <input type="checkbox" name="weekdays[]" value={i + 1} className="sr-only" />
+                  {day}
+                </label>
+              ))}
+            </div>
+            <FieldErrors name="weekdays[]" />
+          </fieldset>
+        </div>
+        {plan.calendar.length > 0 && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="replace" value="true" className="accent-destructive size-4" />
+            Replace the {plan.calendar.length} sessions already scheduled
+          </label>
+        )}
+        <FieldErrors name="replace" />
+      </ActionForm>
+    </div>
   );
 }
 

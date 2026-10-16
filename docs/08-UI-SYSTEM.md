@@ -28,7 +28,9 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/profile` | all | M00, M07 | Change password; link GitHub (students) |
 | `/notifications` | all | M02 | Notification list; mark read |
 | `/courses` | S F H A | M01 | My offerings (admin: all, filterable) |
-| `/courses/[offeringId]` | S F H A | M01, M02 | Overview: syllabus, objectives, COs, published plan and calendar |
+| `/courses/[offeringId]` | S F H A | M01, M02, M01b | Overview: the course (credits, coordinator, objectives), its modules and books, COs with Bloom levels and the mapping with the programme's outcome titles, the published plan and calendar; teachers get the setup checklist whose first step is the catalogue course's readiness |
+| `/catalog` | F H A | M01b | Course catalogue: search by code or title; filters for programme, basket, type, status, "Needs review" and "Courses I coordinate"; A: "New course" dialog and "Import courses" |
+| `/catalog/[id]` | F H A | M01b | A catalogue course: credits, review notes, the "Course readiness" checklist, one editor per step (objectives, outcomes with Bloom chips, the CO–PO grid, syllabus, books, session plan) for its coordinator and A; A: details, coordinator, "Replace with courseware content". Read-only for other staff |
 | `/courses/[offeringId]/plan` | F A | M02 | Course plan tab: three numbered steps (write the plan, schedule the sessions, publish) |
 | `/courses/[offeringId]/content` | S F H A | M02 | Modules and lessons; F adds (Add module, Add lesson dialogs), orders and publishes; S sees progress and “Up next” |
 | `/courses/[offeringId]/content/[lessonId]` | S F H A | M02 | View a lesson (video player, document, link) beside the course outline, with Previous / Next; F edits (dialog), publishes, deletes a draft |
@@ -53,15 +55,14 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/reports/attainment` | H A | M09 | Program/batch attainment |
 | `/reports/engagement` | H A | M10 | Engagement across offerings; skill-course traceability |
 | `/admin` | A | M01 | Academic structure: cards for departments, programmes and terms, each with its count (`getStructureCounts()`) |
-| `/admin/departments`, `/admin/programs`, `/admin/programs/[id]` | A | M01 | Structure, POs/PSOs, batches |
+| `/admin/departments`, `/admin/programs`, `/admin/programs/[id]` | A | M01, M01b | Structure; a programme's department, baskets, curriculum (add and remove courses), outcome titles and batches |
 | `/admin/terms` | A | M01 | Academic calendar (terms) |
-| `/admin/courses`, `/admin/courses/[id]` | A | M01 | Catalog ("New course" dialog), components, COs, CO-PO-PSO matrix, syllabus |
-| `/admin/schemes`, `/admin/schemes/[componentKey]` | A | M01 | Evaluation schemes and versions |
-| `/admin/offerings` | A | M01 | Offerings; "New offering" and "Change faculty" dialogs |
+| `/admin/offerings` | A | M01, M01b | Offerings; "New offering" (batch first, then a course of its programme's curriculum, the term and the sections, one offering each) and "Change faculty" dialogs |
+| `/admin/imports`, `/admin/imports/[runId]` | A | M01b | Imports: the course-list upload with its columns and recent uploads; courseware runs (only new pages, all again, one page), their progress and the pages that failed. M07/M08 add their syncs here (replacing `/admin/integrations`) |
 | `/admin/users`, `/admin/users/[id]` | A P | M01 | Users; "New user" and "Import CSV" dialogs (admin). P may only view and send a reset link |
-| `/admin/settings`, `/admin/settings/[key]` | A | M02 | Settings registry (06 §7) |
+| `/admin/settings`, `/admin/settings/[key]` | A | M02, M01b | Settings registry (06 §7); M01b adds the evaluation policy form with a worked example |
 | `/admin/exams` | A | M08 | End-sem import, CE export, locks, grade sheets |
-| `/admin/integrations` | A | M07, M08 | Sync runs, failed jobs, GitHub App status |
+| `/admin/integrations` | A | M07, M08 | GitHub App status and failed jobs (sync runs are on `/admin/imports` since M01b) |
 | `/admin/audit` | A | M01 | Audit log search |
 
 ## 3. Navigation
@@ -75,16 +76,17 @@ The nav lists only routes that exist, in groups; each milestone adds its own ite
 | Menu | Dashboard (`/home`) | all |
 | Menu | Notifications (M02) | all |
 | Menu | My courses (`/courses`) | student, faculty, hod, admin |
+| Menu | Course catalogue (`/catalog`, M01b) | faculty, hod, admin |
 | Menu | Results (M08) | student |
 | Menu | Reports (M06) | hod, admin |
 | Administration | Structure (`/admin`; also owns departments, programmes, terms) with sub-items Departments, Programmes, Terms | admin |
-| Administration | Courses, Schemes, Offerings, Audit log | admin |
+| Administration | Offerings, Imports (M01b), Settings, Audit log | admin |
 | Administration | Users (`/admin/users`) | admin, support |
 | Account (foot of the sidebar) | Profile, then Sign out | all |
 
 The admin area has no `TabNav`: the sidebar is its navigation.
 
-**Course workspace tabs** (`TabNav` in `app/(app)/courses/[offeringId]/layout.tsx`, computed from access and the offering's category/components):
+**Course workspace tabs** (`TabNav` in `app/(app)/courses/[offeringId]/layout.tsx`, computed from access and the offering's category and credits copy; `ugc` = a credit course, M01b):
 
 | Tab | Shown when |
 |---|---|
@@ -93,9 +95,9 @@ The admin area has no `TabNav`: the sidebar is its navigation.
 | Content | always; labelled “Lessons” for students |
 | Live | always |
 | Assessments | always |
-| Records | ugc and the course has `theory` or `practice` |
+| Records | ugc and theory or practice credits above 0 |
 | Marks | ugc |
-| Projects | the course has `project` |
+| Projects | project credits above 0 |
 | Outcomes | ugc and access is teach/oversee |
 | People | access is teach/oversee |
 
@@ -137,8 +139,8 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 |---|---|---|---|---|---|
 | `ActionForm`, `Field`, `FieldErrors` | `action-form.tsx` | client | 04 §6.8, plus: `replaceOnSuccess?: boolean` (on success the fields are replaced by an animated check and `successMessage`); `onSuccess?: (data: unknown) => void` and `onPendingChange?: (pending: boolean) => void` (for a client parent such as `FormDialog`); `secondary?: ReactNode` (a control shown before the submit button, such as Cancel); `submitSize?: 'default' \| 'sm'` (compact one-click actions in cards and table rows); `submitVariant` also takes `'outline'` (a secondary one-click action such as Unpublish or a reorder arrow); `submitIcon?: ReactNode` (an icon before the label, replaced by the spinner while pending) and `iconOnly?: boolean` (a square `icon-sm` button whose `submitLabel` becomes its `aria-label` and tooltip: the reorder arrows, M02). The children sit in a `<fieldset disabled>` while the action runs. `FieldErrors` is `{ name: string }` and prints that field's errors for a group of controls (a grid of rows) where `Field`'s single `<label>` does not fit | every form | M00 (`FieldErrors` M01; additions UI redesign) |
 | `FormDialog` | `form-dialog.tsx` | client (shadcn `Dialog`, `useRouter`, `useSearchParams`) | `{ trigger: ReactNode; title: string; description?: string; icon?: ReactNode; size?: 'default' \| 'wide' \| 'full'; openParam?: string; preface?: ReactNode; action; submitLabel: string; successMessage: string; submitVariant?: 'default' \| 'destructive'; children?: ReactNode }` — `trigger` is the element that opens it (`DialogTrigger asChild`). The form inside is an `ActionForm` with `replaceOnSuccess`. While the action runs, Esc, an outside click and the close button do nothing. Layout (design “A · Clean”, chosen by Aniket from three mock-ups on 13 Oct 2026): a header with the icon chip, title and description above a hairline; a body that scrolls on its own; and a grey button bar (Cancel, submit) that stays at the bottom. Sizes are `sm:max-w-xl`, `sm:max-w-3xl` (`wide`) and `sm:max-w-6xl` (`full`), never taller than the viewport; fields and selects take the full width and never spill past the edge (a native select no longer sizes itself to its longest option). Below 640 px the dialog is a full-width sheet rising from the bottom. On success the header and fields give way to the success state; after 1.6 s the dialog closes and, if the action returned `{ next }` (06 §1), navigates there. Each open starts with a fresh form. `preface` renders above the form and outside it (the GET programme step of New offering). `openParam` opens it on load when the URL has `?new=<openParam>` (Home quick actions) — also when a fresh navigation returns to a page Next kept mounted (the state resets on a new `useRouter().bfcacheId`; back/forward restores it as it was); closing removes the parameter | every create/edit form | UI redesign |
-| `FilterForm` | `filter-form.tsx` | client (`next/form`, `useFormStatus`) | `{ action: string; submitLabel?: string; plain?: boolean; children: ReactNode }` — a row of GET filter fields (the children) straight on the page, with the inputs and selects white and fully rounded like the reference's filter pills, and an outline submit button that shows a spinner while the filtered page loads; `plain` keeps the fields' own style for a step inside a dialog | courses, admin courses, offerings (and the New offering programme step), users, audit | UI redesign |
-| `Section`, `Fact` | `section.tsx` | server | `Section({ icon: ReactNode; title: string; description: string; action?: ReactNode; children })` — a detail-page section as one card (`surface`): icon chip, title, one-line description and an optional action (a `FormDialog` trigger) above its content. `Fact({ label, children })` — one label/value pair in a `<dl className="surface grid …">` facts strip | programme, course, user, profile, course people | UI redesign |
+| `FilterForm` | `filter-form.tsx` | client (`next/form`, `useFormStatus`) | `{ action: string; submitLabel?: string; plain?: boolean; children: ReactNode }` — a row of GET filter fields (the children) straight on the page, with the inputs and selects white and fully rounded like the reference's filter pills, and an outline submit button that shows a spinner while the filtered page loads; `plain` keeps the fields' own style for a step inside a dialog | courses, catalogue, offerings (and the New offering batch step), the coordinator search, a programme's curriculum, users, audit | UI redesign |
+| `Section`, `Fact` | `section.tsx` | server | `Section({ icon: ReactNode; title: string; description: string; action?: ReactNode; children })` — a detail-page section as one card (`surface`): icon chip, title, one-line description and an optional action (a `FormDialog` trigger) above its content. `Fact({ label, children })` — one label/value pair in a `<dl className="surface grid …">` facts strip | programme, catalogue course, imports, settings, user, profile, course Overview and people | UI redesign |
 | `LinkSpinner` | `link-spinner.tsx` | client (`useLinkStatus`) | `{ className?: string }` — a fixed-size spinner, invisible until the enclosing `<Link>`'s navigation is pending; placed inside a `Link` | sidebar items, Home tiles, hero and offerings row, `OfferingCard`, `TabNav`, the admin landing and scheme cards | UI redesign |
 | `OfferingCard` | `offering-card.tsx` | server | `{ offering: MyOfferingRow; featured?: boolean }` — a course-offering card linking to its workspace: status badge and term, title, and the first faculty member beside an initials avatar (“+n” for more). a black “Open” pill sits at its foot; `featured` makes it the dark card with a white “Open” pill, as the first card of Home's offerings row | Home, `/courses` | UI redesign |
 | `PasswordInput` | `password-input.tsx` | client | the `Input` props except `type` — a password `Input` with a show/hide toggle button (`aria-label`, `aria-pressed`) | sign in, set password, change password | UI redesign |
@@ -157,7 +159,9 @@ These are the **only** other files allowed in `components/`. Each has two or mor
 | `AssessmentRunner` | `assessment-runner.tsx` | client | `{ attempt: AttemptDTO }` (no answer keys, no hidden cases) — timer, autosave per answer, submit, proctoring hooks, renders items by type | attempt page | M04, M05 |
 | `CodeEditor` | `code-editor.tsx` | client | `{ name?: string; value: string; language: 'c' \| 'cpp' \| 'java'; readOnly?: boolean; onChange?: (v: string) => void }` | runner, builder (starter code) | M05 |
 | `TrendChart` | `trend-chart.tsx` | client (shadcn `chart`) | `{ points: { label: string; value: number }[]; max: number; label: string }` — area/line chart with an accessible summary sentence | marks trend, engagement trend | M06 |
-| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: string[]; cells: Record<string, number>; mode: 'edit' \| 'levels' \| 'values' }` — `edit` renders a `<select name="cell[]">` per cell for an `ActionForm`; `levels` shows the saved level as a tinted chip (darker for a higher level) or “–”; `values` is added in M09 (M01 ships `edit` and `levels`) | course admin, outcomes report | M01, M09 |
+| `CoPoMatrix` | `co-po-matrix.tsx` | server | `{ cos: { id: string; code: string }[]; outcomes: { code: string; title: string }[]; cells: Record<string, number> }` — read only: COs are rows, PO1–PO12 and PSO1–PSO3 the columns (a programme's title on hover), each cell the level as a tinted chip (darker for higher) or “–”. Also exports `levelTone(level)`, the chip style `CoPoEditor` shares. M09 adds attainment values | catalogue course, course Overview, outcomes report | M01, M01b, M09 |
+| `CoPoEditor` | `co-po-editor.tsx` | client (state) | `{ cos: { id: string; code: string; statement: string }[]; outcomes: { code: string; title: string }[]; cells: Record<string, number> }` — the mapping in one save (M01b): each cell is a button that goes – → 1 → 2 → 3 → – on click, or takes the keys 0–3 (Delete clears); each row has "Same as CO1" and "Clear row"; a running count of links; every linked cell is a hidden `cell[]` = `<coId>:<code>:<level>` for `saveCoMap` | catalogue course (mapping dialog); M09's AI suggestions apply into it | M01b |
+| `Checklist` | `checklist.tsx` | server | `{ icon: ReactNode; title: string; readyTitle: string; steps: { title; detail; done; href: string \| null; action: string; waiting?: string }[]; hint?: string }` — a setup path in order: a progress bar and "n of m steps done", each step numbered or ticked with what is done or still to do, and a button to where it is done; the first unfinished step the viewer can do is highlighted; a step someone else does says who (`waiting`) | course Overview ("Get this course ready"), catalogue course ("Course readiness") | M02, M01b |
 
 Bars and percentages (attainment, progress, engagement) use the shadcn `Progress` primitive with the number as text beside it; there is no separate `Meter` component.
 

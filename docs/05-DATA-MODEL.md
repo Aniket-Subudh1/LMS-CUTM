@@ -18,9 +18,10 @@ MongoDB 8.0 replica set, Mongoose 9. This document is the source of truth for ev
 
 ```
 departments ─┬─ programs ─┬─ batches
-             │            └─ courses (COs, CO→PO/PSO map) ── evaluationSchemes (versioned, by component key)
-users ───────┘                         │
-terms ─────────────────────────────────┴─ offerings (modules, plan, calendar, faculty, scheme version, lock)
+             │            └─ curriculumEntries ── courses (university-wide: T-P-Pj, COs, CO→PO/PSO map,
+users ───────┘                                    │          modules, books, session plan, coordinator)
+terms ────────────────────────────────────────────┴─ offerings (credits + evaluation policy copies, modules,
+                                                                plan, calendar, faculty, lock)
                                              ├─ enrollments ── users(students)
                                              ├─ lessons ── lessonProgress
                                              ├─ liveSessions ── attendance
@@ -53,7 +54,7 @@ gradeSheets (term × student) · notifications · settings · syncRuns · auditL
 | github | `{ login: S, id: N, linkedAt: D }?` | set by the OAuth link (M07) |
 | lastLoginAt | D? | |
 
-Indexes: `{ email: 1 }` unique · `{ rollNo: 1 }` unique partial (`rollNo` is string) · `{ employeeId: 1 }` unique partial · `{ 'github.id': 1 }` unique partial · `{ batchId: 1, section: 1 }` · `{ roles: 1, status: 1 }` · text `{ name: 'text', email: 'text', rollNo: 'text' }`.
+Indexes: `{ email: 1 }` unique · `{ rollNo: 1 }` unique partial (`rollNo` is string) · `{ employeeId: 1 }` unique partial · `{ 'github.id': 1 }` unique partial · `{ batchId: 1, section: 1 }` · `{ roles: 1, status: 1 }` · `{ departmentId: 1, roles: 1, name: 1 }` (the offering dialogs' faculty picker, M01b) · text `{ name: 'text', email: 'text', rollNo: 'text' }`.
 Invariants: a student has `programId` and `batchId`; an `hod` has `departmentId`. Users are never deleted (`disabled`).
 
 ### 3.2 `departments`
@@ -62,17 +63,16 @@ Invariants: a student has `programId` and `batchId`; an `hod` has `departmentId`
 ### 3.3 `programs`
 | Field | Type | Rules |
 |---|---|---|
-| code | S | uppercase, ≤ 20, unique |
+| code | S | uppercase, ≤ 20, unique (a programme created by the course list gets one from its name: `MSC-MATHEMATICS`) |
 | name | S | ≤ 160 |
-| departmentId | Id | required |
-| category | S | `ugc` · `skill` |
-| durationSemesters | N | 1–12 |
-| pos | `[{ code: S, title: S, description: S? }]` | ugc only; max 20; codes `PO1…` unique within program |
-| psos | `[{ code: S, title: S, description: S? }]` | ugc only; max 10; codes `PSO1…` |
+| departmentId | Id? | null for a programme created by the course list until an admin sets it (A-61); offerings need it |
+| durationSemesters | N? | 1–12 |
+| outcomeTitles | `[{ code: S, title: S }]` | ≤ 15; `code` ∈ PO1–PO12, PSO1–PSO3 (fixed codes, CPP-02); `title` ≤ 200; a code without a title is shown as the code. New programmes start with PSO1 Higher education, PSO2 Entrepreneurship, PSO3 Placement (Q-08) |
+| baskets | `[{ _id: Id, name: S, title: S?, scope: S?, minCredits: N? }]` | ≤ 12; `name` ≤ 60, unique within the programme ("Basket I"); `title` ≤ 120; `scope` `core` · `choice`; `minCredits` 0–300 in 0.5 steps |
 | status | S | `active` · `archived` |
 
 Indexes: `{ code: 1 }` unique · `{ departmentId: 1, status: 1 }`.
-Invariants: removing a PO/PSO code that appears in any course's `coMap` is rejected (CONFLICT). Defaults when creating a ugc program: `PO1–PO12` (titles editable) and `PSO1 Higher education`, `PSO2 Entrepreneurship`, `PSO3 Placement` (CPP-02; Q-08 may make PSOs program-specific — they already are editable per program).
+Invariants: a programme with offerings keeps its department (offerings copy it). Renaming a basket renames it in the programme's curriculum entries in the same transaction; a basket that lists courses cannot be removed.
 
 ### 3.4 `batches`
 `programId` Id · `name` S (≤ 80, e.g. "B.Tech CSE 2025–29") · `startYear` N · `sections` [S] (max 20, each ≤ 10) · `status` `active|graduated`.
@@ -82,53 +82,54 @@ Indexes: `{ programId: 1, startYear: 1 }` unique.
 `code` S (unique, e.g. `2026-ODD`) · `name` S · `academicYear` S (`2026-27`) · `startsOn` D · `endsOn` D · `status` `upcoming|current|closed`.
 Indexes: `{ code: 1 }` unique · `{ status: 1 }`. Invariant: `startsOn < endsOn`.
 
-### 3.6 `courses` (catalog)
+### 3.6 `courses` (catalogue, university-wide — M01b)
+One course per code, listed by any number of programmes (§3.6a, A-54). Sizes are `CATALOG_LIMITS` in `lib/schemas/structure.ts`.
+
 | Field | Type | Rules |
 |---|---|---|
-| programId | Id | required. A course belongs to one program (assumption A-12) |
-| departmentId, category | Id, S | *denorm* from program |
-| code | S | ≤ 20; unique within program |
+| code | S | uppercase letters and digits, ≤ 20, **unique**; stored as `normalizeCode` (`cutm 1535` → `CUTM1535`); fixed once the course has an offering (A-62) |
 | title | S | ≤ 160 |
-| credits | N | 0–30, multiples of 0.5 |
-| components | [S] | 1–3 of `theory practice project`, unique |
-| componentKey | S | derived: components in fixed order `theory`,`practice`,`project` joined by `+` (e.g. `theory+practice`). Selects the evaluation scheme (CE-07) |
-| syllabusText | RichText? | |
-| syllabusFileKey | S? | object key of a PDF |
-| objectives | [S] | max 20, each ≤ 500 |
-| cos | `[{ _id: Id, code: S, statement: S, bloomLevel: S, targetLevel: N? }]` | ugc only; max 15; `code` `CO1…` unique within course; `statement` ≤ 500; `bloomLevel` one of `remember understand apply analyse evaluate create`; `targetLevel` 0–3 (default from `attainment` settings) |
-| coMap | `[{ coId: Id, outcome: S, level: 1\|2\|3 }]` | sparse (only non-empty cells); `outcome` is a PO/PSO code of the program; unique per (coId, outcome); max 450 |
+| type | S? | `core` · `domain` · `skill` · `certificate` · `advanced_certificate` · `diploma` (a label, 01 §6) |
+| credits | `{ theory: N, practice: N, project: N }` | each 0–20 in 0.5 steps, total ≤ 30 (written `3-0-1`). Total 0 = non-credit course |
 | status | S | `draft` · `active` · `archived` |
+| coordinatorId | Id? | a faculty user (CRS-07) |
+| objectives | [S] | ≤ 20, each ≤ 500 |
+| cos | `[{ _id: Id, code: S, statement: S, bloomLevels: [S], suggestedBloom: S?, targetLevel: N? }]` | credit courses only; ≤ 15; `code` `CO1…` unique, never reused for a new CO; `statement` ≤ 500; `bloomLevels` 0–3 of `remember understand apply analyse evaluate create`; `suggestedBloom` is the import's guess from the first verb, shown pre-ticked, cleared when a person saves (A-58); `targetLevel` 0–3 |
+| coMap | `[{ coId: Id, outcome: S, level: 1\|2\|3 }]` | sparse; `outcome` ∈ PO1–PO12, PSO1–PSO3; unique per (coId, outcome); ≤ 225 |
+| modules | `[{ _id: Id, title: S, hours: S?, topics: S, practicals: [S] }]` | ≤ 20; `title` ≤ 200; `hours` ≤ 30, as written (`6` or `4+0+2`); `topics` ≤ 3000; `practicals` ≤ 30, each ≤ 300 |
+| projects | [S] | ≤ 30, each ≤ 300 |
+| textbooks, references | [S] | ≤ 20 and ≤ 30, each ≤ 500 |
+| sessionPlan | `[{ topic: S, kind: S }]` | ≤ 200; `topic` ≤ 200; `kind` `theory` · `practice` · `project` |
+| syllabusFileKey | S? | object key of the official PDF |
+| source | `{ coursewareId: N, url: S, importedAt: D, contentHash: S, facultyName: S?, lastRunId: Id? }?` | set by the courseware import (ADM-07); `lastRunId` lets a run count each page once |
+| contentEditedAt | D? | set by every content edit in the LMS; the import then leaves the content alone unless forced (A-57) |
+| issues | [S] | ≤ 20 review notes in plain words, each ≤ 300 |
+| reviewNeeded | B | shown as "Needs review"; cleared with the notes by "Mark reviewed" |
 
-Indexes: `{ programId: 1, code: 1 }` unique · `{ departmentId: 1, status: 1 }`.
-Invariants: a CO referenced by any assessment item cannot be deleted (CONFLICT); its statement and Bloom level may be edited. Skill-category courses have no `cos`/`coMap`.
+Indexes: `{ code: 1 }` unique · `{ status: 1, code: 1 }` · `{ type: 1, code: 1 }` · `{ reviewNeeded: 1, code: 1 }` · `{ coordinatorId: 1, code: 1 }` · `{ 'source.coursewareId': 1 }` unique partial (a number) · text `{ code: 'text', title: 'text' }`.
+Invariants: removing a CO removes its mapping cells; a re-import keeps each CO's `_id` by its code (`mergeCos`). A CO referenced by an assessment item cannot be removed (M04). Contact details from courseware are never stored (A-60).
 
-### 3.7 `evaluationSchemes` (versioned, immutable)
-| Field | Type | Rules |
-|---|---|---|
-| componentKey | S | the course `componentKey` this scheme applies to |
-| version | N | 1, 2, 3… per `componentKey` |
-| name | S | ≤ 120 |
-| internalMax | N | > 0, ≤ 200 |
-| externalMax | N | ≥ 0, ≤ 200 (end-sem maximum used by the grade sheet) |
-| components | `[{ key: S, label: S, weight: N, modes: [S], aggregation: S, bestN: N? }]` | 1–10; `key` slug unique; `weight` > 0; `modes` ⊂ assessment modes (§5.1), non-empty; **a mode appears in at most one component**; `aggregation` `average` · `sum` · `best_n` (`bestN` ≥ 1 required for `best_n`) |
-| rounding | `{ decimals: 0\|1\|2, mode: 'half_up'\|'ceil' }` | applied once, to the total (07 §2) |
-| status | S | `active` · `retired`; at most one `active` per `componentKey` |
-| createdBy | Id | |
+### 3.6a `curriculumEntries` (M01b)
+`programId` Id · `courseId` Id · `courseCode` S (*denorm*, for sorting) · `basket` S? (the name of one of the programme's baskets; null = no basket) · `stream` S? (≤ 60) · `courseType` S? (≤ 80, the Course Repository's label for this programme, e.g. "Humanities and Management(A)").
+Indexes: `{ programId: 1, courseId: 1 }` unique · `{ programId: 1, basket: 1, courseCode: 1 }` · `{ courseId: 1 }`.
+Invariants: at most 1,000 per programme (the actions and the course-list import check it). The course-list upload never deletes an entry (A-64).
 
-Indexes: `{ componentKey: 1, version: 1 }` unique · `{ componentKey: 1, status: 1 }`.
-Invariants: **Σ `components.weight` = `internalMax`** (CE-07). A version is never edited; "edit" creates version n+1 and retires n. Offerings keep the version they were bound to (`offerings.schemeId`) unless an admin rebinds (allowed only while the offering's marks are unlocked; audited).
+### 3.7 Evaluation policy copy (replaces `evaluationSchemes`, M01b)
+There is no collection: the evaluation policy is the settings key `evaluation` (06 §7, 07 §2), and each credit offering stores a copy of it in `offerings.evaluation` when it is created (A-63). The M01 `evaluationSchemes` collection is dropped by the migration.
 
 ### 3.8 `offerings`
 | Field | Type | Rules |
 |---|---|---|
 | courseId, termId, batchId | Id | required |
 | section | S? | null = the whole batch |
-| programId, departmentId, category | Id, Id, S | *denorm* from course |
+| programId, departmentId | Id, Id | *denorm* from the batch's programme (A-56) |
+| category | S | `ugc` (credit course) · `skill` (non-credit, 0-0-0), from `credits` (A-55) |
+| credits | `{ theory, practice, project }` | copy of the course's credits at creation |
+| evaluation | Mixed? | copy of the `evaluation` settings at creation; null for a non-credit offering |
 | title | S | generated: `<code> · <course title> · <term code>[ · <section>]` |
 | facultyIds | [Id] | 1–5 |
-| schemeId | Id? | the bound `evaluationSchemes` version; required for `ugc`, null for `skill` |
-| projectMode | S? | `github` · `tracker`; required when the course has the `project` component, else null |
-| modules | `[{ _id: Id, title: S, order: N }]` | max 40 |
+| projectMode | S? | `github` · `tracker`; required exactly when `credits.project` > 0, else null |
+| modules | `[{ _id: Id, title: S, order: N }]` | max 40; prefilled from the course's module titles |
 | plan | `{ doc: RichText?, version: N, publishedAt: D?, publishedBy: Id? }` | `version` increments on each publish |
 | calendar | `[{ _id: Id, date: D, topic: S, coIds: [Id] }]` | max 200; `topic` ≤ 200 |
 | status | S | `draft` · `active` · `completed` |
@@ -136,7 +137,7 @@ Invariants: **Σ `components.weight` = `internalMax`** (CE-07). A version is nev
 | lastPushedAt | D? | last CE export/push |
 
 Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }` · `{ status: 1, _id: -1 }` (the admin list filtered by status alone).
-Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, scheme binding or internal mark for this offering. End-sem marks are imported after the lock and freeze when the student's grade sheet is published (M08).
+Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, evaluation copy or internal mark for this offering. The course must be in the batch programme's curriculum when the offering is created. End-sem marks are imported after the lock and freeze when the student's grade sheet is published (M08).
 
 ### 3.9 `enrollments`
 `offeringId` Id · `studentId` Id · `status` `active|dropped` · `engagement` `{ score: N?, band: S?, trend: S, signals: { attendance, video, timeliness, practice, activity: N? }, computedAt: D }?` (nightly snapshot, M10).
@@ -276,7 +277,7 @@ Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique · `{ offering
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
 
 ### 5.3 `internalMarks`
-`offeringId` Id · `studentId` Id · `schemeId` Id · `components` `[{ key: S, pct: N?, marks: N, counted: N }]` · `total` N · `complete` B (every component has ≥ the required assessments) · `trend` `rising|dropping|steady|insufficient` · `slope` N? · `points` [N] (max 6) · `computedAt` D.
+`offeringId` Id · `studentId` Id · `components` `[{ key: S, pct: N?, marks: N, counted: N }]` (keyed by the evaluation policy's parts; how assessments feed them is Q-41) · `total` N · `complete` B (every component has ≥ the required assessments) · `trend` `rising|dropping|steady|insufficient` · `slope` N? · `points` [N] (max 6) · `computedAt` D.
 Indexes: `{ offeringId: 1, studentId: 1 }` unique.
 Invariants: written only by `recomputeInternalMarks` (07 §2). Never edited by hand. Not recomputed while the offering is locked.
 
@@ -285,7 +286,7 @@ Invariants: written only by `recomputeInternalMarks` (07 §2). Never edited by h
 Indexes: `{ offeringId: 1, studentId: 1 }` unique. Re-import replaces (upsert) and is audited.
 
 ### 5.5 `gradeSheets`
-`termId` Id · `studentId` Id · `programId` Id · `rows` `[{ offeringId, courseCode, courseTitle, credits, internal, internalMax, external, externalMax, total, pct, grade, gradePoint }]` (max 20) · `credits` N · `sgpa` N? · `status` `draft|published` · `publishedAt` D? · `publishedBy` Id?
+`termId` Id · `studentId` Id · `programId` Id · `rows` `[{ offeringId, courseCode, courseTitle, credits: { theory, practice, project }, components: [{ component, internal, internalMax, external, externalMax, marks }], pct, grade, gradePoint }]` (max 20; 07 §6) · `credits` N · `sgpa` N? · `status` `draft|published` · `publishedAt` D? · `publishedBy` Id?
 Indexes: `{ termId: 1, studentId: 1 }` unique · `{ termId: 1, status: 1 }`.
 
 ### 5.6 `attainments` (latest result per scope)
@@ -323,7 +324,8 @@ Indexes: `{ userId: 1, readAt: 1, createdAt: -1 }` · TTL `{ expiresAt: 1 }`.
 The shape and defaults of every key are Zod schemas in `lib/schemas/settings.ts` (06 §7). A missing document means "defaults".
 
 ### 7.4 `syncRuns`
-`kind` `exam_pull_csv|exam_push_csv|exam_pull_api|exam_push_api|github` · `offeringId` Id? · `termId` Id? · `projectId` Id? · `status` `running|succeeded|partial|failed` · `actorId` Id? · `startedAt` D · `finishedAt` D? · `stats` `{ rows: N, applied: N, skipped: N, failed: N }` · `errors` `[{ row: N?, key: S?, message: S }]` (max 500).
+`kind` `courseware|exam_pull_csv|exam_push_csv|exam_pull_api|exam_push_api|github` · `mode` `new|all|one`? (courseware) · `offeringId` Id? · `termId` Id? · `projectId` Id? · `status` `running|succeeded|partial|failed` · `actorId` Id? · `startedAt` D · `listedAt` D? (a listing is complete; until then `stats.rows` grows) · `finishedAt` D? · `stats` `{ rows: N?, applied: N, skipped: N, failed: N }` · `failures` `[{ row: N?, key: S?, message: S }]` (max 500; not `errors`, which Mongoose keeps for validation).
+A courseware run is finished once `listedAt` is set and applied + skipped + failed = rows; a run left `running` with no update for 2 hours counts as stopped, and one courseware run runs at a time.
 Indexes: `{ kind: 1, startedAt: -1 }` · `{ offeringId: 1, startedAt: -1 }`.
 
 ### 7.5 `auditLogs` (append-only, no `updatedAt`)

@@ -196,7 +196,7 @@ function tilesFor(viewer: Viewer, summary: HomeSummary, unread: number): Tile[] 
             value: summary.admin.activeOfferings,
             icon: ChalkboardTeacherIcon,
           },
-          { href: '/admin/courses', label: 'Courses', value: summary.admin.courses, icon: BookOpenTextIcon },
+          { href: '/catalog', label: 'Courses', value: summary.admin.courses, icon: BookOpenTextIcon },
           { href: '/admin/programs', label: 'Programmes', value: summary.admin.programs, icon: GraduationCapIcon },
         ]
       : []),

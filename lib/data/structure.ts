@@ -4,11 +4,15 @@ import { isValidObjectId } from 'mongoose';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { istDayKey } from '@/lib/domain/time';
+import { creditTotal, type Credits } from '@/lib/domain/catalog';
 import { Batch } from '@/lib/models/batch';
+import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { pageSize } from '@/lib/schemas/common';
+import { OUTCOME_CODES, type BASKET_SCOPES } from '@/lib/schemas/structure';
 
 const skip = (page: number) => (page - 1) * pageSize;
 
@@ -47,9 +51,9 @@ export type ProgramRow = {
   id: string;
   code: string;
   name: string;
-  departmentCode: string;
-  category: 'ugc' | 'skill';
-  durationSemesters: number;
+  // null: the programme came from the course list and has no department yet (A-61).
+  departmentCode: string | null;
+  durationSemesters: number | null;
   status: 'active' | 'archived';
 };
 
@@ -57,40 +61,52 @@ export async function listPrograms(page: number): Promise<{ rows: ProgramRow[]; 
   await requireViewer(['admin']);
   await db();
   const [docs, total] = await Promise.all([
-    Program.find({}, { code: 1, name: 1, departmentId: 1, category: 1, durationSemesters: 1, status: 1 })
+    Program.find({}, { code: 1, name: 1, departmentId: 1, durationSemesters: 1, status: 1 })
       .sort({ code: 1 })
       .skip(skip(page))
       .limit(pageSize)
       .lean(),
     Program.estimatedDocumentCount(),
   ]);
-  const departments = await Department.find({ _id: { $in: docs.map((p) => p.departmentId) } }, { code: 1 }).lean();
+  const departments = await Department.find(
+    { _id: { $in: docs.flatMap((p) => p.departmentId ?? []) } },
+    { code: 1 },
+  ).lean();
   const codes = new Map(departments.map((d) => [String(d._id), d.code]));
   return {
     rows: docs.map((p) => ({
       id: String(p._id),
       code: p.code,
       name: p.name,
-      departmentCode: codes.get(String(p.departmentId)) ?? '—',
-      category: p.category,
-      durationSemesters: p.durationSemesters,
+      departmentCode: p.departmentId ? (codes.get(String(p.departmentId)) ?? null) : null,
+      durationSemesters: p.durationSemesters ?? null,
       status: p.status,
     })),
     total,
   };
 }
 
-export type Outcome = { code: string; title: string; description: string };
+export type BasketSummary = {
+  id: string;
+  name: string;
+  title: string | null;
+  scope: (typeof BASKET_SCOPES)[number] | null;
+  minCredits: number | null;
+  courses: number;
+  credits: number;
+};
+
 export type ProgramDetail = {
   id: string;
   code: string;
   name: string;
-  departmentId: string;
-  category: 'ugc' | 'skill';
-  durationSemesters: number;
+  departmentId: string | null;
+  durationSemesters: number | null;
   status: 'active' | 'archived';
-  pos: Outcome[];
-  psos: Outcome[];
+  outcomes: { code: (typeof OUTCOME_CODES)[number]; title: string }[];
+  baskets: BasketSummary[];
+  // Courses listed with no basket.
+  unbasketed: { courses: number; credits: number };
 };
 
 export async function getProgram(id: string): Promise<ProgramDetail> {
@@ -99,21 +115,85 @@ export async function getProgram(id: string): Promise<ProgramDetail> {
   await db();
   const p = await Program.findById(id).lean();
   if (!p) notFound();
-  const outcome = (o: { code: string; title: string; description?: string | null }) => ({
-    code: o.code,
-    title: o.title,
-    description: o.description ?? '',
-  });
+  // A programme lists at most 1,000 courses, so its totals come from two bounded reads.
+  const entries = await CurriculumEntry.find({ programId: id }, { courseId: 1, basket: 1 }).limit(1000).lean();
+  const courses = await Course.find({ _id: { $in: entries.map((e) => e.courseId) } }, { credits: 1 }).lean();
+  const credits = new Map(courses.map((c) => [String(c._id), creditTotal(c.credits)]));
+  const totals = (basket: string | null) => {
+    const listed = entries.filter((e) => (e.basket ?? null) === basket);
+    return {
+      courses: listed.length,
+      credits: listed.reduce((sum, e) => sum + (credits.get(String(e.courseId)) ?? 0), 0),
+    };
+  };
+  const titles = new Map(p.outcomeTitles.map((o) => [o.code, o.title]));
   return {
     id: String(p._id),
     code: p.code,
     name: p.name,
-    departmentId: String(p.departmentId),
-    category: p.category,
-    durationSemesters: p.durationSemesters,
+    departmentId: p.departmentId ? String(p.departmentId) : null,
+    durationSemesters: p.durationSemesters ?? null,
     status: p.status,
-    pos: p.pos.map(outcome),
-    psos: p.psos.map(outcome),
+    outcomes: OUTCOME_CODES.map((code) => ({ code, title: titles.get(code) ?? '' })),
+    baskets: p.baskets.map((b) => ({
+      id: String(b._id),
+      name: b.name,
+      title: b.title ?? null,
+      scope: b.scope ?? null,
+      minCredits: b.minCredits ?? null,
+      ...totals(b.name),
+    })),
+    unbasketed: totals(null),
+  };
+}
+
+export type CurriculumRow = {
+  courseId: string;
+  code: string;
+  title: string;
+  credits: Credits;
+  basket: string | null;
+  courseType: string | null;
+};
+
+export async function listCurriculum(
+  programId: string,
+  page: number,
+  basket: string | undefined,
+): Promise<{ rows: CurriculumRow[]; total: number }> {
+  await requireViewer(['admin']);
+  await db();
+  const filter = { programId, ...(basket !== undefined ? { basket: basket || null } : {}) };
+  const [entries, total] = await Promise.all([
+    CurriculumEntry.find(filter, { courseId: 1, basket: 1, courseType: 1 })
+      .sort({ basket: 1, courseCode: 1 })
+      .skip(skip(page))
+      .limit(pageSize)
+      .lean(),
+    CurriculumEntry.countDocuments(filter),
+  ]);
+  const courses = await Course.find(
+    { _id: { $in: entries.map((e) => e.courseId) } },
+    { code: 1, title: 1, credits: 1 },
+  ).lean();
+  const byId = new Map(courses.map((c) => [String(c._id), c]));
+  return {
+    rows: entries.flatMap((e) => {
+      const course = byId.get(String(e.courseId));
+      return course
+        ? [
+            {
+              courseId: String(course._id),
+              code: course.code,
+              title: course.title,
+              credits: course.credits,
+              basket: e.basket ?? null,
+              courseType: e.courseType ?? null,
+            },
+          ]
+        : [];
+    }),
+    total,
   };
 }
 

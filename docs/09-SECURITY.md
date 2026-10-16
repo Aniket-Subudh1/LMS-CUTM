@@ -17,10 +17,13 @@
 
 | Capability | Student | Faculty | HoD | Admin | Support |
 |---|---|---|---|---|---|
-| Departments, programs, POs/PSOs, batches, terms | — | — | ○ | ✔ | — |
-| Courses, COs, CO-PO-PSO matrix, syllabus | ○ (via offering) | ○ | ○ | ✔ | — |
-| Evaluation schemes, settings | — | — | ○ | ✔ | — |
-| Offerings: create, assign faculty/scheme | — | — | — | ✔ | — |
+| Departments, programs, outcome titles, baskets, curriculum, batches, terms | — | — | ○ | ✔ | — |
+| Catalogue course: read (`/catalog`) | ○ (via offering Overview) | ○ | ○ | ✔ | — |
+| Catalogue course content: objectives, COs, CO-PO-PSO mapping, syllabus and PDF, books, session plan, mark reviewed | — | ◐ (as its coordinator, CRS-07) | — | ✔ | — |
+| Catalogue course details (code, title, credits, type, status), coordinator, replace with courseware content | — | — | — | ✔ | — |
+| Course-list upload, courseware import | — | — | — | ✔ | — |
+| Evaluation policy and other settings | — | — | ○ | ✔ | — |
+| Offerings: create, assign faculty | — | — | — | ✔ | — |
 | Users: create, import, roles, disable | — | — | — | ✔ | — |
 | Users: view, send password-reset link | — | — | — | ✔ | ✔ |
 | Enrollment changes | — | ✔ | — | ✔ | — |
@@ -44,7 +47,7 @@
 | AI suggestions | — | ✔ | — | ✔ | — |
 | Engagement scores & drill-down | — | ✔ | ○ | ✔ | — |
 | Audit log | — | — | — | ✔ | — |
-| Integrations page (sync runs, failed jobs) | — | — | — | ✔ | — |
+| Imports page (sync runs), integrations page (failed jobs) | — | — | — | ✔ | — |
 
 ## 3. Data scoping rules (exact)
 
@@ -60,9 +63,10 @@ Every exported DAL function and every action applies these filters; integration 
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
 | Projects & tasks | `memberIds ∋ me` | offering's | offering's | all |
 | Users | self | students enrolled in my offerings (name, roll no, email) | users of my department | all |
+| Catalogue courses (M01b) | only through an offering's Overview | all (read); content edits only where `coordinatorId = me` | all (read) | all |
 
 Rules:
-- Access is decided by `offeringAccess()` (04 §6.4), then the filter above is applied **inside the query**, not by filtering results in JavaScript.
+- Access is decided by `offeringAccess()` (04 §6.4), then the filter above is applied **inside the query**, not by filtering results in JavaScript. A catalogue course's editors are decided by `canEditCourse()` / `requireCourseEditor()` in `lib/auth/access.ts` (admin, or faculty whose id is the course's `coordinatorId`); an action refuses anyone else with FORBIDDEN and the page shows no edit buttons.
 - Never accept a `studentId` from a student's request; use `viewer.id`.
 - Never trust a hidden form field for ownership (`offeringId` in a form is re-checked).
 - Ids that do not resolve or are not accessible → `notFound()`.
@@ -101,8 +105,16 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 |---|---|
 | `user.created`, `user.imported` (one entry per import with counts), `user.roles_changed`, `user.disabled`, `user.sessions_revoked`, `user.password_changed` | roles, status (never the password) |
 | `settings.updated` | changed fields |
-| `scheme.versioned`, `offering.scheme_rebound` | version ids |
-| `course.cos_changed`, `course.map_changed` | changed cells |
+| `course.created`, `course.updated` | code, title, type, credits, status |
+| `course.coordinator_changed` | coordinator id |
+| `course.content_changed` | the section (objectives, syllabus, books, session plan) before and after |
+| `course.cos_changed`, `course.map_changed` | COs before/after (with the mapping links a removal took along); changed cells |
+| `course.reviewed` | the review notes cleared |
+| `course.imported` | courseware page, forced or not, counts, review notes, whether the coordinator was prefilled (actor: who started the run) |
+| `course.list_imported` (one entry per upload, entity `course_list`) | rows and counts created/updated |
+| `courseware.import_started` | mode, page |
+| `programme.outcomes_changed`, `programme.curriculum_changed` | titles; baskets, added/removed courses |
+| `catalog.migrated` (once, by the M01b migration) | counts |
 | `enrollment.changed` | added/dropped counts |
 | `plan.published` | version, recipient count |
 | `attendance.marked` | status before/after, source |

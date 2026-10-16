@@ -37,11 +37,11 @@ test('admin adds a department, finds a user and opens a course workspace', async
   await page.getByRole('link', { name: 'Student 05' }).click();
   await expect(page.getByRole('heading', { name: 'Student 05' })).toBeVisible();
   await expect(page.getByText('2501CSE005').filter({ visible: true })).toBeVisible();
-  await expect(page.getByText('CS101 · C Programming').filter({ visible: true })).toBeVisible();
+  await expect(page.getByText('CUTM1602 · Programming in C').filter({ visible: true })).toBeVisible();
 
   await page.goto('/courses');
-  await page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' }).click();
-  await expect(page.getByRole('heading', { name: 'CS101 · C Programming · 2026-ODD · A' })).toBeVisible();
+  await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
+  await expect(page.getByRole('heading', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' })).toBeVisible();
   await expect(page.getByText('Explain the basic constructs of C.')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'PSO3' })).toBeVisible();
   await page.getByRole('tab', { name: 'People' }).click();
@@ -52,11 +52,61 @@ test('admin adds a department, finds a user and opens a course workspace', async
   await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
 });
 
+// AC-M01b-06: one dialog creates an offering per section, with its students; a student sees theirs once it is active.
+test('admin offers a course to two sections at once and a student of one sees it', async ({ page }) => {
+  await signIn(page, 'admin@seed.cutm.test');
+  const term = `E${String(run).slice(-8)}`;
+  await page.goto('/admin/terms');
+  await page.getByRole('button', { name: 'Add term' }).click();
+  const termDialog = page.getByRole('dialog', { name: 'Add a term' });
+  await termDialog.getByLabel('Code', { exact: true }).fill(term);
+  await termDialog.getByLabel('Academic year', { exact: true }).fill('2027-28');
+  await termDialog.getByLabel('Name', { exact: true }).fill(`Term ${term}`);
+  await termDialog.getByLabel('Starts on', { exact: true }).fill('2027-07-01');
+  await termDialog.getByLabel('Ends on', { exact: true }).fill('2027-12-20');
+  await termDialog.getByRole('button', { name: 'Add term' }).click();
+  await expect(termDialog).toBeHidden();
+
+  await page.goto('/admin/offerings');
+  await page.getByRole('button', { name: 'New offering' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New offering' });
+  // Both programmes have a 2025 batch; the BTECH-CSE group holds the one this course is listed for.
+  const batch = await dialog.locator('optgroup[label^="BTECH-CSE"] option').first().getAttribute('value');
+  await dialog.getByRole('combobox', { name: 'Batch' }).selectOption(batch ?? '');
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await dialog
+    .getByRole('combobox', { name: 'Course' })
+    .selectOption({ label: 'CUTM1014 · Gender, Human Rights and Ethics · 1.5-0-1.5' });
+  await dialog.getByRole('combobox', { name: 'Term' }).selectOption({ label: `${term} · Term ${term}` });
+  await expect(dialog.getByRole('checkbox', { name: 'Section A' })).toBeChecked();
+  await expect(dialog.getByRole('checkbox', { name: 'Section B' })).toBeChecked();
+  await dialog.getByRole('checkbox', { name: 'Fatima Das' }).check();
+  // The course has project credits, so the project question appears.
+  await dialog.getByRole('radio', { name: 'Task tracker' }).check();
+  await dialog.getByRole('button', { name: 'Create offerings and enrol students' }).click();
+  await expect(dialog.getByText('Offerings created and students enrolled.')).toBeVisible();
+  await expect(dialog).toBeHidden();
+
+  const title = `CUTM1014 · Gender, Human Rights and Ethics · ${term} · A`;
+  await page.goto('/admin/offerings');
+  const row = page.getByRole('row', { name: new RegExp(title) });
+  await expect(page.getByRole('row', { name: new RegExp(`${term} · B`) })).toBeVisible();
+  await row.getByRole('button', { name: 'Activate' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Activate' }).click();
+  await expect(row.getByText('active')).toBeVisible();
+
+  await page.context().clearCookies();
+  await signIn(page, 'student01@seed.cutm.test');
+  await page.goto('/courses');
+  await expect(page.getByRole('link', { name: title })).toBeVisible();
+  await expect(page.getByRole('link', { name: new RegExp(`${term} · B`) })).toHaveCount(0);
+});
+
 test('faculty drops and re-adds a student from the roster', async ({ page }) => {
   await signIn(page, 'faculty1@seed.cutm.test');
   await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
-  await page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' }).click();
+  await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
   await page.getByRole('tab', { name: 'People' }).click();
 
   const row = page.getByRole('row', { name: /2501CSE003/ });
@@ -87,12 +137,12 @@ test('a student sees only their own course and cannot open administration', asyn
   await expect(page.getByRole('link', { name: 'Structure', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
-  await expect(page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' })).toBeVisible();
   await expect(page.getByRole('link', { name: /Excel Basics/ })).toHaveCount(0);
 
   await page.goto('/admin/users');
   await expect(page).toHaveURL(/\/home$/);
   await page.goto('/courses');
-  await page.getByRole('link', { name: 'CS101 · C Programming · 2026-ODD · A' }).click();
+  await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
   await expect(page.getByRole('tab', { name: 'People' })).toHaveCount(0);
 });

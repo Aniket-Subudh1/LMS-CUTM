@@ -83,30 +83,25 @@ describe('mail worker', () => {
 
   it('emails the course plan once to each active student of the offering (COM-01, AC-M02-04)', async () => {
     sendMail.mockClear();
+    const departmentId = new Types.ObjectId();
     const program = await m.Program.create({
       code: 'BTCSE',
       name: 'B.Tech CSE',
-      departmentId: new Types.ObjectId(),
-      category: 'ugc',
+      departmentId,
       durationSemesters: 8,
-      pos: [{ code: 'PO1', title: 'Engineering knowledge' }],
-      psos: [{ code: 'PSO1', title: 'Higher education' }],
+      outcomeTitles: [
+        { code: 'PSO1', title: 'Higher education' },
+        { code: 'PO1', title: 'Engineering knowledge' },
+      ],
     });
     const course = await m.Course.create({
-      programId: program._id,
-      departmentId: program.departmentId,
-      category: 'ugc',
-      code: 'CS201',
-      title: 'Data Structures',
-      credits: 4,
-      components: ['theory'],
-      componentKey: 'theory',
+      code: 'CUTM1602',
+      title: 'Programming in C',
+      credits: { theory: 1, practice: 2, project: 1 },
       objectives: ['Choose the right structure for a problem'],
-      cos: [{ code: 'CO1', statement: 'Explain stacks and queues', bloomLevel: 'understand' }],
-      syllabusText: {
-        type: 'doc',
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Unit 1: Arrays' }] }],
-      },
+      cos: [{ code: 'CO1', statement: 'Explain stacks and queues', bloomLevels: ['understand', 'apply'] }],
+      modules: [{ title: 'Arrays', hours: '2+4+2', topics: 'Unit 1: Arrays', practicals: ['Reverse an array'] }],
+      textbooks: ['Kernighan and Ritchie'],
       status: 'active',
     });
     const offering = await m.Offering.create({
@@ -114,9 +109,10 @@ describe('mail worker', () => {
       termId: new Types.ObjectId(),
       batchId: new Types.ObjectId(),
       programId: program._id,
-      departmentId: program.departmentId,
+      departmentId,
       category: 'ugc',
-      title: 'CS201 · Data Structures · 2026-ODD',
+      credits: course.credits,
+      title: 'CUTM1602 · Programming in C · 2026-ODD',
       facultyIds: [new Types.ObjectId()],
       status: 'active',
       plan: {
@@ -145,13 +141,17 @@ describe('mail worker', () => {
     const sent = sendMail.mock.calls.map(([message]) => message);
     expect(sent.map((s) => s.to).sort()).toEqual(['asha.plan@cutm.test', 'ravi.plan@cutm.test']);
     for (const mail of sent) {
-      expect(mail.subject).toBe('Course plan: CS201 Data Structures');
+      expect(mail.subject).toBe('Course plan: CUTM1602 Programming in C');
       for (const part of ['Course calendar', 'Syllabus', 'Course objectives', 'Course outcomes', 'Program outcomes']) {
         expect(mail.html).toContain(`>${part}</h2>`);
       }
       expect(mail.html).toContain('Stacks');
       expect(mail.html).toContain('Unit 1: Arrays');
-      expect(mail.html).toContain('Engineering knowledge');
+      expect(mail.html).toContain('Arrays (2+4+2 hours)');
+      expect(mail.html).toContain('Understand, Apply');
+      expect(mail.html).toContain('credits 1-2-1');
+      // Programme outcome titles, in code order.
+      expect(mail.html.indexOf('Engineering knowledge')).toBeLessThan(mail.html.indexOf('Higher education'));
       expect(mail.html).toContain(`http://localhost:3000/courses/${offering._id}`);
     }
     expect(sendMail).toHaveBeenCalledTimes(2);

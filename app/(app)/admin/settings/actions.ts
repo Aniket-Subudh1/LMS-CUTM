@@ -15,7 +15,8 @@ import { SETTINGS, settingsKey } from '@/lib/schemas/settings';
 const SaveSettings = z.looseObject({ key: settingsKey });
 
 export const saveSettings = action({ input: SaveSettings, roles: ['admin'] }, async ({ key, ...fields }, viewer) => {
-  const schema = SETTINGS[key].schema;
+  // Every key's schema parses its form fields into a flat record (06 §7).
+  const schema: z.ZodType<Record<string, unknown>> = SETTINGS[key].schema;
   const parsed = schema.safeParse(fields);
   if (!parsed.success) {
     throw new AppError(
@@ -25,8 +26,10 @@ export const saveSettings = action({ input: SaveSettings, roles: ['admin'] }, as
     );
   }
   await db();
-  const before: Record<string, unknown> = schema.parse((await Setting.findById(key, { value: 1 }).lean())?.value ?? {});
-  const after: Record<string, unknown> = parsed.data;
+  // A stored value that no longer passes (a rule tightened since) counts as the defaults.
+  const stored = schema.safeParse((await Setting.findById(key, { value: 1 }).lean())?.value ?? {});
+  const before = stored.success ? stored.data : schema.parse({});
+  const after = parsed.data;
   const changed = Object.keys(after).filter((field) => !isDeepStrictEqual(before[field], after[field]));
   if (changed.length === 0) return;
 

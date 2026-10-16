@@ -188,7 +188,7 @@ Uploads are authorized per purpose by `createUpload` (02 §4.3). The key prefix 
 |---|---|---|---|---|---|---|
 | `lesson-video` | teach | offering | `video/mp4`, `video/webm` | 2 GB | `lesson-video/<offeringId>/<userId>/<uuid>.<ext>` | teach, oversee, learn (published lessons only) |
 | `lesson-doc` | teach | offering | `application/pdf` | 50 MB | `lesson-doc/<offeringId>/…` | same |
-| `syllabus` | admin | course | `application/pdf` | 20 MB | `syllabus/<courseId>/…` | any viewer with access to an offering of the course |
+| `syllabus` | admin, or the course's coordinator (CRS-07, M01b) | course | `application/pdf` | 20 MB | `syllabus/<courseId>/…` | any viewer with access to an offering of the course |
 | `submission` | learn (own attempt in progress) | assessment | `application/pdf`, `image/jpeg`, `image/png`, `image/heic` | 25 MB each, ≤ 10 per item | `submission/<assessmentId>/<userId>/<uuid>.<ext>` | the owner; teach, oversee |
 | `proctor-snapshot` | learn (own proctored attempt) | submission | `image/jpeg` | 300 KB | `proctor/<submissionId>/<userId>/<uuid>.jpg` | teach, oversee |
 
@@ -211,6 +211,8 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `compute/engagementSnapshot` | `{ offeringId }` | `eng-<offeringId>-<day>` | overwrites `enrollments.engagement` | M10 |
 | `compute/proctorRetention` | `{}` | scheduler | deletes keys then `$unset` | 05 §8 |
 | `sync/githubProject` | `{ projectId }` | `gh-<projectId>-<minuteBucket>` | commits upserted by sha | 07 §12 |
+| `sync/coursewareList` | `CoursewareListJob { syncRunId, mode: 'new'\|'all', page }` (M01b) | `cw-list-<syncRunId>-<page>` | counts the page's courses into `stats.rows` before queueing them; `new` skips pages already bound to a course | reads one listing page, queues a `coursewarePage` per course, then the next listing page; the last one sets `listedAt` |
+| `sync/coursewarePage` | `CoursewarePageJob { syncRunId, coursewareId, force }` (M01b) | `cw-<syncRunId>-<coursewareId>` | `source.lastRunId` counts a page once; a failure is recorded once per page | fetch → normalise → match (bound page, code, unique title) → bind atomically → write in one transaction with `course.imported` (05 §3.6). Concurrency 2: a page takes 30–60 s |
 | `sync/examPull`, `sync/examPush` | `{ offeringId, syncRunId }` | `exam-<pull\|push>-<syncRunId>` | **blocked on Q-04** | M08 |
 
 `<minuteBucket>` = `Math.floor(now / 60000)`: repeated triggers inside one minute collapse into one job.
@@ -222,6 +224,7 @@ Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schem
 | Key | Fields (default) | Used by | Status |
 |---|---|---|---|
 | `lessons` | `completePct` (90) | 07 §8, skill attendance | proposed — confirm Q-17 |
+| `evaluation` (M01b) | theory `theoryMidTerm1` 15, `theoryMidTerm2` 15, `theoryAssignment` 5, `theoryAttendance` 5, `theoryEndSem` 60; attendance `attendanceMinPct` 75 and bands `band1Pct` 90 → `band1Marks` 5, 85 → 4, 80 → 3, 75 → 2; practice rubric `practiceConcept` 5, `practicePlanning` 10, `practiceResult` 10, `practiceRecord` 10, `practiceConduct` 5, `practiceViva` 10; project rubrics `projectRelevance` 5, `projectLiterature` 5, `projectMethodology` 10, `projectAnalysis` 10, `projectInterpretation` 10, `projectReport` 10, `projectExtRelevance` 10, `projectExtReport` 20, `projectExtDefence` 20 | 07 §2; copied onto each credit offering at creation (05 §3.7) | CUTM's Examination Policy (2020). Rules: theory parts total 100; bands fall and their marks do not rise or exceed the attendance part; the practice rubric totals 50; the project rubrics total 100. Q-38, Q-41 |
 | `attendance` | `liveThresholdPct` (75) | 07 §10 | proposed — confirm Q-17 |
 | `ceTrend` | `window` (6), `minPoints` (3), `slopeThreshold` (2) | 07 §3 | proposed |
 | `attainment` | `targetPct` (60), `level3Pct` (70), `level2Pct` (60), `level1Pct` (50), `cieWeight` (0.5), `seeWeight` (0.5), `defaultTargetLevel` (2) | 07 §4 | proposed — confirm Q-07 |
@@ -247,6 +250,15 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 ### 8.2 Enrollment changes — form on `/courses/<id>/people` (M01)
 `rollno,action` with `action` ∈ `add, drop`. (The whole batch/section is enrolled automatically when the offering is created.)
 
+### 8.5 Course list — "Upload course list" on `/admin/imports` (M01b, ADM-06)
+`programme,stream,basket,type,code,title,credits,tpp` — CUTM's Course Repository, one row per programme × course.
+- `programme`, `code`, `title`, `credits`, `tpp` required; `stream` (≤ 60), `basket` (≤ 60) and `type` (≤ 80) optional.
+- `code` is normalised (`cutm 1535` → `CUTM1535`) and must be letters and digits. `tpp` is the T+P+Pj split in any of CUTM's spellings (`3+0+1`, `2--2--2`, `1.5+0+1.5`) with three parts, and its total must equal `credits`.
+- The same code on several rows keeps one title and one split; a programme lists a code once.
+- `programme` is matched to an LMS programme by code or by name (case and spaces ignored). With "Create programmes that do not exist yet" ticked, a missing one is created (code from its name, no department, PSO titles by default); otherwise its rows are errors.
+- `basket` is matched by name inside the programme or added to it (≤ 12 baskets). `type` labels the link; it sets the course's type only when the course has none.
+- Courses are upserted by code: a new course is `active`; for a known one only the title and the credits change (a credit change adds the review note "Credits changed by the course list from X to Y."), never its content. Links are upserted; an unchanged link is not rewritten, so the same file twice changes nothing. Nothing is deleted (A-64). One transaction and one audit entry `course.list_imported` (entity `course_list`) with the counts.
+
 ### 8.3 End-semester marks — `/admin/exams/import` (M08)
 `rollno,coursecode,termcode,endsemmarks,endsemmax,absent`
 - `absent` ∈ `Y, N`; when `Y`, `endsemmarks` must be empty.
@@ -254,7 +266,7 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 - Every (`rollno`, `coursecode`, `termcode`) must match an active enrollment in a non-locked offering; unmatched rows are errors (mismatch report, EXM-07).
 
 ### 8.4 Internal marks export — `/admin/exams/export` (M08)
-`rollno,name,coursecode,termcode,internalmarks,internalmax` followed by one column per scheme component key (`quiz`, `assignment`, …). Exported only for locked offerings (CE-11, CE-12).
+`rollno,name,coursecode,termcode` followed by the internal marks of each component the offering's credits copy has (`theoryinternal` of 40, `practiceinternal` of 50, `projectinternal` of 50 under the evaluation policy; the exact columns wait for Q-04 and Q-41). Exported only for locked offerings (CE-11, CE-12).
 
 ## 9. Notification kinds
 

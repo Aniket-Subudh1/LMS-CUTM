@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { fillCalendarFromCourse } from '@/app/(app)/courses/[offeringId]/plan/actions';
 import { getOfferingCourse } from '@/lib/data/courses';
 import { db } from '@/lib/db';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
@@ -10,7 +11,7 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
-import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
+import { enroll, form, makeCourse, makeOffering, makeProgram, makeUser, newId, signInAs } from '../factories';
 import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
@@ -244,38 +245,78 @@ describe('getOfferingCourse', () => {
   it('returns the course with its mapping to anyone allowed into the workspace', async () => {
     const w = await world();
     const coId = newId();
-    const program = await Program.create({
-      code: `WP${seq}`,
-      name: 'Programme',
-      departmentId: w.deptA._id,
-      category: 'ugc',
-      durationSemesters: 8,
-      pos: [{ code: 'PO1', title: 'First', statement: 'First' }],
-    });
-    const course = await Course.create({
-      programId: program._id,
-      departmentId: w.deptA._id,
-      category: 'ugc',
-      code: `WC${seq}`,
-      title: 'Workspace course',
-      credits: 3,
-      components: ['theory'],
-      componentKey: 'theory',
-      status: 'active',
-      cos: [{ _id: coId, code: 'CO1', statement: 'Do things', bloomLevel: 'apply' }],
+    const program = await makeProgram({ outcomeTitles: [{ code: 'PO1', title: 'First' }] });
+    const course = await makeCourse({
+      cos: [{ _id: coId, code: 'CO1', statement: 'Do things', bloomLevels: ['apply'] }],
       coMap: [{ coId, outcome: 'PO1', level: 2 }],
     });
-    const offering = await makeOffering({ courseId: course._id, status: 'active', departmentId: w.deptA._id });
+    const offering = await makeOffering({
+      courseId: course._id,
+      programId: program._id,
+      status: 'active',
+      departmentId: w.deptA._id,
+    });
     const student = await makeUser({ roles: ['student'] });
     await enroll(offering._id, student._id);
 
     await signInAs(student);
     expect(await getOfferingCourse(String(offering._id))).toMatchObject({
       code: course.code,
-      outcomes: expect.arrayContaining(['PO1']),
+      outcomes: expect.arrayContaining([{ code: 'PO1', title: 'First' }]),
       cells: { [`${coId}:PO1`]: 2 },
     });
     await signInAs(await makeUser({ roles: ['student'] }));
     await expect(getOfferingCourse(String(offering._id))).rejects.toMatchObject({ digest: NOT_FOUND });
+  });
+});
+
+describe('fillCalendarFromCourse (AC-M01b-09)', () => {
+  const sessionPlan = [
+    { topic: 'Index of a point', kind: 'theory' },
+    { topic: 'Measure angles', kind: 'practice' },
+    { topic: 'Residues', kind: 'theory' },
+    { topic: 'Study on residues', kind: 'project' },
+    { topic: 'Argument principle', kind: 'theory' },
+  ];
+  const fill = (offeringId: string, over: Record<string, string | string[]> = {}) =>
+    fillCalendarFromCourse(form({ offeringId, firstDay: '2026-07-06', 'weekdays[]': ['1', '3', '5'], ...over }));
+
+  it('dates the course session plan on the chosen weekdays, and asks before replacing sessions', async () => {
+    const faculty = await makeUser({ roles: ['faculty'] });
+    const course = await makeCourse({ sessionPlan });
+    const offering = await makeOffering({ courseId: course._id, facultyIds: [faculty._id] });
+    const id = String(offering._id);
+    await signInAs(faculty);
+    expect(await fill(id)).toMatchObject({ ok: true });
+    const calendar = (await Offering.findById(id).lean())?.calendar ?? [];
+    expect(calendar.map((row) => [istDayKey(row.date), row.topic])).toEqual([
+      ['2026-07-06', 'Index of a point'],
+      ['2026-07-08', 'Practice: Measure angles'],
+      ['2026-07-10', 'Residues'],
+      ['2026-07-13', 'Project: Study on residues'],
+      ['2026-07-15', 'Argument principle'],
+    ]);
+    expect(await fill(id, { firstDay: '2026-08-03' })).toMatchObject({
+      ok: false,
+      fieldErrors: { replace: ['This replaces the 5 sessions already scheduled. Tick the box to go on.'] },
+    });
+    expect(await fill(id, { firstDay: '2026-08-03', replace: 'true' })).toMatchObject({ ok: true });
+    expect(istDayKey((await Offering.findById(id).lean())?.calendar[0].date ?? new Date(0))).toBe('2026-08-03');
+  });
+
+  it('is for those who teach the offering, and needs a session plan and a weekday', async () => {
+    const faculty = await makeUser({ roles: ['faculty'] });
+    const offering = await makeOffering({ courseId: (await makeCourse())._id, facultyIds: [faculty._id] });
+    const id = String(offering._id);
+    await signInAs(faculty);
+    expect(await fill(id)).toMatchObject({ ok: false, message: 'This course has no session plan yet.' });
+    expect(await fill(id, { 'weekdays[]': [] })).toMatchObject({
+      ok: false,
+      fieldErrors: { 'weekdays[]': ['Tick at least one day.'] },
+    });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    await expect(fill(id)).rejects.toThrow(NOT_FOUND);
+    await signInAs(await makeUser({ roles: ['student'] }));
+    expect(await fill(id)).toMatchObject({ ok: false, code: 'FORBIDDEN' });
   });
 });

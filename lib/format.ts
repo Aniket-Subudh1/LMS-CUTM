@@ -1,4 +1,5 @@
 import type { Role } from '@/lib/schemas/common';
+import type { COURSE_TYPES } from '@/lib/schemas/structure';
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
@@ -6,6 +7,16 @@ export const ROLE_LABEL: Record<Role, string> = {
   faculty: 'Faculty',
   student: 'Student',
   support: 'Support',
+};
+
+// The courseware's six course types (labels only; the credits decide the features, 01 §6).
+export const COURSE_TYPE_LABEL: Record<(typeof COURSE_TYPES)[number], string> = {
+  core: 'Core',
+  domain: 'Domain',
+  skill: 'Skill',
+  certificate: 'Certificate',
+  advanced_certificate: 'Advanced certificate',
+  diploma: 'Diploma',
 };
 
 const IST = 'Asia/Kolkata';
@@ -63,6 +74,11 @@ const TONE: Record<string, Tone> = {
   dropped: 'outline',
   graduated: 'outline',
   completed: 'outline',
+  running: 'warning',
+  succeeded: 'success',
+  partial: 'warning',
+  failed: 'danger',
+  stopped: 'danger',
 };
 
 // The one place a status becomes a Badge variant (08 §4).

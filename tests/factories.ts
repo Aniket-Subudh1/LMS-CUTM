@@ -1,6 +1,8 @@
-import { Types } from 'mongoose';
+import { Types, type AnyKeys } from 'mongoose';
+import { Course, type CourseDoc } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering, type OfferingDoc } from '@/lib/models/offering';
+import { Program, type ProgramDoc } from '@/lib/models/program';
 import { User, type UserDoc } from '@/lib/models/user';
 import { signIn, type Viewer } from '@/lib/auth/session';
 import { switchBrowser } from './next-request';
@@ -30,6 +32,29 @@ export function viewerOf(user: {
   };
 }
 
+// A credit course (3-0-1) unless the test says otherwise; codes are unique per test file.
+export async function makeCourse(over: AnyKeys<CourseDoc> = {}) {
+  const i = next();
+  return Course.create({
+    code: `TEST${String(i).padStart(4, '0')}`,
+    title: `Course ${i}`,
+    credits: { theory: 3, practice: 0, project: 1 },
+    status: 'active',
+    ...over,
+  });
+}
+
+export async function makeProgram(over: AnyKeys<ProgramDoc> = {}) {
+  const i = next();
+  return Program.create({
+    code: `PRG${i}`,
+    name: `Programme ${i}`,
+    departmentId: newId(),
+    durationSemesters: 8,
+    ...over,
+  });
+}
+
 // An offering with throwaway references; tests that need real structure create it themselves.
 export async function makeOffering(over: Partial<OfferingDoc> = {}) {
   return Offering.create({
@@ -39,6 +64,7 @@ export async function makeOffering(over: Partial<OfferingDoc> = {}) {
     programId: newId(),
     departmentId: newId(),
     category: 'ugc',
+    credits: { theory: 3, practice: 0, project: 0 },
     title: `Offering ${next()}`,
     facultyIds: [newId()],
     status: 'active',

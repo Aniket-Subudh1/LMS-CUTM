@@ -3,6 +3,8 @@ import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
 import { db } from '@/lib/db';
+import { AppError } from '@/lib/errors';
+import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import type { Viewer } from '@/lib/auth/session';
@@ -36,4 +38,18 @@ export const offeringAccess = cache(async (viewer: Viewer, offeringId: string): 
 export async function requireTeach(viewer: Viewer, offeringId: string): Promise<void> {
   const access = await offeringAccess(viewer, offeringId);
   if (access === 'learn' || (access === 'oversee' && !viewer.roles.includes('admin'))) notFound();
+}
+
+// CRS-07: a catalogue course's content is kept by the admins and by the faculty member who coordinates it.
+export async function canEditCourse(viewer: Viewer, courseId: string): Promise<boolean> {
+  if (viewer.roles.includes('admin')) return true;
+  if (!viewer.roles.includes('faculty') || !isValidObjectId(courseId)) return false;
+  await db();
+  return Boolean(await Course.exists({ _id: courseId, coordinatorId: viewer.id }));
+}
+
+export async function requireCourseEditor(viewer: Viewer, courseId: string): Promise<void> {
+  if (!(await canEditCourse(viewer, courseId))) {
+    throw new AppError('FORBIDDEN', 'Only the course coordinator and the administrators can change this course.');
+  }
 }

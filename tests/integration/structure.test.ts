@@ -1,13 +1,25 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { saveBatch, saveDepartment, saveProgram, saveProgramOutcomes, saveTerm } from '@/app/(app)/admin/actions';
+import {
+  addProgrammeCourse,
+  removeProgrammeCourse,
+  saveBaskets,
+  saveBatch,
+  saveDepartment,
+  saveProgram,
+  saveProgramOutcomes,
+  saveTerm,
+} from '@/app/(app)/admin/actions';
 import { db } from '@/lib/db';
-import { getProgram, getStructureCounts, listDepartments, listPrograms } from '@/lib/data/structure';
+import { getProgram, getStructureCounts, listCurriculum, listDepartments, listPrograms } from '@/lib/data/structure';
+import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
+import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
-import { form, makeUser, newId, signInAs } from '../factories';
+import { form, makeCourse, makeOffering, makeProgram, makeUser, newId, signInAs } from '../factories';
 import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
@@ -18,7 +30,9 @@ const SAVED = { ok: true };
 
 beforeAll(async () => {
   await db();
-  await Promise.all([Department, Program, Batch, Course, Term].map((m) => m.createCollection()));
+  await Promise.all(
+    [AuditLog, Department, Program, Batch, Course, CurriculumEntry, Offering, Term].map((m) => m.createCollection()),
+  );
 });
 
 async function asAdmin() {
@@ -101,20 +115,16 @@ describe('saveDepartment', () => {
 });
 
 describe('saveProgram', () => {
-  it('gives a UGC programme the default outcomes and a skill programme none', async () => {
+  it('gives a new programme the default PSO titles', async () => {
     await asAdmin();
     const dept = await makeDepartment('PRG1');
     const base = { departmentId: String(dept._id), durationSemesters: '8', status: 'active' };
-    expect(await saveProgram(form({ ...base, code: 'btech-x', name: 'B.Tech X', category: 'ugc' }))).toMatchObject(
-      PROGRAM_PAGE,
-    );
-    expect(
-      await saveProgram(form({ ...base, code: 'cert-x', name: 'Certificate X', category: 'skill' })),
-    ).toMatchObject(PROGRAM_PAGE);
-    const ugc = await Program.findOne({ code: 'BTECH-X' });
-    const skill = await Program.findOne({ code: 'CERT-X' });
-    expect([ugc?.pos.length, ugc?.psos.length]).toEqual([12, 3]);
-    expect([skill?.pos.length, skill?.psos.length]).toEqual([0, 0]);
+    expect(await saveProgram(form({ ...base, code: 'btech-x', name: 'B.Tech X' }))).toMatchObject(PROGRAM_PAGE);
+    expect((await Program.findOne({ code: 'BTECH-X' }).lean())?.outcomeTitles).toEqual([
+      { code: 'PSO1', title: 'Higher education' },
+      { code: 'PSO2', title: 'Entrepreneurship' },
+      { code: 'PSO3', title: 'Placement' },
+    ]);
   });
 
   it('rejects a repeated code and an unknown department', async () => {
@@ -124,7 +134,6 @@ describe('saveProgram', () => {
       code: 'DUP-P',
       name: 'P',
       departmentId: String(dept._id),
-      category: 'ugc',
       durationSemesters: '8',
       status: 'active',
     };
@@ -136,139 +145,138 @@ describe('saveProgram', () => {
     });
   });
 
-  it('keeps the category and refuses to move a programme that has courses', async () => {
+  it('sets the department of a programme the course list created, and refuses to move one that has offerings', async () => {
     await asAdmin();
     const [from, to] = await Promise.all([makeDepartment('PRG3'), makeDepartment('PRG4')]);
-    const program = await Program.create({
-      code: 'MOVE-P',
-      name: 'Move',
-      departmentId: from._id,
-      category: 'ugc',
-      durationSemesters: 8,
-    });
+    const program = await Program.create({ code: 'MOVE-P', name: 'Move' });
     const edit = (departmentId: string) =>
       form({
         id: String(program._id),
         code: 'MOVE-P',
         name: 'Moved',
         departmentId,
-        category: 'skill',
         durationSemesters: '6',
         status: 'active',
       });
-    expect(await saveProgram(edit(String(to._id)))).toEqual(SAVED);
-    expect(await Program.findById(program._id)).toMatchObject({ name: 'Moved', category: 'ugc', durationSemesters: 6 });
-
-    await Course.create({
-      programId: program._id,
-      departmentId: to._id,
-      category: 'ugc',
-      code: 'C1',
-      title: 'C',
-      credits: 3,
-      components: ['theory'],
-      componentKey: 'theory',
+    expect(await saveProgram(edit(String(from._id)))).toEqual(SAVED);
+    expect(await Program.findById(program._id).lean()).toMatchObject({
+      name: 'Moved',
+      departmentId: from._id,
+      durationSemesters: 6,
     });
-    expect(await saveProgram(edit(String(from._id)))).toMatchObject({ ok: false, code: 'CONFLICT' });
+
+    await makeOffering({ programId: program._id, departmentId: from._id });
+    expect(await saveProgram(edit(String(to._id)))).toMatchObject({ ok: false, code: 'CONFLICT' });
   });
 });
 
 describe('saveProgramOutcomes', () => {
-  const grid = (programId: string, pos: string[], psos: string[] = []) => {
-    const fields: Record<string, string> = { programId };
-    pos.forEach((code, i) => Object.assign(fields, { [`po_code_${i}`]: code, [`po_title_${i}`]: `Title ${code}` }));
-    psos.forEach((code, i) => Object.assign(fields, { [`pso_code_${i}`]: code, [`pso_title_${i}`]: `Title ${code}` }));
-    return form(fields);
-  };
-  const ugc = async (code: string) =>
-    Program.create({
-      code,
-      name: code,
-      departmentId: newId(),
-      category: 'ugc',
-      durationSemesters: 8,
-      pos: [
-        { code: 'PO1', title: 'a' },
-        { code: 'PO2', title: 'b' },
-      ],
-      psos: [{ code: 'PSO1', title: 'c' }],
-    });
-
-  it('replaces the lists, ignoring rows with an empty code', async () => {
+  it('titles the fixed codes and audits the change', async () => {
     await asAdmin();
-    const program = await ugc('OUT-1');
-    expect(await saveProgramOutcomes(grid(String(program._id), ['PO1', '', 'PO3'], ['PSO1', 'PSO2']))).toMatchObject({
+    const program = await makeProgram();
+    expect(
+      await saveProgramOutcomes(
+        form({ programId: String(program._id), title_PO1: 'Engineering knowledge', title_PSO1: 'Higher education' }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect((await Program.findById(program._id).lean())?.outcomeTitles).toEqual([
+      { code: 'PO1', title: 'Engineering knowledge' },
+      { code: 'PSO1', title: 'Higher education' },
+    ]);
+    expect(await AuditLog.countDocuments({ action: 'programme.outcomes_changed', entityId: program._id })).toBe(1);
+  });
+});
+
+describe('saveBaskets', () => {
+  it('renames a basket with its courses and refuses to remove one that lists courses', async () => {
+    await asAdmin();
+    const program = await makeProgram({ baskets: [{ name: 'Basket I' }, { name: 'Basket II' }] });
+    const [one, two] = program.baskets;
+    const course = await makeCourse();
+    await CurriculumEntry.create({
+      programId: program._id,
+      courseId: course._id,
+      courseCode: course.code,
+      basket: 'Basket I',
+    });
+    const rows = (over: Record<string, string>) =>
+      form({
+        programId: String(program._id),
+        rows: '2',
+        basketId_0: String(one._id),
+        name_0: 'Basket I',
+        basketId_1: String(two._id),
+        name_1: 'Basket II',
+        ...over,
+      });
+
+    expect(await saveBaskets(rows({ remove_0: 'true' }))).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+      message: 'Basket I lists 1 course. Move them first.',
+    });
+    // Swapping two names moves each basket's courses with it.
+    expect(
+      await saveBaskets(rows({ name_0: 'Basket II', name_1: 'Basket I', scope_0: 'core', minCredits_0: '16' })),
+    ).toMatchObject({ ok: true });
+    expect(await CurriculumEntry.findOne({ courseId: course._id }).lean()).toMatchObject({ basket: 'Basket II' });
+    expect(
+      (await Program.findById(program._id).lean())?.baskets.map((b) => [String(b._id), b.name, b.scope, b.minCredits]),
+    ).toEqual([
+      [String(one._id), 'Basket II', 'core', 16],
+      [String(two._id), 'Basket I', null, null],
+    ]);
+    expect(await saveBaskets(rows({ name_0: 'Basket II', name_1: 'Basket I', remove_1: 'true' }))).toMatchObject({
       ok: true,
     });
-    const saved = await Program.findById(program._id);
-    expect(saved?.pos.map((o) => o.code)).toEqual(['PO1', 'PO3']);
-    expect(saved?.psos.map((o) => o.code)).toEqual(['PSO1', 'PSO2']);
+    expect((await Program.findById(program._id).lean())?.baskets.map((b) => b.name)).toEqual(['Basket II']);
   });
+});
 
-  it('rejects malformed and repeated codes', async () => {
+describe('the curriculum', () => {
+  it('adds a catalogue course by code into a basket, and removes it', async () => {
     await asAdmin();
-    const program = await ugc('OUT-2');
-    expect(await saveProgramOutcomes(grid(String(program._id), ['X1']))).toMatchObject({
+    const program = await makeProgram({ baskets: [{ name: 'Basket I' }] });
+    const course = await makeCourse({ code: 'CUTM7001', credits: { theory: 3, practice: 0, project: 1 } });
+    const programId = String(program._id);
+    expect(await addProgrammeCourse(form({ programId, code: 'cutm 7001', basket: 'Basket I' }))).toMatchObject({
+      ok: true,
+    });
+    expect(await addProgrammeCourse(form({ programId, code: 'CUTM7999' }))).toMatchObject({
       ok: false,
       code: 'VALIDATION',
     });
-    expect(await saveProgramOutcomes(grid(String(program._id), ['PO1', 'PO1']))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-      fieldErrors: { pos: ['Each PO code can appear once.'] },
-    });
-  });
-
-  it('refuses to drop an outcome a course maps to, naming the course', async () => {
-    await asAdmin();
-    const program = await ugc('OUT-3');
-    await Course.create({
-      programId: program._id,
-      departmentId: program.departmentId,
-      category: 'ugc',
-      code: 'CS101',
-      title: 'Intro',
-      credits: 3,
-      components: ['theory'],
-      componentKey: 'theory',
-      cos: [{ code: 'CO1', statement: 's', bloomLevel: 'apply' }],
-      coMap: [{ coId: newId(), outcome: 'PO2', level: 2 }],
-    });
-    const result = await saveProgramOutcomes(grid(String(program._id), ['PO1'], ['PSO1']));
-    expect(result).toMatchObject({ ok: false, code: 'CONFLICT' });
-    expect(result.ok ? '' : result.message).toContain('PO2 is used in the CO–PO–PSO matrix of CS101');
-    expect((await Program.findById(program._id))?.pos).toHaveLength(2);
-
-    await Course.updateOne({ code: 'CS101', programId: program._id }, { $set: { coMap: [] } });
-    expect(await saveProgramOutcomes(grid(String(program._id), ['PO1'], ['PSO1']))).toMatchObject({ ok: true });
-  });
-
-  it('has no outcomes to edit on a skill programme', async () => {
-    await asAdmin();
-    const program = await Program.create({
-      code: 'OUT-S',
-      name: 'S',
-      departmentId: newId(),
-      category: 'skill',
-      durationSemesters: 2,
-    });
-    expect(await saveProgramOutcomes(grid(String(program._id), ['PO1']))).toMatchObject({
+    expect(await addProgrammeCourse(form({ programId, code: 'CUTM7001', basket: 'Basket IX' }))).toMatchObject({
       ok: false,
       code: 'VALIDATION',
     });
+
+    expect(await getProgram(programId)).toMatchObject({
+      baskets: [{ name: 'Basket I', courses: 1, credits: 4 }],
+      unbasketed: { courses: 0, credits: 0 },
+    });
+    expect((await listCurriculum(programId, 1, undefined)).rows).toEqual([
+      {
+        courseId: String(course._id),
+        code: 'CUTM7001',
+        title: course.title,
+        credits: { theory: 3, practice: 0, project: 1 },
+        basket: 'Basket I',
+        courseType: null,
+      },
+    ]);
+    expect((await listCurriculum(programId, 1, '')).total).toBe(0);
+
+    expect(await removeProgrammeCourse(form({ programId, courseId: String(course._id) }))).toMatchObject({ ok: true });
+    expect(await CurriculumEntry.countDocuments({ programId })).toBe(0);
+    expect(await AuditLog.countDocuments({ action: 'programme.curriculum_changed', entityId: program._id })).toBe(2);
   });
 });
 
 describe('saveBatch', () => {
   it('splits sections, and one start year is one batch per programme', async () => {
     await asAdmin();
-    const program = await Program.create({
-      code: 'BAT-1',
-      name: 'B',
-      departmentId: newId(),
-      category: 'ugc',
-      durationSemesters: 8,
-    });
+    const program = await Program.create({ code: 'BAT-1', name: 'B', departmentId: newId(), durationSemesters: 8 });
     const fields = { programId: String(program._id), name: '2026 intake', startYear: '2026', status: 'active' };
     expect(await saveBatch(form({ ...fields, sections: 'A, B  C' }))).toMatchObject({ ok: true });
     expect(await Batch.findOne({ programId: program._id })).toMatchObject({ sections: ['A', 'B', 'C'] });
@@ -284,7 +292,7 @@ describe('saveBatch', () => {
     await asAdmin();
     const [one, two] = await Promise.all(
       ['BAT-2', 'BAT-3'].map((code) =>
-        Program.create({ code, name: code, departmentId: newId(), category: 'ugc', durationSemesters: 8 }),
+        Program.create({ code, name: code, departmentId: newId(), durationSemesters: 8 }),
       ),
     );
     const batch = await Batch.create({ programId: one._id, name: 'n', startYear: 2025 });
@@ -355,13 +363,7 @@ describe('reads', () => {
   it('pages departments and joins the department code onto programmes', async () => {
     await asAdmin();
     const dept = await makeDepartment('RD-1');
-    await Program.create({
-      code: 'RD-PROG',
-      name: 'Reads',
-      departmentId: dept._id,
-      category: 'ugc',
-      durationSemesters: 8,
-    });
+    await Program.create({ code: 'RD-PROG', name: 'Reads', departmentId: dept._id, durationSemesters: 8 });
     const { rows, total } = await listPrograms(1);
     expect(rows.length).toBeLessThanOrEqual(25);
     expect(total).toBe(await Program.countDocuments());

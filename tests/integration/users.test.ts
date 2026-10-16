@@ -39,7 +39,6 @@ async function setup() {
     code: `UP${n}`,
     name: `Programme ${n}`,
     departmentId: department._id,
-    category: 'ugc',
     durationSemesters: 8,
   });
   const batch = await Batch.create({

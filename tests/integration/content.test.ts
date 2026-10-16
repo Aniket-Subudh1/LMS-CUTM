@@ -22,7 +22,7 @@ import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { Setting } from '@/lib/models/setting';
 import { mailQueue, mediaQueue, redis } from '@/lib/queue';
-import { enroll, form, makeOffering, makeUser, newId, signInAs } from '../factories';
+import { enroll, form, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
 
 const { presignUpload, presignDownload, deleteObjects } = vi.hoisted(() => ({
   presignUpload: vi.fn(async (key: string) => `https://storage.test/put/${key}`),
@@ -166,17 +166,7 @@ describe('/api/files', () => {
 
   it('serves a syllabus PDF to students of the course and nobody else', async () => {
     const w = await world();
-    const course = await Course.create({
-      programId: newId(),
-      departmentId: newId(),
-      category: 'ugc',
-      code: `C${Date.now()}`,
-      title: 'Course',
-      credits: 3,
-      components: ['theory'],
-      componentKey: 'theory',
-      status: 'active',
-    });
+    const course = await makeCourse();
     const key = buildKey('syllabus', String(course._id), String(newId()), 'syl', 'application/pdf');
     await Course.updateOne({ _id: course._id }, { $set: { syllabusFileKey: key } });
     await Offering.updateOne({ _id: w.offering._id }, { $set: { courseId: course._id } });

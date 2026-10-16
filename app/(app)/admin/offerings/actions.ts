@@ -1,153 +1,177 @@
 'use server';
 
 import { refresh } from 'next/cache';
-import mongoose from 'mongoose';
+import mongoose, { type Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { notify } from '@/lib/data/notifications';
+import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
+import { courseMode } from '@/lib/domain/catalog';
 import { AppError } from '@/lib/errors';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Enrollment } from '@/lib/models/enrollment';
-import { EvaluationScheme } from '@/lib/models/evaluation-scheme';
 import { Offering } from '@/lib/models/offering';
+import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
-import { CreateOffering, SetOfferingStatus, UpdateOfferingFaculty } from '@/lib/schemas/structure';
+import { CreateOfferings, SetOfferingStatus, UpdateOfferingFaculty } from '@/lib/schemas/structure';
 
-// The CSV import limit (06 §8): a batch larger than this is enrolled by file, not in one request.
+// The CSV import limit (06 §8): a section larger than this is enrolled by file, not in one request.
 const MAX_BATCH_ENROLLMENT = 5000;
 
-async function resolveFaculty(emails: string[]) {
+// Faculty ticked by name plus any typed emails (other departments): 1 to 5 faculty accounts that are not disabled.
+async function resolveFaculty(ids: string[], emails: string[]): Promise<Types.ObjectId[]> {
   const users = await User.find(
-    { email: { $in: emails }, roles: 'faculty', status: { $in: ['invited', 'active'] } },
+    {
+      roles: 'faculty',
+      status: { $in: ['invited', 'active'] },
+      $or: [{ _id: { $in: ids } }, { email: { $in: emails } }],
+    },
     { email: 1 },
   ).lean();
-  const byEmail = new Map(users.map((u) => [u.email, u._id]));
-  const missing = emails.filter((e) => !byEmail.has(e));
-  if (missing.length > 0) {
-    const message = `No faculty account for ${missing.join(', ')}.`;
-    throw new AppError('VALIDATION', message, { faculty: [message] });
+  const missing = emails.filter((e) => !users.some((u) => u.email === e));
+  if (missing.length > 0 || users.filter((u) => ids.includes(String(u._id))).length !== new Set(ids).size) {
+    const message = missing.length
+      ? `No faculty account for ${missing.join(', ')}.`
+      : 'A ticked faculty member is no longer available. Reload the page.';
+    throw new AppError('VALIDATION', message, { otherFaculty: [message] });
   }
-  return emails.flatMap((e) => byEmail.get(e) ?? []);
+  if (users.length > 5) throw new AppError('VALIDATION', 'An offering has at most 5 faculty.');
+  return users.map((u) => u._id);
 }
 
-export const createOffering = action({ input: CreateOffering, roles: ['admin'] }, async (input, viewer) => {
+// One offering per ticked section, in one transaction with its students (AC-M01b-06). The programme and its
+// department come from the batch (A-56); the course must be in that programme's curriculum. Each offering keeps
+// a copy of the course's credits and of the evaluation policy (null for a non-credit course).
+export const createOfferings = action({ input: CreateOfferings, roles: ['admin'] }, async (input, viewer) => {
   await db();
-  const [course, term, batch] = await Promise.all([
-    Course.findById(input.courseId, {
-      programId: 1,
-      departmentId: 1,
-      category: 1,
-      code: 1,
-      title: 1,
-      components: 1,
-      componentKey: 1,
-      status: 1,
-    }).lean(),
-    Term.findById(input.termId, { code: 1 }).lean(),
+  const [batch, course, term] = await Promise.all([
     Batch.findById(input.batchId, { programId: 1, sections: 1 }).lean(),
+    Course.findById(input.courseId, { code: 1, title: 1, credits: 1, status: 1, modules: 1 }).lean(),
+    Term.findById(input.termId, { code: 1 }).lean(),
   ]);
-  if (!course || course.status === 'archived')
-    throw new AppError('VALIDATION', 'Choose an existing, unarchived course.');
-  if (!term) throw new AppError('VALIDATION', 'Choose an existing term.');
   if (!batch) throw new AppError('VALIDATION', 'Choose an existing batch.');
-  if (!batch.programId.equals(course.programId)) {
-    throw new AppError('VALIDATION', 'That batch belongs to a different programme than the course.');
+  if (!term) throw new AppError('VALIDATION', 'Choose an existing term.');
+  if (!course || course.status === 'archived') {
+    throw new AppError('VALIDATION', 'Choose an existing course that is not archived.');
   }
-  const { section } = input;
-  if (section !== undefined && !batch.sections.includes(section)) {
-    throw new AppError('VALIDATION', `${section} is not a section of that batch.`, {
-      section: [`${section} is not a section of that batch.`],
-    });
+  const program = await Program.findById(batch.programId, { code: 1, departmentId: 1 }).lean();
+  if (!program) throw new AppError('VALIDATION', "The batch's programme no longer exists.");
+  const departmentId = program.departmentId;
+  if (!departmentId) {
+    throw new AppError('VALIDATION', `Set the department of ${program.code} first, on its programme page.`);
   }
-  if (course.components.includes('project') && input.projectMode === undefined) {
-    throw new AppError('VALIDATION', 'Choose a project mode: this course has a project component.', {
+  if (!(await CurriculumEntry.exists({ programId: program._id, courseId: course._id }))) {
+    throw new AppError(
+      'VALIDATION',
+      `${course.code} is not in ${program.code}'s curriculum. Add it on the programme page first.`,
+    );
+  }
+  const sections = input['sections[]'].includes('*') ? [null] : input['sections[]'];
+  const unknown = sections.filter((section) => section !== null && !batch.sections.includes(section));
+  if (unknown.length > 0) {
+    const message = `${unknown.join(', ')} ${unknown.length === 1 ? 'is not a section' : 'are not sections'} of that batch.`;
+    throw new AppError('VALIDATION', message, { 'sections[]': [message] });
+  }
+  const project = course.credits.project > 0;
+  if (project && input.projectMode === undefined) {
+    throw new AppError('VALIDATION', 'Choose how projects are tracked: this course has project credits.', {
       projectMode: ['Choose GitHub or Tracker.'],
     });
   }
-
-  const facultyIds = await resolveFaculty(input.faculty);
-  let schemeId = null;
-  if (course.category === 'ugc') {
-    const scheme = await EvaluationScheme.findOne(
-      { componentKey: course.componentKey, status: 'active' },
-      { _id: 1 },
-    ).lean();
-    if (!scheme) throw new AppError('VALIDATION', `No active evaluation scheme for ${course.componentKey}.`);
-    schemeId = scheme._id;
+  const taken = await Offering.find(
+    { courseId: course._id, termId: term._id, batchId: batch._id, section: { $in: sections } },
+    { section: 1 },
+  ).lean();
+  if (taken.length > 0) {
+    const which = taken.map((o) => (o.section ? `section ${o.section}` : 'the whole batch')).join(', ');
+    throw new AppError('CONFLICT', `This course is already offered to ${which} in ${term.code}. Nothing was created.`);
   }
 
+  const facultyIds = await resolveFaculty(input['faculty[]'], input.otherFaculty);
+  const credit = courseMode(course.credits) === 'credit';
+  const evaluation = credit ? await getSettings('evaluation') : null;
   // Students not yet signed in (invited) are enrolled too; a disabled account is not.
-  const students = await User.find(
-    {
-      roles: 'student',
-      status: { $in: ['invited', 'active'] },
-      batchId: input.batchId,
-      ...(section === undefined ? {} : { section }),
-    },
-    { _id: 1 },
-  )
-    .limit(MAX_BATCH_ENROLLMENT + 1)
-    .lean();
-  if (students.length > MAX_BATCH_ENROLLMENT) {
-    throw new AppError('VALIDATION', `More than ${MAX_BATCH_ENROLLMENT} students match. Choose a section.`);
-  }
+  const studentsOf = async (section: string | null) => {
+    const students = await User.find(
+      {
+        roles: 'student',
+        status: { $in: ['invited', 'active'] },
+        batchId: batch._id,
+        ...(section === null ? {} : { section }),
+      },
+      { _id: 1 },
+    )
+      .limit(MAX_BATCH_ENROLLMENT + 1)
+      .lean();
+    if (students.length > MAX_BATCH_ENROLLMENT) {
+      throw new AppError('VALIDATION', `More than ${MAX_BATCH_ENROLLMENT} students match. Choose sections.`);
+    }
+    return students;
+  };
+  const enrolments = await Promise.all(sections.map(studentsOf));
 
   try {
     await mongoose.connection.transaction(async (session) => {
-      const [offering] = await Offering.create(
-        [
+      for (const [i, section] of sections.entries()) {
+        const [offering] = await Offering.create(
+          [
+            {
+              courseId: course._id,
+              termId: term._id,
+              batchId: batch._id,
+              section,
+              programId: program._id,
+              departmentId,
+              category: credit ? 'ugc' : 'skill',
+              credits: course.credits,
+              evaluation,
+              title: `${course.code} · ${course.title} · ${term.code}${section ? ` · ${section}` : ''}`,
+              facultyIds,
+              projectMode: project ? input.projectMode : null,
+              modules: course.modules.slice(0, 40).map((m, order) => ({ title: m.title.slice(0, 160), order })),
+              status: 'draft',
+            },
+          ],
+          { session },
+        );
+        if (enrolments[i].length > 0) {
+          await Enrollment.insertMany(
+            enrolments[i].map((s) => ({ offeringId: offering._id, studentId: s._id, status: 'active' as const })),
+            { session, ordered: false },
+          );
+        }
+        await writeAudit(
           {
-            courseId: course._id,
-            termId: term._id,
-            batchId: batch._id,
-            section: section ?? null,
-            programId: course.programId,
-            departmentId: course.departmentId,
-            category: course.category,
-            title: `${course.code} · ${course.title} · ${term.code}${section ? ` · ${section}` : ''}`,
-            facultyIds,
-            schemeId,
-            projectMode: course.components.includes('project') ? input.projectMode : null,
-            status: 'draft',
+            actorId: viewer.id,
+            action: 'enrollment.changed',
+            entity: 'offering',
+            entityId: String(offering._id),
+            offeringId: String(offering._id),
+            after: { added: enrolments[i].length, dropped: 0, source: 'batch', section },
           },
-        ],
-        { session },
-      );
-      if (students.length > 0) {
-        await Enrollment.insertMany(
-          students.map((s) => ({ offeringId: offering._id, studentId: s._id, status: 'active' as const })),
-          { session, ordered: false },
+          session,
         );
       }
-      await writeAudit(
-        {
-          actorId: viewer.id,
-          action: 'enrollment.changed',
-          entity: 'offering',
-          entityId: String(offering._id),
-          offeringId: String(offering._id),
-          after: { added: students.length, dropped: 0, source: 'batch', section: section ?? null },
-        },
-        session,
-      );
     });
   } catch (error) {
     if (isDuplicateKey(error)) {
-      throw new AppError('CONFLICT', 'This course is already offered to that batch and section in that term.');
+      throw new AppError('CONFLICT', 'This course was just offered to one of those sections. Nothing was created.');
     }
     throw error;
   }
   refresh();
+  return { created: sections.length };
 });
 
 export const updateOfferingFaculty = action(
   { input: UpdateOfferingFaculty, roles: ['admin'] },
-  async ({ offeringId, faculty }) => {
+  async ({ offeringId, 'faculty[]': ids, otherFaculty }) => {
     await db();
-    const facultyIds = await resolveFaculty(faculty);
+    const facultyIds = await resolveFaculty(ids, otherFaculty);
     const updated = await Offering.updateOne({ _id: offeringId }, { $set: { facultyIds } });
     if (updated.matchedCount === 0) throw new AppError('NOT_FOUND', 'Offering not found.');
     refresh();

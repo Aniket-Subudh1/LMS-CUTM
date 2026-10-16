@@ -1,22 +1,29 @@
+import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import mongoose, { Types } from 'mongoose';
 import { hashPassword } from '@/lib/auth/password';
 import { db } from '@/lib/db';
-import { defaultOutcomes } from '@/lib/domain/structure';
+import { DEFAULT_OUTCOME_TITLES } from '@/lib/domain/catalog';
+import { normalizeCourseware } from '@/lib/domain/courseware';
+import { parseCoursePage } from '@/lib/integrations/courseware';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
-import { EvaluationScheme } from '@/lib/models/evaluation-scheme';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { Password } from '@/lib/schemas/auth';
+import { SETTINGS } from '@/lib/schemas/settings';
 
 // Development data (10 §3). Safe to run again: every record is inserted only if it is missing.
 // With --e2e the fixture users also get a password (E2E_PASSWORD, set in .env.e2e) and an active account, and an
-// administrator is created; without it they stay invited and the first existing administrator owns the scheme.
+// administrator is created; without it they stay invited.
+// The courses are real CUTM courses (codes, titles and T-P-Pj from the Course Repository); CUTM1535's content is
+// its public courseware page (tests/fixtures/courseware/836.html). CUTM1602's outcomes, mapping, modules and
+// sessions are fixtures for the tests, not CUTM's.
 const { values } = parseArgs({ options: { e2e: { type: 'boolean' } } });
 const e2e = values.e2e === true;
 
@@ -57,59 +64,76 @@ const person = (
   },
 });
 
-const department = await Department.findOneAndUpdate(
-  { code: 'CSE' },
-  { $setOnInsert: { code: 'CSE', name: 'Computer Science and Engineering' } },
-  { upsert: true, returnDocument: 'after' },
-);
+const upsert = <T>(model: mongoose.Model<T>, filter: object, doc: object) =>
+  model.findOneAndUpdate(filter, { $setOnInsert: doc }, { upsert: true, returnDocument: 'after' }).lean();
 
-const outcomes = defaultOutcomes();
-const [btech, skill] = await Promise.all([
-  Program.findOneAndUpdate(
+const [cse, math] = await Promise.all([
+  upsert(Department, { code: 'CSE' }, { code: 'CSE', name: 'Computer Science and Engineering' }),
+  upsert(Department, { code: 'MATH' }, { code: 'MATH', name: 'Mathematics' }),
+]);
+const department = found(cse, 'department CSE');
+const mathematics = found(math, 'department MATH');
+
+// NBA's twelve programme outcomes for B.Tech, and CPP-02's PSO titles.
+const BTECH_POS = [
+  'Engineering knowledge',
+  'Problem analysis',
+  'Design/development of solutions',
+  'Conduct investigations of complex problems',
+  'Modern tool usage',
+  'The engineer and society',
+  'Environment and sustainability',
+  'Ethics',
+  'Individual and team work',
+  'Communication',
+  'Project management and finance',
+  'Life-long learning',
+].map((title, i) => ({ code: `PO${i + 1}`, title }));
+const psos = DEFAULT_OUTCOME_TITLES.map((o) => ({ ...o }));
+
+const [btech, msc] = await Promise.all([
+  upsert(
+    Program,
     { code: 'BTECH-CSE' },
     {
-      $setOnInsert: {
-        code: 'BTECH-CSE',
-        name: 'B.Tech Computer Science and Engineering',
-        departmentId: department._id,
-        category: 'ugc',
-        durationSemesters: 8,
-        ...outcomes,
-      },
+      code: 'BTECH-CSE',
+      name: 'B.Tech Computer Science and Engineering',
+      departmentId: department._id,
+      durationSemesters: 8,
+      outcomeTitles: [...BTECH_POS, ...psos],
+      // The Programme Structure's basket names; their scope and minimum credits are not confirmed, so not set.
+      baskets: ['Basket I', 'Basket II', 'Basket IV'].map((name) => ({ name })),
     },
-    { upsert: true, returnDocument: 'after' },
   ),
-  Program.findOneAndUpdate(
-    { code: 'SKILL' },
+  upsert(
+    Program,
+    { code: 'MSC-MATH' },
     {
-      $setOnInsert: {
-        code: 'SKILL',
-        name: 'Skill courses',
-        departmentId: department._id,
-        category: 'skill',
-        durationSemesters: 2,
-      },
+      code: 'MSC-MATH',
+      name: 'M.Sc Mathematics',
+      departmentId: mathematics._id,
+      durationSemesters: 4,
+      outcomeTitles: psos,
+      baskets: [{ name: 'Basket I' }],
     },
-    { upsert: true, returnDocument: 'after' },
   ),
 ]);
 const program = found(btech, 'programme BTECH-CSE');
-const skillProgram = found(skill, 'programme SKILL');
+const mscMath = found(msc, 'programme MSC-MATH');
 
-const batch = await Batch.findOneAndUpdate(
-  { programId: program._id, startYear: 2025 },
-  { $setOnInsert: { programId: program._id, name: '2025', startYear: 2025, sections: ['A', 'B'] } },
-  { upsert: true, returnDocument: 'after' },
+const batch = found(
+  await upsert(
+    Batch,
+    { programId: program._id, startYear: 2025 },
+    { programId: program._id, name: '2025', startYear: 2025, sections: ['A', 'B'] },
+  ),
+  'batch 2025',
 );
-const skillBatch = await Batch.findOneAndUpdate(
-  { programId: skillProgram._id, startYear: 2025 },
-  { $setOnInsert: { programId: skillProgram._id, name: '2025', startYear: 2025, sections: ['A'] } },
-  { upsert: true, returnDocument: 'after' },
-);
-const term = await Term.findOneAndUpdate(
-  { code: '2026-ODD' },
-  {
-    $setOnInsert: {
+const term = found(
+  await upsert(
+    Term,
+    { code: '2026-ODD' },
+    {
       code: '2026-ODD',
       name: 'Odd semester 2026',
       academicYear: '2026-27',
@@ -117,8 +141,8 @@ const term = await Term.findOneAndUpdate(
       endsOn: new Date('2026-12-31T00:00:00+05:30'),
       status: 'current',
     },
-  },
-  { upsert: true, returnDocument: 'after' },
+  ),
+  'term 2026-ODD',
 );
 
 const staff = [
@@ -141,76 +165,34 @@ await User.bulkWrite([...staff, ...students]);
 
 const faculty1 = found(await User.findOne({ email: 'faculty1@seed.cutm.test' }, { _id: 1 }).lean(), 'faculty1');
 const faculty2 = found(await User.findOne({ email: 'faculty2@seed.cutm.test' }, { _id: 1 }).lean(), 'faculty2');
-const owner = found(
-  await User.findOne(e2e ? { email: 'admin@seed.cutm.test' } : { roles: 'admin' }, { _id: 1 }).lean(),
-  'an administrator (run `npm run admin:create` first)',
-);
-
-const scheme = await EvaluationScheme.findOneAndUpdate(
-  { componentKey: 'theory+practice', version: 1 },
-  {
-    $setOnInsert: {
-      componentKey: 'theory+practice',
-      version: 1,
-      name: 'Theory and practice',
-      internalMax: 50,
-      externalMax: 50,
-      components: [
-        { key: 'quiz', label: 'Quiz', weight: 15, modes: ['quiz'], aggregation: 'average' },
-        {
-          key: 'assignment',
-          label: 'Assignment',
-          weight: 10,
-          modes: ['assignment'],
-          aggregation: 'best_n',
-          bestN: 2,
-        },
-        {
-          key: 'learning_record',
-          label: 'Learning record',
-          weight: 5,
-          modes: ['learning_record'],
-          aggregation: 'average',
-        },
-        { key: 'lab_record', label: 'Lab record', weight: 5, modes: ['lab_record'], aggregation: 'sum' },
-        {
-          key: 'lab_test',
-          label: 'Lab test',
-          weight: 15,
-          modes: ['lab_test', 'coding_test'],
-          aggregation: 'average',
-        },
-      ],
-      rounding: { decimals: 0, mode: 'half_up' },
-      status: 'active',
-      createdBy: owner._id,
-    },
-  },
-  { upsert: true, returnDocument: 'after' },
-);
 
 const co = ['CO1', 'CO2', 'CO3'].map((code) => ({ _id: new Types.ObjectId(), code }));
-const cs101 = await Course.findOneAndUpdate(
-  { programId: program._id, code: 'CS101' },
-  {
-    $setOnInsert: {
-      programId: program._id,
-      departmentId: department._id,
-      category: 'ugc',
-      code: 'CS101',
-      title: 'C Programming',
-      credits: 4,
-      components: ['theory', 'practice'],
-      componentKey: 'theory+practice',
+const cutm1535 = normalizeCourseware(parseCoursePage(readFileSync('tests/fixtures/courseware/836.html', 'utf8')));
+const [cutm1602, , , , sk01] = await Promise.all([
+  upsert(
+    Course,
+    { code: 'CUTM1602' },
+    {
+      code: 'CUTM1602',
+      title: 'Programming in C',
+      type: 'core',
+      credits: { theory: 1, practice: 2, project: 1 },
+      status: 'active',
+      coordinatorId: faculty1._id,
       objectives: ['Write structured programs in C.', 'Use pointers, arrays and files correctly.'],
       cos: [
-        { _id: co[0]._id, code: 'CO1', statement: 'Explain the basic constructs of C.', bloomLevel: 'understand' },
-        { _id: co[1]._id, code: 'CO2', statement: 'Write programs with functions and arrays.', bloomLevel: 'apply' },
+        { _id: co[0]._id, code: 'CO1', statement: 'Explain the basic constructs of C.', bloomLevels: ['understand'] },
+        {
+          _id: co[1]._id,
+          code: 'CO2',
+          statement: 'Write programs with functions and arrays.',
+          bloomLevels: ['apply'],
+        },
         {
           _id: co[2]._id,
           code: 'CO3',
           statement: 'Design programs that use pointers and files.',
-          bloomLevel: 'create',
+          bloomLevels: ['apply', 'create'],
         },
       ],
       coMap: [
@@ -220,81 +202,165 @@ const cs101 = await Course.findOneAndUpdate(
         { coId: co[2]._id, outcome: 'PO3', level: 3 },
         { coId: co[2]._id, outcome: 'PSO3', level: 1 },
       ],
+      modules: [
+        {
+          title: 'Basics of C',
+          hours: '2+4+2',
+          topics: 'Data types, operators and expressions; control flow.',
+          practicals: ['Swap two numbers.', 'Print a multiplication table.'],
+        },
+        {
+          title: 'Pointers and files',
+          hours: '2+4+2',
+          topics: 'Pointers, arrays and strings; reading and writing files.',
+          practicals: ['Reverse an array with pointers.'],
+        },
+      ],
+      projects: ['A student records manager in C.'],
+      textbooks: ['B. W. Kernighan and D. M. Ritchie, The C Programming Language, 2nd edition, Prentice Hall.'],
+      sessionPlan: [
+        { topic: 'Structure of a C program', kind: 'theory' },
+        { topic: 'Operators and expressions', kind: 'practice' },
+        { topic: 'Control flow', kind: 'theory' },
+        { topic: 'Arrays and functions', kind: 'practice' },
+        { topic: 'Pointers', kind: 'theory' },
+        { topic: 'Project: student records manager', kind: 'project' },
+      ],
+    },
+  ),
+  upsert(
+    Course,
+    { code: 'CUTM1001' },
+    {
+      code: 'CUTM1001',
+      title: 'Differential Equations and Linear Algebra',
+      type: 'core',
+      credits: { theory: 2, practice: 0, project: 1 },
       status: 'active',
     },
-  },
-  { upsert: true, returnDocument: 'after' },
-);
-const sk01 = await Course.findOneAndUpdate(
-  { programId: skillProgram._id, code: 'SK01' },
-  {
-    $setOnInsert: {
-      programId: skillProgram._id,
-      departmentId: department._id,
-      category: 'skill',
+  ),
+  upsert(
+    Course,
+    { code: 'CUTM1014' },
+    {
+      code: 'CUTM1014',
+      title: 'Gender, Human Rights and Ethics',
+      type: 'core',
+      credits: { theory: 1.5, practice: 0, project: 1.5 },
+      status: 'active',
+    },
+  ),
+  upsert(
+    Course,
+    { code: 'CUTM1535' },
+    {
+      code: 'CUTM1535',
+      title: 'Advanced complex analysis',
+      type: 'core',
+      credits: { theory: 3, practice: 0, project: 1 },
+      status: 'active',
+      objectives: cutm1535.objectives,
+      cos: cutm1535.cos,
+      modules: cutm1535.modules,
+      projects: cutm1535.projects,
+      textbooks: cutm1535.textbooks,
+      references: cutm1535.references,
+      sessionPlan: cutm1535.sessionPlan,
+      issues: cutm1535.issues,
+      reviewNeeded: cutm1535.issues.length > 0,
+    },
+  ),
+  upsert(
+    Course,
+    { code: 'SK01' },
+    {
       code: 'SK01',
       title: 'Excel Basics',
-      credits: 1,
-      components: ['practice'],
-      componentKey: 'practice',
+      type: 'skill',
+      credits: { theory: 0, practice: 0, project: 0 },
       status: 'active',
     },
-  },
-  { upsert: true, returnDocument: 'after' },
+  ),
+]);
+const programming = found(cutm1602, 'course CUTM1602');
+const excel = found(sk01, 'course SK01');
+const byCode = new Map(
+  (
+    await Course.find({ code: { $in: ['CUTM1602', 'CUTM1001', 'CUTM1014', 'CUTM1535', 'SK01'] } }, { code: 1 }).lean()
+  ).map((c) => [c.code, c._id]),
+);
+const curriculum: [Types.ObjectId, string, string | null, string | null][] = [
+  [program._id, 'CUTM1602', null, null],
+  [program._id, 'CUTM1001', 'Basket I', 'Foundation'],
+  [program._id, 'CUTM1014', 'Basket II', 'Humanities and Management(A)'],
+  [program._id, 'SK01', null, null],
+  [mscMath._id, 'CUTM1535', 'Basket I', 'Core'],
+];
+await CurriculumEntry.bulkWrite(
+  curriculum.map(([programId, code, basket, courseType]) => ({
+    updateOne: {
+      filter: { programId, courseId: byCode.get(code) },
+      update: { $setOnInsert: { programId, courseId: byCode.get(code), courseCode: code, basket, courseType } },
+      upsert: true,
+    },
+  })),
 );
 
-const cs101Offering = await Offering.findOneAndUpdate(
-  { courseId: cs101._id, termId: term._id, batchId: batch._id, section: 'A' },
-  {
-    $setOnInsert: {
-      courseId: cs101._id,
+const offering = found(
+  await upsert(
+    Offering,
+    { courseId: programming._id, termId: term._id, batchId: batch._id, section: 'A' },
+    {
+      courseId: programming._id,
       termId: term._id,
       batchId: batch._id,
       section: 'A',
       programId: program._id,
       departmentId: department._id,
       category: 'ugc',
-      title: 'CS101 · C Programming · 2026-ODD · A',
+      credits: programming.credits,
+      evaluation: SETTINGS.evaluation.schema.parse({}),
+      title: 'CUTM1602 · Programming in C · 2026-ODD · A',
       facultyIds: [faculty1._id],
-      schemeId: scheme._id,
+      projectMode: 'github',
+      modules: programming.modules.map((m, order) => ({ title: m.title, order })),
       status: 'active',
     },
-  },
-  { upsert: true, returnDocument: 'after' },
+  ),
+  'offering CUTM1602 A',
 );
-await Offering.updateOne(
-  { courseId: sk01._id, termId: term._id, batchId: skillBatch._id, section: null },
+await upsert(
+  Offering,
+  { courseId: excel._id, termId: term._id, batchId: batch._id, section: 'B' },
   {
-    $setOnInsert: {
-      courseId: sk01._id,
-      termId: term._id,
-      batchId: skillBatch._id,
-      section: null,
-      programId: skillProgram._id,
-      departmentId: department._id,
-      category: 'skill',
-      title: 'SK01 · Excel Basics · 2026-ODD',
-      facultyIds: [faculty2._id],
-      schemeId: null,
-      status: 'active',
-    },
+    courseId: excel._id,
+    termId: term._id,
+    batchId: batch._id,
+    section: 'B',
+    programId: program._id,
+    departmentId: department._id,
+    category: 'skill',
+    credits: excel.credits,
+    evaluation: null,
+    title: 'SK01 · Excel Basics · 2026-ODD · B',
+    facultyIds: [faculty2._id],
+    status: 'active',
   },
-  { upsert: true },
 );
 
 const enrolled = await User.find({ batchId: batch._id, section: 'A', roles: 'student' }, { _id: 1 }).lean();
 await Enrollment.bulkWrite(
   enrolled.map((s) => ({
     updateOne: {
-      filter: { offeringId: cs101Offering._id, studentId: s._id },
-      update: { $setOnInsert: { offeringId: cs101Offering._id, studentId: s._id, status: 'active' } },
+      filter: { offeringId: offering._id, studentId: s._id },
+      update: { $setOnInsert: { offeringId: offering._id, studentId: s._id, status: 'active' } },
       upsert: true,
     },
   })),
 );
 
 console.log(
-  `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 1 department, 2 programmes, 2 courses, 2 offerings, ` +
-    `${enrolled.length} students enrolled in CS101.`,
+  `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, 5 courses, 2 offerings, ` +
+    `${enrolled.length} students enrolled in CUTM1602.`,
 );
 await mongoose.disconnect();

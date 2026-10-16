@@ -1,47 +1,46 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { setOfferingStatus, updateOfferingFaculty, createOffering } from '@/app/(app)/admin/offerings/actions';
+import { createOfferings, setOfferingStatus, updateOfferingFaculty } from '@/app/(app)/admin/offerings/actions';
 import { changeEnrollments } from '@/app/(app)/courses/actions';
 import { db } from '@/lib/db';
-import { componentKey } from '@/lib/domain/structure';
 import { listOfferings } from '@/lib/data/offerings';
+import type { Credits } from '@/lib/domain/catalog';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
-import { EvaluationScheme } from '@/lib/models/evaluation-scheme';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { Setting } from '@/lib/models/setting';
 import { Term } from '@/lib/models/term';
-import { form, makeOffering, makeUser, newId, signInAs } from '../factories';
-import { switchBrowser } from '../next-request';
+import { SETTINGS } from '@/lib/schemas/settings';
+import { form, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
-const SAVED = { ok: true };
 
 beforeAll(async () => {
   await db();
   await Promise.all(
-    [AuditLog, Batch, Course, Department, Enrollment, EvaluationScheme, Offering, Program, Term].map((m) =>
+    [AuditLog, Batch, Course, CurriculumEntry, Department, Enrollment, Offering, Program, Setting, Term].map((m) =>
       m.createCollection(),
     ),
   );
+  await Offering.createIndexes();
 });
 
 let seq = 0;
 const next = () => ++seq;
 
-// A programme with an active theory scheme, a 2025 batch (sections A and B), a term and a faculty member.
-async function setup(opts: { category?: 'ugc' | 'skill'; components?: ('theory' | 'practice' | 'project')[] } = {}) {
+// A programme with a department, its 2025 batch (sections A and B), a current term, a faculty member of the
+// department and a course in the programme's curriculum.
+async function setup(opts: { credits?: Credits; listed?: boolean; withDepartment?: boolean } = {}) {
   const n = next();
-  const category = opts.category ?? 'ugc';
-  const components = opts.components ?? ['theory'];
   const department = await Department.create({ code: `D${n}`, name: `Dept ${n}` });
   const program = await Program.create({
     code: `PR${n}`,
     name: `Programme ${n}`,
-    departmentId: department._id,
-    category,
+    departmentId: opts.withDepartment === false ? null : department._id,
     durationSemesters: 8,
   });
   const batch = await Batch.create({ programId: program._id, name: '2025', startYear: 2025, sections: ['A', 'B'] });
@@ -53,200 +52,164 @@ async function setup(opts: { category?: 'ugc' | 'skill'; components?: ('theory' 
     endsOn: new Date(),
     status: 'current',
   });
-  const key = componentKey(components);
-  const course = await Course.create({
-    programId: program._id,
-    departmentId: department._id,
-    category,
-    code: `C${n}`,
-    title: `Course ${n}`,
-    credits: 3,
-    components,
-    componentKey: key,
-    status: 'active',
+  const course = await makeCourse({
+    credits: opts.credits ?? { theory: 3, practice: 0, project: 0 },
+    modules: [{ title: 'Residues' }, { title: 'Harmonic functions' }],
   });
-  const faculty = await makeUser({ roles: ['faculty'], email: `faculty${n}@cutm.test` });
+  if (opts.listed !== false) {
+    await CurriculumEntry.create({ programId: program._id, courseId: course._id, courseCode: course.code });
+  }
+  const faculty = await makeUser({ roles: ['faculty'], email: `faculty${n}@cutm.test`, departmentId: department._id });
   const student = (section: string, over: Record<string, unknown> = {}) =>
     makeUser({ roles: ['student'], status: 'active', batchId: batch._id, section, rollNo: `R${n}-${next()}`, ...over });
-  const fields = (over: Record<string, string> = {}) =>
+  const fields = (over: Record<string, string | string[]> = {}) =>
     form({
+      batchId: String(batch._id),
       courseId: String(course._id),
       termId: String(term._id),
-      batchId: String(batch._id),
-      section: 'A',
-      faculty: faculty.email,
-      projectMode: '',
+      'sections[]': ['A'],
+      'faculty[]': [String(faculty._id)],
       ...over,
     });
-  return { department, program, batch, term, course, faculty, student, fields, key };
-}
-
-async function activeScheme(key: ReturnType<typeof componentKey>) {
-  return EvaluationScheme.findOneAndUpdate(
-    { componentKey: key, version: 1 },
-    {
-      $setOnInsert: {
-        name: 'Standard',
-        internalMax: 50,
-        externalMax: 50,
-        components: [{ key: 'quiz', label: 'Quiz', weight: 50, modes: ['quiz'], aggregation: 'average' }],
-        rounding: { decimals: 0, mode: 'half_up' },
-        status: 'active',
-        createdBy: newId(),
-      },
-    },
-    { upsert: true, returnDocument: 'after' },
-  );
+  return { department, program, batch, term, course, faculty, student, fields };
 }
 
 const asAdmin = async () => signInAs(await makeUser({ roles: ['admin'] }));
 
-describe('createOffering', () => {
+describe('createOfferings (AC-M01b-06)', () => {
   it('is for admins only', async () => {
     const s = await setup();
-    switchBrowser(new Map());
-    expect(await createOffering(s.fields())).toMatchObject({ ok: false, code: 'UNAUTHENTICATED' });
     await signInAs(s.faculty);
-    expect(await createOffering(s.fields())).toMatchObject({ ok: false, code: 'FORBIDDEN' });
-    expect(await Offering.countDocuments({ courseId: s.course._id })).toBe(0);
+    expect(await createOfferings(s.fields())).toMatchObject({ ok: false, code: 'FORBIDDEN' });
   });
 
-  it('enrolls exactly the live students of the section and binds the active scheme', async () => {
+  it('creates one offering per section with its students, copying the credits and the evaluation policy', async () => {
     await asAdmin();
     const s = await setup();
-    const scheme = await activeScheme('theory');
-    const inA = await Promise.all([s.student('A'), s.student('A'), s.student('A', { status: 'invited' })]);
-    await Promise.all([
-      s.student('B'),
+    const [a1, a2, , b1] = await Promise.all([
+      s.student('A'),
+      s.student('A', { status: 'invited' }),
       s.student('A', { status: 'disabled' }),
-      s.student('A', { batchId: newId() }),
-      makeUser({ roles: ['faculty'], batchId: s.batch._id, section: 'A' }),
+      s.student('B'),
     ]);
+    expect(await createOfferings(s.fields({ 'sections[]': ['A', 'B'] }))).toEqual({ ok: true, data: { created: 2 } });
 
-    expect(await createOffering(s.fields())).toEqual(SAVED);
-    const offering = await Offering.findOne({ courseId: s.course._id });
-    expect(offering).toMatchObject({
-      title: `${s.course.code} · ${s.course.title} · ${s.term.code} · A`,
-      section: 'A',
-      status: 'draft',
-      category: 'ugc',
-      schemeId: scheme?._id,
-      projectMode: null,
-    });
-    expect(offering?.programId).toEqual(s.program._id);
-    expect(offering?.departmentId).toEqual(s.department._id);
-    expect(offering?.facultyIds).toEqual([s.faculty._id]);
-
-    const enrolled = await Enrollment.find({ offeringId: offering?._id });
-    expect(enrolled.map((e) => String(e.studentId)).sort()).toEqual(inA.map((u) => String(u._id)).sort());
-    expect(enrolled.every((e) => e.status === 'active')).toBe(true);
-
-    const audit = await AuditLog.findOne({ action: 'enrollment.changed', offeringId: offering?._id });
-    expect(audit?.after).toEqual({ added: 3, dropped: 0, source: 'batch', section: 'A' });
+    const offerings = await Offering.find({ courseId: s.course._id }).sort({ section: 1 }).lean();
+    expect(offerings.map((o) => o.title)).toEqual([
+      `${s.course.code} · ${s.course.title} · ${s.term.code} · A`,
+      `${s.course.code} · ${s.course.title} · ${s.term.code} · B`,
+    ]);
+    for (const offering of offerings) {
+      expect(offering).toMatchObject({
+        programId: s.program._id,
+        departmentId: s.department._id,
+        category: 'ugc',
+        credits: { theory: 3, practice: 0, project: 0 },
+        evaluation: SETTINGS.evaluation.schema.parse({}),
+        projectMode: null,
+        status: 'draft',
+      });
+      expect(offering.modules.map((m) => [m.title, m.order])).toEqual([
+        ['Residues', 0],
+        ['Harmonic functions', 1],
+      ]);
+    }
+    const enrolled = async (i: number) =>
+      (await Enrollment.find({ offeringId: offerings[i]._id }).lean()).map((e) => String(e.studentId)).sort();
+    expect(await enrolled(0)).toEqual([a1._id, a2._id].map(String).sort());
+    expect(await enrolled(1)).toEqual([String(b1._id)]);
+    expect(
+      await AuditLog.countDocuments({ action: 'enrollment.changed', offeringId: { $in: offerings.map((o) => o._id) } }),
+    ).toBe(2);
   });
 
-  it('enrolls the whole batch when no section is given', async () => {
+  it('keeps each offering on the policy it was created with', async () => {
     await asAdmin();
     const s = await setup();
-    await activeScheme('theory');
-    await Promise.all([s.student('A'), s.student('B'), s.student('B')]);
-    expect(await createOffering(s.fields({ section: '' }))).toEqual(SAVED);
-    const offering = await Offering.findOne({ courseId: s.course._id });
-    expect(offering?.section).toBeNull();
-    expect(await Enrollment.countDocuments({ offeringId: offering?._id })).toBe(3);
+    expect(await createOfferings(s.fields())).toMatchObject({ ok: true });
+    const policy = { ...SETTINGS.evaluation.schema.parse({}), theoryMidTerm1: 10, theoryEndSem: 65 };
+    await Setting.updateOne({ _id: 'evaluation' }, { $set: { value: policy, updatedBy: newId() } }, { upsert: true });
+    expect(await createOfferings(s.fields({ 'sections[]': ['B'] }))).toMatchObject({ ok: true });
+    const [first, second] = await Offering.find({ courseId: s.course._id }).sort({ section: 1 }).lean();
+    expect(first.evaluation).toMatchObject({ theoryMidTerm1: 15, theoryEndSem: 60 });
+    expect(second.evaluation).toMatchObject({ theoryMidTerm1: 10, theoryEndSem: 65 });
+    await Setting.deleteOne({ _id: 'evaluation' });
   });
 
-  it('refuses a repeat with CONFLICT and leaves the first enrollment untouched', async () => {
+  it('offers to the whole batch, and refuses a section already offered without writing anything', async () => {
     await asAdmin();
     const s = await setup();
-    await activeScheme('theory');
-    await s.student('A');
-    expect(await createOffering(s.fields())).toEqual(SAVED);
-    expect(await createOffering(s.fields())).toEqual({
+    await Promise.all([s.student('A'), s.student('B')]);
+    expect(await createOfferings(s.fields({ 'sections[]': ['A'] }))).toMatchObject({ ok: true });
+    expect(await createOfferings(s.fields({ 'sections[]': ['A', 'B'] }))).toMatchObject({
       ok: false,
       code: 'CONFLICT',
-      message: 'This course is already offered to that batch and section in that term.',
     });
     expect(await Offering.countDocuments({ courseId: s.course._id })).toBe(1);
-    const offering = await Offering.findOne({ courseId: s.course._id });
-    expect(await Enrollment.countDocuments({ offeringId: offering?._id })).toBe(1);
-    expect(await AuditLog.countDocuments({ action: 'enrollment.changed', offeringId: offering?._id })).toBe(1);
 
-    expect(await createOffering(s.fields({ section: '' }))).toEqual(SAVED);
-    await expect(createOffering(s.fields({ section: '' }))).resolves.toMatchObject({ ok: false, code: 'CONFLICT' });
+    const whole = await setup();
+    await Promise.all([whole.student('A'), whole.student('B')]);
+    expect(await createOfferings(whole.fields({ 'sections[]': ['*'] }))).toMatchObject({ ok: true });
+    const offering = await Offering.findOne({ courseId: whole.course._id }).lean();
+    expect(offering?.section).toBeNull();
+    expect(await Enrollment.countDocuments({ offeringId: offering?._id })).toBe(2);
   });
 
-  it('needs an active scheme for a UGC course but not for a skill course', async () => {
+  it('asks how projects are tracked exactly when the course has project credits', async () => {
     await asAdmin();
-    const ugc = await setup({ components: ['practice'] });
-    expect(await createOffering(ugc.fields())).toEqual({
+    const project = await setup({ credits: { theory: 3, practice: 0, project: 1 } });
+    expect(await createOfferings(project.fields())).toMatchObject({
       ok: false,
-      code: 'VALIDATION',
-      message: 'No active evaluation scheme for practice.',
-    });
-    expect(await Offering.countDocuments({ courseId: ugc.course._id })).toBe(0);
-
-    const skill = await setup({ category: 'skill' });
-    expect(await createOffering(skill.fields())).toEqual(SAVED);
-    expect((await Offering.findOne({ courseId: skill.course._id }))?.schemeId).toBeNull();
-  });
-
-  it('requires a project mode exactly when the course has a project component', async () => {
-    await asAdmin();
-    await activeScheme('theory+project');
-    const withProject = await setup({ components: ['theory', 'project'] });
-    expect(await createOffering(withProject.fields())).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
       fieldErrors: { projectMode: ['Choose GitHub or Tracker.'] },
     });
-    expect(await createOffering(withProject.fields({ projectMode: 'tracker' }))).toEqual(SAVED);
-    expect((await Offering.findOne({ courseId: withProject.course._id }))?.projectMode).toBe('tracker');
+    expect(await createOfferings(project.fields({ projectMode: 'github' }))).toMatchObject({ ok: true });
+    expect((await Offering.findOne({ courseId: project.course._id }).lean())?.projectMode).toBe('github');
 
-    await activeScheme('theory');
-    const plain = await setup();
-    expect(await createOffering(plain.fields({ projectMode: 'github' }))).toEqual(SAVED);
-    expect((await Offering.findOne({ courseId: plain.course._id }))?.projectMode).toBeNull();
+    const theory = await setup();
+    expect(await createOfferings(theory.fields({ projectMode: 'tracker' }))).toMatchObject({ ok: true });
+    expect((await Offering.findOne({ courseId: theory.course._id }).lean())?.projectMode).toBeNull();
   });
 
-  it('checks the course, batch, section and faculty', async () => {
+  it('makes a 0-0-0 course a non-credit offering with no evaluation policy (AC-M01b-07)', async () => {
     await asAdmin();
-    await activeScheme('theory');
-    const s = await setup();
-    const other = await setup();
+    const s = await setup({ credits: { theory: 0, practice: 0, project: 0 } });
+    expect(await createOfferings(s.fields())).toMatchObject({ ok: true });
+    expect(await Offering.findOne({ courseId: s.course._id }).lean()).toMatchObject({
+      category: 'skill',
+      evaluation: null,
+    });
+  });
 
-    expect(await createOffering(s.fields({ batchId: String(other.batch._id) }))).toMatchObject({
+  it('needs the course in the programme, a department, real sections and faculty accounts', async () => {
+    await asAdmin();
+    const unlisted = await setup({ listed: false });
+    expect(await createOfferings(unlisted.fields())).toMatchObject({
       ok: false,
-      message: 'That batch belongs to a different programme than the course.',
+      code: 'VALIDATION',
+      message: expect.stringContaining('curriculum'),
     });
-    expect(await createOffering(s.fields({ section: 'Z' }))).toMatchObject({
+    const homeless = await setup({ withDepartment: false });
+    expect(await createOfferings(homeless.fields())).toMatchObject({
       ok: false,
-      fieldErrors: { section: ['Z is not a section of that batch.'] },
+      code: 'VALIDATION',
+      message: expect.stringContaining('department'),
     });
-    const student = await makeUser({ roles: ['student'], email: 'stu@cutm.test' });
-    expect(await createOffering(s.fields({ faculty: `${student.email}, nobody@cutm.test` }))).toMatchObject({
+    const s = await setup();
+    expect(await createOfferings(s.fields({ 'sections[]': ['C'] }))).toMatchObject({
       ok: false,
-      fieldErrors: { faculty: [`No faculty account for ${student.email}, nobody@cutm.test.`] },
+      fieldErrors: { 'sections[]': ['C is not a section of that batch.'] },
     });
-    const disabled = await makeUser({ roles: ['faculty'], status: 'disabled' });
-    expect(await createOffering(s.fields({ faculty: disabled.email }))).toMatchObject({ ok: false });
+    expect(await createOfferings(s.fields({ otherFaculty: 'nobody@cutm.test' }))).toMatchObject({
+      ok: false,
+      fieldErrors: { otherFaculty: ['No faculty account for nobody@cutm.test.'] },
+    });
+    expect(await createOfferings(s.fields({ batchId: String(newId()) }))).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+    });
     expect(
-      await createOffering(s.fields({ faculty: Array.from({ length: 6 }, (_, i) => `f${i}@cutm.test`).join(',') })),
-    ).toMatchObject({
-      ok: false,
-      fieldErrors: { faculty: ['An offering has at most 5 faculty.'] },
-    });
-    expect(await createOffering(s.fields({ courseId: String(newId()) }))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-    });
-    expect(await createOffering(s.fields({ termId: String(newId()) }))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-    });
-    await Course.updateOne({ _id: s.course._id }, { $set: { status: 'archived' } });
-    expect(await createOffering(s.fields())).toMatchObject({ ok: false, code: 'VALIDATION' });
-    expect(await Offering.countDocuments({ courseId: s.course._id })).toBe(0);
+      await Offering.countDocuments({ courseId: { $in: [unlisted.course._id, homeless.course._id, s.course._id] } }),
+    ).toBe(0);
   });
 });
 
@@ -256,20 +219,20 @@ describe('updateOfferingFaculty and setOfferingStatus', () => {
     const [one, two] = await Promise.all([makeUser({ roles: ['faculty'] }), makeUser({ roles: ['faculty'] })]);
     const offering = await makeOffering({ facultyIds: [one._id] });
     const id = String(offering._id);
-    expect(await updateOfferingFaculty(form({ offeringId: id, faculty: `${two.email}\n${one.email}` }))).toMatchObject({
-      ok: true,
-    });
-    expect((await Offering.findById(id))?.facultyIds).toEqual([two._id, one._id]);
-    expect(await updateOfferingFaculty(form({ offeringId: id, faculty: '' }))).toMatchObject({
+    expect(
+      await updateOfferingFaculty(form({ offeringId: id, 'faculty[]': String(two._id), otherFaculty: one.email })),
+    ).toMatchObject({ ok: true });
+    expect((await Offering.findById(id))?.facultyIds.map(String).sort()).toEqual([one._id, two._id].map(String).sort());
+    expect(await updateOfferingFaculty(form({ offeringId: id, otherFaculty: '' }))).toMatchObject({
       ok: false,
       code: 'VALIDATION',
     });
-    expect(await updateOfferingFaculty(form({ offeringId: String(newId()), faculty: one.email }))).toMatchObject({
+    expect(await updateOfferingFaculty(form({ offeringId: String(newId()), otherFaculty: one.email }))).toMatchObject({
       ok: false,
       code: 'NOT_FOUND',
     });
     await signInAs(one);
-    expect(await updateOfferingFaculty(form({ offeringId: id, faculty: one.email }))).toMatchObject({
+    expect(await updateOfferingFaculty(form({ offeringId: id, otherFaculty: one.email }))).toMatchObject({
       ok: false,
       code: 'FORBIDDEN',
     });
@@ -405,9 +368,8 @@ describe('listOfferings', () => {
   it('filters, pages and shows faculty and active student counts', async () => {
     await asAdmin();
     const s = await setup();
-    await activeScheme('theory');
     await Promise.all([s.student('A'), s.student('A')]);
-    expect(await createOffering(s.fields())).toEqual(SAVED);
+    expect(await createOfferings(s.fields())).toMatchObject({ ok: true });
     const offering = await Offering.findOne({ courseId: s.course._id });
     await Enrollment.updateOne({ offeringId: offering?._id }, { $set: { status: 'dropped' } });
 

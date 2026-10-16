@@ -1,90 +1,200 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { CreateSchemeVersion, CreateUser, SaveCoMap, SaveCourse, SaveProgramOutcomes, SaveTerm } from './structure';
+import {
+  CreateOfferings,
+  CreateUser,
+  SaveBaskets,
+  SaveCoMap,
+  SaveCos,
+  SaveCourse,
+  SaveProgramOutcomes,
+  SaveSyllabus,
+  SaveTerm,
+  StartCoursewareImport,
+} from './structure';
 
 const id = 'a'.repeat(24);
+const other = 'b'.repeat(24);
+const fieldErrors = (result: { success: boolean; error?: z.ZodError }) =>
+  result.error ? z.flattenError(result.error).fieldErrors : {};
 
-describe('CreateSchemeVersion', () => {
-  const form = {
-    componentKey: 'theory+practice',
-    name: 'Theory + practice',
-    internalMax: '50',
-    externalMax: '50',
-    decimals: '0',
-    roundingMode: 'half_up',
-    key_0: 'quiz',
-    label_0: 'Quizzes',
-    weight_0: '15',
-    'modes_0[]': ['quiz'],
-    aggregation_0: 'average',
-    bestN_0: '',
-    key_1: 'assignment',
-    label_1: 'Assignments',
-    weight_1: '10',
-    'modes_1[]': ['assignment'],
-    aggregation_1: 'best_n',
-    bestN_1: '2',
-    // rows 2-9 left blank by the form
-    aggregation_2: 'average',
+describe('SaveCourse', () => {
+  const course = {
+    code: 'cutm 1535',
+    title: 'Advanced complex analysis',
+    theory: '3',
+    practice: '0',
+    project: '1',
+    status: 'active',
   };
 
-  it('collects the filled rows of the fixed grid and ignores empty ones', () => {
-    const parsed = CreateSchemeVersion.safeParse(form);
-    expect(parsed.success && parsed.data.components).toEqual([
-      { key: 'quiz', label: 'Quizzes', weight: 15, modes: ['quiz'], aggregation: 'average', bestN: undefined },
-      { key: 'assignment', label: 'Assignments', weight: 10, modes: ['assignment'], aggregation: 'best_n', bestN: 2 },
-    ]);
+  it('reads T-P-Pj in half steps and keeps the type optional', () => {
+    const ok = SaveCourse.safeParse({ ...course, type: '' });
+    expect(ok.success && ok.data).toMatchObject({ theory: 3, practice: 0, project: 1, type: undefined });
+    expect(fieldErrors(SaveCourse.safeParse({ ...course, practice: '0.25' }))).toEqual({
+      practice: ['Credits go in steps of 0.5.'],
+    });
   });
 
-  it('refuses an empty grid and a non-canonical component key', () => {
-    expect(
-      CreateSchemeVersion.safeParse({
-        ...form,
-        key_0: '',
-        label_0: '',
-        weight_0: '',
-        key_1: '',
-        label_1: '',
-        weight_1: '',
-      }).success,
-    ).toBe(false);
-    expect(CreateSchemeVersion.safeParse({ ...form, componentKey: 'practice+theory' }).success).toBe(false);
+  it('refuses more than 30 credits in all', () => {
+    expect(fieldErrors(SaveCourse.safeParse({ ...course, theory: '20', practice: '10', project: '1' }))).toEqual({
+      project: ['A course has at most 30 credits in all.'],
+    });
   });
 });
 
-describe('SaveProgramOutcomes', () => {
-  it('keeps rows that have a code, upper-cases codes and rejects duplicates', () => {
-    const ok = SaveProgramOutcomes.safeParse({
-      programId: id,
-      po_code_0: 'po1',
-      po_title_0: 'Engineering knowledge',
-      po_description_0: '',
-      pso_code_0: 'PSO1',
-      pso_title_0: 'Higher education',
+describe('SaveCos', () => {
+  it('collects edited, new and removed rows and ignores blank new rows', () => {
+    const parsed = SaveCos.safeParse({
+      courseId: id,
+      rows: '4',
+      coId_0: id,
+      statement_0: 'Explain residues.',
+      'bloom_0[]': ['understand', 'apply'],
+      coId_1: other,
+      statement_1: 'Old outcome',
+      remove_1: 'true',
+      statement_2: 'Design a solver.',
+      'bloom_2[]': 'create',
+      statement_3: '',
     });
-    expect(ok.success && ok.data.pos).toEqual([
-      { code: 'PO1', title: 'Engineering knowledge', description: undefined },
-    ]);
+    expect(parsed.success && parsed.data).toEqual({
+      courseId: id,
+      cos: [
+        { coId: id, statement: 'Explain residues.', bloomLevels: ['understand', 'apply'] },
+        { coId: null, statement: 'Design a solver.', bloomLevels: ['create'] },
+      ],
+      removed: [other],
+    });
+  });
 
-    const duplicate = SaveProgramOutcomes.safeParse({
-      programId: id,
-      po_code_0: 'PO1',
-      po_title_0: 'A',
-      po_code_1: 'PO1',
-      po_title_1: 'B',
+  it('names the row of a problem', () => {
+    const parsed = SaveCos.safeParse({
+      courseId: id,
+      rows: '2',
+      coId_0: id,
+      statement_0: '',
+      statement_1: 'Analyse data.',
+      'bloom_1[]': ['remember', 'understand', 'apply', 'analyse'],
     });
-    expect(duplicate.success).toBe(false);
-    expect(duplicate.success ? [] : z.flattenError(duplicate.error).fieldErrors.pos).toEqual([
-      'Each PO code can appear once.',
-    ]);
+    expect(fieldErrors(parsed)).toEqual({
+      statement_0: ['Write the outcome, or tick Remove.'],
+      bloom_1: ['Pick at most three levels.'],
+    });
   });
 });
 
 describe('SaveCoMap', () => {
-  it('accepts empty cells and levels 1-3 only', () => {
-    expect(SaveCoMap.safeParse({ courseId: id, 'cell[]': ['', `${id}:PO1:3`, `${id}:PSO2:1`] }).success).toBe(true);
-    expect(SaveCoMap.safeParse({ courseId: id, 'cell[]': [`${id}:PO1:4`] }).success).toBe(false);
-    expect(SaveCoMap.safeParse({ courseId: id, 'cell[]': [`${id}:PO1:0`] }).success).toBe(false);
+  it('takes PO1–PO12 and PSO1–PSO3 at levels 1–3, and nothing ticked as an empty map', () => {
+    expect(SaveCoMap.safeParse({ courseId: id, 'cell[]': [`${id}:PO12:3`, `${id}:PSO3:1`] }).success).toBe(true);
+    expect(SaveCoMap.safeParse({ courseId: id }).success && SaveCoMap.parse({ courseId: id })['cell[]']).toEqual([]);
+    for (const bad of [`${id}:PO13:2`, `${id}:PSO4:1`, `${id}:PO1:4`, `${id}:PO1:0`, `${id}:po1:2`]) {
+      expect(SaveCoMap.safeParse({ courseId: id, 'cell[]': [bad] }).success).toBe(false);
+    }
+  });
+
+  it('holds at most 225 links', () => {
+    const cells = Array.from({ length: 226 }, () => `${id}:PO1:1`);
+    expect(fieldErrors(SaveCoMap.safeParse({ courseId: id, 'cell[]': cells }))).toEqual({
+      'cell[]': ['A course has at most 225 links.'],
+    });
+  });
+});
+
+describe('SaveSyllabus', () => {
+  it('reads module rows, skipping empty and removed ones, and checks the hours', () => {
+    const parsed = SaveSyllabus.safeParse({
+      courseId: id,
+      rows: '3',
+      title_0: 'Residues',
+      hours_0: '4 + 0 + 2',
+      topics_0: 'Residue theorem',
+      practicals_0: 'Plot poles\n\nFind residues',
+      title_1: 'Old',
+      remove_1: 'true',
+      projects: 'Study on residues\n',
+    });
+    expect(parsed.success && parsed.data).toEqual({
+      courseId: id,
+      modules: [
+        { title: 'Residues', hours: '4+0+2', topics: 'Residue theorem', practicals: ['Plot poles', 'Find residues'] },
+      ],
+      projects: ['Study on residues'],
+      file: null,
+      removeFile: false,
+    });
+    expect(fieldErrors(SaveSyllabus.safeParse({ courseId: id, rows: '1', topics_0: 'x', hours_0: 'six' }))).toEqual({
+      title_0: ['Give the module a title.'],
+      hours_0: ['Write hours as 6 or 4+0+2.'],
+    });
+  });
+});
+
+describe('SaveProgramOutcomes', () => {
+  it('keeps the titled codes in code order', () => {
+    const parsed = SaveProgramOutcomes.safeParse({
+      programId: id,
+      title_PSO1: 'Higher education',
+      title_PO1: ' Engineering knowledge ',
+      title_PO2: '',
+    });
+    expect(parsed.success && parsed.data.outcomeTitles).toEqual([
+      { code: 'PO1', title: 'Engineering knowledge' },
+      { code: 'PSO1', title: 'Higher education' },
+    ]);
+  });
+});
+
+describe('SaveBaskets', () => {
+  it('refuses two baskets with one name', () => {
+    const parsed = SaveBaskets.safeParse({ programId: id, rows: '2', name_0: 'Basket I', name_1: 'basket i' });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error && z.flattenError(parsed.error).formErrors).toEqual(['Each basket name can appear once.']);
+  });
+
+  it('reads scope and minimum credits', () => {
+    const parsed = SaveBaskets.safeParse({
+      programId: id,
+      rows: '1',
+      name_0: 'Basket IV',
+      scope_0: 'choice',
+      minCredits_0: '12.5',
+    });
+    expect(parsed.success && parsed.data.baskets).toEqual([
+      { basketId: null, name: 'Basket IV', title: null, scope: 'choice', minCredits: 12.5 },
+    ]);
+  });
+});
+
+describe('CreateOfferings', () => {
+  const offering = { batchId: id, courseId: id, termId: id, 'sections[]': ['A', 'B'], 'faculty[]': [id] };
+
+  it('takes several sections and faculty ticked or typed', () => {
+    expect(CreateOfferings.safeParse(offering).success).toBe(true);
+    expect(
+      CreateOfferings.safeParse({ ...offering, 'faculty[]': undefined, otherFaculty: 'a@cutm.ac.in' }).success,
+    ).toBe(true);
+  });
+
+  it('needs a section and a faculty member, and not the whole batch with sections', () => {
+    expect(fieldErrors(CreateOfferings.safeParse({ ...offering, 'sections[]': undefined }))).toEqual({
+      'sections[]': ['Tick at least one section.'],
+    });
+    expect(fieldErrors(CreateOfferings.safeParse({ ...offering, 'faculty[]': undefined }))).toEqual({
+      'faculty[]': ['Choose 1 to 5 faculty members.'],
+    });
+    expect(fieldErrors(CreateOfferings.safeParse({ ...offering, 'sections[]': ['*', 'A'] }))).toEqual({
+      'sections[]': ['Choose the whole batch or sections, not both.'],
+    });
+  });
+});
+
+describe('StartCoursewareImport', () => {
+  it('needs a page for "one page"', () => {
+    expect(StartCoursewareImport.safeParse({ mode: 'new' }).success).toBe(true);
+    expect(fieldErrors(StartCoursewareImport.safeParse({ mode: 'one', page: '' }))).toEqual({
+      page: ['Enter the page number or its link.'],
+    });
   });
 });
 
@@ -107,12 +217,7 @@ describe('SaveTerm', () => {
 });
 
 describe('checkbox groups', () => {
-  const fieldErrors = (result: { success: boolean; error?: z.ZodError }) =>
-    result.error ? z.flattenError(result.error).fieldErrors : {};
-
   it('turn "nothing ticked" into the field message, not a type error', () => {
-    const course = { programId: id, code: 'cs1', title: 'T', credits: '3', status: 'draft' };
-    expect(fieldErrors(SaveCourse.safeParse(course))).toEqual({ 'components[]': ['Pick at least one component.'] });
     expect(fieldErrors(CreateUser.safeParse({ name: 'N', email: 'n@cutm.test' }))).toEqual({
       'roles[]': ['Pick at least one role.'],
     });

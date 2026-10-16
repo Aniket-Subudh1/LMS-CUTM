@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRightIcon, GearSixIcon, VideoIcon } from '@phosphor-icons/react/ssr';
+import { ArrowRightIcon, ExamIcon, GearSixIcon, VideoIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
@@ -35,7 +35,7 @@ async function Settings() {
               className="surface-interactive group flex h-full flex-col gap-4 p-5"
             >
               <span className="icon-chip size-12 [&_svg]:size-7">
-                <VideoIcon weight="duotone" />
+                {card.key === 'evaluation' ? <ExamIcon weight="duotone" /> : <VideoIcon weight="duotone" />}
               </span>
               <span className="grid gap-1">
                 <span className="font-semibold">{card.label}</span>

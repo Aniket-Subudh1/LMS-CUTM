@@ -5,7 +5,7 @@ import { z } from 'zod';
 // mail is Mailpit from the compose stack, and Playwright starts the worker that transcodes and sends the email.
 const password = process.env.E2E_PASSWORD ?? '';
 const MAILPIT = 'http://localhost:8025';
-const COURSE = 'CS101 · C Programming · 2026-ODD · A';
+const COURSE = 'CUTM1602 · Programming in C · 2026-ODD · A';
 const run = String(Date.now()).slice(-6);
 
 const MessageList = z.object({
@@ -68,8 +68,11 @@ test('faculty publishes a video lesson; a student watches part of it and keeps t
   });
   await student.waitForTimeout(5_000);
   await video.evaluate((v: HTMLVideoElement) => v.pause());
-  await student.reload();
-  await expect(student.getByText(/\b[1-9]\d?% watched/)).toBeVisible();
+  // The pause sends the progress beacon in the background; reload until the saved progress shows.
+  await expect(async () => {
+    await student.reload();
+    await expect(student.getByText(/\b[1-9]\d?% watched/)).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
 });
 
 test('publishing the course plan emails every student all five sections', async ({ browser }) => {
@@ -81,6 +84,16 @@ test('publishing the course plan emails every student all five sections', async 
   await faculty.keyboard.type(`Two lectures and one lab each week (run ${run}).`);
   await faculty.getByRole('button', { name: 'Save plan' }).click();
   await expect(faculty.getByText('Plan saved.')).toBeVisible();
+
+  // AC-M01b-09: the catalogue course's session plan, dated on Mondays, Wednesdays and Fridays.
+  const card = faculty.locator('form').filter({ has: faculty.getByRole('button', { name: 'Fill sessions' }) });
+  await card.getByLabel('First class').fill('2026-11-02');
+  for (const day of ['Mon', 'Wed', 'Fri']) await card.getByRole('checkbox', { name: day }).check({ force: true });
+  const replace = card.getByRole('checkbox', { name: /^Replace the/ });
+  if (await replace.count()) await replace.check();
+  await card.getByRole('button', { name: 'Fill sessions' }).click();
+  await expect(faculty.getByText('Sessions filled.')).toBeVisible();
+  await expect(faculty.locator('input[name=topic_0]')).toHaveValue('Structure of a C program');
 
   const blank = await faculty
     .locator('input[name^=topic_]')
@@ -108,7 +121,7 @@ test('publishing the course plan emails every student all five sections', async 
         const { messages } = MessageList.parse(await (await fetch(`${MAILPIT}/api/v1/messages`)).json());
         id = messages.find(
           (m) =>
-            m.Subject === 'Course plan: CS101 C Programming' &&
+            m.Subject === 'Course plan: CUTM1602 Programming in C' &&
             m.To.some((t) => t.Address === 'student01@seed.cutm.test'),
         )?.ID;
         return id;
@@ -121,4 +134,6 @@ test('publishing the course plan emails every student all five sections', async 
     expect(HTML).toContain(`>${section}</h2>`);
   }
   expect(HTML).toContain(`Pointers and arrays ${run}`);
+  expect(HTML).toContain('Structure of a C program');
+  expect(HTML).toContain('Basics of C (2+4+2 hours)');
 });

@@ -257,6 +257,8 @@ export type CoursePlan = {
   doc: RichTextDoc | null;
   calendar: CalendarRow[];
   cos: { id: string; code: string; statement: string }[];
+  // Sessions in the catalogue course's session plan: the plan page offers to fill the calendar from them.
+  sessionPlan: number;
   version: number;
   publishedAt: Date | null;
   students: number;
@@ -269,7 +271,7 @@ async function readPlan(offeringId: string): Promise<CoursePlan> {
   if (!offering) notFound();
   const today = istDayKey(new Date());
   const [course, students] = await Promise.all([
-    Course.findById(offering.courseId, { cos: 1 }).lean(),
+    Course.findById(offering.courseId, { cos: 1, sessionPlan: 1 }).lean(),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
   ]);
   return {
@@ -285,6 +287,7 @@ async function readPlan(offeringId: string): Promise<CoursePlan> {
       past: istDayKey(row.date) < today,
     })),
     cos: course?.cos.map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })) ?? [],
+    sessionPlan: course?.sessionPlan.length ?? 0,
     version: offering.plan.version,
     publishedAt: offering.plan.publishedAt ?? null,
     students,
@@ -306,8 +309,8 @@ export async function getPublishedPlan(offeringId: string): Promise<CoursePlan |
 }
 
 export type SetupStep = { done: boolean; detail: string };
+// The first step, the catalogue course itself, comes from its readiness checklist (getOfferingCourse).
 export type CourseSetup = {
-  syllabus: SetupStep;
   plan: SetupStep;
   calendar: SetupStep;
   published: SetupStep;
@@ -319,19 +322,14 @@ export async function getCourseSetup(offeringId: string): Promise<CourseSetup | 
   const viewer = await requireViewer();
   if ((await offeringAccess(viewer, offeringId)) === 'learn') return null;
   await db();
-  const offering = await Offering.findById(offeringId, { courseId: 1, plan: 1, 'calendar._id': 1 }).lean();
+  const offering = await Offering.findById(offeringId, { plan: 1, 'calendar._id': 1 }).lean();
   if (!offering) notFound();
-  const [course, lessons, published] = await Promise.all([
-    Course.findById(offering.courseId, { syllabusText: 1, syllabusFileKey: 1 }).lean(),
+  const [lessons, published] = await Promise.all([
     Lesson.countDocuments({ offeringId }),
     Lesson.countDocuments({ offeringId, published: true }),
   ]);
   const sessions = offering.calendar.length;
   return {
-    syllabus: {
-      done: Boolean(course?.syllabusText || course?.syllabusFileKey),
-      detail: course?.syllabusText || course?.syllabusFileKey ? 'Added by the administrator' : 'Not added yet',
-    },
     plan: { done: Boolean(offering.plan.doc), detail: offering.plan.doc ? 'Written' : 'Not written yet' },
     calendar: {
       done: sessions > 0,

@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
+import { creditsSchema } from '@/lib/models/course';
 import { CATEGORIES, OFFERING_STATUSES, PROJECT_MODES } from '@/lib/schemas/structure';
 
 const moduleSchema = new Schema({
@@ -29,12 +30,17 @@ const offeringSchema = new Schema(
     batchId: { type: Schema.Types.ObjectId, required: true },
     // null = the whole batch; stored explicitly so the unique index treats it as one value.
     section: { type: String, trim: true, maxlength: 10, default: null },
+    // denorm from the batch's programme (A-56).
     programId: { type: Schema.Types.ObjectId, required: true },
     departmentId: { type: Schema.Types.ObjectId, required: true },
+    // `ugc` for a credit course, `skill` for a non-credit one (A-55), from the credits copied below.
     category: { type: String, enum: CATEGORIES, required: true },
     title: { type: String, required: true, trim: true },
     facultyIds: { type: [Schema.Types.ObjectId], required: true },
-    schemeId: { type: Schema.Types.ObjectId, default: null },
+    // Copies made when the offering is created (05 §3.8): the course's T-P-Pj and the evaluation policy (null for a
+    // non-credit course). Later edits to either leave this offering's marks alone.
+    credits: { type: creditsSchema, required: true },
+    evaluation: { type: Schema.Types.Mixed, default: null },
     projectMode: { type: String, enum: PROJECT_MODES, default: null },
     modules: { type: [moduleSchema], default: [] },
     plan: { type: planSchema, default: () => ({ version: 0 }) },

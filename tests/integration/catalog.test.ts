@@ -1,344 +1,313 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { addCo, deleteCo, saveCoMap, saveCourse, saveObjectives, updateCo } from '@/app/(app)/admin/courses/actions';
+import { createUpload } from '@/app/(app)/actions';
+import {
+  markReviewed,
+  saveCoMap,
+  saveCos,
+  saveCourse,
+  saveObjectives,
+  saveSessionPlan,
+  saveSyllabus,
+  setCoordinator,
+} from '@/app/(app)/catalog/actions';
+import { getCatalogCourse, listCatalog } from '@/lib/data/courses';
 import { db } from '@/lib/db';
-import { getCourse, listCourses } from '@/lib/data/courses';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
-import { Program } from '@/lib/models/program';
-import { form, makeUser, newId, signInAs } from '../factories';
-import { switchBrowser } from '../next-request';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
+import { Offering } from '@/lib/models/offering';
+import { User } from '@/lib/models/user';
+import { form, makeCourse, makeOffering, makeProgram, makeUser, newId, signInAs } from '../factories';
 
-const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
-const COURSE_PAGE = { ok: true, data: { next: expect.stringMatching(/^\/admin\/courses\/[a-f\d]{24}$/) } };
+const FORBIDDEN = { ok: false, code: 'FORBIDDEN' };
 
 beforeAll(async () => {
   await db();
-  await Promise.all([Course.createCollection(), AuditLog.createCollection(), Program.createCollection()]);
+  // The catalogue search uses the text index; the unique code index makes duplicates a conflict.
+  await Promise.all([
+    Course.createIndexes(),
+    User.createIndexes(),
+    AuditLog.createCollection(),
+    CurriculumEntry.createCollection(),
+  ]);
+  await Offering.createCollection();
 });
 
-async function asAdmin() {
-  return signInAs(await makeUser({ roles: ['admin'] }));
+async function coordinated() {
+  const coordinator = await makeUser({ roles: ['faculty'] });
+  const course = await makeCourse({ coordinatorId: coordinator._id });
+  return { coordinator, course, courseId: String(course._id) };
 }
 
-const makeProgram = (code: string, category: 'ugc' | 'skill' = 'ugc') =>
-  Program.create({
-    code,
-    name: code,
-    departmentId: newId(),
-    category,
-    durationSemesters: 8,
-    pos:
-      category === 'ugc'
-        ? [
-            { code: 'PO1', title: 'a' },
-            { code: 'PO2', title: 'b' },
-          ]
-        : [],
-    psos: category === 'ugc' ? [{ code: 'PSO1', title: 'c' }] : [],
-  });
-
-const courseFields = (programId: string, code: string, components = ['theory', 'practice'], credits = '3') =>
-  form({ programId, code, title: `Title ${code}`, credits, 'components[]': components, status: 'draft' });
-
-async function makeCourse(code: string, category: 'ugc' | 'skill' = 'ugc') {
-  const program = await makeProgram(`P-${code}`, category);
-  expect(await saveCourse(courseFields(String(program._id), code))).toMatchObject(COURSE_PAGE);
-  const course = await Course.findOne({ programId: program._id, code });
-  if (!course) throw new Error('course was not created');
-  return { program, course, id: String(course._id) };
-}
-
-const auditOf = (courseId: string, action: string) =>
+const audit = (courseId: string, action: string) =>
   AuditLog.find({ entity: 'course', entityId: courseId, action }).sort({ at: 1 }).lean();
 
-describe('admin only', () => {
-  it('refuses every catalog action to other roles', async () => {
-    const id = String(newId());
-    await signInAs(await makeUser({ roles: ['faculty', 'hod'] }));
-    const results = await Promise.all([
-      saveCourse(courseFields(id, 'X')),
-      saveObjectives(form({ courseId: id, objectives: 'a' })),
-      addCo(form({ courseId: id, statement: 's', bloomLevel: 'apply' })),
-      updateCo(form({ courseId: id, coId: id, statement: 's', bloomLevel: 'apply' })),
-      deleteCo(form({ courseId: id, coId: id })),
-      saveCoMap(form({ courseId: id, 'cell[]': [''] })),
-    ]);
-    for (const result of results) expect(result).toMatchObject({ ok: false, code: 'FORBIDDEN' });
-    switchBrowser(new Map());
-    await expect(listCourses(1, undefined)).rejects.toMatchObject({ digest: expect.stringContaining('/login') });
-  });
-});
+describe('who edits a course (CRS-07, AC-M01b-04)', () => {
+  it('lets the coordinator and admins edit content, and nobody else', async () => {
+    const { coordinator, courseId } = await coordinated();
+    const edit = () => saveObjectives(form({ courseId, objectives: 'Use residues.' }));
 
-describe('saveCourse', () => {
-  it('copies department and category from the programme and computes the component key', async () => {
-    await asAdmin();
-    const program = await makeProgram('SC-1');
-    expect(await saveCourse(courseFields(String(program._id), 'cs101', ['practice', 'theory']))).toMatchObject(
-      COURSE_PAGE,
-    );
-    expect(await Course.findOne({ programId: program._id })).toMatchObject({
-      code: 'CS101',
-      category: 'ugc',
-      componentKey: 'theory+practice',
-      departmentId: program.departmentId,
+    await signInAs(coordinator);
+    expect(await edit()).toEqual({ ok: true, data: undefined });
+    for (const roles of [['faculty'], ['hod'], ['student']] as const) {
+      await signInAs(await makeUser({ roles: [...roles] }));
+      expect(await edit()).toMatchObject(FORBIDDEN);
+    }
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    expect(await saveObjectives(form({ courseId, objectives: 'Use residues.\nEvaluate integrals.' }))).toMatchObject({
+      ok: true,
     });
   });
 
-  it('keeps a code unique within a programme only', async () => {
-    await asAdmin();
-    const [one, two] = await Promise.all([makeProgram('SC-2'), makeProgram('SC-3')]);
-    expect(await saveCourse(courseFields(String(one._id), 'DUP'))).toMatchObject(COURSE_PAGE);
-    expect(await saveCourse(courseFields(String(one._id), 'dup'))).toEqual({
-      ok: false,
-      code: 'CONFLICT',
-      message: 'This programme already has a course DUP.',
-    });
-    expect(await saveCourse(courseFields(String(two._id), 'DUP'))).toMatchObject(COURSE_PAGE);
-  });
-
-  it('validates credits, components and the programme', async () => {
-    await asAdmin();
-    const program = await makeProgram('SC-4');
-    expect(await saveCourse(courseFields(String(program._id), 'V1', ['theory'], '2.3'))).toMatchObject({
-      ok: false,
-      fieldErrors: { credits: ['Credits go in steps of 0.5.'] },
-    });
-    expect(await saveCourse(courseFields(String(program._id), 'V2', []))).toMatchObject({
-      ok: false,
-      fieldErrors: { 'components[]': ['Pick at least one component.'] },
-    });
-    expect(await saveCourse(courseFields(String(newId()), 'V3'))).toMatchObject({ ok: false, code: 'VALIDATION' });
-  });
-
-  it('updates in place without moving the programme or changing the category', async () => {
-    await asAdmin();
-    const { program, id } = await makeCourse('UP1');
-    const result = await saveCourse(
-      form({
-        id,
-        programId: String(newId()),
-        code: 'UP1',
-        title: 'Renamed',
-        credits: '4',
-        'components[]': ['theory'],
-        status: 'active',
-      }),
-    );
-    expect(result).toMatchObject({ ok: true });
-    expect(await Course.findById(id)).toMatchObject({
-      title: 'Renamed',
-      credits: 4,
-      componentKey: 'theory',
-      status: 'active',
-      programId: program._id,
-    });
+  it('keeps course details and the coordinator for admins', async () => {
+    const { coordinator, courseId, course } = await coordinated();
+    await signInAs(coordinator);
     expect(
       await saveCourse(
         form({
-          id: String(newId()),
-          programId: String(program._id),
-          code: 'Z',
-          title: 'Z',
-          credits: '1',
-          'components[]': ['theory'],
-          status: 'draft',
+          id: courseId,
+          code: course.code,
+          title: 'Mine now',
+          theory: '3',
+          practice: '0',
+          project: '1',
+          status: 'active',
         }),
       ),
-    ).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    ).toMatchObject(FORBIDDEN);
+    expect(await setCoordinator(form({ courseId, coordinatorId: '' }))).toMatchObject(FORBIDDEN);
+  });
+
+  it('shows the catalogue to staff only, editable only where they may edit', async () => {
+    const { coordinator, courseId } = await coordinated();
+    await signInAs(coordinator);
+    expect(await getCatalogCourse(courseId)).toMatchObject({ canEdit: true, isAdmin: false });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    expect(await getCatalogCourse(courseId)).toMatchObject({ canEdit: false });
+    await signInAs(await makeUser({ roles: ['student'] }));
+    await expect(getCatalogCourse(courseId)).rejects.toMatchObject({ digest: expect.stringContaining('/home') });
   });
 });
 
-describe('saveObjectives', () => {
-  it('stores one objective per line', async () => {
-    await asAdmin();
-    const { id } = await makeCourse('OB1');
-    expect(await saveObjectives(form({ courseId: id, objectives: ' first \n\nsecond\r\n' }))).toMatchObject({
+describe('saveCos', () => {
+  it('adds, edits and removes outcomes in one save, and a removed outcome takes its mapping along', async () => {
+    const { coordinator, courseId } = await coordinated();
+    await signInAs(coordinator);
+    expect(
+      await saveCos(
+        form({
+          courseId,
+          rows: '2',
+          statement_0: 'Explain residues.',
+          'bloom_0[]': 'understand',
+          statement_1: 'Evaluate real integrals.',
+          'bloom_1[]': ['apply', 'evaluate'],
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    const [co1, co2] = (await Course.findById(courseId).lean())?.cos ?? [];
+    expect([co1?.code, co2?.code]).toEqual(['CO1', 'CO2']);
+    expect(await saveCoMap(form({ courseId, 'cell[]': [`${co1?._id}:PO1:3`, `${co2?._id}:PSO2:1`] }))).toMatchObject({
       ok: true,
     });
-    expect((await Course.findById(id))?.objectives).toEqual(['first', 'second']);
-    const tooMany = Array.from({ length: 21 }, (_, i) => `objective ${i}`).join('\n');
-    expect(await saveObjectives(form({ courseId: id, objectives: tooMany }))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-    });
-    expect(await saveObjectives(form({ courseId: String(newId()), objectives: 'x' }))).toMatchObject({
-      ok: false,
-      code: 'NOT_FOUND',
-    });
-  });
-});
-
-describe('course outcomes', () => {
-  it('numbers COs in order, never reuses a code, and audits every change', async () => {
-    await asAdmin();
-    const { id } = await makeCourse('CO1');
-    for (const statement of ['one', 'two', 'three']) {
-      expect(await addCo(form({ courseId: id, statement, bloomLevel: 'apply' }))).toMatchObject({ ok: true });
-    }
-    let course = await Course.findById(id);
-    expect(course?.cos.map((c) => c.code)).toEqual(['CO1', 'CO2', 'CO3']);
-
-    const second = course?.cos[1];
-    expect(await deleteCo(form({ courseId: id, coId: String(second?._id) }))).toMatchObject({ ok: true });
-    expect(await addCo(form({ courseId: id, statement: 'four', bloomLevel: 'create' }))).toMatchObject({ ok: true });
-    course = await Course.findById(id);
-    expect(course?.cos.map((c) => c.code)).toEqual(['CO1', 'CO3', 'CO4']);
-
-    const entries = await auditOf(id, 'course.cos_changed');
-    expect(entries).toHaveLength(5);
-    expect(entries[3]).toMatchObject({ before: [{ code: 'CO2', statement: 'two' }], after: [] });
-  });
-
-  it('updates the statement and level, and ignores a save that changes nothing', async () => {
-    await asAdmin();
-    const { id } = await makeCourse('CO2');
-    await addCo(form({ courseId: id, statement: 'old', bloomLevel: 'remember' }));
-    const co = (await Course.findById(id))?.cos[0];
-    const input = { courseId: id, coId: String(co?._id), statement: 'new', bloomLevel: 'evaluate' };
-    expect(await updateCo(form(input))).toMatchObject({ ok: true });
-    expect((await Course.findById(id))?.cos[0]).toMatchObject({
-      code: 'CO1',
-      statement: 'new',
-      bloomLevel: 'evaluate',
-    });
-    expect(await updateCo(form(input))).toMatchObject({ ok: true });
-    expect(await auditOf(id, 'course.cos_changed')).toHaveLength(2);
-    expect(await updateCo(form({ ...input, coId: String(newId()) }))).toMatchObject({ ok: false, code: 'NOT_FOUND' });
-    expect(await updateCo(form({ ...input, bloomLevel: 'ponder' }))).toMatchObject({ ok: false, code: 'VALIDATION' });
-  });
-
-  it('allows at most 15 and has none on a skill course', async () => {
-    await asAdmin();
-    const { id } = await makeCourse('CO3');
-    const cos = Array.from({ length: 15 }, (_, i) => ({ code: `CO${i + 1}`, statement: 's', bloomLevel: 'apply' }));
-    await Course.updateOne({ _id: id }, { $set: { cos } });
-    expect(await addCo(form({ courseId: id, statement: 'sixteen', bloomLevel: 'apply' }))).toEqual({
-      ok: false,
-      code: 'VALIDATION',
-      message: 'A course has at most 15 COs.',
-    });
-    const skill = await makeCourse('SK1', 'skill');
-    expect(await addCo(form({ courseId: skill.id, statement: 's', bloomLevel: 'apply' }))).toEqual({
-      ok: false,
-      code: 'VALIDATION',
-      message: 'Skill courses have no course outcomes.',
-    });
-  });
-
-  it('removes a CO together with its matrix cells', async () => {
-    await asAdmin();
-    const { id } = await makeCourse('CO4');
-    await addCo(form({ courseId: id, statement: 'a', bloomLevel: 'apply' }));
-    await addCo(form({ courseId: id, statement: 'b', bloomLevel: 'apply' }));
-    const [one, two] = (await Course.findById(id))?.cos ?? [];
-    await saveCoMap(form({ courseId: id, 'cell[]': [`${one._id}:PO1:3`, `${two._id}:PO1:2`, `${two._id}:PSO1:1`] }));
-    await deleteCo(form({ courseId: id, coId: String(one._id) }));
-    const course = await Course.findById(id);
-    expect(course?.coMap.map((m) => `${m.outcome}:${m.level}`)).toEqual(['PO1:2', 'PSO1:1']);
-    expect(course?.coMap.every((m) => m.coId.equals(two._id))).toBe(true);
-  });
-});
-
-describe('saveCoMap', () => {
-  async function courseWithCos() {
-    const made = await makeCourse(`MAP${Math.random().toString(36).slice(2, 7)}`);
-    await addCo(form({ courseId: made.id, statement: 'a', bloomLevel: 'apply' }));
-    await addCo(form({ courseId: made.id, statement: 'b', bloomLevel: 'apply' }));
-    const [one, two] = (await Course.findById(made.id))?.cos ?? [];
-    return { ...made, one: String(one._id), two: String(two._id) };
-  }
-
-  it('replaces the matrix, treating an empty cell as no link, and audits only the changed cells', async () => {
-    await asAdmin();
-    const { id, one, two } = await courseWithCos();
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO1:3`, '', `${two}:PSO1:2`, ''] }))).toMatchObject({
-      ok: true,
-    });
-    expect((await Course.findById(id))?.coMap).toHaveLength(2);
 
     expect(
-      await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO1:3`, `${two}:PSO1:1`, `${one}:PO2:1`] })),
-    ).toMatchObject({
-      ok: true,
-    });
-    const entries = await auditOf(id, 'course.map_changed');
-    expect(entries).toHaveLength(2);
-    expect(entries[1].after).toEqual(
-      expect.arrayContaining([
-        { co: 'CO2', outcome: 'PSO1', from: 2, to: 1 },
-        { co: 'CO1', outcome: 'PO2', from: null, to: 1 },
-      ]),
-    );
-    expect(entries[1].after).toHaveLength(2);
-
-    expect(
-      await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO1:3`, `${two}:PSO1:1`, `${one}:PO2:1`] })),
-    ).toMatchObject({
-      ok: true,
-    });
-    expect(await auditOf(id, 'course.map_changed')).toHaveLength(2);
-
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [''] }))).toMatchObject({ ok: true });
-    expect((await Course.findById(id))?.coMap).toHaveLength(0);
+      await saveCos(
+        form({
+          courseId,
+          rows: '3',
+          coId_0: String(co1?._id),
+          statement_0: 'Explain residues and poles.',
+          'bloom_0[]': ['understand'],
+          coId_1: String(co2?._id),
+          statement_1: 'Evaluate real integrals.',
+          remove_1: 'true',
+          statement_2: 'Design a contour.',
+          'bloom_2[]': 'create',
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    const course = await Course.findById(courseId).lean();
+    expect(course?.cos.map((co) => [co.code, co.statement, co.bloomLevels])).toEqual([
+      ['CO1', 'Explain residues and poles.', ['understand']],
+      // CO2 was removed; a new outcome gets the next code after the highest, CO3.
+      ['CO3', 'Design a contour.', ['create']],
+    ]);
+    expect(course?.cos[0]._id.equals(co1?._id)).toBe(true);
+    expect(course?.coMap.map((m) => [String(m.coId), m.outcome])).toEqual([[String(co1?._id), 'PO1']]);
+    expect((await audit(courseId, 'course.cos_changed')).at(-1)?.after).toMatchObject({ mappingLinksRemoved: 1 });
   });
 
-  it('accepts only levels 1 to 3 and only the programme outcome codes', async () => {
-    await asAdmin();
-    const { id, one } = await courseWithCos();
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO1:4`] }))).toMatchObject({
+  it('refuses outcomes for a non-credit course', async () => {
+    const coordinator = await makeUser({ roles: ['faculty'] });
+    const course = await makeCourse({
+      coordinatorId: coordinator._id,
+      credits: { theory: 0, practice: 0, project: 0 },
+    });
+    await signInAs(coordinator);
+    expect(await saveCos(form({ courseId: String(course._id), rows: '1', statement_0: 'Use Excel.' }))).toMatchObject({
       ok: false,
       code: 'VALIDATION',
-      fieldErrors: { 'cell[]': ['Levels are 1, 2 or 3.'] },
-    });
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO1:0`] }))).toMatchObject({ ok: false });
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [`${one}:PO9:2`] }))).toEqual({
-      ok: false,
-      code: 'VALIDATION',
-      message: 'PO9 is not an outcome of this programme.',
-    });
-    expect(await saveCoMap(form({ courseId: id, 'cell[]': [`${newId()}:PO1:2`] }))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-    });
-    expect((await Course.findById(id))?.coMap).toHaveLength(0);
-  });
-
-  it('has no matrix on a skill course and 404s nothing silently for an unknown course', async () => {
-    await asAdmin();
-    const skill = await makeCourse('SK2', 'skill');
-    expect(await saveCoMap(form({ courseId: skill.id, 'cell[]': [''] }))).toMatchObject({
-      ok: false,
-      code: 'VALIDATION',
-    });
-    expect(await saveCoMap(form({ courseId: String(newId()), 'cell[]': [''] }))).toMatchObject({
-      ok: false,
-      code: 'NOT_FOUND',
     });
   });
 });
 
-describe('reads', () => {
-  it('filters the list by programme and returns the detail with matrix columns and cells', async () => {
-    await asAdmin();
-    const { program, id } = await makeCourse('RD1');
-    await makeCourse('RD2');
-    await addCo(form({ courseId: id, statement: 'a', bloomLevel: 'apply' }));
-    const co = (await Course.findById(id))?.cos[0];
-    await saveCoMap(form({ courseId: id, 'cell[]': [`${co?._id}:PSO1:2`] }));
+describe('saveCoMap (AC-M01b-05)', () => {
+  it('refuses codes outside PO1–PO12 and PSO1–PSO3 and levels outside 1–3, and audits the changed cells', async () => {
+    const coId = newId();
+    const coordinator = await makeUser({ roles: ['faculty'] });
+    const course = await makeCourse({
+      coordinatorId: coordinator._id,
+      cos: [{ _id: coId, code: 'CO1', statement: 'Explain.', bloomLevels: ['understand'] }],
+    });
+    const courseId = String(course._id);
+    await signInAs(coordinator);
+    expect(await saveCoMap(form({ courseId, 'cell[]': `${coId}:PO13:2` }))).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+    });
+    expect(await saveCoMap(form({ courseId, 'cell[]': `${coId}:PO1:4` }))).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+    });
+    expect(await saveCoMap(form({ courseId, 'cell[]': `${newId()}:PO1:2` }))).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+    });
+    expect(await saveCoMap(form({ courseId, 'cell[]': [`${coId}:PO1:3`, `${coId}:PSO3:2`] }))).toMatchObject({
+      ok: true,
+    });
+    expect((await audit(courseId, 'course.map_changed')).at(-1)?.after).toEqual([
+      { co: 'CO1', outcome: 'PO1', from: null, to: 3 },
+      { co: 'CO1', outcome: 'PSO3', from: null, to: 2 },
+    ]);
+  });
+});
 
-    const filtered = await listCourses(1, String(program._id));
-    expect(filtered.total).toBe(1);
-    expect(filtered.rows[0]).toMatchObject({ code: 'RD1', programCode: 'P-RD1' });
-
-    const detail = await getCourse(id);
-    expect(detail.outcomes).toEqual(['PO1', 'PO2', 'PSO1']);
-    expect(detail.cells).toEqual({ [`${co?._id}:PSO1`]: 2 });
-    expect(detail.cos).toEqual([{ id: String(co?._id), code: 'CO1', statement: 'a', bloomLevel: 'apply' }]);
+describe('content edits', () => {
+  it('mark the course as edited here, so the courseware import leaves it alone', async () => {
+    const { coordinator, courseId } = await coordinated();
+    await signInAs(coordinator);
+    expect((await Course.findById(courseId).lean())?.contentEditedAt).toBeNull();
+    expect(
+      await saveSyllabus(
+        form({ courseId, rows: '1', title_0: 'Residues', hours_0: '4+0+2', topics_0: 'Residue theorem', projects: '' }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(await saveSessionPlan(form({ courseId, sessions: 'Residues\nProject: Study on residues' }))).toMatchObject({
+      ok: true,
+    });
+    const course = await Course.findById(courseId).lean();
+    expect(course?.contentEditedAt).toBeInstanceOf(Date);
+    expect(course?.modules.map((m) => [m.title, m.hours])).toEqual([['Residues', '4+0+2']]);
+    expect(course?.sessionPlan).toEqual([
+      { topic: 'Residues', kind: 'theory' },
+      { topic: 'Study on residues', kind: 'project' },
+    ]);
+    expect(await audit(courseId, 'course.content_changed')).toHaveLength(2);
   });
 
-  it('answers 404 for an invalid or unknown course id', async () => {
-    await asAdmin();
-    await expect(getCourse('nope')).rejects.toThrow(NOT_FOUND);
-    await expect(getCourse(String(newId()))).rejects.toThrow(NOT_FOUND);
+  it('clears the review notes when someone marks the course reviewed', async () => {
+    const coordinator = await makeUser({ roles: ['faculty'] });
+    const course = await makeCourse({
+      coordinatorId: coordinator._id,
+      issues: ['The outcomes had no CO numbers, so they were numbered in order.'],
+      reviewNeeded: true,
+    });
+    await signInAs(coordinator);
+    expect(await markReviewed(form({ courseId: String(course._id) }))).toMatchObject({ ok: true });
+    expect(await Course.findById(course._id).lean()).toMatchObject({ issues: [], reviewNeeded: false });
+  });
+});
+
+describe('saveCourse (admin)', () => {
+  const fields = (over: Record<string, string> = {}) =>
+    form({
+      code: 'cutm 9001',
+      title: 'New course',
+      theory: '2',
+      practice: '0',
+      project: '1',
+      status: 'active',
+      ...over,
+    });
+
+  it('creates a course under its normalised code, once', async () => {
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    expect(await saveCourse(fields())).toMatchObject({
+      ok: true,
+      data: { next: expect.stringMatching(/^\/catalog\//) },
+    });
+    expect(await Course.findOne({ code: 'CUTM9001' }).lean()).toMatchObject({
+      credits: { theory: 2, practice: 0, project: 1 },
+    });
+    expect(await saveCourse(fields({ code: 'CUTM-9001' }))).toMatchObject({ ok: false, code: 'CONFLICT' });
+  });
+
+  it('fixes the code once the course has been offered, and renames it in every curriculum before that', async () => {
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    const course = await makeCourse({ code: 'CUTM9002' });
+    const program = await makeProgram();
+    await CurriculumEntry.create({ programId: program._id, courseId: course._id, courseCode: 'CUTM9002' });
+    expect(await saveCourse(fields({ id: String(course._id), code: 'CUTM9003' }))).toMatchObject({ ok: true });
+    expect(await CurriculumEntry.findOne({ courseId: course._id }).lean()).toMatchObject({ courseCode: 'CUTM9003' });
+
+    await makeOffering({ courseId: course._id });
+    expect(await saveCourse(fields({ id: String(course._id), code: 'CUTM9004' }))).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+      fieldErrors: { code: ['The code is fixed once the course has been offered.'] },
+    });
+    expect(await saveCourse(fields({ id: String(course._id), code: 'CUTM9003', title: 'Renamed' }))).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it('assigns a faculty member as coordinator, and only a faculty member', async () => {
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    const course = await makeCourse();
+    const faculty = await makeUser({ roles: ['faculty'] });
+    const student = await makeUser({ roles: ['student'] });
+    const courseId = String(course._id);
+    expect(await setCoordinator(form({ courseId, coordinatorId: String(student._id) }))).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+    });
+    expect(await setCoordinator(form({ courseId, coordinatorId: String(faculty._id) }))).toMatchObject({ ok: true });
+    expect((await Course.findById(courseId).lean())?.coordinatorId?.equals(faculty._id)).toBe(true);
+    expect(await audit(courseId, 'course.coordinator_changed')).toHaveLength(1);
+  });
+});
+
+describe('syllabus PDF upload', () => {
+  it('is for the coordinator and admins', async () => {
+    const { coordinator, courseId } = await coordinated();
+    const upload = () =>
+      createUpload({
+        purpose: 'syllabus',
+        contextId: courseId,
+        contentType: 'application/pdf',
+        size: 1000,
+        fileName: 's.pdf',
+      });
+    await signInAs(coordinator);
+    expect(await upload()).toMatchObject({ ok: true, data: { key: expect.stringMatching(/^syllabus\//) } });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    expect(await upload()).toMatchObject(FORBIDDEN);
+  });
+});
+
+describe('listCatalog', () => {
+  it('finds courses by the start of a code, by title words, and the ones a faculty member coordinates', async () => {
+    const { coordinator } = await coordinated();
+    await makeCourse({ code: 'ZZQA1001', title: 'Quantum widgets', coordinatorId: coordinator._id });
+    await makeCourse({ code: 'ZZQA1002', title: 'Classical gadgets', reviewNeeded: true, issues: ['Check me.'] });
+    await signInAs(coordinator);
+    const codes = async (filters: Parameters<typeof listCatalog>[1]) =>
+      (await listCatalog(1, filters)).rows.map((r) => r.code);
+    expect(await codes({ q: 'zzqa 100' })).toEqual(['ZZQA1001', 'ZZQA1002']);
+    expect(await codes({ q: 'quantum' })).toEqual(['ZZQA1001']);
+    expect(await codes({ q: 'zzqa', mine: true })).toEqual(['ZZQA1001']);
+    expect(await codes({ q: 'zzqa', review: true })).toEqual(['ZZQA1002']);
   });
 });

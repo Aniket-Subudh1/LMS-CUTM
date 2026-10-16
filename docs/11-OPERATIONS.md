@@ -187,6 +187,15 @@ Illustration (verify current prices before quoting to the client): 40 live class
 
 `scripts/sync-indexes.ts` imports every model and calls `Model.createCollection()` then `Model.createIndexes()`. It never calls `syncIndexes()` (that drops unlisted indexes).
 
+### 5.1 Moving to catalogue v2 (M01b, once per environment)
+1. Back up the database (§6) and keep the dump until the course list is loaded.
+2. Deploy the M01b build, then run `npm run db:migrate:catalog-v2` against the target **before** `npm run db:indexes`. It merges courses that share a code (offerings and calendar outcome ids follow), splits old credit numbers into T-P-Pj (flagged "check T-P-Pj" where it had to guess), turns each rich-text syllabus into one module, links courses to their old programmes, turns PO/PSO lists into outcome titles, copies credits and the evaluation policy onto offerings, drops the old course indexes and the `evaluationschemes` collection, and writes one `catalog.migrated` audit entry. Run it again: it must say "nothing to change".
+3. `npm run db:indexes` (the unique course code index needs step 2 first).
+4. Set each programme's department on its page if it has none, and check Settings → Evaluation policy.
+5. Upload the course list on Imports (the Course Repository converted to the CSV of 06 §8.5; it is kept outside the repository — record its row count and checksum in `PROGRESS.md`). Tick "Create programmes that do not exist yet" only on the first load.
+6. Start a courseware import, "Pages not imported yet", in the evening: about 1,300 pages at two at a time take 5–6 hours; the worker must stay up. Check the run page the next day; failed pages are listed with the reason.
+7. Assign coordinators on the catalogue, starting with the courses offered this term.
+
 ## 6. Backups and restore
 
 - MongoDB: nightly `mongodump --oplog` (or the managed service's continuous backup) retained 30 days; weekly copy off-site retained 6 months.

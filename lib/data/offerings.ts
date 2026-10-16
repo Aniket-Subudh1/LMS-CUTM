@@ -2,10 +2,13 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { formatCredits } from '@/lib/domain/catalog';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
+import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
+import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
@@ -13,40 +16,89 @@ import type { OFFERING_STATUSES } from '@/lib/schemas/structure';
 
 type Option = { id: string; label: string };
 
-async function readCourseOptions(programId: string) {
+export type CourseOption = Option & { basket: string | null; project: boolean };
+
+// The courses a programme lists, for the New offering dialog (grouped by basket there).
+async function readCurriculumOptions(programId: string): Promise<CourseOption[]> {
   'use cache';
   cacheLife('minutes');
   cacheTag('catalog');
   await db();
-  const docs = await Course.find({ programId, status: { $ne: 'archived' } }, { code: 1, title: 1 })
+  const entries = await CurriculumEntry.find({ programId }, { courseId: 1, basket: 1 }).limit(1000).lean();
+  const basketOf = new Map(entries.map((e) => [String(e.courseId), e.basket ?? null]));
+  const courses = await Course.find(
+    { _id: { $in: entries.map((e) => e.courseId) }, status: { $ne: 'archived' } },
+    { code: 1, title: 1, credits: 1 },
+  )
     .sort({ code: 1 })
-    .limit(500)
     .lean();
-  return docs.map((c) => ({ id: String(c._id), label: `${c.code} · ${c.title}` }));
+  return courses.map((c) => ({
+    id: String(c._id),
+    label: `${c.code} · ${c.title} · ${formatCredits(c.credits)}`,
+    basket: basketOf.get(String(c._id)) ?? null,
+    project: c.credits.project > 0,
+  }));
 }
 
-export async function listCoursesForSelect(programId: string): Promise<Option[]> {
+export async function listCurriculumForSelect(programId: string): Promise<CourseOption[]> {
   await requireViewer(['admin']);
-  return readCourseOptions(programId);
+  return readCurriculumOptions(programId);
 }
 
-export type BatchOption = Option & { sections: string[] };
+export type BatchOption = Option & {
+  programId: string;
+  programme: string;
+  departmentId: string | null;
+  sections: string[];
+};
 
-export async function listBatchesForSelect(programId: string): Promise<BatchOption[]> {
+// Active batches of every programme, for the first step of the New offering dialog.
+export async function listBatchesForSelect(): Promise<BatchOption[]> {
   await requireViewer(['admin']);
   await db();
-  const docs = await Batch.find({ programId, status: 'active' }, { name: 1, startYear: 1, sections: 1 })
-    .sort({ startYear: -1 })
-    .limit(50)
+  const docs = await Batch.find({ status: 'active' }, { programId: 1, name: 1, startYear: 1, sections: 1 })
+    .sort({ programId: 1, startYear: -1 })
+    .limit(500)
     .lean();
-  return docs.map((b) => ({ id: String(b._id), label: `${b.name} (${b.startYear})`, sections: b.sections }));
+  const programs = await Program.find(
+    { _id: { $in: docs.map((b) => b.programId) } },
+    { code: 1, name: 1, departmentId: 1 },
+  ).lean();
+  const byId = new Map(programs.map((p) => [String(p._id), p]));
+  return docs.map((b) => {
+    const program = byId.get(String(b.programId));
+    return {
+      id: String(b._id),
+      label: b.name.includes(String(b.startYear)) ? `${b.name} intake` : `${b.name} (${b.startYear} intake)`,
+      programId: String(b.programId),
+      programme: program ? `${program.code} · ${program.name}` : '—',
+      departmentId: program?.departmentId ? String(program.departmentId) : null,
+      sections: b.sections,
+    };
+  });
 }
 
-export async function listTermsForSelect(): Promise<Option[]> {
+export async function listTermsForSelect(): Promise<(Option & { current: boolean })[]> {
   await requireViewer(['admin']);
   await db();
   const docs = await Term.find({}, { code: 1, name: 1, status: 1 }).sort({ code: -1 }).limit(100).lean();
-  return docs.map((t) => ({ id: String(t._id), label: `${t.code} · ${t.name} (${t.status})` }));
+  return docs.map((t) => ({
+    id: String(t._id),
+    label: `${t.code} · ${t.name}${t.status === 'current' ? ' (current)' : ''}`,
+    current: t.status === 'current',
+  }));
+}
+
+// The faculty of a department, ticked by name in the offering dialogs (A department has at most a few hundred).
+export async function listDepartmentFaculty(departmentId: string | null): Promise<Option[]> {
+  await requireViewer(['admin']);
+  if (!departmentId) return [];
+  await db();
+  const docs = await User.find({ departmentId, roles: 'faculty', status: { $ne: 'disabled' } }, { name: 1, email: 1 })
+    .sort({ name: 1 })
+    .limit(200)
+    .lean();
+  return docs.map((u) => ({ id: String(u._id), label: u.name }));
 }
 
 export type OfferingRow = {

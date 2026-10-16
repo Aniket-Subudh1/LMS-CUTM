@@ -19,3 +19,19 @@ export type MailJob = z.infer<typeof MailJob>;
 // `media/transcodeLesson` (06 §6, M02 T8b): the 480p data-saver copy of a lecture video.
 export const MediaJob = z.object({ lessonId: objectId });
 export type MediaJob = z.infer<typeof MediaJob>;
+
+// `sync/coursewareList` and `sync/coursewarePage` (06 §6, M01b): one courseware import run.
+export const CoursewareListJob = z.object({
+  syncRunId: objectId,
+  mode: z.enum(['new', 'all']),
+  page: z.number().int().min(1).max(10_000),
+});
+export type CoursewareListJob = z.infer<typeof CoursewareListJob>;
+
+// `force` replaces content edited in the LMS (an admin's "Replace with courseware content").
+export const CoursewarePageJob = z.object({
+  syncRunId: objectId,
+  coursewareId: z.number().int().min(1),
+  force: z.boolean(),
+});
+export type CoursewarePageJob = z.infer<typeof CoursewarePageJob>;

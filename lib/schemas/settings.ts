@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+// Marks in half steps; the evaluation policy's cross-field rules are below.
+const marks = (fallback: number) =>
+  z.coerce
+    .number({ error: 'Enter a number.' })
+    .min(0, 'Use 0 to 100.')
+    .max(100, 'Use 0 to 100.')
+    .multipleOf(0.5, 'Use steps of 0.5.')
+    .default(fallback);
+
 const percent = (fallback: number) =>
   z.coerce
     .number({ error: 'Enter a percentage.' })
@@ -20,8 +29,94 @@ export const SETTINGS = {
         'A video is complete once a student has watched this share of it. Each second counts once, so replaying a part does not add to it. Documents and links are complete when the student marks them done.',
     },
   },
+  evaluation: {
+    // M01b: CUTM's Examination Policy (2020). Every component is marked out of 100; the parts' names are fixed (the
+    // settings page labels them) and only their maxima are settings. 07 §2.
+    schema: z
+      .object({
+        theoryMidTerm1: marks(15),
+        theoryMidTerm2: marks(15),
+        theoryAssignment: marks(5),
+        theoryAttendance: marks(5),
+        theoryEndSem: marks(60),
+        attendanceMinPct: percent(75),
+        band1Pct: percent(90),
+        band1Marks: marks(5),
+        band2Pct: percent(85),
+        band2Marks: marks(4),
+        band3Pct: percent(80),
+        band3Marks: marks(3),
+        band4Pct: percent(75),
+        band4Marks: marks(2),
+        practiceConcept: marks(5),
+        practicePlanning: marks(10),
+        practiceResult: marks(10),
+        practiceRecord: marks(10),
+        practiceConduct: marks(5),
+        practiceViva: marks(10),
+        projectRelevance: marks(5),
+        projectLiterature: marks(5),
+        projectMethodology: marks(10),
+        projectAnalysis: marks(10),
+        projectInterpretation: marks(10),
+        projectReport: marks(10),
+        projectExtRelevance: marks(10),
+        projectExtReport: marks(20),
+        projectExtDefence: marks(20),
+      })
+      .superRefine((p, ctx) => {
+        const fail = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+        const theory = p.theoryMidTerm1 + p.theoryMidTerm2 + p.theoryAssignment + p.theoryAttendance + p.theoryEndSem;
+        if (theory !== 100) fail('theoryEndSem', `The theory parts add up to ${theory}; they must add up to 100.`);
+        const bands = [
+          [p.band1Pct, p.band1Marks],
+          [p.band2Pct, p.band2Marks],
+          [p.band3Pct, p.band3Marks],
+          [p.band4Pct, p.band4Marks],
+        ];
+        bands.forEach(([pct, points], i) => {
+          if (points > p.theoryAttendance) {
+            fail(`band${i + 1}Marks`, `At most ${p.theoryAttendance}, the attendance part of theory.`);
+          }
+          if (i === 0) return;
+          const [abovePct, abovePoints] = bands[i - 1];
+          if (pct >= abovePct) fail(`band${i + 1}Pct`, `Use less than ${abovePct} %, the band above.`);
+          if (points > abovePoints)
+            fail(`band${i + 1}Marks`, `Use at most ${abovePoints}, the marks of the band above.`);
+        });
+        const practice =
+          p.practiceConcept +
+          p.practicePlanning +
+          p.practiceResult +
+          p.practiceRecord +
+          p.practiceConduct +
+          p.practiceViva;
+        if (practice !== 50) {
+          fail(
+            'practiceViva',
+            `The practice rubric adds up to ${practice}; it must add up to 50 (the examiner marks the other 50).`,
+          );
+        }
+        const project =
+          p.projectRelevance +
+          p.projectLiterature +
+          p.projectMethodology +
+          p.projectAnalysis +
+          p.projectInterpretation +
+          p.projectReport +
+          p.projectExtRelevance +
+          p.projectExtReport +
+          p.projectExtDefence;
+        if (project !== 100)
+          fail('projectExtDefence', `The project rubrics add up to ${project}; they must add up to 100.`);
+      }),
+    label: 'Evaluation policy',
+    description:
+      "How credit courses are marked: CUTM's Examination Policy. Each offering keeps the policy as it was when the offering was created.",
+    fieldHelp: {},
+  },
 } as const;
 
-export const settingsKey = z.enum(['lessons']);
+export const settingsKey = z.enum(['lessons', 'evaluation']);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

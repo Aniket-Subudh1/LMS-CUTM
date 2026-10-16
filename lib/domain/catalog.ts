@@ -48,6 +48,13 @@ export function extractCode(text: string): string | null {
   return match ? `${match[1]}${match[2]}` : null;
 }
 
+// CPP-02's PSO titles, given to a new programme until an admin changes them (Q-08).
+export const DEFAULT_OUTCOME_TITLES = [
+  { code: 'PSO1', title: 'Higher education' },
+  { code: 'PSO2', title: 'Entrepreneurship' },
+  { code: 'PSO3', title: 'Placement' },
+] as const;
+
 // The courseware badge or the Course Repository's type column: "Core", "Domain Elective", "Skill", "Certificate",
 // "Advanced Certificate", "Diploma".
 export function courseTypeFromLabel(label: string): CourseType | null {
@@ -201,7 +208,7 @@ export function nextCoCode(existing: readonly { code: string }[]): string {
 // A re-import keeps each CO's id by its code, so calendar rows and (later) question tags that point at CO2 still
 // do. Imported mapping cells are keyed by CO code and come back keyed by id; cells of dropped COs go.
 export function mergeCos<Id, Co extends { code: string }>(
-  existing: readonly (Co & { _id: Id })[],
+  existing: readonly { _id: Id; code: string }[],
   imported: readonly Co[],
   newId: () => Id,
 ): (Co & { _id: Id })[] {

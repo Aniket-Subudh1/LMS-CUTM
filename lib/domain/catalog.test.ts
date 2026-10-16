@@ -149,8 +149,8 @@ describe('course outcomes', () => {
     let n = 0;
     const merged = mergeCos(
       [
-        { _id: 'a', code: 'CO1', statement: 'Old one' },
-        { _id: 'b', code: 'CO2', statement: 'Old two' },
+        { _id: 'a', code: 'CO1' },
+        { _id: 'b', code: 'CO2' },
       ],
       [
         { code: 'CO1', statement: 'New one' },

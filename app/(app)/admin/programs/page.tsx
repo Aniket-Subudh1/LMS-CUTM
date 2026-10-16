@@ -37,7 +37,7 @@ async function Programs({ searchParams }: { searchParams: PageProps<'/admin/prog
       <PageHeader
         icon={<GraduationCapIcon weight="duotone" />}
         title="Programmes"
-        description="UGC programmes carry POs and PSOs; skill programmes do not."
+        description="A programme lists its courses in baskets, titles its outcomes and holds the batches students belong to."
         actions={
           <FormDialog
             trigger={
@@ -47,7 +47,7 @@ async function Programs({ searchParams }: { searchParams: PageProps<'/admin/prog
             }
             icon={<GraduationCapIcon weight="duotone" />}
             title="Add a programme"
-            description="You will continue on the programme page to add its batches and outcomes."
+            description="You will continue on the programme page to add its courses, outcome titles and batches."
             action={saveProgram}
             submitLabel="Add programme"
             successMessage="Programme added. Opening it…"
@@ -73,21 +73,9 @@ async function Programs({ searchParams }: { searchParams: PageProps<'/admin/prog
                 ))}
               </NativeSelect>
             </Field>
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field
-                name="category"
-                label="Category"
-                hint="A UGC programme starts with PO1–PO12 and PSO1–PSO3. This cannot be changed later."
-              >
-                <NativeSelect name="category" defaultValue="ugc">
-                  <NativeSelectOption value="ugc">UGC</NativeSelectOption>
-                  <NativeSelectOption value="skill">Skill</NativeSelectOption>
-                </NativeSelect>
-              </Field>
-              <Field name="durationSemesters" label="Duration (semesters)">
-                <Input name="durationSemesters" type="number" required min={1} max={12} defaultValue={8} />
-              </Field>
-            </div>
+            <Field name="durationSemesters" label="Duration (semesters)">
+              <Input name="durationSemesters" type="number" required min={1} max={12} defaultValue={8} />
+            </Field>
           </FormDialog>
         }
       />
@@ -102,9 +90,11 @@ async function Programs({ searchParams }: { searchParams: PageProps<'/admin/prog
             ),
           },
           { header: 'Name', cell: (p) => p.name },
-          { header: 'Department', cell: (p) => p.departmentCode },
-          { header: 'Category', cell: (p) => (p.category === 'ugc' ? 'UGC' : 'Skill') },
-          { header: 'Semesters', cell: (p) => p.durationSemesters, className: 'text-right tabular-nums' },
+          {
+            header: 'Department',
+            cell: (p) => p.departmentCode ?? <Badge variant="warning">Not set</Badge>,
+          },
+          { header: 'Semesters', cell: (p) => p.durationSemesters ?? '—', className: 'text-right tabular-nums' },
           { header: 'Status', cell: (p) => <Badge variant={statusTone(p.status)}>{p.status}</Badge> },
         ]}
         rows={rows}

@@ -19,6 +19,7 @@ async function readStored(key: SettingsKey): Promise<unknown> {
 // One parser per key, so a generic key keeps its own value type (each later key adds a line).
 const PARSE: { [K in SettingsKey]: (stored: unknown) => SettingsValue<K> } = {
   lessons: (stored) => SETTINGS.lessons.schema.parse(stored ?? {}),
+  evaluation: (stored) => SETTINGS.evaluation.schema.parse(stored ?? {}),
 };
 
 export async function getSettings<K extends SettingsKey>(key: K): Promise<SettingsValue<K>> {

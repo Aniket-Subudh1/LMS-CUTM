@@ -2,11 +2,17 @@ import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
-import type { MailJob, MailSend, MediaJob } from '@/lib/schemas/jobs';
+import type { CoursewareListJob, CoursewarePageJob, MailJob, MailSend, MediaJob } from '@/lib/schemas/jobs';
 
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
 type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
-const globalForQueue = globalThis as typeof globalThis & { redis?: Redis; mail?: MailQueue; media?: MediaQueue };
+type SyncQueue = Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
+const globalForQueue = globalThis as typeof globalThis & {
+  redis?: Redis;
+  mail?: MailQueue;
+  media?: MediaQueue;
+  sync?: SyncQueue;
+};
 
 export function redis(): Redis {
   globalForQueue.redis ??= new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
@@ -37,4 +43,21 @@ export function mediaQueue(): MediaQueue {
     },
   });
   return globalForQueue.media;
+}
+
+// Imports from other systems (02 §8): the courseware import now, the exam system and GitHub later.
+export function syncQueue(): SyncQueue {
+  globalForQueue.sync ??= new Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>(
+    'sync',
+    {
+      connection: redis(),
+      defaultJobOptions: {
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 2000,
+        removeOnFail: 5000,
+      },
+    },
+  );
+  return globalForQueue.sync;
 }

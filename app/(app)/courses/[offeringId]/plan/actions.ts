@@ -7,7 +7,7 @@ import { writeAudit } from '@/lib/audit';
 import { requireTeach } from '@/lib/auth/access';
 import { notify } from '@/lib/data/notifications';
 import { db } from '@/lib/db';
-import { istDateToDate } from '@/lib/domain/time';
+import { classDates, istDateToDate } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -15,6 +15,7 @@ import { Offering } from '@/lib/models/offering';
 import { mailQueue } from '@/lib/queue';
 import { istDate } from '@/lib/schemas/common';
 import { PublishPlan, SaveCalendar, SavePlan } from '@/lib/schemas/content';
+import { FillCalendar } from '@/lib/schemas/structure';
 
 const MAX_ROWS = 200;
 
@@ -61,6 +62,34 @@ export const saveCalendar = action({ input: SaveCalendar, roles: ['admin', 'facu
   await Offering.updateOne({ _id: input.offeringId }, { $set: { calendar: rows } });
   refresh();
 });
+
+// "Start from the course's session plan" (M01b): one dated session per entry of the catalogue course's plan, on the
+// chosen weekdays from the first class date. Replacing sessions already scheduled needs the box ticked.
+export const fillCalendarFromCourse = action(
+  { input: FillCalendar, roles: ['admin', 'faculty'] },
+  async ({ offeringId, firstDay, 'weekdays[]': weekdays, replace }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    await db();
+    const offering = await Offering.findById(offeringId, { courseId: 1, 'calendar._id': 1 }).lean();
+    if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
+    const course = await Course.findById(offering.courseId, { sessionPlan: 1 }).lean();
+    const plan = course?.sessionPlan.slice(0, MAX_ROWS) ?? [];
+    if (plan.length === 0) throw new AppError('VALIDATION', 'This course has no session plan yet.');
+    if (offering.calendar.length > 0 && !replace) {
+      const message = `This replaces the ${offering.calendar.length} sessions already scheduled. Tick the box to go on.`;
+      throw new AppError('VALIDATION', message, { replace: [message] });
+    }
+    const dates = classDates(firstDay, weekdays, plan.length);
+    const label = { theory: '', practice: 'Practice: ', project: 'Project: ' } as const;
+    const calendar = plan.map((session, i) => ({
+      date: istDateToDate(dates[i]),
+      topic: `${label[session.kind]}${session.topic}`.slice(0, 200),
+      coIds: [],
+    }));
+    await Offering.updateOne({ _id: offeringId }, { $set: { calendar } });
+    refresh();
+  },
+);
 
 // COM-01: each publish is a new version; students are notified in the app and emailed once per version.
 export const publishPlan = action(

@@ -19,6 +19,7 @@
     "db:seed": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts",
     "db:seed:e2e": "tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e",
     "db:indexes": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts",
+    "db:migrate:catalog-v2": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/migrate-catalog-v2.ts",
     "s3:setup": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts",
     "s3:setup:e2e": "tsx --env-file=.env.e2e --conditions=react-server scripts/s3-setup.ts",
     "admin:create": "tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts",
