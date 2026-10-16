@@ -171,6 +171,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-74 | Only the offering's faculty join a class as host; admins start and end classes without joining (09 §2) | M03 | — |
 | A-75 | The four CSE courses read from courseware are development seed data only; the e2e fixtures stay as 10 §3 lists them | dev seed | — |
 | A-76 | In the development seed a courseware page's credits stand in for the Course Repository's until the course list is uploaded | dev seed | — |
+| A-77 | The test server at lms.devsomeware.com runs Ubuntu's Redis 8.0.6 instead of the pinned 8.6 | test deployment | — |
 
 ## 5. Log
 
@@ -949,3 +950,19 @@ At Aniket's request the invented fixture names Farhan Khan, Fatima Das and Zoya 
 **Created** (*changed*) — `scripts/seed.ts`, `tests/e2e/catalog.spec.ts`, `tests/e2e/admin-structure.spec.ts`, `tests/integration/users.test.ts`.
 
 **Verification** — `npx vitest run --project integration tests/integration/users.test.ts` (with a temporary local Redis) → `22 passed`; `tsc` and Prettier clean. The two e2e specs were not run (they need the full e2e stack).
+
+### 2026-10-16 · Test deployment at https://lms.devsomeware.com · Cursor (AI agent), at Aniket's request
+
+Aniket asked for the LMS on the server that already runs the live engine (65.20.89.9: Ubuntu 26.10, 2 vCPU, 3.3 GB RAM, 8 GB swap). It is a test environment for Aniket and a few faculty, not production or staging: it uses the same Atlas development database (`test`) as local development, so both show the same seeded data. Production hosting is still Q-12, and 11 §4 sizes production well beyond one machine.
+
+On the server, all as systemd services: `cutm-lms-web` (the standalone build on 127.0.0.1:3100; 3000 is left free for the developer's webhook tunnel), `cutm-lms-worker`, `redis-server` (local only, `appendonly yes`, `noeviction`), `rustfs` (S3 API on 127.0.0.1:9000, console on 127.0.0.1:9001), `livekit` and `caddy`. Caddy's layer-4 listener on 443 splits by SNI: `live` and `turn` as before, `lms` and `files` passed with PROXY protocol to its HTTPS server on 127.0.0.1:8443, which proxies to the app and to RustFS, so the app sees the client's address in `X-Forwarded-For`. Port 80 redirects to HTTPS. Releases sit in `/opt/cutm-lms/releases/<commit>` with `/opt/cutm-lms/current` pointing at the running one; settings are in `/etc/cutm-lms/app.env` (secrets generated on the server, the rest copied from the developer's `.env.local`). LiveKit's webhook list now holds the deployed app and the tunnel; the handler records each connection once, so both receiving an event is harmless.
+
+**Created** (*changed*) — this entry. Nothing in the repository changed for the deployment; it runs commit `67c5310`.
+
+**Not done** — Uploads and downloads wait for a `files.devsomeware.com` DNS record (09 §5: uploads are never served from the app's origin), so the Caddy site for `files` is not enabled yet. No backups (11 §6) or monitoring (11 §7). No Dockerfile: the build was made on the server with `npm ci` and `npm run build`, which 11 §5 replaces in M11.
+
+**Assumptions** — A-77: Redis 8.0.6 (Ubuntu's package) instead of the pinned 8.6 is acceptable for a test server; BullMQ and the rate limiter use nothing newer.
+
+**Open questions** — none new; Q-12 still decides production.
+
+**Verification** — `GET https://lms.devsomeware.com/api/health` → `{"ok":true,"mongo":"up","redis":"up"}`; `/login` 200; `/home` signed out → 307 to `/login`; `http://` → 308 to `https://`; response headers include HSTS, `frame-ancestors 'none'` and `nosniff`. Playwright from the developer Mac: `hod@seed.cutm.test` with the seed password lands on `/home`, cookie `lms_session` is `Secure`, `HttpOnly`, `SameSite=Lax`; `/courses` lists 6 courses and CUTM1019's page returns 200. The rate-limit key in Redis carries the Mac's public address, not 127.0.0.1. Worker log: `worker started` with queues `mail, media, sync, compute`. `scripts/sync-indexes.ts` against Atlas → `indexes ensured` for every collection; `scripts/s3-setup.ts` → bucket `cutm-lms` created, CORS origin `https://lms.devsomeware.com`. A live class was not walked on the deployed app.
