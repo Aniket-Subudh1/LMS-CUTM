@@ -22,7 +22,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
-| M03 Live classes & attendance | Not started | | Self-hosted LiveKit (ADR-18) |
+| M03 Live classes & attendance | In progress | | Self-hosted LiveKit (ADR-18). Decisions 2026-10-16 below |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
@@ -86,6 +86,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-47 | An offering's department comes from the batch's programme, so a Mathematics HoD does not see maths taught to B.Tech CSE. Acceptable? | @dev | As described (A-56) | — | Open |
 | Q-48 | Is the courseware "Faculty" the course coordinator? | @client | Prefilled only when exactly one faculty member has that name | — | Open |
 | Q-49 | A courseware page with no course code is matched only by a title that exactly one catalogue course has; 49 of the first 264 live pages had neither, so no import can reach them. Should an admin be able to attach a page to a course by hand, or will CUTM add codes to those pages? | @client / @dev | Not built; the run lists each such page | — | Open |
+| Q-50 | LiveKit closes a room about 20 s after its last participant leaves and then sends `room_finished`. Should that end a class before its scheduled end? | @dev | No: before `scheduledEnd` the class stays live and the room is created again when someone rejoins; at or after it, the class ends then. The teacher's End button and the hourly sweep end the rest | — | Open |
+| Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
+| Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -159,6 +162,13 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-65 | One credit part may hold all of a course's credits, up to 30: the 2021 repository has 0+0+24 internships, 2+0+21 domain tracks and 0+0+30 workshops | M01b | Q-45 |
 | A-66 | The course list matches a programme by name before code, so "MSc" keeps its own programme beside "M.Sc" (code MSC) | M01b | Q-44 |
 | A-67 | The courseware import reads at most one page a second, however fast the site answers | M01b | Q-37 |
+| A-68 | Scheduling a live class asks for a date, a start time and a length (30 min – 6 h) instead of two date-time boxes; the title and date default to the next course-calendar session on or after today | M03 | — |
+| A-69 | A student's waiting screen re-renders every 20 s while the tab is visible, until the class starts | M03 | — |
+| A-70 | Home shows today's live classes (live now first, then the rest of today's) to students and faculty | M03 | — |
+| A-71 | A scheduled class whose end has passed without a start is shown as "Not held" and counts toward nobody's attendance | M03 | — |
+| A-72 | A student's live attendance % counts only finalized classes and only their own rows, so a student enrolled later is not marked absent for earlier classes | M03, M06 | Q-42 |
+| A-73 | An offering holds at most 500 live sessions, so its session reads are bounded | M03 | — |
+| A-74 | Only the offering's faculty join a class as host; admins start and end classes without joining (09 §2) | M03 | — |
 
 ## 5. Log
 
@@ -830,3 +840,12 @@ Where the build differs from the plan:
   - With the one-a-second limit: 78 jobs in 88 s.
   - Of the 175 pages imported: 168 have outcomes, 156 modules and 163 a session plan, but only 8 a CO–PO mapping. 30 became drafts (codes not in the 2021 list).
 - Screenshots at 1440 and 390 px (catalogue, a 0-0-24 course, imports): reviewed in the session, not committed.
+
+### 2026-10-16 · Decision: M03 live classes, built for the people using them · Claude Code, at Aniket's request
+
+Aniket asked for the next milestone to be done "properly, very user friendly and in a really good manner". Planning the build of M03 he decided:
+- **Three more notifications** (in-app only): "class started", "class changed" (a scheduled class can now be edited until it starts) and "class cancelled". His answer also ticked "Spec only"; it is read as "everything in the spec, plus these", to be confirmed.
+- **Roll call:** when the teacher takes attendance, students who joined the room start ticked Present; nothing is stored until the teacher saves.
+- **In class** the room fills the page and "Take attendance" opens a dialog.
+
+A design review before any code changed three rules of the spec, each recorded in the milestone file: presence is matched by the engine's connection id; LiveKit's `room_finished` before the scheduled end leaves the class live (Q-50); attendance has no status until the class is finalized or marked. New assumptions A-68 – A-74, questions Q-50 – Q-52. The build plan is the rewritten `docs/milestones/M03-live-classes-attendance.md`.
