@@ -32,12 +32,12 @@ test('admin loads a course and its coordinator completes it; other faculty only 
 
   await page.getByRole('button', { name: 'Coordinator' }).click();
   const coordinator = page.getByRole('dialog', { name: 'Course coordinator' });
-  await coordinator.getByLabel('Faculty name or email').fill('Farhan');
+  await coordinator.getByLabel('Faculty name or email').fill('Pradeep');
   await coordinator.getByRole('button', { name: 'Find' }).click();
-  await coordinator.getByRole('radio', { name: /Farhan Khan/ }).check();
+  await coordinator.getByRole('radio', { name: /Pradeep Sahoo/ }).check();
   await coordinator.getByRole('button', { name: 'Save coordinator' }).click();
   await expect(coordinator.getByText('Coordinator saved.')).toBeVisible();
-  await expect(page.getByText(/Coordinator: Farhan Khan/)).toBeVisible();
+  await expect(page.getByText(/Coordinator: Pradeep Sahoo/)).toBeVisible();
 
   // CRS-07: the coordinator works through the readiness checklist.
   await signIn(page, 'faculty1@seed.cutm.test');

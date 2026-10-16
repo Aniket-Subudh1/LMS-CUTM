@@ -80,7 +80,7 @@ test('admin offers a course to two sections at once and a student of one sees it
   await dialog.getByRole('combobox', { name: 'Term' }).selectOption({ label: `${term} · Term ${term}` });
   await expect(dialog.getByRole('checkbox', { name: 'Section A' })).toBeChecked();
   await expect(dialog.getByRole('checkbox', { name: 'Section B' })).toBeChecked();
-  await dialog.getByRole('checkbox', { name: 'Fatima Das' }).check();
+  await dialog.getByRole('checkbox', { name: 'Lipika Das' }).check();
   // The course has project credits, so the project question appears.
   await dialog.getByRole('radio', { name: 'Task tracker' }).check();
   await dialog.getByRole('button', { name: 'Create offerings and enrol students' }).click();

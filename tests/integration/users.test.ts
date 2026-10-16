@@ -413,20 +413,20 @@ describe('reads', () => {
   it('lists users for admin and support only, and filters by role, status and search', async () => {
     const s = await setup();
     const student = await makeUser({
-      name: 'Zoya Quillfeather',
-      email: `zoya${s.n}@cutm.test`,
-      rollNo: `ZQ${s.n}`,
+      name: 'Ipsita Quillfeather',
+      email: `ipsita${s.n}@cutm.test`,
+      rollNo: `IQ${s.n}`,
       status: 'invited',
     });
-    await makeUser({ name: 'Zoya Other', roles: ['faculty'], email: `other-zoya${s.n}@cutm.test` });
+    await makeUser({ name: 'Ipsita Other', roles: ['faculty'], email: `other-ipsita${s.n}@cutm.test` });
 
     await signInAs(await makeUser({ roles: ['support'] }));
     const byName = await listUsers(1, { q: 'Quillfeather' });
     expect(byName.rows.map((r) => r.id)).toEqual([String(student._id)]);
-    expect((await listUsers(1, { q: `ZOYA${s.n}@cutm.test` })).rows.map((r) => r.id)).toEqual([String(student._id)]);
-    expect((await listUsers(1, { q: 'Zoya', role: 'faculty' })).rows).toHaveLength(1);
+    expect((await listUsers(1, { q: `IPSITA${s.n}@cutm.test` })).rows.map((r) => r.id)).toEqual([String(student._id)]);
+    expect((await listUsers(1, { q: 'Ipsita', role: 'faculty' })).rows).toHaveLength(1);
     expect((await listUsers(1, { q: 'Quillfeather', status: 'active' })).rows).toHaveLength(0);
-    expect(byName.rows[0]).toMatchObject({ identifier: `ZQ${s.n}`, status: 'invited' });
+    expect(byName.rows[0]).toMatchObject({ identifier: `IQ${s.n}`, status: 'invited' });
 
     await signInAs(await makeUser({ roles: ['faculty'] }));
     await expect(listUsers(1, {})).rejects.toMatchObject(redirectsTo('/home'));

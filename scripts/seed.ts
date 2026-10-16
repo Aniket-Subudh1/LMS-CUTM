@@ -153,8 +153,11 @@ const term = found(
 
 const staff = [
   person('hod@seed.cutm.test', 'Hema Mishra', ['hod', 'faculty'], { employeeId: 'E001', departmentId: department._id }),
-  person('faculty1@seed.cutm.test', 'Farhan Khan', ['faculty'], { employeeId: 'E002', departmentId: department._id }),
-  person('faculty2@seed.cutm.test', 'Fatima Das', ['faculty'], { employeeId: 'E003', departmentId: department._id }),
+  person('faculty1@seed.cutm.test', 'Pradeep Sahoo', ['faculty'], {
+    employeeId: 'E002',
+    departmentId: department._id,
+  }),
+  person('faculty2@seed.cutm.test', 'Lipika Das', ['faculty'], { employeeId: 'E003', departmentId: department._id }),
   ...(passwordHash ? [person('admin@seed.cutm.test', 'Anil Admin', ['admin'])] : []),
 ];
 const students = Array.from({ length: 20 }, (_, i) => {

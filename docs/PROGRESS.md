@@ -941,3 +941,11 @@ Aniket's development database is the `test` database on a shared Atlas cluster (
 **Created** (*changed*) — `scripts/seed.ts` (the `--allow-remote` flag), 10 §3 (`db:seed` row).
 
 **Verification** — `npm run db:seed` against the Atlas URI → `Refusing to seed "prapp.nypjwvu.mongodb.net": … unless --allow-remote is given.` `npm run db:indexes`, then `npm run db:seed -- --allow-remote` twice → both print the same `Seeded development data: … 9 courses, 6 offerings …` line; in `test`: users 25 (the existing admin plus the 24 seeded, all active), courses 9, offerings 6, enrollments 100. `verifyPassword` accepts `SEED_PASSWORD` for admin, faculty1 and student01. `tsc` and `eslint` clean.
+
+### 2026-10-16 · Fixture names changed · Cursor (AI agent), at Aniket's request
+
+At Aniket's request the invented fixture names Farhan Khan, Fatima Das and Zoya were replaced: faculty1 is now Pradeep Sahoo and faculty2 Lipika Das (seed and e2e specs), and the user-search integration test uses Ipsita. Real faculty names read from courseware pages are untouched. Already-seeded accounts were renamed by email in Atlas `test`, local `lms_dev` and `lms_e2e`, since the seed only inserts missing records.
+
+**Created** (*changed*) — `scripts/seed.ts`, `tests/e2e/catalog.spec.ts`, `tests/e2e/admin-structure.spec.ts`, `tests/integration/users.test.ts`.
+
+**Verification** — `npx vitest run --project integration tests/integration/users.test.ts` (with a temporary local Redis) → `22 passed`; `tsc` and Prettier clean. The two e2e specs were not run (they need the full e2e stack).
