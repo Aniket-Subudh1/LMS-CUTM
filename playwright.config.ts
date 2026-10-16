@@ -18,7 +18,11 @@ export default defineConfig({
     baseURL: 'http://localhost:3100',
     trace: 'retain-on-failure',
     extraHTTPHeaders: { 'x-forwarded-for': runIp },
-    ...(executablePath ? { launchOptions: { executablePath } } : {}),
+    // M03: the live class asks for a camera and microphone; Chromium grants fake ones without a prompt.
+    launchOptions: {
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+      ...(executablePath ? { executablePath } : {}),
+    },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

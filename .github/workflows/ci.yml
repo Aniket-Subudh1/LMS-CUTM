@@ -89,6 +89,9 @@ jobs:
           mongodb-replica-set: rs0
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # M03: the live engine on the host network, so the webhooks in livekit.yaml reach this build on localhost:3100.
+      - name: Start LiveKit
+        run: docker run -d --name livekit --network host -v "$PWD/livekit.yaml:/livekit.yaml:ro" livekit/livekit-server:v1.13 --config /livekit.yaml
       # The e2e environment (10 §3) holds generated values only; nothing here is a real secret.
       - name: Write .env.e2e
         run: |
@@ -110,6 +113,10 @@ jobs:
           S3_ACCESS_KEY_ID=lmsdev
           S3_SECRET_ACCESS_KEY=lmsdev-secret-key
           S3_FORCE_PATH_STYLE=true
+          LIVEKIT_URL=ws://localhost:7880
+          LIVEKIT_API_URL=http://localhost:7880
+          LIVEKIT_API_KEY=lmsdevkey
+          LIVEKIT_API_SECRET=lms-dev-livekit-secret-at-least-32-chars
           ENV
       - run: npm run build
       - run: npm run db:indexes:e2e

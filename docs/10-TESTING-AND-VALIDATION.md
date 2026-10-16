@@ -193,9 +193,14 @@ For each new DAL read: one test that a user with access gets the data and one th
   S3_ACCESS_KEY_ID=lmsdev
   S3_SECRET_ACCESS_KEY=lmsdev-secret-key
   S3_FORCE_PATH_STYLE=true
+  LIVEKIT_URL=ws://localhost:7880           # M03: the development keys in livekit.yaml
+  LIVEKIT_API_URL=http://localhost:7880
+  LIVEKIT_API_KEY=lmsdevkey
+  LIVEKIT_API_SECRET=lms-dev-livekit-secret-at-least-32-chars
   ```
   `LOG_LEVEL` must be at least `info`: Playwright starts the worker (`npm run worker:e2e`) as a second `webServer` and waits for its `worker started` line.
 - The compose stack must be running (Mongo, Redis, Mailpit, RustFS), `npm run s3:setup:e2e` must have created the e2e bucket with its CORS rule (M02), and `npm run build` must have run. The worker that Playwright starts transcodes uploaded lectures with the bundled ffmpeg. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
+- M03: a LiveKit server must be running with `livekit.yaml` (11 §3.1), whose webhooks reach the e2e build on port 3100; CI starts it with `docker run --network host`. `playwright.config.ts` launches Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`, so the room gets a fake camera and microphone without a permission prompt. `tests/e2e/live.spec.ts` runs a class end to end with two browser contexts (faculty and student).
 - Next keeps the previous page mounted but hidden after a client navigation, and `getByLabel` matches hidden elements: look fields up with `page.getByLabel(label).filter({ visible: true })` (the `field()` helper in `tests/e2e/auth.spec.ts`); `getByRole` already ignores hidden elements. Use `exact: true` when one label is a prefix of another ("New password" / "Repeat the new password"). After a click that navigates client-side, wait for the new page (`toHaveURL` or its heading) before filling: for a moment both forms are visible and a fill can bind to the old one as it is hidden (verified failure, with trace).
 - Courseware fixtures (`tests/fixtures/courseware/*.html`) are real public pages trimmed to their `<main>` (scripts and icons removed) with any contact details replaced by fake ones; never commit a page with a real phone number or email (A-60). The courseware import test serves them through a mocked adapter, so tests never call the real site.
 - Run `npx playwright install chromium` once. In a sandbox with a preinstalled Chromium of another revision, set `PW_CHROMIUM_PATH` to its executable; `playwright.config.ts` passes it as `launchOptions.executablePath` only when set.
