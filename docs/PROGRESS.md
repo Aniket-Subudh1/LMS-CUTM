@@ -22,7 +22,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01 Academic structure & admin | Done — awaiting human validation | | Entry 2026-10-13 · M01. CI e2e job not yet run on GitHub |
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
-| M03 Live classes & attendance | In progress | | Self-hosted LiveKit (ADR-18). Decisions 2026-10-16 below |
+| M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
@@ -849,3 +849,61 @@ Aniket asked for the next milestone to be done "properly, very user friendly and
 - **In class** the room fills the page and "Take attendance" opens a dialog.
 
 A design review before any code changed three rules of the spec, each recorded in the milestone file: presence is matched by the engine's connection id; LiveKit's `room_finished` before the scheduled end leaves the class live (Q-50); attendance has no status until the class is finalized or marked. New assumptions A-68 – A-74, questions Q-50 – Q-52. The build plan is the rewritten `docs/milestones/M03-live-classes-attendance.md`.
+
+### 2026-10-16 · M03 Live classes & attendance (T1–T10) · Claude Code, at Aniket's request
+
+Teachers schedule, start, run and end live classes on self-hosted LiveKit; students join from the course, Home or a notification; attendance is taken by the teacher in a dialog over the room (students who joined start ticked) or worked out from time in the room; focused time feeds engagement. Seven commits, `2800ded M03(docs)` to `cc1e413 M03(ui)`, plus this report. Before the screens were built Aniket picked, from static mock-ups, **A · Dark stage** for the class page and **A · List rows** for the Live tab.
+
+Where the build differs from the plan or the spec:
+- No `loading.tsx` per live page: like the other workspace tabs, they use the shared `(app)/loading.tsx` inside their `<Suspense>`.
+- The hourly scheduler is named `liveSweep`, after the job it adds: BullMQ 6 types a scheduler id as one of the queue's job names (04 §6.9, 02 §8).
+- `skillAttendancePct` became `attendancePct` in `lib/domain/attendance.ts` (the same formula, now shared by skill courses and live classes).
+- `lib/data/engagement.ts` is a new file: the finalize job adds `liveSec`, and the worker may not import `lib/data/content.ts` (it loads `next/navigation` and the session).
+- `scripts/check-bundle.ts` now also scans for `S3_SECRET_ACCESS_KEY`, which M02 left out.
+
+**Created** (new unless marked *changed*)
+- Docs: *changed* `docs/milestones/M03-live-classes-attendance.md` (decisions, rewritten tasks), 02 §8, 04 §6.9 and §7, 05 §4.3–4.4, 06 §2, §4.3, §6, §7, §9, 07 §8–§10, 08 §2 and §5.2–§6, 10 §3, 11 §3.1, this file.
+- Engine and config: `lib/integrations/live.ts` (+ test), `livekit.yaml`; *changed* `compose.yaml`, `lib/env.ts`, `.env.example`, `tests/setup.ts`, `scripts/check-bundle.ts`, `package.json`/`package-lock.json` (`livekit-server-sdk` 2.19.1, `livekit-client` 2.22.4, `@livekit/components-react` 2.9.24, `@livekit/components-styles` 1.2.0, all exact).
+- Schemas, models, settings: `lib/schemas/live.ts` (+ test), `lib/models/live-session.ts`, `lib/models/attendance.ts`; *changed* `lib/schemas/common.ts` (`istTime`), `lib/schemas/jobs.ts`, `lib/schemas/settings.ts` (+ test, key `attendance`), `lib/models/notification.ts` (four `live.*` kinds), `scripts/sync-indexes.ts`, `lib/data/settings.ts`.
+- Pure functions: `lib/domain/attendance.ts` (+ test); *changed* `lib/domain/ranges.ts` (+ test, `acceptFocusBeacon`), `lib/domain/time.ts` (+ test, `istTimeOfDay`), `lib/format.ts` (+ test, `formatTime`, live tones).
+- Data and jobs: `lib/data/live.ts`, `lib/data/engagement.ts`, `worker/jobs/compute.ts`; *changed* `lib/data/content.ts`, `lib/data/workspace.ts` (roster attendance), `lib/queue.ts` (`computeQueue`, `queueLiveFinalize`), `worker/index.ts`.
+- Routes and actions: `app/(app)/courses/[offeringId]/live/{page.tsx,actions.ts,session-dialog.tsx}`, `live/[sessionId]/page.tsx`, `app/api/webhooks/live/route.ts`; *changed* `app/api/beacon/route.ts`, `courses/[offeringId]/{layout.tsx,people/page.tsx,content/actions.ts}`, `home/page.tsx`, `notifications/page.tsx`, `admin/settings/{page.tsx,[key]/page.tsx}`.
+- Components: `components/live-room.tsx`, `components/auto-refresh.tsx` (both client boundaries, in the 08 §5.2 inventory).
+- Tests: `tests/integration/live.test.ts` (24 tests), `tests/e2e/live.spec.ts`; *changed* `playwright.config.ts` (fake camera and microphone), `.github/workflows/ci.yml` (LiveKit on the host network, `LIVEKIT_*` in `.env.e2e`).
+- Local, not committed: the four development `LIVEKIT_*` values appended to `.env` and `.env.e2e`.
+
+**Not done**
+- The human validation checklist: two real devices with real audio and video, switching tabs for 5 minutes on a real device, 3 rooms at once for the M11 sizing.
+- The CI `e2e` job with LiveKit has not run on GitHub; `docker compose --profile live` was not run (no Docker here).
+- A real periodic focus beacon was not seen in the browser: the walked classes lasted under a minute, so only the final flush was sent, after the class had ended, and it was ignored by design. The accepted path is covered by the integration tests. When a student leaves, up to 60 s of focused time since their last beacon is lost (the flush arrives when no connection is open).
+- No keyboard-only or screen-reader pass.
+- Production LiveKit (TURN on 443, multi-node Redis) is M11.
+- Locally, `npm run worker:dev` reads `.env.local`, while this machine's development settings are in `.env`; without the worker, ended classes are never finalized (attendance stays "Working out").
+
+**Assumptions** — A-68 to A-74 (§4).
+
+**Open questions** — Q-50 to Q-52 (§3).
+
+**Acceptance criteria**
+| ID | Result | Evidence |
+|---|---|---|
+| AC-M03-01 | Pass | `grep -rln livekit-server-sdk app lib worker components scripts tests` → `lib/integrations/live.ts` and its own unit test only; `livekit-client`/`@livekit/components` → `components/live-room.tsx` only; no Zoom, Meet, Webex or Teams URL anywhere |
+| AC-M03-02 | Pass | `lib/domain/attendance.test.ts`: 50 of 60 min present; two overlapping tabs (union 40 min) absent; every 07 §10 vector plus a zero-length class |
+| AC-M03-03 | Pass | `live.test.ts`: a manual mark survives finalize in derived and manual mode; only changed marks are written, with before/after in one `attendance.marked` entry; a mutation that drops the `source ≠ manual` filter fails the test |
+| AC-M03-04 | Pass | `live.test.ts`: a forged signature → 401, no row; `live.test.ts` (unit): a changed body, another key and no header are refused |
+| AC-M03-05 | Pass | `live.test.ts`: the `liveSweep` job closes the room, ends an abandoned class at its scheduled end and finalizes it |
+| AC-M03-06 | Pass | `live.test.ts`: `markAttendance` on a skill offering → VALIDATION; the class page renders the attendance dialog only for credit courses |
+
+**Verification** (16 Oct 2026, on this machine: MongoDB and Redis local; RustFS 1.0.1 and Mailpit from the earlier sessions' release binaries; LiveKit 1.13.10 from Homebrew's bottle, unpacked in the agent's scratchpad, because the v1.13 GitHub releases no longer ship macOS builds)
+- `npm run check` → eslint clean, typecheck clean, unit `Test Files 21 passed, Tests 258 passed`.
+- `npm run test:integration` → `Test Files 15 passed, Tests 164 passed` (`live.test.ts` 24).
+- `npm run build` → compiled; `tsx --env-file=.env.e2e scripts/check-bundle.ts` → `51 files scanned for 4 names and 5 secret values; clean`.
+- `npx playwright test` → `13 passed (2.0m)`; `npx playwright test live --repeat-each=3` → `3 passed`.
+- Against the real engine: `deleteRoom` of a missing room → `ServerError` 404 `not_found` (treated as closed); webhooks from LiveKit reached the e2e build on port 3100.
+- Browser walks of the production build (Playwright, fake camera and microphone; screenshots reviewed in the session, not committed):
+  - Faculty schedules a class (title and date prefilled from the course calendar), a student's waiting page turns into the room by itself, the teacher's "Take attendance" shows the joined student ticked, saving keeps the teacher in the room, ending turns the student's page into their result, and the Live tab, People and the student's attendance % follow.
+  - An admin starts a class and sees it without joining (no room); an HoD sees it with no buttons.
+  - A student who leaves and rejoins keeps one attendance row with two connections; finalized as 14 s of an 18 s class → present at 75 %, and a second student with 7 s → absent (checked in `mongosh`).
+  - Edit and cancel of a scheduled class, with the change and cancellation notifications.
+  - At 390 px: Live tab, waiting page and the room all measured `scrollWidth` 390.
+- Fixes found by the walk and made: the student's result waited for the teacher's mark but not for the time in class (now waits for finalization); a refresh minted a new token and would have reconnected the teacher (the room keeps its token); notification titles started with the date and were cut before the class name.
