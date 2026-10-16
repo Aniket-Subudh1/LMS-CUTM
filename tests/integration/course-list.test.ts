@@ -114,6 +114,16 @@ describe('importCourseList (ADM-06, AC-M01b-01)', () => {
     expect(await AuditLog.countDocuments({ action: 'course.list_imported' })).toBe(2);
   });
 
+  it('matches a programme by name before code, so a second upload of look-alike names changes nothing', async () => {
+    await asAdmin();
+    const rows = ['M.Phil,,,Core,CUTM8101,Research methods,4,3+0+1', 'MPhil,,,Core,CUTM8102,Field work,4,0+0+4'];
+    expect(await upload(rows, true)).toMatchObject({ ok: true, data: { programmesCreated: 2, linksCreated: 2 } });
+    expect(await upload(rows, true)).toMatchObject({ ok: true, data: { programmesCreated: 0, linksCreated: 0 } });
+    const mphil = await Program.findOne({ name: 'MPhil' }).lean();
+    expect(mphil?.code).toBe('MPHIL-2');
+    expect(await CurriculumEntry.find({ programId: mphil?._id }).distinct('courseCode')).toEqual(['CUTM8102']);
+  });
+
   it('changes only the title and credits of a known course, and notes a credit change for review', async () => {
     await asAdmin();
     const program = await makeProgram({ code: 'KNOWN-P', name: 'Known programme' });

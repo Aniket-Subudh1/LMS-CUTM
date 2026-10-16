@@ -73,7 +73,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
 | Q-35 | AC-M01-03 says creating an offering enrols “the active students” of the batch and section, but a freshly imported cohort is `invited` until each student accepts. Enrol only `active` students (a new cohort would be missed), or every student who is not `disabled`? | @dev | Every student of the batch and section who is not `disabled` (A-26) | — | Open |
-| Q-37 | Can CUTM IT provide an official courseware export? Pages take about 30 s each, so importing all ~1,284 pages takes 5–6 hours | @client | The page importer, two pages at a time | — | Open |
+| Q-37 | Can CUTM IT provide an official courseware export? A page took about 30 s on 14–15 Oct and under a second on 16 Oct, when the site then stopped answering for minutes after ~270 pages in 90 s; importing all ~1,284 pages takes from about 25 minutes to 5–6 hours | @client | The page importer, two pages at a time and at most one a second | — | Open |
 | Q-38 | Is the Examination Policy university-wide? CUTM AP's ASAG 1101 course file shows Theory 80 / Practice 20 with other parts | @client | One policy, copied onto each offering | M06 | Open |
 | Q-39 | Does "round up" mean ceiling (89.2 → 90) or nearest? Are component marks rounded too? | @client | Ceiling, once, at the course percentage | M08 | Open |
 | Q-40 | The full grade table and pass rules (the rest of Q-19) | @client | 06 §7 scale | M08 | Open |
@@ -155,6 +155,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-62 | A course code is fixed once the course has an offering | M01b | — |
 | A-63 | A change to the evaluation policy applies to offerings created afterwards | M01b | Q-38 |
 | A-64 | The course-list upload never deletes anything; links are removed by hand on the programme page | M01b | Q-44 |
+| A-65 | One credit part may hold all of a course's credits, up to 30: the 2021 repository has 0+0+24 internships, 2+0+21 domain tracks and 0+0+30 workshops | M01b | Q-45 |
+| A-66 | The course list matches a programme by name before code, so "MSc" keeps its own programme beside "M.Sc" (code MSC) | M01b | Q-44 |
+| A-67 | The courseware import reads at most one page a second, however fast the site answers | M01b | Q-37 |
 
 ## 5. Log
 

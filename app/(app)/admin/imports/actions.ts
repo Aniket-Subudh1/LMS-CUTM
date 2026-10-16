@@ -55,7 +55,8 @@ export const importCourseList = action(
     for (const row of rows) {
       const key = loose(row.programme);
       if (plans.has(key) || missing.has(key)) continue;
-      const found = byCode.get(row.programme.toUpperCase().replace(/\s+/g, '')) ?? byName.get(key);
+      // By name first: "MSc" names its own programme even when "M.Sc" was given the code MSC.
+      const found = byName.get(key) ?? byCode.get(row.programme.toUpperCase().replace(/\s+/g, ''));
       if (found) {
         plans.set(key, {
           id: found._id,

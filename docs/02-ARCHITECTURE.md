@@ -201,7 +201,7 @@ Two checks, always both:
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
 | `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `assessmentSweep`, `gradeCode`, `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
-| `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2 (a courseware page takes 30–60 s on CUTM's server, so two at a time is polite and a full import runs for hours) | actions, schedulers, webhooks |
+| `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 
 Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone `Asia/Kolkata`):

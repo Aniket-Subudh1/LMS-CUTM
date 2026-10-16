@@ -175,7 +175,7 @@ export const SaveTerm = z
 // The code as typed; actions store `normalizeCode(code)` ("cutm 1535" → "CUTM1535").
 const courseCode = text(20).regex(/^[A-Za-z0-9 _-]+$/, 'Use letters and digits, such as CUTM1535.');
 const creditPart = num.pipe(
-  z.number().min(0, 'Use 0 to 20.').max(20, 'Use 0 to 20.').multipleOf(0.5, 'Credits go in steps of 0.5.'),
+  z.number().min(0, 'Use 0 to 30.').max(30, 'Use 0 to 30.').multipleOf(0.5, 'Credits go in steps of 0.5.'),
 );
 const list = (maxItems: number, maxChars: number, what: string) =>
   z

@@ -31,6 +31,8 @@ describe('parseCredits', () => {
     ['Code(Credit) : CUTM1535(3-0-1)', c(3, 0, 1), false],
     ['3 – 1 – 0', c(3, 1, 0), false],
     ['3 (2+1)', c(2, 1, 0), true],
+    ['0+0+24', c(0, 0, 24), false],
+    ['0-26.5-0', c(0, 26.5, 0), false],
   ])('%s → %o', (text, credits, twoPart) => {
     expect(parseCredits(text)).toEqual({ credits, twoPart });
   });

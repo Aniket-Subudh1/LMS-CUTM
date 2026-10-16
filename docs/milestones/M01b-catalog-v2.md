@@ -45,7 +45,7 @@ Files: this file, 00 §3, 01 (§3, §6, §7 notes, CRS-07, ADM-06, ADM-07, §8),
 ### T2 · Constants and input schemas
 Files: `lib/schemas/structure.ts`, `lib/schemas/settings.ts`, `lib/schemas/jobs.ts` (+ tests).
 - Constants `COURSE_TYPES`, `OUTCOME_CODES` (PO1–PO12, PSO1–PSO3), `SESSION_KINDS`, `BASKET_SCOPES`, `CATALOG_LIMITS` (sizes shared by the editors and the import).
-- Forms: `SaveCourse` (code, title, type, theory/practice/project credits each 0–20 in 0.5 steps, total ≤ 30, status); `SaveObjectives`; `SaveCos` (rows `coId_i`, `statement_i`, `bloom_i[]` 0–3, `remove_i`); `SaveCoMap` (`cell[]` = `<coId>:<code>:<1–3>`, ≤ 225); `SaveSyllabus` (module rows, projects, PDF); `SaveBooks`; `SaveSessionPlan` (one session per line, `Practice:`/`Project:` prefixes); `CourseRef`; `SetCoordinator`; `SaveProgram`; `SaveProgramOutcomes` (15 titles); `SaveBaskets` (≤ 12); `AddProgrammeCourse`/`RemoveProgrammeCourse`; `CreateOfferings`; `UpdateOfferingFaculty`; `ImportCourseList`; `CourseListCsvRow`; `StartCoursewareImport`; `FillCalendar`.
+- Forms: `SaveCourse` (code, title, type, theory/practice/project credits in 0.5 steps, total ≤ 30, status); `SaveObjectives`; `SaveCos` (rows `coId_i`, `statement_i`, `bloom_i[]` 0–3, `remove_i`); `SaveCoMap` (`cell[]` = `<coId>:<code>:<1–3>`, ≤ 225); `SaveSyllabus` (module rows, projects, PDF); `SaveBooks`; `SaveSessionPlan` (one session per line, `Practice:`/`Project:` prefixes); `CourseRef`; `SetCoordinator`; `SaveProgram`; `SaveProgramOutcomes` (15 titles); `SaveBaskets` (≤ 12); `AddProgrammeCourse`/`RemoveProgrammeCourse`; `CreateOfferings`; `UpdateOfferingFaculty`; `ImportCourseList`; `CourseListCsvRow`; `StartCoursewareImport`; `FillCalendar`.
 - Settings key `evaluation` (flat fields, policy defaults; cross-field rules in 06 §7).
 - Job payloads `CoursewareListJob`, `CoursewarePageJob`.
 
@@ -85,7 +85,7 @@ Files: `lib/auth/access.ts` (`requireCourseEditor`), `lib/data/courses.ts`, `lib
 
 ### T9 · Worker and the plan email
 Files: `lib/queue.ts` (`syncQueue`), `worker/jobs/sync.ts`, `worker/index.ts`, `worker/jobs/mail.ts`, `lib/domain/email-templates.ts`.
-- `coursewareList` walks the listing and queues one `coursewarePage` job per page (concurrency 2). A page job matches by code, then by a unique title; binds the page atomically; never overwrites content edited in the LMS unless forced; keeps CO ids by code; prefills the coordinator only on a unique name match; counts each page once in the run.
+- `coursewareList` walks the listing and queues one `coursewarePage` job per page (concurrency 2, at most one job a second). A page job matches by code, then by a unique title; binds the page atomically; never overwrites content edited in the LMS unless forced; keeps CO ids by code; prefills the coordinator only on a unique name match; counts each page once in the run.
 - The plan email lists modules, books and Bloom levels, and the programme's outcome titles.
 
 ### T10 · UI: catalogue

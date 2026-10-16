@@ -90,7 +90,7 @@ One course per code, listed by any number of programmes (§3.6a, A-54). Sizes ar
 | code | S | uppercase letters and digits, ≤ 20, **unique**; stored as `normalizeCode` (`cutm 1535` → `CUTM1535`); fixed once the course has an offering (A-62) |
 | title | S | ≤ 160 |
 | type | S? | `core` · `domain` · `skill` · `certificate` · `advanced_certificate` · `diploma` (a label, 01 §6) |
-| credits | `{ theory: N, practice: N, project: N }` | each 0–20 in 0.5 steps, total ≤ 30 (written `3-0-1`). Total 0 = non-credit course |
+| credits | `{ theory: N, practice: N, project: N }` | each ≥ 0 in 0.5 steps, total ≤ 30 (written `3-0-1`; one part may take it all, as an internship's 0-0-24 does). Total 0 = non-credit course |
 | status | S | `draft` · `active` · `archived` |
 | coordinatorId | Id? | a faculty user (CRS-07) |
 | objectives | [S] | ≤ 20, each ≤ 500 |

@@ -36,7 +36,8 @@ describe('SaveCourse', () => {
     });
   });
 
-  it('refuses more than 30 credits in all', () => {
+  it('takes a whole-semester part but refuses more than 30 credits in all', () => {
+    expect(SaveCourse.safeParse({ ...course, theory: '0', practice: '0', project: '24' }).success).toBe(true);
     expect(fieldErrors(SaveCourse.safeParse({ ...course, theory: '20', practice: '10', project: '1' }))).toEqual({
       project: ['A course has at most 30 credits in all.'],
     });

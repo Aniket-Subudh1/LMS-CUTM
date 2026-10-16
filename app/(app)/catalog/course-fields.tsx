@@ -42,7 +42,7 @@ export function CourseFields({
                 inputMode="decimal"
                 required
                 min={0}
-                max={20}
+                max={30}
                 step={0.5}
                 defaultValue={course?.credits[part] ?? 0}
                 className="tabular-nums"

@@ -255,7 +255,7 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 - `programme`, `code`, `title`, `credits`, `tpp` required; `stream` (≤ 60), `basket` (≤ 60) and `type` (≤ 80) optional.
 - `code` is normalised (`cutm 1535` → `CUTM1535`) and must be letters and digits. `tpp` is the T+P+Pj split in any of CUTM's spellings (`3+0+1`, `2--2--2`, `1.5+0+1.5`) with three parts, and its total must equal `credits`.
 - The same code on several rows keeps one title and one split; a programme lists a code once.
-- `programme` is matched to an LMS programme by code or by name (case and spaces ignored). With "Create programmes that do not exist yet" ticked, a missing one is created (code from its name, no department, PSO titles by default); otherwise its rows are errors.
+- `programme` is matched to an LMS programme by name, then by code (case and spaces ignored), so `MSc` finds the programme named MSc even when `M.Sc` was given the code `MSC`. With "Create programmes that do not exist yet" ticked, a missing one is created (code from its name, no department, PSO titles by default); otherwise its rows are errors.
 - `basket` is matched by name inside the programme or added to it (≤ 12 baskets). `type` labels the link; it sets the course's type only when the course has none.
 - Courses are upserted by code: a new course is `active`; for a known one only the title and the credits change (a credit change adds the review note "Credits changed by the course list from X to Y."), never its content. Links are upserted; an unchanged link is not rewritten, so the same file twice changes nothing. Nothing is deleted (A-64). One transaction and one audit entry `course.list_imported` (entity `course_list`) with the counts.
 

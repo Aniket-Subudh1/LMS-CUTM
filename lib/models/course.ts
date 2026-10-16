@@ -1,7 +1,7 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 import { BLOOM_LEVELS, CATALOG_LIMITS, COURSE_TYPES, OUTCOME_CODES, SESSION_KINDS } from '@/lib/schemas/structure';
 
-const creditPart = { type: Number, required: true, min: 0, max: 20 };
+const creditPart = { type: Number, required: true, min: 0, max: 30 };
 // T-P-Pj: theory, practice and project credits (07 §17). Offerings keep a copy made when they are created.
 export const creditsSchema = new Schema(
   { theory: creditPart, practice: creditPart, project: creditPart },

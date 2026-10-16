@@ -5,14 +5,14 @@ export type BloomLevel = (typeof BLOOM_LEVELS)[number];
 export type SessionKind = (typeof SESSION_KINDS)[number];
 export type CourseType = (typeof COURSE_TYPES)[number];
 
-const MAX_PART = 20;
 const SEP = String.raw`\s*(?:\+|-{1,2}|–|—)\s*`;
 const NUM = String.raw`(\d+(?:\.\d+)?)\s*(?:hrs?|hours?)?`;
 // Three parts (T+P+Pj) or, failing that, two (T+P, as some AP-campus descriptors write "3 (2+1)").
 const THREE = new RegExp(`${NUM}${SEP}${NUM}${SEP}${NUM}`, 'gi');
 const TWO = new RegExp(`${NUM}${SEP}${NUM}`, 'gi');
 
-const validPart = (value: number) => value >= 0 && value <= MAX_PART && Number.isInteger(value * 2);
+// One part may carry a whole semester (an internship is 0+0+24), so only the total of 30 limits it.
+const validPart = (value: number) => Number.isInteger(value * 2);
 
 // 07 §17. Reads "3+0+1", "2--2--2", "1.5+0+1.5", "(3-0-1)" or "Code(Credit) : CUTM1535(3-0-1)"; the parts are
 // theory, practice and project credits in half steps. Null when nothing in the text is a credit split.

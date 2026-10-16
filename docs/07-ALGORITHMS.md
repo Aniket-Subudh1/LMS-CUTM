@@ -325,7 +325,7 @@ The attempt is counted **before** the check, so parallel guesses are limited too
 
 ## 17. Credits, codes and Bloom levels — `lib/domain/catalog.ts` (M01b)
 
-**`parseCredits(text)` → `{ credits, twoPart } | null`** reads a T-P-Pj split anywhere in a text: separators `+`, `-`, `--`, `–`, `—`, optional `hr`/`hours` units; each part 0–20 in 0.5 steps, total ≤ 30. A two-part split is read as theory + practice and flagged (A-59).
+**`parseCredits(text)` → `{ credits, twoPart } | null`** reads a T-P-Pj split anywhere in a text: separators `+`, `-`, `--`, `–`, `—`, optional `hr`/`hours` units; each part ≥ 0 in 0.5 steps, total ≤ 30 (CUTM's 2021 repository has 0+0+24 internships, 2+0+21 domain tracks and 0+0+30 workshops). A two-part split is read as theory + practice and flagged (A-59).
 
 | Input | Result |
 |---|---|

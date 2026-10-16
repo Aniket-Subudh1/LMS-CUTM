@@ -193,7 +193,7 @@ Illustration (verify current prices before quoting to the client): 40 live class
 3. `npm run db:indexes` (the unique course code index needs step 2 first).
 4. Set each programme's department on its page if it has none, and check Settings → Evaluation policy.
 5. Upload the course list on Imports (the Course Repository converted to the CSV of 06 §8.5; it is kept outside the repository — record its row count and checksum in `PROGRESS.md`). Tick "Create programmes that do not exist yet" only on the first load.
-6. Start a courseware import, "Pages not imported yet", in the evening: about 1,300 pages at two at a time take 5–6 hours; the worker must stay up. Check the run page the next day; failed pages are listed with the reason.
+6. Start a courseware import, "Pages not imported yet", in the evening: about 1,300 pages at most one a second take at least 25 minutes, and 5–6 hours when the site is slow; the worker must stay up. Check the run page the next day; failed pages are listed with the reason.
 7. Assign coordinators on the catalogue, starting with the courses offered this term.
 
 ## 6. Backups and restore

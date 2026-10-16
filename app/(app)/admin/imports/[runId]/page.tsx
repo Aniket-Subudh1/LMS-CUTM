@@ -16,7 +16,7 @@ import { formatDateTime, statusTone } from '@/lib/format';
 export const metadata: Metadata = { title: 'Courseware import' };
 
 const STATUS_TEXT = {
-  running: 'Running. Each page takes about 30 seconds; refresh to see how far it is.',
+  running: 'Running in the background. Refresh to see how far it is.',
   stopped: 'Stopped: nothing has happened for two hours (the worker was probably restarted). Start a new import.',
   succeeded: 'Finished. Every page was read.',
   partial: 'Finished, but some pages could not be read. They are listed below.',

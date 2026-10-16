@@ -120,7 +120,7 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/admin/impor
         <Section
           icon={<GlobeIcon weight="duotone" />}
           title="2 · Course content from courseware"
-          description="Reads the objectives, outcomes, mapping, syllabus, books and session plan of each course from courseware.cutm.ac.in. Each page takes about 30 seconds, so a full import runs for a few hours in the background; you can leave this page."
+          description="Reads the objectives, outcomes, mapping, syllabus, books and session plan of each course from courseware.cutm.ac.in. A full import takes from a few minutes to a few hours, depending on how fast courseware answers. It runs in the background, so you can leave this page."
           action={<StartDialog />}
         >
           {runs.rows.length === 0 ? (

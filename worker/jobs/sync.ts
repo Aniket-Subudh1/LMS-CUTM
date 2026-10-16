@@ -313,13 +313,16 @@ async function run(job: SyncJob): Promise<void> {
   return importPage(CoursewarePageJob.parse(job.data));
 }
 
-// Two pages at a time: each takes 30–60 s on CUTM's server, so a full import runs for hours in the background.
+// Two pages at a time, and at most one new page a second: on 16 Oct 2026 the courseware server answered in under a
+// second and then stopped answering for minutes after ~270 pages in 90 s. When it is slow (30–60 s a page) a full
+// import runs for hours in the background.
 export function startSyncWorker(
   redisUrl: string,
 ): Worker<CoursewareListJob | CoursewarePageJob, void, SyncJob['name']> {
   const worker = new Worker<CoursewareListJob | CoursewarePageJob, void, SyncJob['name']>('sync', run, {
     connection: new Redis(redisUrl, { maxRetriesPerRequest: null }),
     concurrency: 2,
+    limiter: { max: 1, duration: 1000 },
   });
   worker.on('failed', (job, error) => {
     log.error('job failed', { queue: 'sync', id: job?.id, attemptsMade: job?.attemptsMade, error });

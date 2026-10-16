@@ -94,7 +94,8 @@ async function run(fields: Record<string, string>) {
   return m.SyncRun.findById(runId).lean();
 }
 
-describe('the courseware import (ADM-07)', () => {
+// The worker takes at most one job a second, so a run of seven jobs takes about seven seconds.
+describe('the courseware import (ADM-07)', { timeout: 60_000 }, () => {
   it('reads every listed page into its catalogue course, counts each page once, and lists what failed', async () => {
     await asAdmin();
     await makeCourse({
