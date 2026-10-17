@@ -1,16 +1,20 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 import { creditsSchema } from '@/lib/models/course';
-import { CATEGORIES, OFFERING_STATUSES, PROJECT_MODES } from '@/lib/schemas/structure';
+import { CATEGORIES, OFFERING_STATUSES, PROJECT_MODES, SESSION_KINDS } from '@/lib/schemas/structure';
 
 const moduleSchema = new Schema({
   title: { type: String, required: true, trim: true, maxlength: 160 },
   order: { type: Number, required: true },
+  // One line under the module's title in the builder and the student's Lessons tab (M03b).
+  summary: { type: String, trim: true, maxlength: 300 },
 });
 
+// Rows keep their ids across edits and stay sorted by (date, _id) (M03b); `kind` replaces the "Practice: " prefix.
 const calendarSchema = new Schema({
   date: { type: Date, required: true },
   topic: { type: String, required: true, trim: true, maxlength: 200 },
   coIds: { type: [Schema.Types.ObjectId], default: [] },
+  kind: { type: String, enum: SESSION_KINDS, default: null },
 });
 
 const planSchema = new Schema(
@@ -19,6 +23,8 @@ const planSchema = new Schema(
     version: { type: Number, required: true, default: 0 },
     publishedAt: { type: Date },
     publishedBy: { type: Schema.Types.ObjectId },
+    // The last save of the plan text or a session: after publishedAt, the page offers to publish a new version.
+    changedAt: { type: Date },
   },
   { _id: false },
 );
@@ -46,6 +52,8 @@ const offeringSchema = new Schema(
     plan: { type: planSchema, default: () => ({ version: 0 }) },
     calendar: { type: [calendarSchema], default: [] },
     status: { type: String, enum: OFFERING_STATUSES, required: true, default: 'draft' },
+    // The class's cover picture (offering-cover), on its course card and workspace header; else a tone from the code.
+    coverKey: { type: String },
     lockedAt: { type: Date },
     lockedBy: { type: Schema.Types.ObjectId },
     lastPushedAt: { type: Date },

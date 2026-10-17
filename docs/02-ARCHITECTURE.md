@@ -56,6 +56,8 @@ Paths are exact. Do not create folders not listed here without updating this sec
 │   │   ├── login/page.tsx
 │   │   ├── forgot-password/page.tsx
 │   │   └── reset-password/page.tsx
+│   ├── (room)/                         authenticated, no app shell (M03b)
+│   │   └── courses/[offeringId]/live/[sessionId]/room/page.tsx   a live class filling its own tab
 │   ├── (app)/                          authenticated, shared shell
 │   │   ├── layout.tsx                  shell; user menu inside <Suspense>
 │   │   ├── loading.tsx                 Suspense boundary for every page below
@@ -120,6 +122,7 @@ Paths are exact. Do not create folders not listed here without updating this sec
 | A write used only by one action | inside that action in `app/**/actions.ts` |
 | A write used by an action **and** a job (or two actions in different routes) | `lib/data/<area>.ts`, exported |
 | A Server Action | `actions.ts` in the closest route segment containing all its callers |
+| A Server Action that a shared component calls (M03b) | `actions.ts` of the route that owns the record: `CourseOutcomes` and `CourseSyllabus` call `app/(app)/catalog/actions.ts` from the catalogue page and from the course workspace alike |
 | Talking to an external system | `lib/integrations/<system>.ts` |
 | Background work | `worker/jobs/<queue>.ts`, enqueued via `lib/queue.ts` |
 | UI used by one route | inline in that route's `page.tsx` (a local function component in the same file is fine) |

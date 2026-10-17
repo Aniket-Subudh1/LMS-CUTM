@@ -95,6 +95,7 @@ One course per code, listed by any number of programmes (§3.6a, A-54). Sizes ar
 | coordinatorId | Id? | a faculty user (CRS-07) |
 | objectives | [S] | ≤ 20, each ≤ 500 |
 | cos | `[{ _id: Id, code: S, statement: S, bloomLevels: [S], suggestedBloom: S?, targetLevel: N? }]` | credit courses only; ≤ 15; `code` `CO1…` unique, never reused for a new CO; `statement` ≤ 500; `bloomLevels` 0–3 of `remember understand apply analyse evaluate create`; `suggestedBloom` is the import's guess from the first verb, shown pre-ticked, cleared when a person saves (A-58); `targetLevel` 0–3 |
+| coSeq | N | the highest CO number the course has given (M03b); `nextCoCode(cos, coSeq)` gives the next, so a deleted CO6 is followed by CO7. Set by `addCo`, raised by `deleteCo` (`$max`); absent on courses saved before M03b (read as 0) |
 | coMap | `[{ coId: Id, outcome: S, level: 1\|2\|3 }]` | sparse; `outcome` ∈ PO1–PO12, PSO1–PSO3; unique per (coId, outcome); ≤ 225 |
 | modules | `[{ _id: Id, title: S, hours: S?, topics: S, practicals: [S] }]` | ≤ 20; `title` ≤ 200; `hours` ≤ 30, as written (`6` or `4+0+2`); `topics` ≤ 3000; `practicals` ≤ 30, each ≤ 300 |
 | projects | [S] | ≤ 30, each ≤ 300 |
@@ -107,7 +108,7 @@ One course per code, listed by any number of programmes (§3.6a, A-54). Sizes ar
 | reviewNeeded | B | shown as "Needs review"; cleared with the notes by "Mark reviewed" |
 
 Indexes: `{ code: 1 }` unique · `{ status: 1, code: 1 }` · `{ type: 1, code: 1 }` · `{ reviewNeeded: 1, code: 1 }` · `{ coordinatorId: 1, code: 1 }` · `{ 'source.coursewareId': 1 }` unique partial (a number) · text `{ code: 'text', title: 'text' }`.
-Invariants: removing a CO removes its mapping cells; a re-import keeps each CO's `_id` by its code (`mergeCos`). A CO referenced by an assessment item cannot be removed (M04). Contact details from courseware are never stored (A-60).
+Invariants: removing a CO removes its mapping cells and its id from the `calendar[].coIds` of every offering of the course, in one transaction (M03b); a re-import keeps each CO's `_id` by its code (`mergeCos`). COs are edited one at a time and are not reordered: the code gives the order. A CO referenced by an assessment item cannot be removed (M04). Contact details from courseware are never stored (A-60).
 
 ### 3.6a `curriculumEntries` (M01b)
 `programId` Id · `courseId` Id · `courseCode` S (*denorm*, for sorting) · `basket` S? (the name of one of the programme's baskets; null = no basket) · `stream` S? (≤ 60) · `courseType` S? (≤ 80, the Course Repository's label for this programme, e.g. "Humanities and Management(A)").
@@ -129,9 +130,10 @@ There is no collection: the evaluation policy is the settings key `evaluation` (
 | title | S | generated: `<code> · <course title> · <term code>[ · <section>]` |
 | facultyIds | [Id] | 1–5 |
 | projectMode | S? | `github` · `tracker`; required exactly when `credits.project` > 0, else null |
-| modules | `[{ _id: Id, title: S, order: N }]` | max 40; prefilled from the course's module titles |
-| plan | `{ doc: RichText?, version: N, publishedAt: D?, publishedBy: Id? }` | `version` increments on each publish |
-| calendar | `[{ _id: Id, date: D, topic: S, coIds: [Id] }]` | max 200; `topic` ≤ 200 |
+| modules | `[{ _id: Id, title: S, order: N, summary: S? }]` | max 40; prefilled from the course's module titles; `summary` ≤ 300, one line under the title (M03b) |
+| plan | `{ doc: RichText?, version: N, publishedAt: D?, publishedBy: Id?, changedAt: D? }` | `version` increments on each publish; `changedAt` is set by every save of the plan text or a session, so "changes since version n" shows when it is after `publishedAt` (M03b) |
+| calendar | `[{ _id: Id, date: D, topic: S, coIds: [Id], kind: S? }]` | max 200; `topic` ≤ 200; `kind` `theory` · `practice` · `project` or null (M03b, in place of a "Practice: " prefix). Kept sorted by `(date, _id)` with `$push { $each, $sort }`, so a row keeps its `_id` through edits (M03b) |
+| coverKey | S? | the class's cover picture (`offering-cover`, A-81, M03b); without one, a tone from the code |
 | status | S | `draft` · `active` · `completed` |
 | lockedAt, lockedBy | D?, Id? | internal-marks lock (M08) |
 | lastPushedAt | D? | last CE export/push |
@@ -142,6 +144,7 @@ Invariants: students see only `active`/`completed` offerings. While `lockedAt` i
 ### 3.9 `enrollments`
 `offeringId` Id · `studentId` Id · `status` `active|dropped` · `engagement` `{ score: N?, band: S?, trend: S, signals: { attendance, video, timeliness, practice, activity: N? }, computedAt: D }?` (nightly snapshot, M10).
 Indexes: `{ offeringId: 1, studentId: 1 }` unique · `{ studentId: 1, status: 1 }` · `{ offeringId: 1, status: 1 }`.
+Invariant (A-83, M03b): at most `MAX_ENROLLMENTS` (1,000) rows per offering, active and dropped together — checked by `createOfferings` (a larger batch is offered by section), `changeEnrollments` and `addStudent`. The roster reads an offering's rows whole and searches its students by `_id`. Changes are refused while the offering's marks are locked.
 
 ## 4. Content, live classes, attendance
 
@@ -158,12 +161,15 @@ Indexes: `{ offeringId: 1, studentId: 1 }` unique · `{ studentId: 1, status: 1 
 | lowKey | S? | video; object key of the 480p data-saver copy made by the worker (`…/<uuid>-480p.mp4`) |
 | transcode | S? | video: `pending` · `ready` · `failed` (the original always plays; `failed` only means no data-saver copy) |
 | url | S? | link; `https://` only |
+| frameKey | S? | video; the worker's JPEG frame from a tenth of the way in (`…/<uuid>-frame.jpg`, 07 §18, M03b) |
+| thumbKey | S? | a picture the teacher uploaded (`lesson-thumb`, M03b). The thumbnail shown is `thumbKey ?? frameKey ??` the lesson type's mark |
+| attachments | `[{ _id: Id, key: S, fileName: S, size: N }]` | PDF notes (`lesson-doc`), at most 5 (`MAX_NOTES`); `fileName` ≤ 120 (M03b). Absent on lessons saved before M03b: read as `[]` |
 | published | B | default false |
 | publishedAt | D? | |
 
 Indexes: `{ offeringId: 1, moduleId: 1, order: 1 }` · `{ offeringId: 1, published: 1 }`.
-Invariants: an offering holds at most 300 lessons (`createLesson` refuses the 301st), so its content index is one bounded read. `fileName` is the sanitized display name (≤ 120, 06 §5).
-Hard delete allowed while unpublished and without progress rows (then the object is deleted from storage).
+Invariants: an offering holds at most 300 lessons (`createLesson` refuses the 301st), so its content index is one bounded read. `fileName` is the sanitized display name (≤ 120, 06 §5). A lesson's video is replaced only while no student has progress on it (A-82); a document always. A module is deleted only when empty.
+Hard delete allowed while unpublished and without progress rows; every key it holds (file, data-saver copy, frame, thumbnail, notes) is then deleted from storage.
 
 ### 4.2 `lessonProgress`
 | Field | Type | Rules |

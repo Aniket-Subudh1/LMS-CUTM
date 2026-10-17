@@ -29,9 +29,9 @@ function FormSkeleton() {
         <Skeleton className="h-4 w-full" />
       </div>
       <div className="grid gap-5">
-        <Skeleton className="h-12 rounded-full" />
-        <Skeleton className="h-12 rounded-full" />
-        <Skeleton className="h-12 rounded-full" />
+        <Skeleton className="h-10 rounded-md" />
+        <Skeleton className="h-10 rounded-md" />
+        <Skeleton className="h-10 rounded-md" />
       </div>
     </div>
   );
@@ -50,7 +50,7 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
           <h1 className="text-3xl leading-tight font-semibold tracking-tight">Link not valid</h1>
           <p className="text-muted-foreground text-sm">This link has expired or was already used.</p>
         </div>
-        <Button asChild className="h-12 rounded-full text-[0.9375rem]">
+        <Button asChild className="h-10 rounded-md">
           <Link href="/forgot-password">Request a new link</Link>
         </Button>
       </div>
@@ -82,7 +82,7 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
               required
               minLength={10}
               maxLength={128}
-              className="bg-card h-12 rounded-full border-transparent pl-5"
+              className="bg-card h-10 rounded-md pl-3"
             />
           </Field>
           <ul className="grid gap-1 px-5 text-xs" aria-label="Password rules">
@@ -101,12 +101,7 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
           </ul>
         </div>
         <Field name="confirm" label="Repeat the password">
-          <PasswordInput
-            name="confirm"
-            autoComplete="new-password"
-            required
-            className="bg-card h-12 rounded-full border-transparent pl-5"
-          />
+          <PasswordInput name="confirm" autoComplete="new-password" required className="bg-card h-10 rounded-md pl-3" />
         </Field>
       </ActionForm>
     </div>

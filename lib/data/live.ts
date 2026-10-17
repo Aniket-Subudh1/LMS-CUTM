@@ -73,17 +73,19 @@ function toRow(doc: SessionDoc, now: Date): LiveSessionRow {
 
 type View = 'teacher' | 'student' | 'oversee';
 
-// 09 §2: the offering's faculty teach (and join as host); admins manage classes without joining; HoDs only look.
+// 09 §2: the offering's faculty teach and join as host; admins manage every class and may join any of them as host
+// (Aniket, 17 Oct 2026); HoDs only look. Attendance counts enrolled students only, so a host's time in the room is not
+// recorded.
 async function liveAccess(viewer: Viewer, offeringId: string) {
   const access = await offeringAccess(viewer, offeringId);
-  const offering = await Offering.findById(offeringId, { category: 1, facultyIds: 1, calendar: 1 }).lean();
+  const offering = await Offering.findById(offeringId, { title: 1, category: 1, facultyIds: 1, calendar: 1 }).lean();
   if (!offering) notFound();
   const view: View = access === 'learn' ? 'student' : access === 'teach' ? 'teacher' : 'oversee';
   return {
     offering,
     view,
     canManage: access === 'teach' || viewer.roles.includes('admin'),
-    hosts: offering.facultyIds.some((id) => id.equals(viewer.id)),
+    hosts: viewer.roles.includes('admin') || offering.facultyIds.some((id) => id.equals(viewer.id)),
   };
 }
 
@@ -102,9 +104,14 @@ export type SessionList = {
   canManage: boolean;
   category: 'ugc' | 'skill';
   live: (LiveSessionRow & { inClass: number })[];
+  // M03b T6: scheduled classes still ahead and cancelled ones whose time is still ahead (they can be restored), a page
+  // of them at a time.
   upcoming: LiveSessionRow[];
+  upcomingTotal: number;
   past: PastSession[];
   total: number;
+  // Classes that ran, for the attendance chart's tiles.
+  held: number;
   enrolled: number;
   // The student's own live-class attendance over finalized classes (A-72).
   mine: { attended: number; held: number; pct: number | null } | null;
@@ -113,30 +120,33 @@ export type SessionList = {
   thresholdPct: number;
 };
 
-// T3, T9: the Live tab — live now, upcoming, and past classes with their attendance.
-export async function listSessions(offeringId: string, page: number): Promise<SessionList> {
+// T3, T9: the Live tab — live now, upcoming, and past classes with their attendance. Both lists page (index
+// offeringId, scheduledStart).
+export async function listSessions(offeringId: string, page: number, upcomingPage = 1): Promise<SessionList> {
   const viewer = await requireViewer();
   const { offering, view, canManage } = await liveAccess(viewer, offeringId);
   const now = new Date();
+  const notOver = ['scheduled', 'cancelled'] satisfies SessionStatus[];
+  const upcomingFilter = { offeringId, status: { $in: notOver }, scheduledEnd: { $gte: now } };
   const pastFilter = {
     offeringId,
-    $or: [
-      { status: { $in: ['ended', 'cancelled'] satisfies SessionStatus[] } },
-      { status: 'scheduled' as const, scheduledEnd: { $lt: now } },
-    ],
+    $or: [{ status: 'ended' as const }, { status: { $in: notOver }, scheduledEnd: { $lt: now } }],
   };
-  const [live, upcoming, past, total, enrolled, { liveThresholdPct }] = await Promise.all([
+  const [live, upcoming, upcomingTotal, past, total, held, enrolled, { liveThresholdPct }] = await Promise.all([
     LiveSession.find({ offeringId, status: 'live' }, SESSION_FIELDS).sort({ scheduledStart: 1 }).limit(10).lean(),
-    LiveSession.find({ offeringId, status: 'scheduled', scheduledEnd: { $gte: now } }, SESSION_FIELDS)
+    LiveSession.find(upcomingFilter, SESSION_FIELDS)
       .sort({ scheduledStart: 1 })
-      .limit(20)
+      .skip((upcomingPage - 1) * pageSize)
+      .limit(pageSize)
       .lean(),
+    LiveSession.countDocuments(upcomingFilter),
     LiveSession.find(pastFilter, SESSION_FIELDS)
       .sort({ scheduledStart: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),
     LiveSession.countDocuments(pastFilter),
+    LiveSession.countDocuments({ offeringId, status: 'ended' }),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
     getSettings('attendance'),
   ]);
@@ -181,13 +191,14 @@ export async function listSessions(offeringId: string, page: number): Promise<Se
   const mineOf = new Map(mineRows.map((row) => [String(row.sessionId), row]));
   const today = istDateToDate(istDayKey(now));
   const nextSession = canManage ? offering.calendar.find((row) => row.date >= today) : undefined;
-  const { attended = 0, held = 0 } = overall[0] ?? {};
+  const { attended = 0, held: mineHeld = 0 } = overall[0] ?? {};
   return {
     view,
     canManage,
     category: offering.category,
     live: live.map((doc, i) => ({ ...toRow(doc, now), inClass: inClass[i] ?? 0 })),
     upcoming: upcoming.map((doc) => toRow(doc, now)),
+    upcomingTotal,
     past: past.map((doc) => {
       const count = countOf.get(String(doc._id));
       const mine = mineOf.get(String(doc._id));
@@ -202,8 +213,9 @@ export async function listSessions(offeringId: string, page: number): Promise<Se
       };
     }),
     total,
+    held,
     enrolled,
-    mine: student ? { attended, held, pct: attendancePct(attended, held) } : null,
+    mine: student ? { attended, held: mineHeld, pct: attendancePct(attended, mineHeld) } : null,
     next: nextSession ? { title: nextSession.topic, day: istDayKey(nextSession.date) } : null,
     thresholdPct: liveThresholdPct,
   };
@@ -213,6 +225,8 @@ export type SessionDetail = {
   view: View;
   canManage: boolean;
   category: 'ugc' | 'skill';
+  // The room page's top bar names the course (M03b).
+  offeringTitle: string;
   session: LiveSessionRow;
   canStartAt: Date;
   // A join token for the faculty (host) and enrolled students while the class is live (T4).
@@ -283,6 +297,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     view,
     canManage,
     category: offering.category,
+    offeringTitle: offering.title,
     session,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
     join,
@@ -396,10 +411,31 @@ export type TodayClass = {
   scheduledEnd: Date;
 };
 
-// T9, A-70: Home's "Today's live classes" for the courses a student is in or a teacher teaches.
+// T9, A-70: Home's "Today's live classes" for the courses a student is in or a teacher teaches. An admin, who may join
+// any class, gets the ten running now across the university, the earliest to end first (index status, scheduledEnd).
 export async function listTodaysLiveSessions(): Promise<TodayClass[]> {
   const viewer = await requireViewer();
   await db();
+  if (viewer.roles.includes('admin')) {
+    const running = await LiveSession.find(
+      { status: 'live' },
+      { offeringId: 1, title: 1, scheduledStart: 1, scheduledEnd: 1 },
+    )
+      .sort({ scheduledEnd: 1 })
+      .limit(10)
+      .lean();
+    const titles = await Offering.find({ _id: { $in: running.map((doc) => doc.offeringId) } }, { title: 1 }).lean();
+    const titleOf = new Map(titles.map((o) => [String(o._id), o.title]));
+    return running.map((doc) => ({
+      id: String(doc._id),
+      offeringId: String(doc.offeringId),
+      offeringTitle: titleOf.get(String(doc.offeringId)) ?? '—',
+      title: doc.title,
+      status: 'live',
+      scheduledStart: doc.scheduledStart,
+      scheduledEnd: doc.scheduledEnd,
+    }));
+  }
   const enrolledIn = viewer.roles.includes('student')
     ? await Enrollment.distinct('offeringId', { studentId: viewer.id, status: 'active' })
     : [];

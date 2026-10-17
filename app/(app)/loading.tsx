@@ -26,7 +26,7 @@ export default function Loading() {
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-4 flex-1" />
             <Skeleton className="h-4 w-20 max-sm:hidden" />
-            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-5 w-16 rounded-sm" />
           </div>
         ))}
       </div>

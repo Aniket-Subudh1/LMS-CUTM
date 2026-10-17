@@ -1,34 +1,16 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowSquareOutIcon,
-  DownloadSimpleIcon,
-  PencilSimpleIcon,
-  SealCheckIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
+import { ArrowSquareOutIcon, PencilSimpleIcon, SealCheckIcon, WarningIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
-import {
-  markReviewed,
-  reimportCourse,
-  saveBooks,
-  saveCoMap,
-  saveCos,
-  saveCourse,
-  saveObjectives,
-  saveSessionPlan,
-  saveSyllabus,
-  setCoordinator,
-} from '../actions';
+import { markReviewed, reimportCourse, saveCourse, saveSessionPlan, setCoordinator } from '../actions';
 import { CourseFields } from '../course-fields';
-import { ActionForm, Field, FieldErrors } from '@/components/action-form';
+import { ActionForm, Field } from '@/components/action-form';
 import { Checklist, type ChecklistStep } from '@/components/checklist';
-import { CoPoEditor } from '@/components/co-po-editor';
-import { CoPoMatrix } from '@/components/co-po-matrix';
+import { CourseOutcomes } from '@/components/course-outcomes';
+import { CourseSyllabus } from '@/components/course-syllabus';
 import { EmptyState } from '@/components/data-table';
-import { FileUpload } from '@/components/file-upload';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
@@ -43,24 +25,28 @@ import { getCatalogCourse, listFacultyMatches, type CatalogCourse } from '@/lib/
 import { creditTotal, formatCredits, formatSessionLines, type ReadinessKey } from '@/lib/domain/catalog';
 import type { ActionResult } from '@/lib/errors';
 import { COURSE_TYPE_LABEL, formatDate, statusTone } from '@/lib/format';
-import { BLOOM_LEVELS, CATALOG_LIMITS, OUTCOME_CODES } from '@/lib/schemas/structure';
+import { OUTCOME_CODES } from '@/lib/schemas/structure';
 
 export const metadata: Metadata = { title: 'Course' };
 
-const Search = z.object({ coord: z.string().trim().max(80).optional().catch(undefined) });
+const Search = z.object({
+  coord: z.string().trim().max(80).optional().catch(undefined),
+  // The dialog to show (URL-driven): coordinator, sessions, and those of CourseSyllabus and CourseOutcomes.
+  new: z.string().max(60).optional().catch(undefined),
+});
 const capitalize = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // Fixed codes; a programme gives them titles, so the catalogue grid shows the codes alone.
 const OUTCOMES = OUTCOME_CODES.map((code) => ({ code, title: '' }));
-// Each readiness step opens its editor (FormDialog `openParam`) or, for the import review, scrolls to the notes.
+// Each readiness step opens its editor (FormDialog `openParam`) or scrolls to where it is done.
 const EDITOR: Record<ReadinessKey, string> = {
   review: '#review',
   coordinator: '?new=coordinator',
   objectives: '?new=objectives',
-  outcomes: '?new=outcomes',
-  bloom: '?new=outcomes',
-  mapping: '?new=mapping',
-  syllabus: '?new=syllabus',
+  outcomes: '?new=co',
+  bloom: '#outcomes',
+  mapping: '#mapping',
+  syllabus: '?new=module',
   books: '?new=books',
   sessions: '?new=sessions',
 };
@@ -81,7 +67,8 @@ async function Course({
   searchParams: PageProps<'/catalog/[id]'>['searchParams'];
 }) {
   const course = await getCatalogCourse((await params).id);
-  const { coord } = Search.parse(await searchParams);
+  const { coord, new: open } = Search.parse(await searchParams);
+  const base = `/catalog/${course.id}`;
   const credit = course.mode === 'credit';
   return (
     <>
@@ -150,11 +137,12 @@ async function Course({
         {course.issues.length > 0 && <Review course={course} />}
         <Readiness course={course} />
 
-        <Objectives course={course} />
-        {credit && <Outcomes course={course} />}
-        {credit && course.cos.length > 0 && <Mapping course={course} />}
-        <Syllabus course={course} />
-        {credit && <Books course={course} />}
+        <CourseSyllabus course={course} base={base} open={open} />
+        {credit && (
+          <div id="outcomes" className="scroll-mt-24">
+            <CourseOutcomes course={course} outcomes={OUTCOMES} base={base} open={open} />
+          </div>
+        )}
         <SessionPlan course={course} />
         <Programmes course={course} />
       </div>
@@ -347,361 +335,6 @@ function Editor({
   );
 }
 
-function Objectives({ course }: { course: CatalogCourse }) {
-  return (
-    <Section
-      icon={<PageIcon name="plan" className="size-8" />}
-      title="Objectives"
-      description="What the course sets out to do."
-      action={
-        <Editor
-          course={course}
-          param="objectives"
-          icon={<PageIcon name="plan" className="size-8" />}
-          title="Objectives"
-          description={`One objective per line, at most ${CATALOG_LIMITS.objectives}.`}
-          size="wide"
-          action={saveObjectives}
-          submitLabel="Save objectives"
-        >
-          <Field name="objectives" label="Objectives">
-            <Textarea name="objectives" rows={8} defaultValue={course.objectives.join('\n')} />
-          </Field>
-        </Editor>
-      }
-    >
-      {course.objectives.length === 0 ? (
-        <EmptyState icon={<PageIcon name="plan" className="size-8" />} text="No objectives yet." />
-      ) : (
-        <ol className="surface grid list-decimal gap-2 p-5 pl-10 text-sm">
-          {course.objectives.map((o, i) => (
-            <li key={i}>{o}</li>
-          ))}
-        </ol>
-      )}
-    </Section>
-  );
-}
-
-function Outcomes({ course }: { course: CatalogCourse }) {
-  const rows = [
-    ...course.cos,
-    ...Array.from({ length: Math.min(3, CATALOG_LIMITS.cos - course.cos.length) }, () => null),
-  ];
-  return (
-    <Section
-      icon={<PageIcon name="outcomes" className="size-8" />}
-      title="Course outcomes"
-      description="What a student can do after the course, each at one to three Bloom levels."
-      action={
-        <Editor
-          course={course}
-          param="outcomes"
-          icon={<PageIcon name="outcomes" className="size-8" />}
-          title="Course outcomes"
-          description="Edit, add or remove outcomes and tick their Bloom levels. A level marked “suggested” was guessed from the first verb; saving confirms it."
-          size="wide"
-          action={saveCos}
-          submitLabel="Save outcomes"
-        >
-          <input type="hidden" name="rows" value={rows.length} />
-          <ol className="grid gap-4">
-            {rows.map((co, i) => {
-              const ticked = co?.bloomLevels.length ? co.bloomLevels : co?.suggestedBloom ? [co.suggestedBloom] : [];
-              return (
-                <li key={co?.id ?? `new-${i}`} className="ring-border/80 grid gap-3 rounded-xl p-4 ring-1">
-                  {co && <input type="hidden" name={`coId_${i}`} value={co.id} />}
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold">{co?.code ?? 'New outcome'}</span>
-                    {co && (
-                      <label className="text-muted-foreground flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name={`remove_${i}`}
-                          value="true"
-                          className="accent-destructive size-4"
-                        />
-                        Remove
-                      </label>
-                    )}
-                  </div>
-                  <Field name={`statement_${i}`} label="Statement">
-                    <Textarea
-                      name={`statement_${i}`}
-                      rows={2}
-                      maxLength={CATALOG_LIMITS.coStatement}
-                      defaultValue={co?.statement}
-                      placeholder={co ? undefined : 'Start with a verb: Explain…, Design…, Analyse…'}
-                    />
-                  </Field>
-                  <fieldset className="grid gap-1.5">
-                    <legend className="text-muted-foreground mb-1.5 text-xs">
-                      Bloom levels
-                      {co && !co.bloomLevels.length && co.suggestedBloom && ' · suggested from the verb'}
-                    </legend>
-                    <div className="flex flex-wrap gap-1.5">
-                      {BLOOM_LEVELS.map((level) => (
-                        <label
-                          key={level}
-                          className="ring-border has-checked:bg-primary/10 has-checked:text-primary has-checked:ring-primary/40 flex cursor-pointer items-center rounded-lg px-2.5 py-1 text-sm capitalize ring-1 transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            name={`bloom_${i}[]`}
-                            value={level}
-                            defaultChecked={ticked.includes(level)}
-                            className="sr-only"
-                          />
-                          {level}
-                        </label>
-                      ))}
-                    </div>
-                    <FieldErrors name={`bloom_${i}`} />
-                  </fieldset>
-                </li>
-              );
-            })}
-          </ol>
-          {rows.length < CATALOG_LIMITS.cos && (
-            <p className="text-muted-foreground text-xs">Need more rows? Save, and empty ones appear again.</p>
-          )}
-        </Editor>
-      }
-    >
-      {course.cos.length === 0 ? (
-        <EmptyState icon={<PageIcon name="outcomes" className="size-8" />} text="No course outcomes yet." />
-      ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
-          {course.cos.map((co) => (
-            <li key={co.id} className="surface flex gap-3 p-4">
-              <span className="icon-chip h-8 min-w-12 px-2 text-xs font-semibold">{co.code}</span>
-              <span className="grid content-start gap-2 text-sm">
-                {co.statement}
-                <span className="flex flex-wrap gap-1.5">
-                  {co.bloomLevels.map((level) => (
-                    <Badge key={level} variant="secondary">
-                      {capitalize(level)}
-                    </Badge>
-                  ))}
-                  {co.bloomLevels.length === 0 && (
-                    <Badge variant="warning">
-                      {co.suggestedBloom ? `Suggested: ${capitalize(co.suggestedBloom)}` : 'No level yet'}
-                    </Badge>
-                  )}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
-  );
-}
-
-function Mapping({ course }: { course: CatalogCourse }) {
-  return (
-    <Section
-      icon={<PageIcon name="mapping" className="size-8" />}
-      title="CO–PO mapping"
-      description="How strongly each outcome supports the programme outcomes PO1–PO12 and PSO1–PSO3 (1 slight, 3 high)."
-      action={
-        <Editor
-          course={course}
-          param="mapping"
-          icon={<PageIcon name="mapping" className="size-8" />}
-          title="CO–PO mapping"
-          description="Each programme titles the codes in its own words; the codes are the same everywhere."
-          size="full"
-          action={saveCoMap}
-          submitLabel="Save mapping"
-        >
-          <CoPoEditor cos={course.cos} outcomes={OUTCOMES} cells={course.cells} />
-          <FieldErrors name="cell[]" />
-        </Editor>
-      }
-    >
-      <CoPoMatrix cos={course.cos} outcomes={OUTCOMES} cells={course.cells} />
-    </Section>
-  );
-}
-
-function Syllabus({ course }: { course: CatalogCourse }) {
-  const rows = [
-    ...course.modules,
-    ...Array.from({ length: Math.min(2, CATALOG_LIMITS.modules - course.modules.length) }, () => null),
-  ];
-  return (
-    <Section
-      icon={<PageIcon name="lessons" className="size-8" />}
-      title="Syllabus"
-      description="The modules in teaching order, their practicals, the course's projects and the official PDF."
-      action={
-        <>
-          {course.syllabusFileKey && (
-            <Button asChild variant="outline" size="sm">
-              <a href={`/api/files/${course.syllabusFileKey}`} target="_blank" rel="noreferrer">
-                <DownloadSimpleIcon /> PDF
-              </a>
-            </Button>
-          )}
-          <Editor
-            course={course}
-            param="syllabus"
-            icon={<PageIcon name="lessons" className="size-8" />}
-            title="Syllabus"
-            description="Modules in teaching order. Hours as 6 or 4+0+2 (theory + practice + project)."
-            size="wide"
-            action={saveSyllabus}
-            submitLabel="Save syllabus"
-          >
-            <input type="hidden" name="rows" value={rows.length} />
-            <ol className="grid gap-4">
-              {rows.map((m, i) => (
-                <li key={m?.id ?? `new-${i}`} className="ring-border/80 grid gap-3 rounded-xl p-4 ring-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold">{m ? `Module ${i + 1}` : 'New module'}</span>
-                    {m && (
-                      <label className="text-muted-foreground flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name={`remove_${i}`}
-                          value="true"
-                          className="accent-destructive size-4"
-                        />
-                        Remove
-                      </label>
-                    )}
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
-                    <Field name={`title_${i}`} label="Title">
-                      <Input name={`title_${i}`} maxLength={CATALOG_LIMITS.moduleTitle} defaultValue={m?.title} />
-                    </Field>
-                    <Field name={`hours_${i}`} label="Hours">
-                      <Input name={`hours_${i}`} maxLength={CATALOG_LIMITS.moduleHours} defaultValue={m?.hours ?? ''} />
-                    </Field>
-                  </div>
-                  <Field name={`topics_${i}`} label="Topics">
-                    <Textarea name={`topics_${i}`} rows={3} defaultValue={m?.topics} />
-                  </Field>
-                  <Field name={`practicals_${i}`} label="Practicals" hint="One per line.">
-                    <Textarea name={`practicals_${i}`} rows={2} defaultValue={m?.practicals.join('\n')} />
-                  </Field>
-                </li>
-              ))}
-            </ol>
-            <Field name="projects" label="Projects" hint="One per line: the projects students choose from.">
-              <Textarea name="projects" rows={4} defaultValue={course.projects.join('\n')} />
-            </Field>
-            <div className="grid gap-2">
-              <span className="text-sm font-medium">Official syllabus PDF (optional)</span>
-              {course.syllabusFileKey && (
-                <label className="text-muted-foreground flex items-center gap-2 text-sm">
-                  <input type="checkbox" name="removeFile" value="true" className="accent-primary size-4" />
-                  Remove the current PDF
-                </label>
-              )}
-              <FileUpload name="syllabusFile" purpose="syllabus" contextId={course.id} />
-              <FieldErrors name="syllabusFile[]" />
-            </div>
-          </Editor>
-        </>
-      }
-    >
-      {course.modules.length === 0 && course.projects.length === 0 ? (
-        <EmptyState icon={<PageIcon name="lessons" className="size-8" />} text="No modules yet." />
-      ) : (
-        <div className="grid gap-3">
-          {course.modules.map((m, i) => (
-            <details key={m.id} className="surface group p-4" open={i === 0}>
-              <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium">
-                  {i + 1}. {m.title}
-                </span>
-                {m.hours && <span className="text-muted-foreground text-sm tabular-nums">{m.hours} hours</span>}
-              </summary>
-              {m.topics && <p className="mt-3 text-sm whitespace-pre-line">{m.topics}</p>}
-              {m.practicals.length > 0 && (
-                <>
-                  <p className="text-muted-foreground mt-3 text-xs font-medium tracking-wide uppercase">Practicals</p>
-                  <ul className="mt-1 list-disc pl-5 text-sm">
-                    {m.practicals.map((p) => (
-                      <li key={p}>{p}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </details>
-          ))}
-          {course.projects.length > 0 && (
-            <div className="surface p-4">
-              <p className="font-medium">Projects</p>
-              <ul className="mt-2 list-disc pl-5 text-sm">
-                {course.projects.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </Section>
-  );
-}
-
-function Books({ course }: { course: CatalogCourse }) {
-  return (
-    <Section
-      icon={<PageIcon name="books" className="size-8" />}
-      title="Books"
-      description="Textbooks students need, and further reading."
-      action={
-        <Editor
-          course={course}
-          param="books"
-          icon={<PageIcon name="books" className="size-8" />}
-          title="Books"
-          description="One book per line."
-          size="wide"
-          action={saveBooks}
-          submitLabel="Save books"
-        >
-          <Field name="textbooks" label="Textbooks">
-            <Textarea name="textbooks" rows={4} defaultValue={course.textbooks.join('\n')} />
-          </Field>
-          <Field name="references" label="References">
-            <Textarea name="references" rows={4} defaultValue={course.references.join('\n')} />
-          </Field>
-        </Editor>
-      }
-    >
-      {course.textbooks.length + course.references.length === 0 ? (
-        <EmptyState icon={<PageIcon name="books" className="size-8" />} text="No books yet." />
-      ) : (
-        <div className="surface grid gap-4 p-5 text-sm md:grid-cols-2">
-          {(
-            [
-              ['Textbooks', course.textbooks],
-              ['References', course.references],
-            ] as const
-          ).map(
-            ([label, books]) =>
-              books.length > 0 && (
-                <div key={label}>
-                  <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</p>
-                  <ul className="mt-2 grid list-disc gap-1.5 pl-5">
-                    {books.map((b) => (
-                      <li key={b}>{b}</li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-          )}
-        </div>
-      )}
-    </Section>
-  );
-}
-
 function SessionPlan({ course }: { course: CatalogCourse }) {
   return (
     <Section
@@ -829,7 +462,7 @@ async function CoordinatorDialog({ course, search }: { course: CatalogCourse; se
 
 function Choice({ value, checked, label, detail }: { value: string; checked: boolean; label: string; detail: string }) {
   return (
-    <label className="ring-border/80 has-checked:ring-primary/40 has-checked:bg-primary/4 flex cursor-pointer items-center gap-3 rounded-xl px-4 py-2.5 ring-1">
+    <label className="ring-border/80 has-checked:ring-primary/40 has-checked:bg-primary/4 flex cursor-pointer items-center gap-3 rounded-md px-4 py-2.5 ring-1">
       <input
         type="radio"
         name="coordinatorId"

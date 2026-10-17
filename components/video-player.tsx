@@ -35,7 +35,18 @@ const deviceQuality = (): Quality => storedQuality() ?? (window.matchMedia(PHONE
 
 // Plays the lecture and reports the seconds actually played (07 §8): a seek starts a new interval, so skipping
 // ahead is never counted. Intervals go to /api/beacon every 30 s, on pause and when the page is hidden.
-export function VideoPlayer({ lessonId, src, lowSrc }: { lessonId: string; src: string; lowSrc: string | null }) {
+export function VideoPlayer({
+  lessonId,
+  src,
+  lowSrc,
+  poster,
+}: {
+  lessonId: string;
+  src: string;
+  lowSrc: string | null;
+  // The lesson's thumbnail, shown before playback starts (M03b).
+  poster?: string;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const pending = useRef<Range[]>([]);
   const start = useRef<number | null>(null);
@@ -88,8 +99,9 @@ export function VideoPlayer({ lessonId, src, lowSrc }: { lessonId: string; src: 
         controls
         playsInline
         preload="metadata"
+        poster={poster}
         src={quality === 'low' && lowSrc ? lowSrc : src}
-        className="aspect-video w-full rounded-xl bg-black"
+        className="aspect-video w-full rounded-md bg-black"
         onTimeUpdate={(event) => {
           const now = event.currentTarget.currentTime;
           // A jump of more than 2 s (or backwards) is a seek, not playback.

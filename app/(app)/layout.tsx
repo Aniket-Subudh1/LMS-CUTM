@@ -64,7 +64,7 @@ async function UserMenu() {
           </span>
           <CaretDownIcon className="text-muted-foreground size-4 max-md:hidden" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60 rounded-xl">
+        <DropdownMenuContent align="end" className="w-60 rounded-xl [--radius:0.75rem]">
           <DropdownMenuLabel className="grid font-normal">
             <span className="truncate font-medium">{viewer.name}</span>
             <span className="text-muted-foreground truncate text-xs">{role && ROLE_LABEL[role]}</span>
@@ -108,8 +108,10 @@ async function Today() {
 export default function AppLayout({ children }: LayoutProps<'/'>) {
   return (
     <SidebarProvider className="[--sidebar-width:16rem]!">
+      {/* The app shell keeps its rounder corners (12 px base) while the pages use 6 px (Aniket, 17 Oct 2026). The
+          variable is set on the header and content, not on <Sidebar>, because the phone sheet drops its className. */}
       <Sidebar collapsible="icon" className="group-data-[side=left]:border-r-0">
-        <SidebarHeader className="px-3 pt-5 pb-2 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
+        <SidebarHeader className="px-3 pt-5 pb-2 [--radius:0.75rem] group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
           <Link
             href="/home"
             className="focus-visible:ring-ring from-primary/[0.04] to-primary/[0.11] ring-primary/12 flex items-center gap-3.5 rounded-2xl bg-linear-to-br px-3.5 py-3 ring-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:ring-0 focus-visible:ring-2 focus-visible:outline-none"
@@ -125,7 +127,7 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             </span>
           </Link>
         </SidebarHeader>
-        <SidebarContent className="pt-4">
+        <SidebarContent className="pt-4 [--radius:0.75rem]">
           <Suspense
             fallback={
               <SidebarMenu className="px-3">
@@ -141,7 +143,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <SidebarRail />
       </Sidebar>
       <SidebarInset className="bg-sidebar">
-        <header className="bg-sidebar sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 px-4 sm:px-6 lg:px-8">
+        {/* The panel's round top-left corner scrolls away under this sticky header; the header's ::after paints the
+            same quarter-round in the frame colour, so the corner stays round while the page scrolls. */}
+        <header className="bg-sidebar sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 px-4 after:pointer-events-none after:absolute after:top-full after:left-0 after:size-7 after:bg-[radial-gradient(circle_at_100%_100%,transparent_calc(1.75rem_-_0.5px),var(--sidebar)_1.75rem)] max-md:after:hidden sm:px-6 lg:px-8">
           <SidebarTrigger className="ring-border size-10 rounded-full ring-1" />
           <Suspense fallback={<Skeleton className="h-4 w-24" />}>
             <AppBreadcrumb />

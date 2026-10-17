@@ -65,9 +65,11 @@
   }
 }
 
-/* The blue product palette (decision of 13 Oct 2026). See docs/08-UI-SYSTEM.md §4. */
+/* The blue product palette (decision of 13 Oct 2026) in the "B · Crisp editorial" language (17 Oct 2026): small
+   corners and hairlines on the pages. The sidebar and header keep their earlier look: white, with rounder corners
+   (app/(app)/layout.tsx). See docs/08-UI-SYSTEM.md §4. */
 :root {
-  --radius: 0.75rem;
+  --radius: 0.375rem;
   --background: oklch(0.967 0.004 264);
   --foreground: oklch(0.226 0.006 285);
   --card: oklch(1 0 0);
@@ -110,19 +112,19 @@
   }
 }
 
-/* A card: white, flat, a hairline ring. No shadows and no accent stripes (08 §1). */
+/* A card: white, flat, a hairline ring, 4 px corners. No shadows and no accent stripes (08 §1). */
 @utility surface {
-  @apply bg-card text-card-foreground ring-border/80 rounded-2xl ring-1;
+  @apply bg-card text-card-foreground ring-border/70 rounded-md ring-1;
 }
 
 /* A card that is a link or opens something: its ring takes the brand tint. A Phosphor chip fills; a generated mark stays as it is. */
 @utility surface-interactive {
-  @apply surface focus-visible:ring-ring/60 hover:ring-primary/35 outline-none focus-visible:ring-2 motion-safe:transition-[box-shadow,background-color] motion-safe:duration-200;
+  @apply surface focus-visible:ring-ring/60 hover:ring-foreground/25 outline-none focus-visible:ring-2 motion-safe:transition-[box-shadow,background-color] motion-safe:duration-200;
   /* A generated mark stays on the light chip. Filling it would hide the blue artwork, and a white
      plate behind the picture reads as a stuck sticker. */
   &:hover .icon-chip:not(:has(img)),
   &:focus-visible .icon-chip:not(:has(img)) {
-    @apply bg-primary text-primary-foreground ring-primary;
+    @apply bg-foreground text-background ring-foreground;
   }
   /* A duotone icon's 20% layer turns white on the filled chip and reads as a smudge (08 §1). */
   &:hover .icon-chip:not(:has(img)) path[opacity],
@@ -139,7 +141,7 @@
 
 /* A small outlined square holding an icon in the primary colour, as on the reference dashboard's stat tiles. */
 @utility icon-chip {
-  @apply bg-background text-primary ring-border inline-grid shrink-0 place-items-center rounded-xl ring-1 transition-colors;
+  @apply bg-card text-foreground ring-border inline-grid shrink-0 place-items-center rounded-md ring-1 transition-colors;
 }
 
 /* The profile banner: blue, with sky and deep-blue light across it. */

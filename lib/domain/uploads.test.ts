@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildKey, extFor, parseKey, sanitizeFileName } from './uploads';
+import { buildKey, derivedKey, extFor, fileUuid, frameAtSec, parseKey, sanitizeFileName } from './uploads';
 
 const ctx = '507f1f77bcf86cd799439011';
 const uid = '507f191e810c19729de860ea';
@@ -19,6 +19,26 @@ describe('uploads', () => {
     const owner = { purpose: 'lesson-video', contextId: ctx, userId: uid };
     expect(parseKey(`lesson-video/${ctx}/${uid}/abc-123.mp4`)).toEqual(owner);
     expect(parseKey(`lesson-video/${ctx}/${uid}/abc-123-480p.mp4`)).toEqual(owner);
+    expect(parseKey(`lesson-video/${ctx}/${uid}/abc-123-frame.jpg`)).toEqual(owner);
+    expect(parseKey(`lesson-thumb/${ctx}/${uid}/abc-123.jpg`)).toEqual({ ...owner, purpose: 'lesson-thumb' });
+  });
+
+  it('names the worker files beside the original and finds the upload id', () => {
+    const key = `lesson-video/${ctx}/${uid}/abc-123.webm`;
+    expect(derivedKey(key, '-480p.mp4')).toBe(`lesson-video/${ctx}/${uid}/abc-123-480p.mp4`);
+    expect(derivedKey(key, '-frame.jpg')).toBe(`lesson-video/${ctx}/${uid}/abc-123-frame.jpg`);
+    expect(fileUuid(key)).toBe('abc-123');
+    expect(extFor('image/webp')).toBe('webp');
+  });
+
+  it.each([
+    [1, 0],
+    [2, 1],
+    [5, 1],
+    [60, 6],
+    [7200, 720],
+  ])('takes the frame of a %i s video at %i s', (duration, at) => {
+    expect(frameAtSec(duration)).toBe(at);
   });
 
   it.each([

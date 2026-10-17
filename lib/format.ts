@@ -141,3 +141,9 @@ export function formatDuration(seconds: number): string {
   if (minutes < 60) return `${minutes} min`;
   return minutes % 60 === 0 ? `${minutes / 60} h` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
+
+// Said to everyone who reads a course's outcomes or syllabus but may not change them (CRS-07, Q-27).
+export const keptBy = (coordinator: { name: string } | null) =>
+  coordinator
+    ? `Kept by ${coordinator.name}, the course coordinator.`
+    : 'Kept by the administrators until the course has a coordinator.';

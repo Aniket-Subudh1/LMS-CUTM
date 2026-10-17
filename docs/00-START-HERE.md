@@ -42,6 +42,7 @@ Never start a later task because an earlier one is "almost done". Never mark a c
 | M02 | Content, course plan, announcements, skill-course progress | M01 | 1 Core | — |
 | M01b | Catalogue v2: CUTM's course repository, courseware import, evaluation policy | M02 | 1 Core | — |
 | M03 | Live classes & attendance | M01b | 1 Core | — |
+| M03b | Course workspace redesign: builder, player, outcomes and syllabus in the course, plan as a list | M03 | 1 Core | — |
 | M04 | Assessment engine: quizzes, tests, assignments, records, grading | M01b | 1 Core | **R1 pilot** |
 | M05 | Virtual lab (compilers) & proctoring | M04 | 2 Evaluation | — |
 | M06 | Continuous evaluation: internal marks, trends, dashboards | M04 (M05 for coding modes) | 2 Evaluation | **R2** |

@@ -215,7 +215,7 @@ function Baskets({ program }: { program: ProgramDetail }) {
           <input type="hidden" name="rows" value={rows.length} />
           <ol className="grid gap-3">
             {rows.map((b, i) => (
-              <li key={b?.id ?? `new-${i}`} className="ring-border/80 grid gap-3 rounded-xl p-4 ring-1">
+              <li key={b?.id ?? `new-${i}`} className="ring-border/80 grid gap-3 rounded-md p-4 ring-1">
                 {b && <input type="hidden" name={`basketId_${i}`} value={b.id} />}
                 <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
                   <Field name={`name_${i}`} label="Name">

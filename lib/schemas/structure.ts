@@ -187,14 +187,10 @@ const list = (maxItems: number, maxChars: number, what: string) =>
         .array(z.string().max(maxChars, `Each ${what} uses at most ${maxChars} characters.`))
         .max(maxItems, `Use at most ${maxItems} lines.`),
     );
-// Row forms (the calendar's precedent, M02): fields `<name>_<i>` for i < rows. A problem is reported under the
-// row's own field name, so the dialog marks that box.
+// Row forms (the programme's baskets): fields `<name>_<i>` for i < rows. A problem is reported under the row's own
+// field name, so the dialog marks that box.
 const rowCount = z.coerce.number().int().min(0).max(40);
 const cell = (raw: Record<string, unknown>, name: string, i: number) => String(raw[`${name}_${i}`] ?? '').trim();
-const ticked = (raw: Record<string, unknown>, name: string, i: number) => {
-  const value = raw[`${name}_${i}[]`] ?? [];
-  return (Array.isArray(value) ? value : [value]).map(String);
-};
 
 export const SaveCourse = z
   .object({
@@ -219,38 +215,19 @@ export const SaveObjectives = z.object({
   objectives: list(CATALOG_LIMITS.objectives, CATALOG_LIMITS.objective, 'objective'),
 });
 
-// All outcomes in one form: `coId_i` (empty for a new row), `statement_i`, `bloom_i[]` and `remove_i`. Blank new
-// rows are ignored; codes are given by the action (CO7 after CO6, never reused).
-export const SaveCos = z.looseObject({ courseId: objectId, rows: rowCount }).transform((raw, ctx) => {
-  const cos: { coId: string | null; statement: string; bloomLevels: (typeof BLOOM_LEVELS)[number][] }[] = [];
-  const removed: string[] = [];
-  for (let i = 0; i < raw.rows; i++) {
-    const coId = cell(raw, 'coId', i);
-    const statement = cell(raw, 'statement', i);
-    const levels = ticked(raw, 'bloom', i);
-    const fail = (field: string, message: string) => ctx.addIssue({ code: 'custom', path: [`${field}_${i}`], message });
-    if (coId && !objectId.safeParse(coId).success) fail('statement', 'Reload the page and try again.');
-    if (coId && cell(raw, 'remove', i) === 'true') {
-      removed.push(coId);
-      continue;
-    }
-    if (!statement) {
-      if (coId) fail('statement', 'Write the outcome, or tick Remove.');
-      continue;
-    }
-    if (statement.length > CATALOG_LIMITS.coStatement) {
-      fail('statement', `Use at most ${CATALOG_LIMITS.coStatement} characters.`);
-    }
-    const bloomLevels = levels.flatMap((level) => BLOOM_LEVELS.find((known) => known === level) ?? []);
-    if (bloomLevels.length !== levels.length || !unique(levels)) fail('bloom', 'Pick from the levels shown.');
-    if (bloomLevels.length > 3) fail('bloom', 'Pick at most three levels.');
-    cos.push({ coId: coId || null, statement, bloomLevels });
-  }
-  if (cos.length > CATALOG_LIMITS.cos) {
-    ctx.addIssue({ code: 'custom', message: `A course has at most ${CATALOG_LIMITS.cos} outcomes.` });
-  }
-  return { courseId: raw.courseId, cos, removed };
-});
+// One outcome at a time (M03b): its statement and up to three Bloom levels. The action gives a new one its code
+// (CO7 after CO6, never reused); codes never change, so outcomes are not reordered.
+const bloomPicks = z.preprocess(
+  noneChecked,
+  z
+    .array(z.enum(BLOOM_LEVELS, 'Pick from the levels shown.'))
+    .max(3, 'Pick at most three levels.')
+    .refine(unique, 'Pick each level once.'),
+);
+const coFields = { courseId: objectId, statement: text(CATALOG_LIMITS.coStatement), 'bloom[]': bloomPicks };
+export const AddCo = z.object(coFields);
+export const UpdateCo = z.object({ ...coFields, coId: objectId });
+export const CoRef = z.object({ courseId: objectId, coId: objectId });
 
 const OUTCOME_CELL = new RegExp(`^[a-f\\d]{24}:(?:${OUTCOME_CODES.join('|')}):[123]$`);
 
@@ -268,51 +245,42 @@ export const SaveCoMap = z.object({
 // "6" or "4+0+2" (theory + practice + project hours), as CUTM's syllabi write them.
 const HOURS = /^\d+(?:\.\d+)?(?:\s*\+\s*\d+(?:\.\d+)?){0,2}$/;
 
-// The syllabus step: module rows (`title_i`, `hours_i`, `topics_i`, `practicals_i`, `remove_i`), the course's
-// projects, and the official PDF (keep, replace or remove).
-export const SaveSyllabus = z
-  .looseObject({
-    courseId: objectId,
-    rows: rowCount,
-    projects: list(CATALOG_LIMITS.projects, CATALOG_LIMITS.project, 'project'),
-    'syllabusFile[]': uploadedFiles(1),
-    removeFile: z.stringbool().default(false),
-  })
-  .transform((raw, ctx) => {
-    const modules: { title: string; hours: string | null; topics: string; practicals: string[] }[] = [];
-    for (let i = 0; i < raw.rows; i++) {
-      const fail = (field: string, message: string) =>
-        ctx.addIssue({ code: 'custom', path: [`${field}_${i}`], message });
-      if (cell(raw, 'remove', i) === 'true') continue;
-      const title = cell(raw, 'title', i);
-      const hours = cell(raw, 'hours', i).replace(/\s+/g, '');
-      const topics = cell(raw, 'topics', i);
-      const practicals = lines(cell(raw, 'practicals', i));
-      if (!title && !hours && !topics && practicals.length === 0) continue;
-      if (!title) fail('title', 'Give the module a title.');
-      else if (title.length > CATALOG_LIMITS.moduleTitle)
-        fail('title', `Use at most ${CATALOG_LIMITS.moduleTitle} characters.`);
-      if (hours && !HOURS.test(hours)) fail('hours', 'Write hours as 6 or 4+0+2.');
-      if (topics.length > CATALOG_LIMITS.moduleTopics)
-        fail('topics', `Use at most ${CATALOG_LIMITS.moduleTopics} characters.`);
-      if (practicals.length > CATALOG_LIMITS.practicals)
-        fail('practicals', `Use at most ${CATALOG_LIMITS.practicals} lines.`);
-      if (practicals.some((p) => p.length > CATALOG_LIMITS.practical)) {
-        fail('practicals', `Each practical uses at most ${CATALOG_LIMITS.practical} characters.`);
-      }
-      modules.push({ title, hours: hours || null, topics, practicals });
-    }
-    if (modules.length > CATALOG_LIMITS.modules) {
-      ctx.addIssue({ code: 'custom', message: `A course has at most ${CATALOG_LIMITS.modules} modules.` });
-    }
-    return {
-      courseId: raw.courseId,
-      modules,
-      projects: raw.projects,
-      file: raw['syllabusFile[]'][0] ?? null,
-      removeFile: raw.removeFile,
-    };
-  });
+// One syllabus module (M03b); `moduleId` absent adds one at the end. Hours as CUTM's syllabi write them.
+export const SaveCourseModule = z.object({
+  courseId: objectId,
+  moduleId: optionalId,
+  title: text(CATALOG_LIMITS.moduleTitle),
+  hours: z
+    .string()
+    .default('')
+    .transform((raw) => raw.replace(/\s+/g, ''))
+    .refine((hours) => hours === '' || (HOURS.test(hours) && hours.length <= CATALOG_LIMITS.moduleHours), {
+      message: 'Write hours as 6 or 4+0+2.',
+    })
+    .transform((hours) => hours || null),
+  topics: z
+    .string()
+    .trim()
+    .max(CATALOG_LIMITS.moduleTopics, `Use at most ${CATALOG_LIMITS.moduleTopics} characters.`)
+    .default(''),
+  practicals: list(CATALOG_LIMITS.practicals, CATALOG_LIMITS.practical, 'practical'),
+});
+export const CourseModuleRef = z.object({ courseId: objectId, moduleId: objectId });
+export const ReorderCourseModules = z.object({
+  courseId: objectId,
+  'ids[]': z.array(objectId).min(1).max(CATALOG_LIMITS.modules),
+});
+
+// The official syllabus PDF, uploaded for this course by this person (09 §5).
+export const SetSyllabusFile = z.object({
+  courseId: objectId,
+  'syllabusFile[]': uploadedFiles(1).refine((files) => files.length === 1, 'Upload the PDF first.'),
+});
+
+export const SaveProjects = z.object({
+  courseId: objectId,
+  projects: list(CATALOG_LIMITS.projects, CATALOG_LIMITS.project, 'project'),
+});
 
 export const SaveBooks = z.object({
   courseId: objectId,
@@ -429,6 +397,26 @@ export const UpdateOfferingFaculty = z
   .refine(oneToFive, facultyMessage);
 export const SetOfferingStatus = z.object({ offeringId: objectId, status: z.enum(['active', 'completed']) });
 export const ChangeEnrollments = z.object({ offeringId: objectId, file: csvFile });
+// A-83 (M03b): one offering holds at most this many enrolments, active and dropped together, so a roster search reads a
+// bounded set of students.
+export const MAX_ENROLLMENTS = 1000;
+// One student by roll number or email (M03b), and one student dropped or added again from the roster.
+export const AddStudent = z.object({
+  offeringId: objectId,
+  who: z.string().trim().min(1, 'Enter a roll number or an email.').max(254, 'Use at most 254 characters.'),
+});
+export const SetEnrollmentStatus = z.object({
+  offeringId: objectId,
+  enrollmentId: objectId,
+  status: z.enum(['active', 'dropped']),
+});
+
+// M03b: the class's cover picture, uploaded as offering-cover.
+export const SetOfferingCover = z.object({
+  offeringId: objectId,
+  'cover[]': uploadedFiles(1).refine((files) => files.length === 1, 'Upload a picture first.'),
+});
+export const OfferingRef = z.object({ offeringId: objectId });
 
 // --- Users (M01 T8) ---
 

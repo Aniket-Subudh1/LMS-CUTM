@@ -16,7 +16,27 @@ type Row = {
   state: 'uploading' | 'done' | 'failed';
   error?: string;
   value?: UploadedFile;
+  // A picture's preview (an object URL of the resized JPEG).
+  preview?: string;
 };
+
+// M03b: a thumbnail or cover is cropped to the purpose's frame in the browser and sent as a JPEG of about 100 KB,
+// so a phone photo of several megabytes never travels and every picture has the same shape.
+async function toJpeg(file: File, width: number, height: number): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.max(width / bitmap.width, height / bitmap.height);
+  const [w, h] = [width / scale, height / scale];
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas
+    .getContext('2d')
+    ?.drawImage(bitmap, (bitmap.width - w) / 2, (bitmap.height - h) / 2, w, h, 0, 0, width, height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+  if (!blob) throw new Error('This picture could not be read. Try a JPEG or PNG.');
+  return new File([blob], `${file.name.replace(/\.[^.]+$/, '') || 'picture'}.jpg`, { type: 'image/jpeg' });
+}
 
 // T2: a video's length is read in the browser from its metadata before the upload starts.
 function videoDuration(file: File): Promise<number | undefined> {
@@ -63,14 +83,18 @@ export function FileUpload({
   contextId,
   multiple = false,
   required = false,
+  max,
 }: {
   name: string;
   purpose: UploadPurpose;
   contextId: string;
   multiple?: boolean;
   required?: boolean;
+  // How many files this box may still add (a lesson's notes).
+  max?: number;
 }) {
   const rule = UPLOAD_PURPOSES[purpose];
+  const frame = 'image' in rule ? rule.image : undefined;
   const input = useRef<HTMLInputElement>(null);
   const xhrs = useRef(new Map<string, XMLHttpRequest>());
   const [rows, setRows] = useState<Row[]>([]);
@@ -86,10 +110,15 @@ export function FileUpload({
     );
   }, [uploading, finished, required]);
 
-  async function start(row: Row) {
+  async function start(original: Row) {
+    let row = original;
     update(row.id, { state: 'uploading', progress: 0, error: undefined });
     try {
-      if (row.file.size > rule.maxBytes) throw new Error(`This file is larger than ${formatBytes(rule.maxBytes)}.`);
+      if (frame) {
+        const file = await toJpeg(row.file, frame.width, frame.height);
+        row = { ...row, file, preview: URL.createObjectURL(file) };
+        update(row.id, { file, preview: row.preview });
+      }
       const durationSec = await videoDuration(row.file);
       if (row.file.type.startsWith('video/') && !durationSec) {
         throw new Error('This video could not be read. Export it again as MP4 and upload that file.');
@@ -118,12 +147,15 @@ export function FileUpload({
   }
 
   function choose(files: FileList) {
-    const added = Array.from(files).map((file): Row => ({
-      id: crypto.randomUUID(),
-      file,
-      progress: 0,
-      state: 'uploading',
-    }));
+    const room = max === undefined ? files.length : Math.max(0, max - rows.length);
+    const added = Array.from(files)
+      .slice(0, room)
+      .map((file): Row => ({
+        id: crypto.randomUUID(),
+        file,
+        progress: 0,
+        state: 'uploading',
+      }));
     if (!multiple) for (const xhr of xhrs.current.values()) xhr.abort();
     setRows((current) => (multiple ? [...current, ...added] : added));
     for (const row of added) void start(row);
@@ -134,12 +166,12 @@ export function FileUpload({
     setRows((current) => current.filter((row) => row.id !== id));
   }
 
-  const showPicker = multiple || rows.length === 0;
+  const showPicker = (multiple || rows.length === 0) && (max === undefined || rows.length < max);
   return (
     <div className="grid gap-3">
       <div
         className={cn(
-          'border-input hover:border-primary/50 hover:bg-primary/3 focus-within:border-primary focus-within:ring-ring/30 relative flex items-center gap-4 rounded-xl border border-dashed px-4 py-4 transition-colors focus-within:ring-[3px]',
+          'border-input hover:border-primary/50 hover:bg-primary/3 focus-within:border-primary focus-within:ring-ring/30 relative flex items-center gap-4 rounded-md border border-dashed px-4 py-4 transition-colors focus-within:ring-[3px]',
           !showPicker && 'sr-only',
         )}
       >
@@ -168,20 +200,25 @@ export function FileUpload({
       </div>
 
       {rows.map((row) => (
-        <div key={row.id} className="ring-border grid gap-2.5 rounded-xl p-3.5 ring-1">
+        <div key={row.id} className="ring-border grid gap-2.5 rounded-md p-3.5 ring-1">
           <div className="flex items-start gap-3">
-            <span
-              className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-lg',
-                row.state === 'done' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
-              )}
-            >
-              {row.state === 'done' ? (
-                <CheckCircleIcon weight="fill" className="size-5" />
-              ) : (
-                <FileIcon className="size-5" />
-              )}
-            </span>
+            {row.preview ? (
+              // eslint-disable-next-line @next/next/no-img-element -- an object URL of the picture being uploaded
+              <img src={row.preview} alt="" className="aspect-video w-24 shrink-0 rounded-lg object-cover" />
+            ) : (
+              <span
+                className={cn(
+                  'grid size-9 shrink-0 place-items-center rounded-lg',
+                  row.state === 'done' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {row.state === 'done' ? (
+                  <CheckCircleIcon weight="fill" className="size-5" />
+                ) : (
+                  <FileIcon className="size-5" />
+                )}
+              </span>
+            )}
             <div className="grid min-w-0 flex-1 gap-0.5">
               <p className="truncate text-sm font-medium">{row.file.name}</p>
               <p className="text-muted-foreground text-xs">

@@ -22,9 +22,10 @@ async function signedIn(browser: Browser, email: string): Promise<Page> {
   await page.getByLabel('Search courses', { exact: true }).press('Enter');
   await expect(page).toHaveURL((url) => url.searchParams.get('q') === COURSE);
   await page.getByRole('link', { name: COURSE }).click();
-  await expect(page.getByRole('heading', { name: COURSE })).toBeVisible();
+  // M03b frame: the workspace header names the course; the code, term and section sit above it.
+  await expect(page.getByRole('heading', { name: 'Programming in C', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Live' }).click();
-  await expect(page.getByRole('heading', { name: 'Live classes', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Upcoming classes', exact: true })).toBeVisible();
   return page;
 }
 
@@ -44,15 +45,24 @@ test('faculty runs a live class; a student joins and is marked present', async (
   const row = faculty.getByRole('listitem').filter({ hasText: title });
   await expect(row.getByText('You can start it now')).toBeVisible();
 
-  // The student waits on the class page; it turns into the room when the class starts.
+  // The student waits on the class page; "Join class" appears there when the class starts.
   const student = await signedIn(browser, 'student01@seed.cutm.test');
   await student.getByRole('link', { name: title }).click();
   await expect(student.getByText(/Starts today at/)).toBeVisible();
 
   await row.getByRole('link', { name: 'Start class' }).click();
   await faculty.getByRole('button', { name: 'Start class' }).click();
-  await expect(faculty.locator('.lk-video-conference')).toBeVisible({ timeout: 30_000 });
-  await expect(student.locator('.lk-video-conference')).toBeVisible({ timeout: 60_000 });
+  // M03b: the class opens in a tab of its own, like a video call; the class page stays for attendance.
+  const join = async (page: Page) => {
+    const [room] = await Promise.all([
+      page.context().waitForEvent('page'),
+      page.getByRole('link', { name: 'Join class' }).click({ timeout: 60_000 }),
+    ]);
+    await expect(room.locator('.lk-video-conference')).toBeVisible({ timeout: 30_000 });
+    return room;
+  };
+  const facultyRoom = await join(faculty);
+  const studentRoom = await join(student);
 
   // ATT-01, decision 2: the student who joined starts ticked present; the teacher saves.
   await expect(async () => {
@@ -65,13 +75,15 @@ test('faculty runs a live class; a student joins and is marked present', async (
   const sheet = faculty.getByRole('dialog', { name: 'Take attendance' });
   await sheet.getByRole('button', { name: 'Save attendance' }).click();
   await expect(sheet).toBeHidden();
-  await expect(faculty.locator('.lk-video-conference')).toBeVisible();
+  await expect(facultyRoom.locator('.lk-video-conference')).toBeVisible();
 
   await faculty.getByRole('button', { name: 'End class' }).click();
   await faculty.getByRole('alertdialog').getByRole('button', { name: 'End class' }).click();
-  // Ending the class closes the room; the student's page turns into their result.
+  // Ending the class closes the room; the student's class tab says so and leads to their result.
+  await expect(studentRoom.getByRole('heading', { name: /class has ended/ })).toBeVisible({ timeout: 30_000 });
+  await studentRoom.getByRole('link', { name: 'Open the class page' }).click();
   await expect(
-    student.getByRole('heading', { name: 'Your attendance', exact: true }).filter({ visible: true }),
+    studentRoom.getByRole('heading', { name: 'Your attendance', exact: true }).filter({ visible: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(async () => {
     await faculty.reload();

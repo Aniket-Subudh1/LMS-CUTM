@@ -21,7 +21,7 @@ const SUCCESS_MS = 1600;
 // The design Aniket chose on 13 Oct 2026 ("A · Clean"): a header with a hairline under it, a body that scrolls on its
 // own, and a grey button bar that stays at the bottom. On phones the dialog is a full-width sheet from the bottom.
 const FRAME = cn(
-  'bg-card shadow-elevated ring-border flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden rounded-2xl border-0 p-0 ring-1',
+  'bg-card shadow-elevated ring-border flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden rounded-lg border-0 p-0 ring-1',
   'max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:max-h-[92dvh] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:data-[state=open]:slide-in-from-bottom-10',
   '[&>[data-slot=dialog-close]]:hover:bg-muted [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4 [&>[data-slot=dialog-close]]:rounded-lg [&>[data-slot=dialog-close]]:p-1.5',
 );
@@ -53,7 +53,8 @@ export function FormDialog({
   submitVariant,
   children,
 }: {
-  trigger: ReactNode;
+  // Absent for a dialog the page mounts only while `?new=<openParam>` is in the URL (a row menu's "Edit…" link).
+  trigger?: ReactNode;
   title: string;
   description?: string;
   icon?: ReactNode;
@@ -101,7 +102,7 @@ export function FormDialog({
         setOpen(true);
       }}
     >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent
         showCloseButton={!pending && !done}
         {...(description ? {} : { 'aria-describedby': undefined })}

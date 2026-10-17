@@ -17,10 +17,11 @@ import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
-import { CreateOfferings, SetOfferingStatus, UpdateOfferingFaculty } from '@/lib/schemas/structure';
+import { CreateOfferings, MAX_ENROLLMENTS, SetOfferingStatus, UpdateOfferingFaculty } from '@/lib/schemas/structure';
 
 // The CSV import limit (06 §8): a section larger than this is enrolled by file, not in one request.
-const MAX_BATCH_ENROLLMENT = 5000;
+// A-83 (M03b): an offering holds at most MAX_ENROLLMENTS students; a larger batch is offered by section.
+const MAX_BATCH_ENROLLMENT = MAX_ENROLLMENTS;
 
 // Faculty ticked by name plus any typed emails (other departments): 1 to 5 faculty accounts that are not disabled.
 async function resolveFaculty(ids: string[], emails: string[]): Promise<Types.ObjectId[]> {

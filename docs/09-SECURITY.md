@@ -30,7 +30,7 @@
 | Course plan & calendar: edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Lessons: add, publish, delete | ○ (published) | ✔ | ○ | ✔ | — |
 | Live sessions: schedule, start, end | — | ✔ | ○ | ✔ | — |
-| Live sessions: join | ✔ (enrolled) | ✔ | — | — | — |
+| Live sessions: join | ✔ (enrolled) | ✔ (host) | — | ✔ any class, as host (Aniket, 17 Oct 2026) | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Attempt / submit | ✔ (enrolled, in window) | — | — | — | — |
@@ -93,7 +93,8 @@ The client IP is the first entry of `X-Forwarded-For`, which the production load
 - The bucket is **private**. No public ACLs, no public bucket policy. Browser CORS on the bucket allows `PUT, GET, HEAD` from `APP_URL` only (`scripts/s3-setup.ts`; verified on RustFS).
 - Presigned PUT expires in 300 s and is bound to the content type and size; presigned GET expires in 600 s.
 - A key is accepted by a consuming action only if its prefix matches `<purpose>/<contextId>/<viewer.id>/`.
-- `/api/files/<key>` re-runs the download rule from 06 §5 on every request.
+- `/api/files/<key>` re-runs the download rule from 06 §5 on every request. Its redirect may be reused by the browser for 300 s (`Cache-Control: private`), never longer than the 600 s presigned GET it points at (M03b).
+- **Pictures (M03b):** thumbnails and covers are JPEG, PNG or WebP only, never SVG, which can carry script. The browser re-encodes them as JPEG before the upload; the server still accepts only the picture content types.
 - Downloads set `Content-Disposition: inline; filename="<sanitized>"`; never serve user uploads from the app's own origin.
 - **Imported courseware pages (M01b):** their HTML is never rendered or stored; the adapter turns it into plain lines and tables with scripts off, and the catalogue stores only plain text. Email addresses and phone numbers on those pages are removed before anything else sees them, so contact details are never stored (A-60). The importer only fetches pages on the `COURSEWARE_URL` host.
 
@@ -107,17 +108,18 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `settings.updated` | changed fields |
 | `course.created`, `course.updated` | code, title, type, credits, status |
 | `course.coordinator_changed` | coordinator id |
-| `course.content_changed` | the section (objectives, syllabus, books, session plan) before and after |
-| `course.cos_changed`, `course.map_changed` | COs before/after (with the mapping links a removal took along); changed cells |
+| `course.content_changed` | the section (objectives, syllabus module, syllabus order, syllabus PDF, projects, books, session plan) before and after; a module or PDF added has `before` null, one deleted `after` null (M03b) |
+| `course.cos_changed`, `course.map_changed` | one CO before/after `{ code, statement, bloomLevels }` (added: `before` null; deleted: `after` `{ deleted, mappingLinksRemoved, offeringsUntagged }`, M03b); changed cells |
 | `course.reviewed` | the review notes cleared |
 | `course.imported` | courseware page, forced or not, counts, review notes, whether the coordinator was prefilled (actor: who started the run) |
 | `course.list_imported` (one entry per upload, entity `course_list`) | rows and counts created/updated |
 | `courseware.import_started` | mode, page |
 | `programme.outcomes_changed`, `programme.curriculum_changed` | titles; baskets, added/removed courses |
 | `catalog.migrated` (once, by the M01b migration) | counts |
-| `enrollment.changed` | added/dropped counts |
+| `enrollment.changed` | added/dropped counts and `source`: `csv`, `single` ("Add student") or `roster` (drop / add again), with the student's roll number for the last two (M03b) |
 | `plan.published` | version, recipient count |
 | `attendance.marked` | status before/after, source |
+| `live.deleted` (M03b) | the class's title, status and scheduled start; only a class that never ran and has no attendance can be deleted |
 | `assessment.published`, `assessment.results_published` | status |
 | `submission.graded` | per-item marks before/after |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |

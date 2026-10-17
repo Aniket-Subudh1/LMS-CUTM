@@ -361,12 +361,13 @@ describe('fillCalendarFromCourse (AC-M01b-09)', () => {
     await signInAs(faculty);
     expect(await fill(id)).toMatchObject({ ok: true });
     const calendar = (await Offering.findById(id).lean())?.calendar ?? [];
-    expect(calendar.map((row) => [istDayKey(row.date), row.topic])).toEqual([
-      ['2026-07-06', 'Index of a point'],
-      ['2026-07-08', 'Practice: Measure angles'],
-      ['2026-07-10', 'Residues'],
-      ['2026-07-13', 'Project: Study on residues'],
-      ['2026-07-15', 'Argument principle'],
+    // M03b: the session's kind is a field of its own, no longer a prefix on the topic.
+    expect(calendar.map((row) => [istDayKey(row.date), row.topic, row.kind])).toEqual([
+      ['2026-07-06', 'Index of a point', 'theory'],
+      ['2026-07-08', 'Measure angles', 'practice'],
+      ['2026-07-10', 'Residues', 'theory'],
+      ['2026-07-13', 'Study on residues', 'project'],
+      ['2026-07-15', 'Argument principle', 'theory'],
     ]);
     expect(await fill(id, { firstDay: '2026-08-03' })).toMatchObject({
       ok: false,

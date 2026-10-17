@@ -180,7 +180,7 @@ async function NewUser() {
         </div>
         <FieldErrors name="roles[]" />
       </fieldset>
-      <fieldset className="bg-muted/50 grid gap-5 rounded-xl p-4 sm:grid-cols-3">
+      <fieldset className="bg-muted/50 grid gap-5 rounded-md p-4 sm:grid-cols-3">
         <legend className="sr-only">Student</legend>
         <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase sm:col-span-3">Student</p>
         <Field name="rollNo" label="Roll number">
@@ -201,7 +201,7 @@ async function NewUser() {
           <Input name="section" maxLength={10} />
         </Field>
       </fieldset>
-      <fieldset className="bg-muted/50 grid gap-5 rounded-xl p-4 sm:grid-cols-2">
+      <fieldset className="bg-muted/50 grid gap-5 rounded-md p-4 sm:grid-cols-2">
         <legend className="sr-only">Faculty and head of department</legend>
         <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase sm:col-span-2">
           Faculty and head of department
@@ -241,7 +241,7 @@ function ImportUsers() {
       submitLabel="Import"
       successMessage="Users imported. Invitations are on their way."
     >
-      <div className="bg-muted/50 grid gap-2 rounded-xl p-4 text-sm leading-relaxed">
+      <div className="bg-muted/50 grid gap-2 rounded-md p-4 text-sm leading-relaxed">
         <p>
           Columns: <code>role</code>, <code>name</code>, <code>email</code>, then <code>rollNo</code>,{' '}
           <code>program</code>, <code>batchStartYear</code>, <code>section</code> for students, or{' '}

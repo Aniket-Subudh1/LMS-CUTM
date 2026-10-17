@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+  AddCo,
   CreateOfferings,
   CreateUser,
   SaveBaskets,
   SaveCoMap,
-  SaveCos,
   SaveCourse,
+  SaveCourseModule,
   SaveProgramOutcomes,
-  SaveSyllabus,
   SaveTerm,
   StartCoursewareImport,
+  UpdateCo,
 } from './structure';
 
 const id = 'a'.repeat(24);
@@ -44,44 +45,35 @@ describe('SaveCourse', () => {
   });
 });
 
-describe('SaveCos', () => {
-  it('collects edited, new and removed rows and ignores blank new rows', () => {
-    const parsed = SaveCos.safeParse({
-      courseId: id,
-      rows: '4',
-      coId_0: id,
-      statement_0: 'Explain residues.',
-      'bloom_0[]': ['understand', 'apply'],
-      coId_1: other,
-      statement_1: 'Old outcome',
-      remove_1: 'true',
-      statement_2: 'Design a solver.',
-      'bloom_2[]': 'create',
-      statement_3: '',
-    });
-    expect(parsed.success && parsed.data).toEqual({
-      courseId: id,
-      cos: [
-        { coId: id, statement: 'Explain residues.', bloomLevels: ['understand', 'apply'] },
-        { coId: null, statement: 'Design a solver.', bloomLevels: ['create'] },
-      ],
-      removed: [other],
-    });
+describe('AddCo and UpdateCo', () => {
+  it('take a statement and up to three Bloom levels, none ticked being none', () => {
+    expect(AddCo.parse({ courseId: id, statement: ' Explain residues. ', 'bloom[]': ['understand', 'apply'] })).toEqual(
+      {
+        courseId: id,
+        statement: 'Explain residues.',
+        'bloom[]': ['understand', 'apply'],
+      },
+    );
+    expect(UpdateCo.parse({ courseId: id, coId: other, statement: 'Design a solver.' })['bloom[]']).toEqual([]);
   });
 
-  it('names the row of a problem', () => {
-    const parsed = SaveCos.safeParse({
-      courseId: id,
-      rows: '2',
-      coId_0: id,
-      statement_0: '',
-      statement_1: 'Analyse data.',
-      'bloom_1[]': ['remember', 'understand', 'apply', 'analyse'],
+  it('refuses an empty statement, unknown levels, repeats and more than three', () => {
+    expect(fieldErrors(AddCo.safeParse({ courseId: id, statement: ' ', 'bloom[]': ['recall'] }))).toEqual({
+      statement: ['Required.'],
+      'bloom[]': ['Pick from the levels shown.'],
     });
-    expect(fieldErrors(parsed)).toEqual({
-      statement_0: ['Write the outcome, or tick Remove.'],
-      bloom_1: ['Pick at most three levels.'],
-    });
+    expect(
+      fieldErrors(AddCo.safeParse({ courseId: id, statement: 'Analyse.', 'bloom[]': ['apply', 'apply'] })),
+    ).toEqual({ 'bloom[]': ['Pick each level once.'] });
+    expect(
+      fieldErrors(
+        AddCo.safeParse({
+          courseId: id,
+          statement: 'Analyse data.',
+          'bloom[]': ['remember', 'understand', 'apply', 'analyse'],
+        }),
+      ),
+    ).toEqual({ 'bloom[]': ['Pick at most three levels.'] });
   });
 });
 
@@ -102,31 +94,33 @@ describe('SaveCoMap', () => {
   });
 });
 
-describe('SaveSyllabus', () => {
-  it('reads module rows, skipping empty and removed ones, and checks the hours', () => {
-    const parsed = SaveSyllabus.safeParse({
+describe('SaveCourseModule', () => {
+  it('reads one module, its hours and its practicals', () => {
+    expect(
+      SaveCourseModule.parse({
+        courseId: id,
+        moduleId: '',
+        title: 'Residues',
+        hours: '4 + 0 + 2',
+        topics: ' Residue theorem ',
+        practicals: 'Plot poles\n\nFind residues',
+      }),
+    ).toEqual({
       courseId: id,
-      rows: '3',
-      title_0: 'Residues',
-      hours_0: '4 + 0 + 2',
-      topics_0: 'Residue theorem',
-      practicals_0: 'Plot poles\n\nFind residues',
-      title_1: 'Old',
-      remove_1: 'true',
-      projects: 'Study on residues\n',
+      title: 'Residues',
+      hours: '4+0+2',
+      topics: 'Residue theorem',
+      practicals: ['Plot poles', 'Find residues'],
     });
-    expect(parsed.success && parsed.data).toEqual({
-      courseId: id,
-      modules: [
-        { title: 'Residues', hours: '4+0+2', topics: 'Residue theorem', practicals: ['Plot poles', 'Find residues'] },
-      ],
-      projects: ['Study on residues'],
-      file: null,
-      removeFile: false,
+    expect(SaveCourseModule.parse({ courseId: id, moduleId: other, title: 'Poles', hours: '' })).toMatchObject({
+      moduleId: other,
+      hours: null,
+      topics: '',
+      practicals: [],
     });
-    expect(fieldErrors(SaveSyllabus.safeParse({ courseId: id, rows: '1', topics_0: 'x', hours_0: 'six' }))).toEqual({
-      title_0: ['Give the module a title.'],
-      hours_0: ['Write hours as 6 or 4+0+2.'],
+    expect(fieldErrors(SaveCourseModule.safeParse({ courseId: id, title: '', hours: 'six' }))).toEqual({
+      title: ['Required.'],
+      hours: ['Write hours as 6 or 4+0+2.'],
     });
   });
 });

@@ -8,6 +8,7 @@ import { db } from '@/lib/db';
 import {
   courseMode,
   courseReadiness,
+  nextCoCode,
   normalizeCode,
   type BloomLevel,
   type CourseType,
@@ -70,7 +71,8 @@ export type CatalogFilter = {
   mine?: boolean;
 };
 
-const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// For a search typed by a person: the text matched as it is (also the roster search, lib/data/workspace.ts).
+export const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export type CatalogStats = { total: number; active: number; review: number; unassigned: number };
 
@@ -159,6 +161,8 @@ export type CourseDetail = {
   coordinator: { id: string; name: string } | null;
   objectives: string[];
   cos: { id: string; code: string; statement: string; bloomLevels: BloomLevel[]; suggestedBloom: BloomLevel | null }[];
+  // The code the next outcome added will get (M03b; never a deleted one's).
+  nextCo: string;
   // `<coId>:<outcome code>` → level 1–3; only linked cells are present.
   cells: Record<string, number>;
   modules: { id: string; title: string; hours: string | null; topics: string; practicals: string[] }[];
@@ -190,6 +194,8 @@ async function detailOf(course: CourseDoc & { _id: unknown }): Promise<CourseDet
       bloomLevels: co.bloomLevels,
       suggestedBloom: co.suggestedBloom ?? null,
     })),
+    // Lean reads apply no defaults: a course saved before M03b has no coSeq.
+    nextCo: nextCoCode(course.cos, course.coSeq ?? 0),
     cells: Object.fromEntries(course.coMap.map((m) => [`${m.coId}:${m.outcome}`, m.level])),
     modules: course.modules.map((m) => ({
       id: String(m._id),
@@ -221,6 +227,9 @@ const readiness = (course: CourseDoc) =>
     textbooks: course.textbooks.length + course.references.length,
     sessions: course.sessionPlan.length,
   });
+
+// A course as `CourseOutcomes` and `CourseSyllabus` show it: its content and whether the viewer may change it.
+export type EditableCourse = CourseDetail & { canEdit: boolean };
 
 export type CatalogCourse = CourseDetail & {
   canEdit: boolean;

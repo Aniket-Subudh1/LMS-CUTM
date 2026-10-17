@@ -5,6 +5,7 @@ const EXTENSIONS: Record<string, string> = {
   'image/heic': 'heic',
   'image/jpeg': 'jpg',
   'image/png': 'png',
+  'image/webp': 'webp',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
 };
@@ -34,6 +35,21 @@ export function parseKey(key: string): { purpose: UploadPurpose; contextId: stri
   const purpose = uploadPurpose.safeParse(match?.[1]);
   if (!match || !purpose.success) return null;
   return { purpose: purpose.data, contextId: match[2], userId: match[3] };
+}
+
+// The worker's files sit beside the original under its prefix, so /api/files authorizes them by its rule (06 §6).
+export function derivedKey(fileKey: string, suffix: '-480p.mp4' | '-frame.jpg'): string {
+  return fileKey.replace(/\.[a-z\d]+$/i, suffix);
+}
+
+// The upload's own id: the last part of its key without the extension. One media job per file (06 §6).
+export function fileUuid(key: string): string {
+  return key.slice(key.lastIndexOf('/') + 1).replace(/\.[a-z\d]+$/i, '');
+}
+
+// Where the thumbnail frame is taken: a tenth into the video, at least 1 s in, never past its last second.
+export function frameAtSec(durationSec: number): number {
+  return Math.min(Math.max(1, Math.round(durationSec / 10)), Math.max(0, durationSec - 1));
 }
 
 // Strips path separators, reserved and control characters, collapses spaces and keeps at most 120 characters,

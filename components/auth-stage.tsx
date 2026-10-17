@@ -58,8 +58,8 @@ export function AuthStage() {
       <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-black/15 via-transparent to-black/35" />
 
       <div data-auth-motion="card" className="absolute top-[6%] left-[6%] w-76 motion-safe:invisible">
-        <div className="bg-primary text-primary-foreground relative z-10 flex items-start gap-3.5 rounded-2xl p-4 pr-6 shadow-xl shadow-black/20">
-          <span className="bg-card grid size-12 shrink-0 place-items-center rounded-xl">
+        <div className="bg-primary text-primary-foreground relative z-10 flex items-start gap-3.5 rounded-lg p-4 pr-6 shadow-xl shadow-black/20">
+          <span className="bg-card grid size-12 shrink-0 place-items-center rounded-md">
             <Image src={iconCourses} alt="" sizes="40px" className="size-10 mix-blend-multiply" />
           </span>
           <span className="grid gap-0.5">
@@ -77,9 +77,9 @@ export function AuthStage() {
 
       <div
         data-auth-motion="card"
-        className="absolute top-[52%] right-[5%] flex w-72 items-start gap-3.5 rounded-2xl bg-black/40 p-4 text-white shadow-xl ring-1 shadow-black/20 ring-white/20 backdrop-blur-xl motion-safe:invisible"
+        className="absolute top-[52%] right-[5%] flex w-72 items-start gap-3.5 rounded-lg bg-black/40 p-4 text-white shadow-xl ring-1 shadow-black/20 ring-white/20 backdrop-blur-xl motion-safe:invisible"
       >
-        <span className="bg-card grid size-12 shrink-0 place-items-center rounded-xl">
+        <span className="bg-card grid size-12 shrink-0 place-items-center rounded-md">
           <Image src={iconShield} alt="" sizes="40px" className="size-10 mix-blend-multiply" />
         </span>
         <span className="grid gap-0.5">
@@ -92,9 +92,9 @@ export function AuthStage() {
 
       <div
         data-auth-motion="card"
-        className="bg-card text-card-foreground absolute bottom-[6%] left-[6%] flex w-76 items-start gap-3.5 rounded-2xl p-4 pr-6 shadow-xl shadow-black/20 motion-safe:invisible"
+        className="bg-card text-card-foreground absolute bottom-[6%] left-[6%] flex w-76 items-start gap-3.5 rounded-lg p-4 pr-6 shadow-xl shadow-black/20 motion-safe:invisible"
       >
-        <span className="bg-background grid size-12 shrink-0 place-items-center rounded-xl">
+        <span className="bg-background grid size-12 shrink-0 place-items-center rounded-md">
           <Image src={iconMarks} alt="" sizes="40px" className="size-10 mix-blend-multiply" />
         </span>
         <span className="grid gap-0.5">

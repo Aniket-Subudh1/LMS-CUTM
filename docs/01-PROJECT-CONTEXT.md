@@ -84,11 +84,11 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 |---|---|---|---|---|
 | CRS-01 | Programs (BBA, online BBA, online MCA, B.Tech) containing courses mirroring the offline syllabus | Must | M01 | Build |
 | CRS-02 | Each course classified by components: theory, practice (lab), project; components drive which records and evaluations apply | Must | M01, M01b | Build — since M01b the components are the T-P-Pj credits (a component applies when its credits are above 0) |
-| CRS-03 | Faculty upload recorded lectures (video and materials) | Must | M02 | Build |
+| CRS-03 | Faculty upload recorded lectures (video and materials) | Must | M02, M03b | Build — M03b (owner request, 17 Oct 2026): a course builder with lesson thumbnails, PDF notes, an offering cover and reordering |
 | CRS-04 | Faculty schedule and conduct live classes inside the platform | Must | M03 | Build |
 | CRS-05 | Each course stores syllabus, calendar, objectives, COs and linked POs | Must | M01, M02, M01b | Build — M01b: the syllabus is modules (with hours, practicals and projects), plus books and a session plan, importable from courseware |
 | CRS-06 | Faculty submit a course plan and calendar; the system requests them at course start | Must | M02 | Build |
-| CRS-07 | Each course has a coordinator (a faculty member) who keeps its catalogue content: objectives, COs, mapping, syllabus, books, session plan | Must | M01b | Build (product-owner decision, 15 Oct 2026) |
+| CRS-07 | Each course has a coordinator (a faculty member) who keeps its catalogue content: objectives, COs, mapping, syllabus, books, session plan | Must | M01b, M03b | Build (product-owner decision, 15 Oct 2026); M03b: edited item by item inside the course workspace too |
 
 ### 7.2 Communication
 | ID | Requirement | Priority | Milestone | Decision |

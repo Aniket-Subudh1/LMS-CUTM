@@ -64,7 +64,7 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/admin/impor
           description="CUTM's Course Repository as a CSV: which programme lists which course, with its credits. Upload it again whenever it changes; nothing is ever deleted."
           action={<UploadDialog />}
         >
-          <div className="ring-border overflow-x-auto rounded-xl ring-1">
+          <div className="ring-border overflow-x-auto rounded-md ring-1">
             <table className="w-full text-sm">
               <thead className="bg-muted/60 text-left">
                 <tr>
@@ -100,7 +100,7 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/admin/impor
               {uploads.map((u) => (
                 <li
                   key={u.id}
-                  className="ring-border/80 flex flex-wrap justify-between gap-2 rounded-xl px-4 py-2.5 ring-1"
+                  className="ring-border/80 flex flex-wrap justify-between gap-2 rounded-md px-4 py-2.5 ring-1"
                 >
                   <span>
                     {formatDateTime(u.at)} · {u.actor}
@@ -220,7 +220,7 @@ function StartDialog() {
         {MODES.map(([mode, label, help]) => (
           <label
             key={mode}
-            className="ring-border/80 has-checked:ring-primary/40 has-checked:bg-primary/4 flex cursor-pointer items-start gap-3 rounded-xl px-4 py-3 ring-1"
+            className="ring-border/80 has-checked:ring-primary/40 has-checked:bg-primary/4 flex cursor-pointer items-start gap-3 rounded-md px-4 py-3 ring-1"
           >
             <input
               type="radio"

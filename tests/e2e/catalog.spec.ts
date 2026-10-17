@@ -45,35 +45,47 @@ test('admin loads a course and its coordinator completes it; other faculty only 
   await page.getByRole('link', { name: /CUTM2101/ }).click();
   await expect(page.getByRole('heading', { name: 'Course readiness' })).toBeVisible();
 
-  await page.goto(`${courseUrl}?new=outcomes`);
-  const outcomes = page.getByRole('dialog', { name: 'Course outcomes' });
-  await outcomes.getByLabel('Statement').first().fill('Design linked structures in C.');
+  // M03b: one outcome at a time, in a dialog the URL opens; the server gives its code. The statement is new on every
+  // run and the outcome is deleted at the end, so repeated runs do not fill the course.
+  const statement = `Design linked structures in C (run ${Date.now()}).`;
+  await page.goto(`${courseUrl}?new=co`);
+  const outcome = page.getByRole('dialog', { name: /^Add CO\d+$/ });
+  const code = ((await outcome.getByRole('heading').first().textContent()) ?? '').replace('Add ', '');
+  await outcome.getByLabel('Outcome').fill(statement);
   // A Bloom level is a chip (a label around a hidden checkbox); a person clicks the chip.
-  const create = outcomes.getByRole('checkbox', { name: 'create' }).first();
-  if (!(await create.isChecked()))
-    await outcomes
-      .locator('label')
-      .filter({ hasText: /^create$/ })
-      .first()
-      .click();
-  await expect(create).toBeChecked();
-  await outcomes.getByRole('button', { name: 'Save outcomes' }).click();
-  await expect(outcomes.getByText('Saved.')).toBeVisible();
-  await expect(page.getByText('Design linked structures in C.')).toBeVisible();
+  await outcome
+    .locator('label')
+    .filter({ hasText: /^create$/ })
+    .click();
+  await expect(outcome.getByRole('checkbox', { name: 'create' })).toBeChecked();
+  await outcome.getByRole('button', { name: 'Add outcome' }).click();
+  await expect(outcome.getByText('Outcome added.')).toBeVisible();
+  await expect(page.getByText(statement)).toBeVisible();
 
-  await page.goto(`${courseUrl}?new=mapping`);
-  const mapping = page.getByRole('dialog', { name: 'CO–PO mapping' });
-  // AC-M01b-05: a key press sets a level; the grid saves in one go.
-  await mapping.getByRole('button', { name: /^CO1 to PO1:/ }).press('3');
-  await expect(mapping.getByRole('button', { name: 'CO1 to PO1: level 3' })).toBeVisible();
-  await mapping.getByRole('button', { name: 'Save mapping' }).click();
-  await expect(mapping.getByText('Saved.')).toBeVisible();
-  await expect(page.getByLabel('CO1 to PO1: 3')).toBeVisible();
+  // AC-M01b-05: the grid is edited in place; a key press sets a level and the grid saves in one go.
+  await page.getByRole('button', { name: `${code} to PO1: no link` }).press('3');
+  await expect(page.getByRole('button', { name: `${code} to PO1: level 3` })).toBeVisible();
+  await expect(page.getByText('1 unsaved change')).toBeVisible();
+  await page.getByRole('button', { name: 'Save mapping' }).click();
+  await expect(page.getByText('Mapping saved.')).toBeVisible();
+  await expect(page.getByText('No unsaved changes')).toBeVisible();
 
   // AC-M01b-04: another faculty member reads the course and cannot edit it.
   await signIn(page, 'faculty2@seed.cutm.test');
   await page.goto(courseUrl);
-  await expect(page.getByText('Design linked structures in C.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+  await expect(page.getByText(statement)).toBeVisible();
+  await expect(page.getByLabel(`${code} to PO1: 3`)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Edit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save mapping' })).toHaveCount(0);
+  await expect(page.getByText('Kept by Pradeep Sahoo, the course coordinator.').first()).toBeVisible();
   await expect(page.getByText('Waiting for the course coordinator').first()).toBeVisible();
+
+  // The coordinator deletes it from its row menu; its code is never given again.
+  await signIn(page, 'faculty1@seed.cutm.test');
+  await page.goto(courseUrl);
+  await page.getByRole('button', { name: `Actions for ${code}` }).click();
+  await page.getByRole('menuitem', { name: 'Delete' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByText(statement)).toHaveCount(0);
+  await expect(page.getByText(`CO${Number(code.slice(2)) + 1} is next`)).toBeVisible();
 });

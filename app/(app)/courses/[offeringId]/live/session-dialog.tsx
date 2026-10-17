@@ -52,6 +52,8 @@ export function SessionDialog({
   return (
     <FormDialog
       trigger={trigger}
+      // M03b: a new class can also be opened from a link, `?new=schedule`.
+      openParam={session ? undefined : 'schedule'}
       icon={<PageIcon name="session" className="size-8" />}
       title={session ? 'Change this class' : 'Schedule a live class'}
       description={
@@ -103,7 +105,7 @@ export function SessionDialog({
             {modes.map(({ value, label, hint, icon }) => (
               <label
                 key={value}
-                className="ring-border has-checked:ring-primary has-checked:bg-primary/4 has-focus-visible:ring-ring flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition-colors has-checked:ring-2"
+                className="ring-border has-checked:ring-primary has-checked:bg-primary/4 has-focus-visible:ring-ring flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 ring-1 transition-colors has-checked:ring-2"
               >
                 <input
                   type="radio"

@@ -43,3 +43,10 @@ export function classDates(startDay: string, weekdays: readonly number[], count:
   }
   return out;
 }
+
+// The Monday (YYYY-MM-DD) of the IST week holding `day`: the course plan groups its sessions by week (M03b).
+export function istWeekStart(day: string): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  const back = (date.getUTCDay() + 6) % 7;
+  return new Date(date.getTime() - back * DAY_MS).toISOString().slice(0, 10);
+}

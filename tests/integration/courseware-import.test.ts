@@ -167,16 +167,12 @@ describe('the courseware import (ADM-07)', { timeout: 60_000 }, () => {
     const [co1, co2] = course?.cos ?? [];
     const courseId = String(course?._id);
     expect(
-      await catalog.saveCos(
+      await catalog.updateCo(
         form({
           courseId,
-          rows: '2',
-          coId_0: String(co1?._id),
-          statement_0: 'Explain residues, edited here.',
-          'bloom_0[]': 'understand',
-          coId_1: String(co2?._id),
-          statement_1: co2?.statement ?? '',
-          'bloom_1[]': 'evaluate',
+          coId: String(co1?._id),
+          statement: 'Explain residues, edited here.',
+          'bloom[]': 'understand',
         }),
       ),
     ).toMatchObject({ ok: true });

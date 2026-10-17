@@ -158,6 +158,77 @@ export const cancelSession = action({ input: SessionRef, roles: TEACH }, async (
   refresh();
 });
 
+// M03b T6: a cancelled class goes back on the timetable while its start is still ahead; students are told.
+export const restoreSession = action({ input: SessionRef, roles: TEACH }, async ({ offeringId, sessionId }, viewer) => {
+  await requireTeach(viewer, offeringId);
+  await db();
+  const [offering, session] = await Promise.all([getOffering(offeringId), findSession(offeringId, sessionId)]);
+  if (session.status === 'scheduled') return refresh();
+  const written = await LiveSession.updateOne(
+    { _id: sessionId, status: 'cancelled', scheduledStart: { $gt: new Date() } },
+    { $set: { status: 'scheduled' } },
+  );
+  if (written.matchedCount === 0) {
+    throw new AppError(
+      'CLOSED',
+      'Only a cancelled class whose time is still ahead can be restored. Schedule a new one.',
+    );
+  }
+  await tellStudents(
+    offeringId,
+    'live.changed',
+    `${session.title} is back on — ${when(session.scheduledStart)} (${offering.title})`,
+    sessionId,
+  );
+  refresh();
+});
+
+// M03b T6, 09 §6: a class that never ran — cancelled, or not held by its end — and has no attendance row can be
+// removed for good, audited. A class that is still ahead is cancelled first, so its students are told.
+export const deleteSession = action({ input: SessionRef, roles: TEACH }, async ({ offeringId, sessionId }, viewer) => {
+  await requireTeach(viewer, offeringId);
+  await db();
+  const session = await findSession(offeringId, sessionId);
+  const now = new Date();
+  const neverRan =
+    !session.startedAt &&
+    (session.status === 'cancelled' || (session.status === 'scheduled' && session.scheduledEnd < now));
+  if (!neverRan) {
+    throw new AppError(
+      'CLOSED',
+      session.status === 'scheduled'
+        ? 'Cancel the class first, so its students are told.'
+        : 'A class that ran is kept with its attendance.',
+    );
+  }
+  if (await Attendance.exists({ sessionId })) {
+    throw new AppError('CLOSED', 'This class has attendance, so it is kept.');
+  }
+  await mongoose.connection.transaction(async (txn) => {
+    const removed = await LiveSession.deleteOne(
+      {
+        _id: sessionId,
+        startedAt: null,
+        $or: [{ status: 'cancelled' }, { status: 'scheduled', scheduledEnd: { $lt: now } }],
+      },
+      { session: txn },
+    );
+    if (removed.deletedCount === 0) throw new AppError('CONFLICT', 'The class changed meanwhile. Reload the page.');
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: 'live.deleted',
+        entity: 'live_session',
+        entityId: sessionId,
+        offeringId,
+        before: { title: session.title, status: session.status, scheduledStart: session.scheduledStart },
+      },
+      txn,
+    );
+  });
+  refresh();
+});
+
 // T3: from 15 minutes before the start until the scheduled end; a second click finds the class live.
 export const startSession = action({ input: SessionRef, roles: TEACH }, async ({ offeringId, sessionId }, viewer) => {
   await requireTeach(viewer, offeringId);

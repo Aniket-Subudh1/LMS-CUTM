@@ -7,7 +7,7 @@ import { CircleNotchIcon, FunnelSimpleIcon, MagnifyingGlassIcon } from '@phospho
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
-// A list's toolbar (design B, 17 Oct 2026): the search box on the left, the filters as pills on the right. A filter
+// A list's toolbar (17 Oct 2026): the search box on the left, the filters on the right, all 32 px and square-cornered. A filter
 // applies as soon as it changes; the search applies on Enter. `plain` keeps labelled fields and a visible button, for a
 // filter step inside another card or a dialog.
 export function FilterForm({
@@ -36,7 +36,7 @@ export function FilterForm({
       action={action}
       scroll={false}
       onChange={applyFilter}
-      className="[&_select]:bg-card [&_input[type=date]]:bg-card flex flex-wrap items-center gap-2 [&_input[type=date]]:h-9 [&_input[type=date]]:w-auto [&_input[type=date]]:rounded-full [&_input[type=date]]:px-4 [&_select]:h-9 [&_select]:rounded-full [&_select]:pl-4"
+      className="[&_select]:bg-card [&_input[type=date]]:bg-card flex flex-wrap items-center gap-2 [&_input[type=date]]:w-auto"
     >
       {search && <SearchField {...search} />}
       <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
@@ -77,9 +77,9 @@ function SearchField({
     <label className="relative w-full sm:w-80">
       <span className="sr-only">{label}</span>
       {pending ? (
-        <CircleNotchIcon className="text-muted-foreground absolute top-1/2 left-3.5 size-4 -translate-y-1/2 animate-spin" />
+        <CircleNotchIcon className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 animate-spin" />
       ) : (
-        <MagnifyingGlassIcon className="text-muted-foreground absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
+        <MagnifyingGlassIcon className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
       )}
       <Input
         type="search"
@@ -87,7 +87,7 @@ function SearchField({
         defaultValue={defaultValue}
         placeholder={placeholder}
         maxLength={100}
-        className="bg-muted focus-visible:bg-card rounded-full border-transparent pl-10"
+        className="pl-8"
       />
     </label>
   );
@@ -106,7 +106,7 @@ function Pending() {
 function Submit({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="outline" className="rounded-full" disabled={pending} aria-busy={pending}>
+    <Button type="submit" variant="outline" disabled={pending} aria-busy={pending}>
       {pending ? <CircleNotchIcon className="animate-spin" /> : <FunnelSimpleIcon weight="duotone" />}
       {label}
     </Button>

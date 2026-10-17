@@ -65,7 +65,7 @@ Pure helpers used by these (`parseIstLocal`, `istDayKey`, `roundHalfUp`) live in
 |---|---|---|---|---|---|---|
 | `/api/health` | GET | Load balancer, uptime monitor | none | — | `200 {"ok":true,"mongo":"up","redis":"up"}`; `503` with the failing part | Pings Mongo (`db.admin().ping()`) and Redis (`PING`) with a 2 s timeout. No other data |
 | `/api/beacon` | POST | Browser `sendBeacon` | session | `Beacon` union (below) | `204`; `400`; `401`; `429` | Updates `lessonProgress` / `attendance.focusedSec` and `engagementDaily` (07 §8–9) |
-| `/api/files/[...key]` | GET | Browser links, `<video src>` | session | key path | `302` to presigned GET; `404` | Authorizes by key prefix (§5) then redirects |
+| `/api/files/[...key]` | GET | Browser links, `<video src>`, `<img src>` | session | key path | `302` to presigned GET with `Cache-Control: private, max-age=300` (the presigned URL lives 600 s; a page of thumbnails costs one check each per five minutes, M03b); `404` | Authorizes by key prefix (§5) then redirects |
 | `/api/webhooks/live` | POST | Live engine | engine signature | raw body + `Authorization` | `200`; `401` bad signature | Normalizes to `LiveEvent`; appends presence; on `room_finished` enqueues `compute/finalizeLiveSession` |
 | `/api/webhooks/github` | POST | GitHub App | `X-Hub-Signature-256` | raw body + `X-GitHub-Event`, `X-GitHub-Delivery` | `200`; `401` | On `push` for a linked repo: enqueue `sync/githubProject` (debounced by job id) |
 | `/api/auth/github/callback` | GET | GitHub OAuth redirect | session + `state` | `code`, `state` | `302` to `/profile` | Verifies `state`, exchanges `code`, stores `users.github` |
@@ -189,8 +189,10 @@ Uploads are authorized per purpose by `createUpload` (02 §4.3). The key prefix 
 | Purpose | Who may upload | Context | Content types | Max size | Key | Who may download |
 |---|---|---|---|---|---|---|
 | `lesson-video` | teach | offering | `video/mp4`, `video/webm` | 2 GB | `lesson-video/<offeringId>/<userId>/<uuid>.<ext>` | teach, oversee, learn (published lessons only) |
-| `lesson-doc` | teach | offering | `application/pdf` | 50 MB | `lesson-doc/<offeringId>/…` | same |
-| `syllabus` | admin, or the course's coordinator (CRS-07, M01b) | course | `application/pdf` | 20 MB | `syllabus/<courseId>/…` | any viewer with access to an offering of the course |
+| `lesson-doc` | teach | offering | `application/pdf` | 50 MB | `lesson-doc/<offeringId>/…` | same; also a lesson's PDF notes (`attachments`, M03b) |
+| `lesson-thumb` | teach | offering | `image/jpeg`, `image/png`, `image/webp` (never SVG) | 2 MB | `lesson-thumb/<offeringId>/…` | same as the lesson (M03b); cropped and resized in the browser to 1280 × 720 JPEG |
+| `offering-cover` | teach | offering | `image/jpeg`, `image/png`, `image/webp` (never SVG) | 2 MB | `offering-cover/<offeringId>/…` | teach, oversee, learn (M03b); resized in the browser to 1600 × 640 JPEG |
+| `syllabus` | admin, or the course's coordinator (CRS-07, M01b) | course | `application/pdf` | 20 MB | `syllabus/<courseId>/…` | any staff member (admin, HoD, faculty — they all open the catalogue course), or a student with access to an offering of the course (Q-53) |
 | `submission` | learn (own attempt in progress) | assessment | `application/pdf`, `image/jpeg`, `image/png`, `image/heic` | 25 MB each, ≤ 10 per item | `submission/<assessmentId>/<userId>/<uuid>.<ext>` | the owner; teach, oversee |
 | `proctor-snapshot` | learn (own proctored attempt) | submission | `image/jpeg` | 300 KB | `proctor/<submissionId>/<userId>/<uuid>.jpg` | teach, oversee |
 
@@ -206,7 +208,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `mail/fanout` | `MailJob` union: `invitation{userIds[]}` (M01) · `coursePlanPublished{offeringId, version}` (M02). A single known recipient (password reset) skips the fanout and enqueues `mail/send` directly | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
 | `compute/internalMarks` | `{ offeringId }` | `ce-<offeringId>-<minuteBucket>` | full recompute, upsert | 07 §2 |
 | `compute/attainment` | `{ offeringId }` or `{ programId, batchId, termIds }` | `att-<id>-<minuteBucket>` | full recompute, upsert latest | 07 §4–5 |
-| `media/transcodeLesson` | `{ lessonId }` | `transcode-<lessonId>` | re-running overwrites the same `lowKey` | 480p data-saver copy (M02 T8b) |
+| `media/transcodeLesson` | `MediaJob { lessonId, fileKey }` (M03b) | `transcode-<lessonId>-<fileUuid(fileKey)>`, so a replaced video is a new job | every write is conditional on the lesson still holding `fileKey`; a job whose file was replaced meanwhile deletes what it uploaded, and its failure marks nothing | the frame first (`frameKey`, 07 §18), then the 480p data-saver copy (`lowKey`) (M02 T8b, M03b) |
 | `compute/finalizeLiveSession` | `FinalizeLiveJob { sessionId }` (M03) | `live-final-<sessionId>` | one transaction: the claim on `finalizedAt` and every write commit together, so a crash is retried from the start and a second run finds nothing to claim; manual marks untouched | 07 §10 |
 | `compute/liveSweep` | `LiveSweepJob {}` (M03) | scheduler `liveSweep` | ends a session only while it is `live`; re-adding a finalize job is deduped by its id, and a failed one is retried instead | ends classes still live 30 min after `scheduledEnd` (at `scheduledEnd`, closing their rooms) and finalizes ended sessions left unfinalized for 10 min (02 §8) |
 | `compute/assessmentSweep` | `{}` | scheduler | `dueNotifiedAt` guards reminders; auto-submit is idempotent | 24 h reminders (COM-03) + auto-submit expired attempts (M04) |
@@ -251,7 +253,7 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 - Upsert by `email`. New users are `invited` and receive an invitation email (07-day token).
 
 ### 8.2 Enrollment changes — form on `/courses/<id>/people` (M01)
-`rollno,action` with `action` ∈ `add, drop`. (The whole batch/section is enrolled automatically when the offering is created.)
+`rollno,action` with `action` ∈ `add, drop`. (The whole batch/section is enrolled automatically when the offering is created.) A file that would take the offering past 1,000 enrolments, dropped ones included, is refused whole (A-83, M03b). One student is also added from the roster's "Add student" (roll number or email), and dropped or added again from its row menu.
 
 ### 8.5 Course list — "Upload course list" on `/admin/imports` (M01b, ADM-06)
 `programme,stream,basket,type,code,title,credits,tpp` — CUTM's Course Repository, one row per programme × course.

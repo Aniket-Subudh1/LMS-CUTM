@@ -17,7 +17,8 @@ export const MailJob = z.discriminatedUnion('kind', [
 export type MailJob = z.infer<typeof MailJob>;
 
 // `media/transcodeLesson` (06 §6, M02 T8b): the 480p data-saver copy of a lecture video.
-export const MediaJob = z.object({ lessonId: objectId });
+// `fileKey` is the file the job was queued for: a video replaced meanwhile keeps its own frame and copy (06 §6).
+export const MediaJob = z.object({ lessonId: objectId, fileKey: z.string().min(1).max(500) });
 export type MediaJob = z.infer<typeof MediaJob>;
 
 // `sync/coursewareList` and `sync/coursewarePage` (06 §6, M01b): one courseware import run.

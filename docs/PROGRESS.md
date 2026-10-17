@@ -23,6 +23,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
+| M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
@@ -89,6 +90,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-50 | LiveKit closes a room about 20 s after its last participant leaves and then sends `room_finished`. Should that end a class before its scheduled end? | @dev | No: before `scheduledEnd` the class stays live and the room is created again when someone rejoins; at or after it, the class ends then. The teacher's End button and the hourly sweep end the rest | — | Open |
 | Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
 | Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
+| Q-53 | The syllabus PDF opens for admins and for whoever teaches, oversees or studies an offering of the course (`reach` in `/api/files`), so a coordinator who teaches none of its offerings cannot open the PDF they uploaded. Should every staff member who can open the catalogue course open its PDF? | @dev | As built in M01b (offerings only) | — | Answered 17 Oct 2026 (@dev, at Aniket's request): yes — admins, HoDs and faculty open it; a student only for a course they study (`/api/files`) |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -173,6 +175,20 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-76 | In the development seed a courseware page's credits stand in for the Course Repository's until the course list is uploaded | dev seed | — |
 | A-77 | The test server at lms.devsomeware.com runs Ubuntu's Redis 8.0.6 instead of the pinned 8.6 | test deployment | — |
 | A-78 | Generated imagery (a photo of students, three 3D icons) is acceptable on the sign-in screens until CUTM supplies campus photography | sign-in redesign | — |
+| A-79 | Every list shows ten rows a page | list redesign | — |
+| A-80 | The number tiles above a list count the whole collection, not the filtered rows | list redesign | — |
+| A-81 | An offering's cover belongs to the offering, not the catalogue course: the teacher keeps the workspace and many courses have no coordinator | M03b | — |
+| A-82 | A lesson's video can be replaced only while no student has progress on it; otherwise the teacher adds a new lesson | M03b | — |
+| A-83 | An offering holds at most 1,000 enrolments, active and dropped together, so the roster search is bounded | M03b | — |
+| A-84 | The coverage chart shows each PO's average level over the COs linked to it, not over all COs; it describes the mapping and is not an attainment value | M03b | — |
+| A-85 | Deleting a CO is allowed while offering calendars tag it: the tags go with it. Until M04 nothing else refers to a CO | M03b | — |
+| A-86 | Students see the Syllabus and Outcomes tabs in full, the mapping and coverage chart included, read only | M03b | — |
+| A-87 | A replaced or removed syllabus PDF is deleted from storage (M01b kept it) | M03b | — |
+| A-88 | An admin joins a class as host (the same room rights as its teacher, under their own name), not as a hidden observer | M03b | Aniket |
+| A-89 | Only a class that never ran (cancelled, or not held by its end) and has no attendance row can be deleted; a class still ahead is cancelled first, so its students are told | M03b | — |
+| A-90 | Restoring a cancelled class tells students as a change (`live.changed`) and is not audited, as cancelling is not | M03b | — |
+| A-91 | "Below the minimum" counts active students of a credit course by their finished live classes against the offering's own policy `attendanceMinPct` (75 % by default); a student with no finished class is not counted | M03b | — |
+| A-92 | Dropping a student and adding them again keeps their progress and attendance rows; both are refused once marks are locked | M03b | — |
 
 ## 5. Log
 
@@ -1059,3 +1075,192 @@ Aniket asked for a unique, professional icon on every page. They follow the sign
 **Open questions** — none.
 
 **Verification** — `tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied. On `next dev`, signed in as `admin@seed.cutm.test`: `/home` shows the dashboard mark beside the greeting and in the sidebar; Structure opens with Departments, Programmes and Terms marks; a programme page shows the basket mark on Baskets; a catalogue course shows readiness, objectives, outcomes, mapping, syllabus, books, session plan and programmes marks, every image loaded (`naturalWidth` 256, none broken); a course overview header and its Overview tab use the overview mark, and the active tab is a light tint. Hovering a home count tile leaves the mark on its light chip (the picture's background stays transparent; the chip does not fill).
+
+### 2026-10-17 · Decision: M03b course workspace redesign · Claude Code, at Aniket's request
+
+Aniket called the course workspace "too ugly, no UI/UX sense". He asked for:
+- **Structure:** a structured course builder instead of everything on one page.
+- **Actions in view:** edit, delete and add for modules, COs and the CO-PO mapping.
+- **Lessons:** video upload, a thumbnail and PDF notes, switched per module.
+- **Course plan:** a list with add and edit in dialogs.
+- **Live and People:** manual add, edit and delete.
+- **Feel:** charts, "character and personality", for every role.
+
+He asked for the design to follow how professional LMSs work. Research covered Udemy's curriculum builder, Canvas modules, Moodle's course page, Teachable, Thinkific, Coursera's player, OBE tools used for NBA, Zoom and Meet attendance, and Canvas People.
+
+He decided four points:
+1. Lift the drag-and-drop ban and use dnd-kit, with a keyboard and a Move menu always available.
+2. Video thumbnails come from the worker automatically, or he uploads a picture; any lesson takes up to five PDF notes; each offering gets a cover.
+3. COs, mapping and syllabus stay with the coordinator and admins (Q-27), now edited inside the workspace.
+4. Add Recharts now.
+
+This entry is the written scope approval for milestone M03b (AGENTS law 1). Tasks, rule changes and acceptance criteria are in `docs/milestones/M03b-course-workspace.md`. Mock-ups are shown in four rounds before each part is built. Not built without further approval:
+- attendance export;
+- announcements (COM-02);
+- recurring classes;
+- "preview as student";
+- creating lessons by dropping several files;
+- a month calendar.
+
+A design review found three defects in today's code. Their fixes are part of M03b:
+- **Repeated CO code:** `nextCoCode` gives a deleted highest CO's code to the next one (05 §3.6 says codes are never reused).
+- **Replaced videos:** the media job id repeats, so a replaced video would never be processed.
+- **Deleted COs in calendars:** deleting a CO leaves its id in every offering's calendar.
+
+New assumptions A-81 – A-83. A-79 and A-80 record the list-page entry above, which named them but did not add them to §4.
+
+### 2026-10-17 · M03b/T1–T5 and the design language · Claude Code, at Aniket's request
+
+Built in order (database → backend → frontend), each phase after Aniket picked its mock-ups (picks in the milestone file). Nothing is committed yet: a push to main deploys the test server, so the commits wait for Aniket.
+
+Mid-build Aniket asked for everything to be "slim, sleek and classy" and chose **B · Crisp editorial** from three mock-ups: 6 px corners, hairline cards, a near-black main button, 32 px controls, underlined tabs, status badges as a dot and coloured text, small uppercase table headings. The first build of it also changed the sidebar and header; he asked why, and why the sidebar's pictures were gone. They are back exactly as committed ("D · Icon chips" with the generated marks, the rounded lockup, the round header controls, the rounded page panel at a 12 px base corner). The page panel's round corner no longer turns square while scrolling: the sticky header paints the same quarter-round below it.
+
+**Created**
+- T1 lesson media: `lib/models/lesson.ts` (frameKey, thumbKey, attachments), `lib/schemas/{uploads,jobs,content}.ts`, `lib/domain/uploads.ts` (+ test), `worker/jobs/media.ts`, `app/api/files/[...key]/route.ts`, `app/(app)/actions.ts`, `app/(app)/courses/[offeringId]/content/{actions.ts,[lessonId]/page.tsx}`, `lib/data/content.ts`, `components/{file-upload,video-player,lesson-thumb}.tsx`, tests `content`, `media-worker`
+- T2 builder: `lib/domain/order.ts` (+ test), `components/{sortable-list,row-menu,form-dialog}.tsx`, `content/page.tsx`, `lib/models/offering.ts` (modules.summary), package `@dnd-kit/core` 6.3.1, `@dnd-kit/sortable` 10.0.0
+- T3 frame and Overview: `app/(app)/courses/{actions.ts,[offeringId]/layout.tsx,[offeringId]/page.tsx}`, `lib/data/workspace.ts`, `lib/schemas/structure.ts`, `components/{course-cover,date-tile,progress-ring,offering-card}.tsx`; `workspace-mark.tsx` deleted
+- T4 plan: `plan/{actions.ts,page.tsx}`, `lib/domain/time.ts` (`istWeekStart`, + test), offering `calendar[].kind`, `plan.changedAt`
+- T5 syllabus and outcomes: `lib/models/course.ts` (`coSeq`), `lib/domain/catalog.ts` (`nextCoCode(existing, seq)`, `coNumber`, `mappingCoverage`, `syllabusHours`, + tests), `lib/schemas/structure.ts` (AddCo, UpdateCo, CoRef, SaveCourseModule, CourseModuleRef, ReorderCourseModules, SetSyllabusFile, SaveProjects; SaveCos and SaveSyllabus removed, + tests), `app/(app)/catalog/actions.ts` (addCo, updateCo, deleteCo, saveCourseModule, deleteCourseModule, reorderCourseModules, setSyllabusFile, clearSyllabusFile, saveProjects; saveCos and saveSyllabus removed), `lib/data/courses.ts` (`nextCo`), `components/{course-outcomes,course-syllabus,bar-chart,co-po-matrix,co-po-editor,section}.tsx`, `components/ui/chart.tsx` (shadcn 4.21.4), new routes `courses/[offeringId]/{syllabus,outcomes}/page.tsx`, `catalog/[id]/page.tsx`, packages `recharts` 3.10.1 and `react-is` 19.3.0
+- Design language: `app/globals.css`, `components/ui/{button,input,native-select,badge}.tsx`, `components/{tab-nav,page-header,checklist,data-table}.tsx`, a radius sweep over `app/` and `components/`; the shell restored (`components/app-nav.tsx` as committed, `app/(app)/layout.tsx` as committed plus the scoped 12 px corner and the scroll corner)
+- Docs: 02 §3.1, 03 §3, 04 §1, 05 §3.6, 07 §17, 08 §1, §5.1, §5.2, 09 §6, the milestone file, this entry
+- Tests: `tests/integration/{catalog,courseware-import,content,workspace,media-worker}.test.ts`, `tests/e2e/catalog.spec.ts` (repeatable: a fresh statement, deleted at the end)
+
+**Not done**
+- T6 Live, T7 People and T8 (report, acceptance walk) are next.
+- 08 §1 and §4 do not yet describe the B design language in words, and 05/06/09 do not yet describe the T1–T4 fields, purposes, cache header and media job; that is the T8 sweep.
+- `tests/e2e/content.spec.ts` still drives the old plan form (T4) and has no builder or keyboard-reorder steps; not run.
+- `npm run check:bundle` (Recharts only on chart pages) not run.
+
+**Assumptions** — A-84 to A-87 (§4).
+
+**Open questions** — Q-53 (§3).
+
+**Verification**
+- `npm run check` → lint clean, typecheck clean, `Tests 278 passed (278)`.
+- `npx vitest run --project integration` (temporary local Redis) → `Tests 182 passed (182)`.
+- `npx playwright test tests/e2e/catalog.spec.ts` → `1 passed` (the first run failed on a success message that named the next code, which moves on after the refresh; fixed to "Outcome added.").
+- `npm run build`; standalone server on the e2e database; screenshots at 1440 px and 390 px as admin, faculty1 and student01 of the Overview, course plan, Syllabus, Outcomes and catalogue course: no page wider than the screen (the editable grid's hidden "Row tools" label widened the page to 687 px until its scroll box was made `relative`).
+- Shell: the sidebar, header and page panel compared against the committed version; the panel corner checked at the top and after scrolling 215 px.
+
+### 2026-10-17 · M03b: admins join any live class · Claude Code, at Aniket's request
+
+Aniket asked that an admin can join a live class whenever they want. Until now admins scheduled, started and ended any class but only followed it from outside the room (09 §2).
+
+**Created**
+- `lib/data/live.ts`: an admin gets a host token for any class while it is live; `listTodaysLiveSessions` gives an admin the ten classes running now in any course, earliest to end first (index `{ status, scheduledEnd }`).
+- `app/(app)/home/page.tsx`: admins get "Today's live classes" too.
+- `app/(app)/courses/[offeringId]/live/page.tsx`: the live-now button reads "Go to class" for whoever manages the class; `live/[sessionId]/page.tsx`: the note for those who follow without joining names administrators among those who join.
+- `tests/integration/live.test.ts`: an admin's token is a host's and none once the class ends; the HoD still gets none; an admin's Home lists another course's running class.
+- Docs: 09 §2, 08 §6 (Home), the milestone (decision 5, Live row).
+
+**Not done** — a university-wide "live now" page: Home shows ten; an admin finds any other class from its course's Live tab.
+
+**Assumptions** — A-88 (§4).
+
+**Open questions** — none.
+
+**Verification** — `npx vitest run --project integration tests/integration/live.test.ts` → `Tests 24 passed (24)`; typecheck and eslint clean on the changed files. Not tried in a browser with a running LiveKit server.
+
+### 2026-10-17 · M03b: a live class in a tab of its own · Claude Code, at Aniket's request
+
+Aniket: the live class "opens inside a box; it should open like Google Meet in a tab". The room was a fixed-height frame inside the class page, under the sidebar, header and course header.
+
+**Created**
+- `app/(room)/courses/[offeringId]/live/[sessionId]/room/page.tsx` (new route group without the app shell): the class fills the tab on LiveKit's dark stage, a slim top bar (Live, class and course titles, "End class" for teachers and admins) over the room; before the class a waiting message that refreshes itself, or "Start class"; after it, or for a head of department, a message linking to the class page.
+- `components/live-room.tsx`: fills its parent; exports `RoomNotice`; its left, dropped and ended messages sit on the dark stage; takes `classPage`.
+- `app/(app)/courses/[offeringId]/live/[sessionId]/page.tsx`: "The class is live" with Join class (new tab) in place of the embedded room; the waiting card says Join class appears when the class starts.
+- `app/(app)/courses/[offeringId]/live/page.tsx`: the live-now card's Join class opens the room in a new tab; staff also get "Attendance" (the class page). `app/(app)/home/page.tsx`: a running class opens its room in a new tab.
+- `lib/data/live.ts`: `SessionDetail.offeringTitle` for the top bar.
+- `tests/e2e/live.spec.ts`: joins through the new tab for both the teacher and the student; the student's tab says the class has ended and leads to their result.
+- Docs: 02 §2 (the `(room)` group), 08 §2 (routes) and §5.2 (`LiveRoom`, `RoomNotice`), the milestone (decision 6).
+
+**Not done** — `tests/e2e/live.spec.ts` not run: it needs a LiveKit server whose webhooks reach this machine.
+
+**Assumptions** — none new.
+
+**Open questions** — none.
+
+**Verification**
+- `npm run check` → lint and typecheck clean, `Tests 278 passed (278)`; `npx vitest run --project integration` → `Tests 182 passed (182)`.
+- A real class on the dev LiveKit server (`wss://live.devsomeware.com`, from `.env`), with the build on port 3101 and the local e2e database: a test class added to the database; faculty1 opened its class page (Join panel), joined in a new tab (the room filled 1440 × 860 with no scroll), turned the camera on; student01 and, at 390 px, admin joined from their own tabs and all three appeared; the student left and saw "You left the class" with Rejoin; faculty1 ended the class from the room's top bar and the tab showed "This class has ended". The test class was then deleted from the e2e database. Webhooks from that server go to its own deployment, so attendance was not recorded in this run.
+
+### 2026-10-17 · M03b follow-ups: room page in dev, syllabus PDF for staff, e2e specs, chart loading · Claude Code, at Aniket's request
+
+**Created**
+- `components/room-notice.tsx` (new): `RoomNotice` moved out of `live-room.tsx`. Aniket's long-running `next dev` rendered the room page with `RoomNotice` undefined (its log: "Element type is invalid … Check the render method of `RoomPage`"), though the production build was right. A server page importing a plain component from a client module gets a client reference; its own server-safe file avoids that.
+- `app/api/files/[...key]/route.ts`: every staff member (admin, HoD, faculty) opens a course's syllabus PDF, as they open the catalogue course; a student only for a course they study. Answers Q-53. `tests/integration/content.test.ts` adds a coordinator who teaches no offering.
+- `components/bloom-chip.tsx` (new) and `keptBy` in `lib/format.ts`, `EditableCourse` in `lib/data/courses.ts`: moved out of `course-outcomes.tsx`, whose `BarChart` import put Recharts (396 KB) on the course Overview and the Syllabus tab.
+- `tests/e2e/content.spec.ts`: rewritten for the builder (add a module, move it up from the keyboard, waiting for each screen-reader announcement, then check after a reload; switch modules; add a video from "Add lesson"; Publish all; the worker's thumbnail) and the plan list (plan text in its dialog; fill from the session plan; add, edit and delete sessions from their menus; publish). `tests/e2e/{content,live}.spec.ts`: the sign-in helper expects the M03b header, whose heading is the course title.
+- e2e database: the outcome a failed catalogue run left on CUTM2101 removed.
+- Docs: 03 §3 (where Recharts loads), 06 §5 (syllabus downloads), 08 §5.2 (`RoomNotice`, `BloomChip`, `CourseOutcomes`), PROGRESS Q-53.
+
+**Not done** — the two `content.spec.ts` tests stop where this machine has no services: the builder test at the video upload (object storage, port 9000), the plan test at the email check (Mailpit, port 8025). Everything before those steps passes.
+
+**Assumptions** — none new.
+
+**Open questions** — none.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/content.test.ts` → `Tests 22 passed (22)`.
+- `npx playwright test tests/e2e/content.spec.ts` → the builder test passes the keyboard reorder (and its persistence after a reload) and fails at "· Uploaded" (no storage); the plan test passes every step up to `fetch(Mailpit)` (`TypeError: fetch failed`).
+- `npm run build`, then the chunk holding `recharts-wrapper` is listed only by `/(app)/catalog/[id]` and `/(app)/courses/[offeringId]/outcomes`; dnd-kit's only by the catalogue course, Content and Syllabus; LiveKit's only by the room page.
+
+### 2026-10-17 · M03b/T6 Live and T7 People · Claude Code, at Aniket's request
+
+Built to Aniket's round 4 picks ("Live as shown", "People as shown").
+
+**Created**
+- T6 actions (`app/(app)/courses/[offeringId]/live/actions.ts`): `restoreSession` (a cancelled class whose start is ahead goes back on; students get `live.changed`), `deleteSession` (only a class that never ran and has no attendance; audited `live.deleted` in one transaction).
+- T6 read (`lib/data/live.ts`): upcoming classes include cancelled ones still ahead and page ten at a time (`upcomingTotal`, `?up=`); past classes exclude them; `held` counts the classes that ran.
+- T6 page (`live/page.tsx`): no page header; "Upcoming classes" (date tiles, a cancelled class struck through, Start class, Edit, ⋮ cancel / restore / delete) beside "Attendance per class" (a `BarChart` of the share present in each held class of the past page shown, the average and the number held), then past classes with ⋮ (delete a class that never ran). `session-dialog.tsx`: also opens from `?new=schedule`. `components/data-table.tsx`: `PageNav` takes the URL parameter's name. `components/bar-chart.tsx`: hidden-table keys allow two classes on one date.
+- T7 invariant: `MAX_ENROLLMENTS` = 1,000 per offering (`lib/schemas/structure.ts`), checked by `createOfferings` (was 5,000), `changeEnrollments` and `addStudent`.
+- T7 domain: `shortOfAttendance` in `lib/domain/attendance.ts` (+ test vectors, 07 §10).
+- T7 read: `listRoster(offeringId, page, { q, status })` — the offering's enrolments read whole (bounded by the invariant), its students searched by roll number or email from the start or name anywhere, ordered by roll number, with counts (enrolled, active, dropped, below the minimum) and the minimum (`lib/data/workspace.ts`; `escapeRegex` now exported from `lib/data/courses.ts`). `getWorkspace().faculty` carries id, email and whether each teacher coordinates the course.
+- T7 actions (`app/(app)/courses/actions.ts`): `addStudent` (roll number as typed or in capitals, or email), `setEnrollmentStatus` (drop / add again); both audited `enrollment.changed` and refused while marks are locked.
+- T7 page (`people/page.tsx`): number tiles, search and status filter, the roster with ⋮, "Add student" and "Upload CSV" dialogs that keep the list's search, filter and page, and "Teaching staff".
+- Tests: `tests/integration/live.test.ts` (restore, delete, upcoming pager), `tests/integration/offerings.test.ts` (the limit on every path, add, drop and add again, locked, the roster's order, search, filter and counts), `tests/e2e/people.spec.ts` (new), `tests/e2e/live.spec.ts` (heading).
+- Docs: 05 §3.9, 06 §8.2, 07 §10, 08 §2 (Live and People rows), 09 §6 (`live.deleted`, `enrollment.changed` sources), §4 A-89 to A-92.
+
+**Not done**
+- The Live mock-up's third tile ("below 75 %") is on People, where the per-student figures are; the Live tab shows the average present and the classes held.
+- `tests/e2e/live.spec.ts` not run (needs a LiveKit server whose webhooks reach this machine).
+- T8: the doc sweep (the B design language in 08 §1 and §4; the T1–T4 fields, upload purposes, cache header and media job in 05, 06 and 09) and the acceptance walk.
+
+**Assumptions** — A-89 to A-92 (§4).
+
+**Open questions** — none.
+
+**Verification**
+- `npm run check` → lint and typecheck clean, `Tests 279 passed (279)`; `npx vitest run --project integration` → `Tests 189 passed (189)`.
+- `npx playwright test tests/e2e/people.spec.ts` → `1 passed` (the first run caught "Add student" dropping the list's search; fixed).
+- Build on port 3101 with the e2e database: Live and People screenshotted as faculty1 at 1440 px and 390 px (no page wider than the screen).
+
+### 2026-10-17 · M03b/T8 Report: doc sweep and acceptance walk · Claude Code, at Aniket's request
+
+**Created**
+- Docs: 05 §3.8 (offering `modules[].summary`, `plan.changedAt`, `calendar[].kind` and its order, `coverKey`) and §4.1 (lesson `frameKey`, `thumbKey`, `attachments`, what a delete removes); 06 §3 (`/api/files` cache header), §5 (`lesson-thumb`, `offering-cover`, notes) and §6 (`MediaJob`, its id and conditional writes); 07 §11 (`istWeekStart`) and new §18 (`fileUuid`, `derivedKey`, `frameAtSec`, `isPermutation`, with their vectors); 08 §3 (the workspace frame and its tabs), §4 (the "B · Crisp editorial" language and the shell that keeps its look) and §5.2 (`TabNav`); 09 §5 (picture uploads, the redirect cache).
+- `app/(app)/courses/[offeringId]/content/page.tsx`: the student's Resume thumbnail is smaller on a phone (the Lessons tab was 376 px wide at 360 px).
+
+**Acceptance walk** (the criteria in the milestone file; the human walk is still to come)
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Keyboard reorder | Pass for modules; lessons by the same component | `tests/e2e/content.spec.ts`: a module moved up from the keyboard, each step announced, still moved after a reload. Lessons: `reorderLessons` integration tests; not walked in a browser |
+| 2 | Thumbnails | Partly | Worker integration test takes the frame; `setLessonThumb` / `clearLessonThumb` tests. The e2e "frame within minutes" step needs object storage, absent here |
+| 3 | Notes | Pass | Integration: five notes at most; a student gets 404 for an unpublished lesson's frame, thumbnail and notes |
+| 4 | CO codes | Pass | Integration: after the highest CO is deleted the next is one higher; its links and calendar tags go in one audited change. `tests/e2e/catalog.spec.ts` deletes from the row menu and sees the next code |
+| 5 | Plan sessions | Pass | Integration: ids kept and date order kept through edits; `content.spec.ts` adds, edits and deletes sessions (passes up to the Mailpit step) |
+| 6 | Non-coordinators | Pass | Integration: FORBIDDEN for another faculty member; `catalog.spec.ts`: read only with "Kept by Pradeep Sahoo". The workspace tabs render the same components |
+| 7 | HoD | Pass for controls; writes partly | A scripted walk of the eight workspace pages as `hod@seed.cutm.test` found no edit control. 404 for writes is tested for live classes and content |
+| 8 | Live delete | Pass | Integration: a cancelled class is deleted and audited `live.deleted`; one with attendance, one that ran and one still ahead are refused |
+| 9 | Roster | Pass | Integration: add by roll number or email, drop, add again, each audited; refused while locked. `tests/e2e/people.spec.ts` passes |
+| 10 | Phone width | Pass | A scripted walk at 360 px of Overview, Content, a lesson, Course plan, Live, Syllabus, Outcomes and People as faculty, HoD, student and admin: none wider than the screen (after the Resume fix) |
+
+**Not done** — `tests/e2e/live.spec.ts` and the storage and email steps of `content.spec.ts` need LiveKit webhooks, object storage and Mailpit on this machine. Nothing is committed.
+
+**Assumptions** — none new.
+
+**Open questions** — none.
+
+**Verification** — `npm run check` → lint and typecheck clean, `Tests 279 passed (279)`; `npx vitest run --project integration` → `Tests 189 passed (189)`; the 360 px and HoD walk as described above, on a build served from port 3101 with the e2e database.
+

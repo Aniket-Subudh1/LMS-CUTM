@@ -1,9 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createOfferings, setOfferingStatus, updateOfferingFaculty } from '@/app/(app)/admin/offerings/actions';
-import { changeEnrollments } from '@/app/(app)/courses/actions';
+import { addStudent, changeEnrollments, setEnrollmentStatus } from '@/app/(app)/courses/actions';
 import { db } from '@/lib/db';
 import { getOfferingStats, listOfferings } from '@/lib/data/offerings';
+import { listRoster } from '@/lib/data/workspace';
 import type { Credits } from '@/lib/domain/catalog';
+import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
@@ -15,6 +17,7 @@ import { Program } from '@/lib/models/program';
 import { Setting } from '@/lib/models/setting';
 import { Term } from '@/lib/models/term';
 import { SETTINGS } from '@/lib/schemas/settings';
+import { MAX_ENROLLMENTS } from '@/lib/schemas/structure';
 import { form, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
@@ -361,6 +364,132 @@ describe('changeEnrollments', () => {
       code: 'LOCKED',
     });
     expect(await Enrollment.countDocuments({ offeringId: offering._id })).toBe(1);
+  });
+
+  it(`holds at most ${MAX_ENROLLMENTS} students, dropped ones included (A-83)`, async () => {
+    const { faculty, offering, id, students } = await teaching();
+    await Enrollment.insertMany(
+      Array.from({ length: MAX_ENROLLMENTS - 1 }, () => ({
+        offeringId: offering._id,
+        studentId: newId(),
+        status: 'dropped',
+      })),
+    );
+    await signInAs(faculty);
+    const csv = `rollno,action\n${students[0].rollNo},add\n${students[1].rollNo},add\n`;
+    expect(await changeEnrollments(upload(id, csv))).toMatchObject({ ok: false, code: 'CONFLICT' });
+    expect(await addStudent({ offeringId: id, who: students[0].rollNo ?? '' })).toMatchObject({ ok: true });
+    expect(await addStudent({ offeringId: id, who: students[1].rollNo ?? '' })).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+    });
+  });
+});
+
+describe('the roster (M03b T7)', () => {
+  async function roster() {
+    const faculty = await makeUser({ roles: ['faculty'] });
+    const offering = await makeOffering({ facultyIds: [faculty._id] });
+    const n = next();
+    const [c, a, b] = await Promise.all(
+      ['C', 'A', 'B'].map((x) =>
+        makeUser({
+          roles: ['student'],
+          rollNo: `RS${n}${x}`,
+          name: `Student ${x}${n}`,
+          email: `s${x.toLowerCase()}${n}@uni.test`,
+        }),
+      ),
+    );
+    return { faculty, offering, id: String(offering._id), a, b, c };
+  }
+
+  it('adds a student by roll number or email, refuses one already in or unknown, and audits each', async () => {
+    const { faculty, offering, id, a, b } = await roster();
+    await signInAs(faculty);
+    expect(await addStudent({ offeringId: id, who: (a.rollNo ?? '').toLowerCase() })).toMatchObject({ ok: true });
+    expect(await addStudent({ offeringId: id, who: b.email.toUpperCase() })).toMatchObject({ ok: true });
+    expect(await addStudent({ offeringId: id, who: a.email })).toMatchObject({ ok: false, code: 'CONFLICT' });
+    expect(await addStudent({ offeringId: id, who: 'NOBODY-1' })).toMatchObject({
+      ok: false,
+      code: 'VALIDATION',
+      fieldErrors: { who: ['No student has roll number NOBODY-1.'] },
+    });
+    expect(await addStudent({ offeringId: id, who: faculty.email })).toMatchObject({ ok: false, code: 'VALIDATION' });
+    expect(
+      (await AuditLog.find({ action: 'enrollment.changed', offeringId: offering._id }).sort({ _id: 1 }).lean()).map(
+        (e) => e.after,
+      ),
+    ).toEqual([
+      { added: 1, dropped: 0, source: 'single', rollNo: a.rollNo },
+      { added: 1, dropped: 0, source: 'single', rollNo: b.rollNo },
+    ]);
+  });
+
+  it('drops a student and adds them again from the roster, never once marks are locked', async () => {
+    const { faculty, offering, id, a } = await roster();
+    const enrolment = await Enrollment.create({ offeringId: offering._id, studentId: a._id, status: 'active' });
+    const set = (status: 'active' | 'dropped') =>
+      setEnrollmentStatus({ offeringId: id, enrollmentId: String(enrolment._id), status });
+    await signInAs(await makeUser({ roles: ['student'] }));
+    expect(await set('dropped')).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    await signInAs(faculty);
+    expect(await set('dropped')).toMatchObject({ ok: true });
+    expect((await Enrollment.findById(enrolment._id).lean())?.status).toBe('dropped');
+    expect(await set('active')).toMatchObject({ ok: true });
+    expect((await Enrollment.findById(enrolment._id).lean())?.status).toBe('active');
+    expect(
+      (await AuditLog.find({ action: 'enrollment.changed', offeringId: offering._id }).sort({ _id: 1 }).lean()).map(
+        (e) => e.after,
+      ),
+    ).toEqual([
+      { added: 0, dropped: 1, source: 'roster', rollNo: a.rollNo },
+      { added: 1, dropped: 0, source: 'roster', rollNo: a.rollNo },
+    ]);
+    await Offering.updateOne({ _id: offering._id }, { $set: { lockedAt: new Date() } });
+    expect(await set('dropped')).toMatchObject({ ok: false, code: 'LOCKED' });
+    expect(await addStudent({ offeringId: id, who: a.email })).toMatchObject({ ok: false, code: 'LOCKED' });
+  });
+
+  it('lists by roll number, searches and filters, and counts the class with those under the minimum', async () => {
+    const { faculty, offering, id, a, b, c } = await roster();
+    for (const [student, status] of [
+      [c, 'active'],
+      [a, 'active'],
+      [b, 'dropped'],
+    ] as const) {
+      await Enrollment.create({ offeringId: offering._id, studentId: student._id, status });
+    }
+    // a attended 3 of 4 classes (75 %, enough); c 1 of 4 (short).
+    const mark = (studentId: unknown, present: number, absent: number) =>
+      Attendance.insertMany(
+        [...Array(present).fill('present'), ...Array(absent).fill('absent')].map((status) => ({
+          sessionId: newId(),
+          offeringId: offering._id,
+          studentId,
+          status,
+          source: 'manual',
+        })),
+      );
+    await mark(a._id, 3, 1);
+    await mark(c._id, 1, 3);
+    await signInAs(faculty);
+    const all = await listRoster(id, 1);
+    expect(all.rows.map((r) => [r.rollNo, r.status])).toEqual([
+      [a.rollNo, 'active'],
+      [b.rollNo, 'dropped'],
+      [c.rollNo, 'active'],
+    ]);
+    expect(all).toMatchObject({ total: 3, counts: { enrolled: 3, active: 2, dropped: 1, short: 1 }, minPct: 75 });
+    expect(all.rows[0].live).toEqual({ attended: 3, held: 4, pct: 75 });
+    expect((await listRoster(id, 1, { status: 'dropped' })).rows.map((r) => r.rollNo)).toEqual([b.rollNo]);
+    expect((await listRoster(id, 1, { q: (c.rollNo ?? '').toLowerCase() })).rows.map((r) => r.rollNo)).toEqual([
+      c.rollNo,
+    ]);
+    expect((await listRoster(id, 1, { q: 'student b' })).rows.map((r) => r.rollNo)).toEqual([b.rollNo]);
+    expect((await listRoster(id, 1, { q: a.email.slice(0, 4) })).total).toBe(1);
+    // A search is text, never a pattern.
+    expect((await listRoster(id, 1, { q: '.*' })).total).toBe(0);
   });
 });
 

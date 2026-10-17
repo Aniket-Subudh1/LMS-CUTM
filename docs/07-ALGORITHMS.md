@@ -244,6 +244,8 @@ Live focus:
 
 `attendancePct(attended, held)` → `roundHalfUp(100 × attended / held, 2)`, null when `held` is 0; the same function gives skill-course attendance (§8).
 
+`shortOfAttendance(attended, held, minPct)` (M03b, the People tab's "below the minimum") → `held > 0 and 100 × attended < minPct × held`, in whole numbers so no rounding decides it. `minPct` is the offering's evaluation policy `attendanceMinPct` (75 by default). Vectors at 75: 3 of 4 → not short; 2 of 4 → short; 5 of 7 → short; 6 of 8 → not short; 0 of 0 → not short.
+
 Session 10:00–11:00 (3600 s), threshold 75 % (2700 s):
 
 | Presence | presenceSec | Status |
@@ -275,6 +277,8 @@ Session 10:00–11:00 (3600 s), threshold 75 % (2700 s):
 | 2026-07-06, [Mon, Wed, Fri], 5 | 07-06, 07-08, 07-10, 07-13, 07-15 |
 | 2026-07-07 (a Tuesday), [Mon, Wed, Fri], 2 | 07-08, 07-10 |
 | [] | RangeError |
+
+- `istWeekStart(day)` → the Monday of the IST week holding the day key (M03b: the course plan groups sessions by week). 2026-10-19 → 2026-10-19; 2026-10-21 → 2026-10-19; 2026-10-25 (Sunday) → 2026-10-19; 2026-11-01 → 2026-10-26; 2027-01-01 → 2026-12-28.
 
 ## 12. Commit metrics (PRJ-03/04) — `lib/domain/commits.ts`
 
@@ -361,7 +365,11 @@ The attempt is counted **before** the check, so parallel guesses are limited too
 
 **Session plan text.** `parseSessionLines`: one session per line; a `Practice:`/`Practical:`/`Lab:` prefix makes a practice session and `Project:` a project session; blank lines are ignored. `formatSessionLines` is its inverse.
 
-**Outcomes.** `nextCoCode` never reuses a code (CO7 after CO1–CO6 even if CO3 was deleted). `mergeCos(existing, imported, newId)` keeps each CO's id by its code, so a re-import leaves calendar rows and question tags pointing at the same CO.
+**Outcomes.** `nextCoCode(existing, seq)` never reuses a code: it is one above the highest of the existing codes and `seq` (`courses.coSeq`, the highest number ever given). Vectors: `([], 0)` → CO1; `(CO1, CO4; 0)` → CO5; `(CO1, CO5; 6)` → CO7 (CO6 was deleted); `(CO9; 6)` → CO10; `(Outcome 1; 0)` → CO1. `coNumber('CO7')` = 7, anything else 0. `mergeCos(existing, imported, newId)` keeps each CO's id by its code, so a re-import leaves calendar rows and question tags pointing at the same CO.
+
+**`mappingCoverage(coIds, codes, cells)`** (M03b, the Outcomes tab) — for each PO/PSO code: `links`, the COs linked to it, and `average`, `roundHalfUp(Σ level / links, 2)` over those links only, or null with none; also `uncovered` (codes with no link) and `unmappedCoIds` (COs linked to nothing). A display of the course's articulation, not an attainment value (§4 weighs by level instead). Vector: four COs a–d and e; PO1 a 2, b 3, c 3, d 2 → 4 links, 2.5; PO4 b 2, c 2, d 1 → 1.67; PO6 a 1, d 1 → 1; PO7 none → null; uncovered PO7; unmapped e.
+
+**`syllabusHours(modules)`** adds each module's `hours` as written (`4+0+2` → 6, `6` → 6, none → 0): `4+0+2`, `6`, none, `1.5+0+0.5` → 14.
 
 **`courseReadiness(course)`** — the course page's checklist, in order: review the import (only while review notes exist) · coordinator · objectives · outcomes · Bloom levels (every CO) · mapping (every CO linked at least once) · syllabus (a module or the PDF) · books · session plan. A non-credit course drops outcomes, Bloom levels, mapping and books. CUTM1535 freshly imported: 5 of 8 done.
 
@@ -378,3 +386,11 @@ The attempt is counted **before** the check, so parallel guesses are limited too
 - Sizes follow `CATALOG_LIMITS`; a long session description is cut to 200 characters with "…", and any other cut gets a review note.
 
 Fixture vectors (`lib/integrations/courseware.test.ts`, eight real pages): 1084 → modules without a syllabus heading, levels written after each outcome, five projects and no numbered sessions; 1115 → credits 3-2-0 from a header-row table; page 836 → CUTM1535, 3-0-1, 2 objectives, 2 COs, no mapping, 7 modules, 6 projects, 1 textbook with chapters, 43 sessions (31 theory, 12 project); 500 → CUTM3073, 0-3-1, skill, 6 modules, 12 projects, 20 practice sessions; 1250 → ASAG1101, `3 (2+1)` → 2-1-0 with a note, H/M/L mapping, and no phone number or email in the output.
+
+## 18. Lesson media keys and reordering — `lib/domain/uploads.ts`, `lib/domain/order.ts` (M03b)
+
+- `fileUuid(key)` → the upload's own id, the last part of its key without the extension (`…/abc-123.mp4` → `abc-123`); the media job's id carries it, so a replaced video gets a job of its own (06 §6).
+- `derivedKey(fileKey, suffix)` → the key of a file the worker makes from an upload, beside it: `…/abc-123.mp4` with `-480p.mp4` → `…/abc-123-480p.mp4`, with `-frame.jpg` → `…/abc-123-frame.jpg`. `/api/files` serves both under the video's rule.
+- `frameAtSec(durationSec)` → where the thumbnail frame is taken: a tenth into the video, at least 1 s in, never past its last second: `min(max(1, round(d / 10)), max(0, d − 1))`. 1 s → 0; 2 s → 1; 5 s → 1; 60 s → 6; 7200 s → 720.
+- `isPermutation(current, proposed)` → true when `proposed` holds exactly the members of `current`, each once, in any order. A dropped or "Move up / down" order is accepted only then, so a list built from a stale page is refused instead of half-applied. [a b c] → [c a b] true; same order true; [] → [] true; [a b c] → [a b] false; [a b] → [a b c] false; [a b c] → [a b d] false; [a b c] → [a a c] false.
+

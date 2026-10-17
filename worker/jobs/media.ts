@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { Worker, type Job } from 'bullmq';
 import ffmpegPath from 'ffmpeg-static';
 import { Redis } from 'ioredis';
-import { downloadToFile, uploadFromFile } from '@/lib/integrations/storage';
+import { derivedKey, frameAtSec } from '@/lib/domain/uploads';
+import { deleteObjects, downloadToFile, uploadFromFile } from '@/lib/integrations/storage';
 import { log } from '@/lib/log';
 import { Lesson } from '@/lib/models/lesson';
 import { MediaJob } from '@/lib/schemas/jobs';
@@ -16,6 +17,12 @@ const ARGS = (input: string, output: string) => [
   ...['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'main', '-preset', 'veryfast', '-crf', '28'],
   ...['-maxrate', '700k', '-bufsize', '1400k', '-c:a', 'aac', '-b:a', '64k', '-ac', '1', '-movflags', '+faststart'],
   output,
+];
+
+// The thumbnail: one frame, 640 px wide, a tenth into the video (M03b).
+const FRAME_ARGS = (input: string, output: string, atSec: number) => [
+  ...['-loglevel', 'error', '-y', '-ss', String(atSec), '-i', input],
+  ...['-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', output],
 ];
 
 function ffmpeg(args: string[]): Promise<void> {
@@ -34,19 +41,32 @@ function ffmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function transcodeLesson({ lessonId }: MediaJob): Promise<void> {
-  const lesson = await Lesson.findById(lessonId, { kind: 1, fileKey: 1 }).lean();
-  if (!lesson || lesson.kind !== 'video' || !lesson.fileKey) return;
-  // The copy shares the original's prefix, so /api/files authorizes it by the same rule (T8b).
-  const lowKey = lesson.fileKey.replace(/\.[a-z\d]+$/i, '-480p.mp4');
+// Every write names the file the job was made for. If the teacher replaced the video meanwhile, nothing is written
+// and what this job uploaded is deleted, so the new video keeps its own frame and copy.
+async function keep(lessonId: string, fileKey: string, fields: Record<string, string>, uploaded: string) {
+  const { matchedCount } = await Lesson.updateOne({ _id: lessonId, fileKey }, { $set: fields });
+  if (matchedCount === 0) await deleteObjects([uploaded]);
+  return matchedCount > 0;
+}
+
+async function transcodeLesson({ lessonId, fileKey }: MediaJob): Promise<void> {
+  const lesson = await Lesson.findOne({ _id: lessonId, fileKey }, { kind: 1, durationSec: 1 }).lean();
+  if (!lesson || lesson.kind !== 'video') return;
+  // Both share the original's prefix, so /api/files authorizes them by the same rule (T8b).
+  const frameKey = derivedKey(fileKey, '-frame.jpg');
+  const lowKey = derivedKey(fileKey, '-480p.mp4');
   const dir = await mkdtemp(join(tmpdir(), 'lms-transcode-'));
   try {
     const input = join(dir, 'original');
+    const frame = join(dir, 'frame.jpg');
     const output = join(dir, 'low.mp4');
-    await downloadToFile(lesson.fileKey, input);
+    await downloadToFile(fileKey, input);
+    await ffmpeg(FRAME_ARGS(input, frame, frameAtSec(lesson.durationSec ?? 0)));
+    await uploadFromFile(frameKey, frame, 'image/jpeg');
+    if (!(await keep(lessonId, fileKey, { frameKey }, frameKey))) return;
     await ffmpeg(ARGS(input, output));
     await uploadFromFile(lowKey, output, 'video/mp4');
-    await Lesson.updateOne({ _id: lessonId }, { $set: { lowKey, transcode: 'ready' } });
+    await keep(lessonId, fileKey, { lowKey, transcode: 'ready' }, lowKey);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -64,8 +84,9 @@ export function startMediaWorker(redisUrl: string): Worker<MediaJob, void, 'tran
     const payload = MediaJob.safeParse(job?.data);
     // After the last retry the lesson records that it has no data-saver copy; the original still plays.
     if (!job || !payload.success || job.attemptsMade < (job.opts.attempts ?? 1)) return;
-    Lesson.updateOne({ _id: payload.data.lessonId }, { $set: { transcode: 'failed' } }).catch((cause: unknown) =>
-      log.error('transcode failure not recorded', { lessonId: payload.data.lessonId, error: cause }),
+    const { lessonId, fileKey } = payload.data;
+    Lesson.updateOne({ _id: lessonId, fileKey }, { $set: { transcode: 'failed' } }).catch((cause: unknown) =>
+      log.error('transcode failure not recorded', { lessonId, error: cause }),
     );
   });
   return worker;

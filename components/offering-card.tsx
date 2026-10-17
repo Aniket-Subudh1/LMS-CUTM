@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { PlayCircleIcon, StackIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
+import { CourseCover, coverTone } from '@/components/course-cover';
 import { LinkSpinner } from '@/components/link-spinner';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -9,41 +10,24 @@ import type { MyOfferingRow } from '@/lib/data/workspace';
 import { creditTotal, formatCredits } from '@/lib/domain/catalog';
 import { COURSE_TYPE_LABEL, formatDuration, formatPct, initials, statusTone } from '@/lib/format';
 
-// Design "A · Cover on top" (chosen by Aniket from three mock-ups, 17 Oct 2026). There are no course images, so the
-// cover is a flat tone picked from the course code, which keeps a course the same colour on every page.
-const TONES = [
-  { cover: 'bg-primary text-primary-foreground', chip: 'bg-primary/10 text-primary' },
-  { cover: 'bg-teal text-primary-foreground', chip: 'bg-teal/10 text-teal' },
-  { cover: 'bg-gold text-foreground', chip: 'bg-gold/15 text-foreground' },
-];
-
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+// Design "A · Cover on top" (chosen by Aniket from three mock-ups, 17 Oct 2026): the class's cover (CourseCover),
+// then type and credit chips, title, faculty, and the viewer's progress or the class at a glance.
 export function OfferingCard({ offering: o }: { offering: MyOfferingRow }) {
   const [lead, ...others] = o.faculty;
-  const tone = TONES[[...o.code].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % TONES.length];
+  const tone = coverTone(o.code);
   const credits = creditTotal(o.credits);
   const { view } = o;
   const pct = view.as === 'learner' && view.published > 0 ? (100 * view.completed) / view.published : 0;
   return (
     // Named by the offering's full title, so a screen reader announces the course rather than the whole card.
     <Link href={`/courses/${o.id}`} aria-label={o.title} className="surface-interactive flex h-full flex-col p-2">
-      <span
-        className={cn(
-          'cover-dots relative flex h-32 flex-col justify-end overflow-hidden rounded-xl px-4 py-3.5',
-          tone.cover,
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className="absolute -top-4 -right-1.5 text-8xl leading-none font-extrabold tracking-tighter opacity-10"
-        >
-          {o.code.replace(/^\D+/, '')}
-        </span>
+      <CourseCover code={o.code} coverKey={o.coverKey} className="h-32 rounded-md px-4 py-3.5">
         <LinkSpinner className="absolute top-3 right-3" />
         <span className="relative text-xl font-bold tracking-tight">{o.code}</span>
         <span className="relative text-xs opacity-80">{o.termCode}</span>
-      </span>
+      </CourseCover>
       <span className="flex flex-1 flex-col gap-2.5 px-2 pt-3 pb-2">
         <span className="flex flex-wrap gap-1.5 text-xs font-medium">
           {o.courseType && (
@@ -107,7 +91,7 @@ export function OfferingCard({ offering: o }: { offering: MyOfferingRow }) {
               </>
             )}
           </span>
-          <span className="bg-foreground text-background ml-auto inline-flex h-9 shrink-0 items-center rounded-full px-4 text-[0.8125rem] font-medium">
+          <span className="bg-foreground text-background ml-auto inline-flex h-8 shrink-0 items-center rounded-md px-3 text-[0.8125rem] font-medium">
             {view.as === 'teacher'
               ? 'Open workspace'
               : view.completed > 0 && view.completed < view.published

@@ -67,6 +67,8 @@ const courseSchema = new Schema(
     coordinatorId: { type: Schema.Types.ObjectId, default: null },
     objectives: { type: [text(CATALOG_LIMITS.objective)], default: [] },
     cos: { type: [coSchema], default: [] },
+    // The highest CO number this course has given (M03b): a deleted CO6 is followed by CO7 (nextCoCode).
+    coSeq: { type: Number, min: 0, default: 0 },
     coMap: { type: [coMapSchema], default: [] },
     modules: { type: [moduleSchema], default: [] },
     projects: { type: [text(CATALOG_LIMITS.project)], default: [] },

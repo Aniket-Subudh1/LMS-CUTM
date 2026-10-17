@@ -15,16 +15,17 @@ export function Section({
 }) {
   return (
     // Children may shrink below their content, so a wide table scrolls inside the card, not the page (People, 390 px).
-    <section className="surface grid gap-5 p-5 sm:p-6 [&>*]:min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="surface grid gap-4 p-4 sm:p-5 [&>*]:min-w-0">
+      {/* From 640 px the action keeps to the right and a long description wraps beside it. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:flex-nowrap">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="icon-chip size-10 [&_svg]:size-5">{icon}</span>
+          <span className="grid size-8 shrink-0 place-items-center [&_img]:size-8 [&_svg]:size-5">{icon}</span>
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-            <p className="text-muted-foreground text-sm">{description}</p>
+            <h2 className="text-[0.9375rem] font-semibold tracking-tight">{title}</h2>
+            <p className="text-muted-foreground text-[0.8125rem]">{description}</p>
           </div>
         </div>
-        {action}
+        {action && <div className="flex shrink-0 flex-wrap gap-2">{action}</div>}
       </div>
       {children}
     </section>

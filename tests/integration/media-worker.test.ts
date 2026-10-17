@@ -9,6 +9,7 @@ import { Redis } from 'ioredis';
 import { newId } from '../factories';
 
 const objects = new Map<string, Buffer>();
+const deleted: string[] = [];
 
 vi.mock('@/lib/integrations/storage', () => ({
   downloadToFile: async (key: string, path: string) => {
@@ -18,6 +19,9 @@ vi.mock('@/lib/integrations/storage', () => ({
   },
   uploadFromFile: async (key: string, path: string) => {
     objects.set(key, await readFile(path));
+  },
+  deleteObjects: async (keys: string[]) => {
+    deleted.push(...keys);
   },
 }));
 
@@ -110,7 +114,7 @@ afterAll(async () => {
 });
 
 describe('media worker', () => {
-  it('creates a playable 480p copy and marks the lesson ready', async () => {
+  it('takes a JPEG frame, creates a playable 480p copy and marks the lesson ready', async () => {
     const key = `lesson-video/${newId()}/${newId()}/fixture.mp4`;
     objects.set(key, await generateFixture());
     const lesson = await m.Lesson.create({
@@ -128,12 +132,16 @@ describe('media worker', () => {
       transcode: 'pending',
     });
 
-    const job = await m.mediaQueue().add('transcodeLesson', { lessonId: String(lesson._id) });
+    const job = await m.mediaQueue().add('transcodeLesson', { lessonId: String(lesson._id), fileKey: key });
     await job.waitUntilFinished(events);
 
     const saved = await m.Lesson.findById(lesson._id).lean();
     expect(saved?.transcode).toBe('ready');
     expect(saved?.lowKey).toBe(key.replace(/\.mp4$/, '-480p.mp4'));
+    expect(saved?.frameKey).toBe(key.replace(/\.mp4$/, '-frame.jpg'));
+    const frame = saved?.frameKey ? objects.get(saved.frameKey) : undefined;
+    // A JPEG starts with FF D8.
+    expect(frame?.subarray(0, 2).toString('hex')).toBe('ffd8');
     const low = saved?.lowKey ? objects.get(saved.lowKey) : undefined;
     if (!low) throw new Error('No data-saver copy was uploaded.');
     const details = await decodeVideo(low);
@@ -161,12 +169,48 @@ describe('media worker', () => {
 
     const job = await m
       .mediaQueue()
-      .add('transcodeLesson', { lessonId: String(lesson._id) }, { attempts: 1, jobId: `corrupt-${lesson._id}` });
+      .add(
+        'transcodeLesson',
+        { lessonId: String(lesson._id), fileKey: key },
+        { attempts: 1, jobId: `corrupt-${lesson._id}` },
+      );
     await expect(job.waitUntilFinished(events)).rejects.toThrow();
     await vi.waitFor(async () => {
       expect((await m.Lesson.findById(lesson._id).lean())?.transcode).toBe('failed');
     });
     expect(objects.get(key)?.byteLength).toBeGreaterThan(0);
     expect((await m.Lesson.findById(lesson._id).lean())?.lowKey ?? null).toBeNull();
+  });
+
+  it('leaves a lesson alone when its video was replaced before the job ran, and a failure marks only that file', async () => {
+    const old = `lesson-video/${newId()}/${newId()}/old.mp4`;
+    const current = `lesson-video/${newId()}/${newId()}/current.mp4`;
+    objects.set(old, Buffer.from('not a real mp4'));
+    const lesson = await m.Lesson.create({
+      offeringId: newId(),
+      moduleId: newId(),
+      order: 1,
+      kind: 'video',
+      title: 'Replaced lecture',
+      published: false,
+      fileKey: current,
+      fileName: 'current.mp4',
+      contentType: 'video/mp4',
+      size: 1,
+      durationSec: 3,
+      transcode: 'pending',
+    });
+    const job = await m
+      .mediaQueue()
+      .add(
+        'transcodeLesson',
+        { lessonId: String(lesson._id), fileKey: old },
+        { attempts: 1, jobId: `stale-${lesson._id}` },
+      );
+    await job.waitUntilFinished(events);
+    const saved = await m.Lesson.findById(lesson._id).lean();
+    expect(saved?.transcode).toBe('pending');
+    expect(saved?.frameKey ?? null).toBeNull();
+    expect(saved?.lowKey ?? null).toBeNull();
   });
 });

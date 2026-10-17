@@ -36,3 +36,9 @@ export function attendancePct(attended: number, held: number): number | null {
   if (held <= 0) return null;
   return roundHalfUp((100 * attended) / held, 2);
 }
+
+// The People tab's "below the minimum" (M03b): with at least one class held, attended under `minPct` of them. Exactly
+// the minimum is enough (3 of 4 at 75 % is not short). Whole numbers, so no rounding decides it.
+export function shortOfAttendance(attended: number, held: number, minPct: number): boolean {
+  return held > 0 && 100 * attended < minPct * held;
+}

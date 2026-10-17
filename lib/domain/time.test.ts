@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classDates, istDateToDate, istDayKey, istTimeOfDay, parseIstLocal } from './time';
+import { classDates, istDateToDate, istDayKey, istTimeOfDay, istWeekStart, parseIstLocal } from './time';
 
 describe('parseIstLocal', () => {
   it.each([
@@ -55,5 +55,17 @@ describe('istTimeOfDay', () => {
   it('gives the IST time for a time input', () => {
     expect(istTimeOfDay(new Date('2026-10-12T05:00:00.000Z'))).toBe('10:30');
     expect(istTimeOfDay(new Date('2026-10-12T18:45:00.000Z'))).toBe('00:15');
+  });
+});
+
+describe('istWeekStart', () => {
+  it.each([
+    ['2026-10-19', '2026-10-19'],
+    ['2026-10-21', '2026-10-19'],
+    ['2026-10-25', '2026-10-19'],
+    ['2026-11-01', '2026-10-26'],
+    ['2027-01-01', '2026-12-28'],
+  ])('the week of %s starts on %s', (day, monday) => {
+    expect(istWeekStart(day)).toBe(monday);
   });
 });

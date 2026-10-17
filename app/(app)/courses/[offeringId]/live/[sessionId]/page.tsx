@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowLeftIcon,
+  ArrowSquareOutIcon,
   EyeIcon,
   HourglassIcon,
   ListChecksIcon,
@@ -19,7 +20,6 @@ import { ActionForm } from '@/components/action-form';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
-import { LiveRoom } from '@/components/live-room';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
@@ -165,19 +165,14 @@ async function LiveSessionView({
           ))}
         {session.state === 'live' &&
           (detail.join ? (
-            <LiveRoom
-              sessionId={session.id}
-              serverUrl={detail.join.serverUrl}
-              token={detail.join.token}
-              trackFocus={detail.view === 'student'}
-            />
+            <JoinRoom href={`/courses/${offeringId}/live/${sessionId}/room`} student={!staff} />
           ) : (
             <Alert>
               <EyeIcon />
               <AlertTitle>You are following this class without joining it</AlertTitle>
               <AlertDescription>
-                Only the course&apos;s teachers and its students join the room. Attendance below updates when you reload
-                the page.
+                Only the course&apos;s teachers, its students and administrators join the room. Attendance below updates
+                when you reload the page.
               </AlertDescription>
             </Alert>
           ))}
@@ -253,6 +248,30 @@ function ReadyToStart({
   );
 }
 
+// The class runs in a tab of its own, like a video call (M03b); this page keeps attendance and the summary.
+function JoinRoom({ href, student }: { href: string; student: boolean }) {
+  return (
+    <section className="surface flex flex-wrap items-center justify-between gap-4 p-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="bg-destructive mt-1.5 size-2 shrink-0 rounded-full motion-safe:animate-pulse" />
+        <div className="grid gap-0.5">
+          <h2 className="text-[0.9375rem] font-semibold">The class is live</h2>
+          <p className="text-muted-foreground text-[0.8125rem] text-pretty">
+            {student
+              ? 'It opens in a tab of its own, like a video call. You join with your microphone and camera off.'
+              : 'It opens in a tab of its own. Keep this page open to take attendance.'}
+          </p>
+        </div>
+      </div>
+      <Button asChild>
+        <a href={href} target="_blank" rel="noopener">
+          Join class <ArrowSquareOutIcon />
+        </a>
+      </Button>
+    </section>
+  );
+}
+
 function Waiting({ detail, now }: { detail: SessionDetail; now: Date }) {
   const { session } = detail;
   const soon = session.scheduledStart.getTime() - now.getTime() < 60 * MINUTE_MS;
@@ -269,7 +288,7 @@ function Waiting({ detail, now }: { detail: SessionDetail; now: Date }) {
       </h2>
       <p className="text-muted-foreground max-w-md text-sm text-pretty">
         {soon
-          ? 'Your teacher opens the class. Keep this page open — it updates by itself, and the class appears here when it starts.'
+          ? 'Your teacher opens the class. Keep this page open — it updates by itself, and “Join class” appears here when it starts.'
           : 'Come back a little before the start. You will also get a notification when the class starts.'}
       </p>
       <p className="text-muted-foreground max-w-md text-xs text-pretty">
@@ -443,7 +462,7 @@ function AttendanceDialog({
         {sheet.rows.map((row) => (
           <li
             key={row.studentId}
-            className="ring-border/80 flex flex-wrap items-center justify-between gap-3 rounded-xl px-3 py-2.5 ring-1"
+            className="ring-border/80 flex flex-wrap items-center justify-between gap-3 rounded-md px-3 py-2.5 ring-1"
           >
             <span className="grid min-w-0">
               <span className="flex flex-wrap items-center gap-2 text-sm font-medium">

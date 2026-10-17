@@ -1,3 +1,4 @@
+import { roundHalfUp } from '@/lib/domain/round';
 import { BLOOM_LEVELS, COURSE_TYPES, SESSION_KINDS } from '@/lib/schemas/structure';
 
 export type Credits = { theory: number; practice: number; project: number };
@@ -198,11 +199,43 @@ export const formatSessionLines = (sessions: readonly { topic: string; kind: Ses
     .map((s) => (s.kind === 'theory' ? s.topic : `${s.kind === 'project' ? 'Project' : 'Practice'}: ${s.topic}`))
     .join('\n');
 
-// "CO7" after CO1–CO6 even if CO3 was deleted: a code is never reused, so a deleted CO's code cannot later
-// refer to a different outcome in old records.
-export function nextCoCode(existing: readonly { code: string }[]): string {
-  const highest = existing.reduce((max, co) => Math.max(max, Number(/^CO(\d+)$/.exec(co.code)?.[1] ?? 0)), 0);
-  return `CO${highest + 1}`;
+// The number in "CO7"; 0 for anything else.
+export const coNumber = (code: string) => Number(/^CO(\d+)$/.exec(code)?.[1] ?? 0);
+
+// "CO7" after CO1–CO6, even if CO3 or CO6 was deleted: `seq` is the highest number the course has ever given
+// (`courses.coSeq`), so a code is never reused and cannot later refer to a different outcome in old records.
+export function nextCoCode(existing: readonly { code: string }[], seq: number): string {
+  return `CO${existing.reduce((max, co) => Math.max(max, coNumber(co.code)), seq) + 1}`;
+}
+
+// The syllabus's teaching hours: each module's "6" or "4+0+2" added up; a module without hours counts 0.
+export function syllabusHours(modules: readonly { hours: string | null }[]): number {
+  return modules.reduce(
+    (total, m) => total + (m.hours ?? '').split('+').reduce((sum, part) => sum + (Number(part) || 0), 0),
+    0,
+  );
+}
+
+export type OutcomeCoverage = { code: string; links: number; average: number | null };
+
+// The course's articulation of each PO and PSO: how many COs link to it and their mean level over those links
+// (2 decimals), null with none. Also the codes no CO supports and the COs linked to nothing. Cells are keyed
+// `<coId>:<code>` as in the mapping grid.
+export function mappingCoverage(
+  coIds: readonly string[],
+  codes: readonly string[],
+  cells: Readonly<Record<string, number>>,
+): { outcomes: OutcomeCoverage[]; uncovered: string[]; unmappedCoIds: string[] } {
+  const outcomes = codes.map((code) => {
+    const levels = coIds.flatMap((id) => cells[`${id}:${code}`] ?? []);
+    const sum = levels.reduce((total, level) => total + level, 0);
+    return { code, links: levels.length, average: levels.length ? roundHalfUp(sum / levels.length, 2) : null };
+  });
+  return {
+    outcomes,
+    uncovered: outcomes.filter((o) => o.links === 0).map((o) => o.code),
+    unmappedCoIds: coIds.filter((id) => codes.every((code) => !cells[`${id}:${code}`])),
+  };
 }
 
 // A re-import keeps each CO's id by its code, so calendar rows and (later) question tags that point at CO2 still

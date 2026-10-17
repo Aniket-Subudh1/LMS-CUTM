@@ -1,13 +1,36 @@
 import { z } from 'zod';
 import { objectId } from '@/lib/schemas/common';
 
-export const uploadPurpose = z.enum(['lesson-video', 'lesson-doc', 'syllabus', 'submission', 'proctor-snapshot']);
+export const uploadPurpose = z.enum([
+  'lesson-video',
+  'lesson-doc',
+  'lesson-thumb',
+  'offering-cover',
+  'syllabus',
+  'submission',
+  'proctor-snapshot',
+]);
 export type UploadPurpose = z.infer<typeof uploadPurpose>;
 
-// 06 §5. `accepts` is what the upload box tells the person choosing a file.
+const PICTURE = ['image/jpeg', 'image/png', 'image/webp'];
+
+// 06 §5. `accepts` is what the upload box tells the person choosing a file. A purpose with `image` is a picture the
+// browser crops to that size and turns into a JPEG before it uploads; never an SVG, which can carry script (09 §5).
 export const UPLOAD_PURPOSES = {
   'lesson-video': { contentTypes: ['video/mp4', 'video/webm'], maxBytes: 2_000_000_000, accepts: 'MP4 or WebM video' },
   'lesson-doc': { contentTypes: ['application/pdf'], maxBytes: 50_000_000, accepts: 'PDF' },
+  'lesson-thumb': {
+    contentTypes: PICTURE,
+    maxBytes: 2_000_000,
+    accepts: 'JPEG, PNG or WebP picture',
+    image: { width: 1280, height: 720 },
+  },
+  'offering-cover': {
+    contentTypes: PICTURE,
+    maxBytes: 2_000_000,
+    accepts: 'JPEG, PNG or WebP picture',
+    image: { width: 1600, height: 640 },
+  },
   syllabus: { contentTypes: ['application/pdf'], maxBytes: 20_000_000, accepts: 'PDF' },
   submission: {
     contentTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/heic'],
@@ -15,7 +38,10 @@ export const UPLOAD_PURPOSES = {
     accepts: 'PDF or photo (JPEG, PNG, HEIC)',
   },
   'proctor-snapshot': { contentTypes: ['image/jpeg'], maxBytes: 300_000, accepts: 'JPEG' },
-} as const satisfies Record<UploadPurpose, { contentTypes: readonly string[]; maxBytes: number; accepts: string }>;
+} as const satisfies Record<
+  UploadPurpose,
+  { contentTypes: readonly string[]; maxBytes: number; accepts: string; image?: { width: number; height: number } }
+>;
 
 export const CreateUpload = z.object({
   purpose: uploadPurpose,

@@ -7,6 +7,7 @@ import {
   formatCredits,
   formatSessionLines,
   inferBloom,
+  mappingCoverage,
   mergeCos,
   nextCoCode,
   normalizeCode,
@@ -16,6 +17,7 @@ import {
   parseCredits,
   parseSessionLines,
   programmeCode,
+  syllabusHours,
   type ReadinessInput,
 } from './catalog';
 
@@ -142,9 +144,49 @@ describe('session plan lines', () => {
 });
 
 describe('course outcomes', () => {
-  it('numbers a new CO after the highest code, never reusing one', () => {
-    expect(nextCoCode([])).toBe('CO1');
-    expect(nextCoCode([{ code: 'CO1' }, { code: 'CO4' }])).toBe('CO5');
+  it('numbers a new CO after the highest code ever given, never reusing one', () => {
+    expect(nextCoCode([], 0)).toBe('CO1');
+    expect(nextCoCode([{ code: 'CO1' }, { code: 'CO4' }], 0)).toBe('CO5');
+    // CO6 was deleted: the course remembers it gave 6, so the next is CO7, not CO6 again.
+    expect(nextCoCode([{ code: 'CO1' }, { code: 'CO5' }], 6)).toBe('CO7');
+    // An import may bring codes above the remembered number.
+    expect(nextCoCode([{ code: 'CO9' }], 6)).toBe('CO10');
+    expect(nextCoCode([{ code: 'Outcome 1' }], 0)).toBe('CO1');
+  });
+
+  it('adds up the syllabus hours as CUTM writes them', () => {
+    expect(syllabusHours([{ hours: '4+0+2' }, { hours: '6' }, { hours: null }, { hours: '1.5+0+0.5' }])).toBe(14);
+    expect(syllabusHours([])).toBe(0);
+  });
+
+  it('measures how well each PO and PSO is covered by the mapping', () => {
+    // The mock-up's course: four COs; PO1 linked 2, 3, 3, 2; PO6 by CO1 and CO4 at 1; PO4 at 2, 2, 1; nothing to PO7.
+    const cells = {
+      'a:PO1': 2,
+      'b:PO1': 3,
+      'c:PO1': 3,
+      'd:PO1': 2,
+      'b:PO4': 2,
+      'c:PO4': 2,
+      'd:PO4': 1,
+      'a:PO6': 1,
+      'd:PO6': 1,
+    };
+    expect(mappingCoverage(['a', 'b', 'c', 'd', 'e'], ['PO1', 'PO4', 'PO6', 'PO7'], cells)).toEqual({
+      outcomes: [
+        { code: 'PO1', links: 4, average: 2.5 },
+        { code: 'PO4', links: 3, average: 1.67 },
+        { code: 'PO6', links: 2, average: 1 },
+        { code: 'PO7', links: 0, average: null },
+      ],
+      uncovered: ['PO7'],
+      unmappedCoIds: ['e'],
+    });
+    expect(mappingCoverage([], ['PO1'], {})).toEqual({
+      outcomes: [{ code: 'PO1', links: 0, average: null }],
+      uncovered: ['PO1'],
+      unmappedCoIds: [],
+    });
   });
 
   it('keeps CO ids by code when content is imported again', () => {

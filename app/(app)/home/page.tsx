@@ -66,7 +66,7 @@ async function Home() {
     viewer.roles.includes('student') ? listContinueLearning() : [],
     viewer.roles.includes('faculty') ? listPlanRequests() : [],
     unreadCount(),
-    viewer.roles.includes('student') || viewer.roles.includes('faculty') ? listTodaysLiveSessions() : [],
+    viewer.roles.some((r) => r === 'student' || r === 'faculty' || r === 'admin') ? listTodaysLiveSessions() : [],
   ]);
   const [featured, ...rest] = offerings?.rows ?? [];
   const next = rest.slice(0, 3);
@@ -80,8 +80,8 @@ async function Home() {
     today.length > 0;
   return (
     <div className="grid gap-6">
-      <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
-        <PageIcon name="dashboard" className="size-12" />
+      <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
+        <PageIcon name="dashboard" className="size-8" />
         Hello, {viewer.name.split(' ')[0]}
       </h1>
       <div className={cn('grid items-start gap-5', side && 'xl:grid-cols-[19rem_minmax(0,1fr)]')}>
@@ -108,7 +108,7 @@ async function Home() {
                         <LinkSpinner className="absolute top-4 right-4" />
                       </span>
                       <span className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-[2rem] leading-none font-semibold tracking-tight tabular-nums">
+                        <span className="text-2xl leading-none font-semibold tracking-tight tabular-nums">
                           {count.format(t.value)}
                         </span>
                         {t.note && <span className="text-muted-foreground text-xs">{t.note}</span>}
@@ -222,12 +222,12 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
           ? { href: '/courses', label: 'All my courses', icon: BooksIcon }
           : null;
   return (
-    <section className="bg-card from-primary/15 via-primary/25 to-primary/45 ring-primary/15 grid gap-5 rounded-2xl bg-linear-to-br p-5 ring-1">
+    <section className="surface grid gap-4 p-4">
       {featured ? (
         <>
           <div className="flex items-start gap-4">
             <span className="grid w-16 shrink-0 justify-items-center gap-1">
-              <PageIcon name="course" className="size-16" />
+              <PageIcon name="course" className="size-12" />
               <span className="text-muted-foreground max-w-full truncate text-[0.625rem] font-semibold tracking-wide">
                 {featured.termCode}
               </span>
@@ -243,7 +243,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
             <span className="text-foreground/70">
               {isAdmin ? 'Newest offering' : studentOnly ? 'Your newest course' : 'Your newest offering'}
             </span>
-            <Badge variant={statusTone(featured.status)} className="bg-card capitalize">
+            <Badge variant={statusTone(featured.status)} className="capitalize">
               {featured.status}
             </Badge>
           </div>
@@ -268,7 +268,7 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
       {(featured || second) && (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
           {featured && (
-            <Button asChild className="bg-card text-foreground hover:bg-card/80 h-11 rounded-full text-[0.9375rem]">
+            <Button asChild variant="outline">
               <Link href={`/courses/${featured.id}`}>
                 Open course
                 <LinkSpinner />
@@ -276,10 +276,10 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
             </Button>
           )}
           {second && (
-            <Button asChild className="h-12 justify-between rounded-full px-5 text-[0.9375rem]">
+            <Button asChild className="justify-between">
               <Link href={second.href}>
                 <span className="flex items-center gap-2.5">
-                  <second.icon weight="duotone" className="size-5" />
+                  <second.icon className="size-4" />
                   {second.label}
                 </span>
                 <span className="flex items-center gap-1">
@@ -327,7 +327,7 @@ function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>[
             const mark = ENTITY[a.entity] ?? 'audit';
             return (
               <li key={a.id} className="flex items-center gap-3">
-                <span className="bg-primary/10 grid size-14 shrink-0 place-items-center rounded-2xl">
+                <span className="bg-primary/10 grid size-14 shrink-0 place-items-center rounded-lg">
                   <PageIcon name={mark} className="size-11" />
                 </span>
                 <span className="grid min-w-0 flex-1 gap-0.5 leading-tight">
@@ -361,7 +361,7 @@ function Activity({ activity }: { activity: NonNullable<HomeSummary['admin']>['a
           <h2 className="text-lg font-semibold tracking-tight">Activity</h2>
           <p className="text-muted-foreground text-sm">Changes recorded per day.</p>
         </div>
-        <span className="ring-border text-muted-foreground flex h-9 items-center gap-2 rounded-full px-3 text-sm ring-1">
+        <span className="ring-border text-muted-foreground flex h-8 items-center gap-2 rounded-md px-3 text-sm ring-1">
           <CalendarBlankIcon className="size-4" />
           Last 7 days
         </span>
@@ -453,7 +453,7 @@ function MostActive({
               <li
                 key={p.id}
                 className={cn(
-                  'ring-border flex items-center gap-3 rounded-xl p-2.5 ring-1',
+                  'ring-border flex items-center gap-3 rounded-md p-2.5 ring-1',
                   you && 'bg-gold/5 ring-gold/50',
                 )}
               >
@@ -512,8 +512,10 @@ function TodaysClasses({ rows, student }: { rows: TodayClass[]; student: boolean
       <ul className="grid gap-2">
         {[...live, ...later].map((row) => (
           <li key={row.id}>
+            {/* Everyone listed here may join; a running class opens in a tab of its own, like a video call (M03b). */}
             <Link
-              href={`/courses/${row.offeringId}/live/${row.id}`}
+              href={`/courses/${row.offeringId}/live/${row.id}${row.status === 'live' ? '/room' : ''}`}
+              target={row.status === 'live' ? '_blank' : undefined}
               className={cn(
                 'surface-interactive group flex items-center gap-4 p-3',
                 row.status === 'live' && 'ring-destructive/30 bg-destructive/[0.03]',
@@ -527,7 +529,7 @@ function TodaysClasses({ rows, student }: { rows: TodayClass[]; student: boolean
                 <span className="text-muted-foreground truncate text-xs">{row.offeringTitle}</span>
               </span>
               {row.status === 'live' ? (
-                <Badge variant="danger">{student ? 'Join now' : 'Live'}</Badge>
+                <Badge variant="danger">Join now</Badge>
               ) : (
                 <span className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
                   {formatTime(row.scheduledStart)}
@@ -587,7 +589,7 @@ function PlanRequests({ rows }: { rows: PlanRequestRow[] }) {
   return (
     <section className="surface ring-warning/30 grid gap-4 p-5">
       <div className="flex items-start gap-3">
-        <span className="bg-warning/10 grid size-10 shrink-0 place-items-center rounded-xl">
+        <span className="bg-warning/10 grid size-10 shrink-0 place-items-center rounded-md">
           <PageIcon name="plan" className="size-8" />
         </span>
         <div className="min-w-0">

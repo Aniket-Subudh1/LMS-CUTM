@@ -2,20 +2,24 @@
 
 import '@livekit/components-styles';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
-import { ArrowClockwiseIcon, MicrophoneSlashIcon, SignInIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowLeftIcon, MicrophoneSlashIcon } from '@phosphor-icons/react';
 import { DisconnectReason } from 'livekit-client';
+import { RoomNotice } from '@/components/room-notice';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
-type Props = { sessionId: string; serverUrl: string; token: string; trackFocus: boolean };
+// `classPage` is where the class's attendance and summary are, linked once the class has ended.
+type Props = { sessionId: string; serverUrl: string; token: string; trackFocus: boolean; classPage: string };
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed';
 
 const BEACON_MS = 60_000;
 
-
-export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
+// The class fills the tab it was opened in (M03b, "like Google Meet in a tab"): LiveKit's video conference with its
+// control bar at the bottom, on the room page outside the app's frame.
+export function LiveRoom({ sessionId, serverUrl, token, trackFocus, classPage }: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>('in');
 
@@ -64,7 +68,7 @@ export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
         title: trackFocus ? 'You left the class' : 'You left the room',
         text: trackFocus
           ? 'Rejoin to carry on. Time away from the class does not count towards your attendance.'
-          : 'The class is still running for your students. Rejoin, or end the class from the top of the page when you are done.',
+          : 'The class is still running for your students. Rejoin, or end it with “End class” at the top when you are done.',
         again: true,
       },
       replaced: {
@@ -77,7 +81,11 @@ export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
         text: 'Check your internet connection, then rejoin.',
         again: true,
       },
-      ended: { title: 'The class has ended', text: 'This page now shows how the class went.', again: false },
+      ended: {
+        title: 'The class has ended',
+        text: 'Close this tab, or open the class page to see how it went.',
+        again: false,
+      },
       failed: {
         title: 'Could not connect to the class',
         text: 'The network may be blocking live video. Try again in a moment, or switch to another network.',
@@ -86,27 +94,27 @@ export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
     };
     const { title, text, again } = copy[state];
     return (
-      <div className="surface grid min-h-72 place-items-center p-8 text-center">
-        <div className="grid max-w-md justify-items-center gap-3">
-          <span className="icon-chip size-12 [&_svg]:size-7">
-            <SignInIcon weight="duotone" />
-          </span>
-          <h2 className="text-lg font-semibold">{title}</h2>
-          <p className="text-muted-foreground text-sm text-pretty">{text}</p>
-          {again && (
-            <Button onClick={rejoin}>
-              <ArrowClockwiseIcon /> Rejoin
-            </Button>
-          )}
-        </div>
-      </div>
+      <RoomNotice title={title} text={text}>
+        {again ? (
+          // Outline buttons are white with dark text: they stand out on the dark stage, whose text is white.
+          <Button onClick={rejoin} variant="outline" className="text-foreground">
+            <ArrowClockwiseIcon /> Rejoin
+          </Button>
+        ) : (
+          <Button asChild variant="outline" className="text-foreground">
+            <Link href={classPage}>
+              <ArrowLeftIcon /> Open the class page
+            </Link>
+          </Button>
+        )}
+      </RoomNotice>
     );
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       {deviceFailed && (
-        <Alert>
+        <Alert className="absolute inset-x-4 top-4 z-10 mx-auto max-w-lg">
           <MicrophoneSlashIcon />
           <AlertTitle>Your microphone or camera could not start</AlertTitle>
           <AlertDescription>
@@ -122,7 +130,7 @@ export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
         video={false}
         audio={false}
         data-lk-theme="default"
-        className="h-[min(78svh,48rem)] min-h-[26rem] overflow-hidden rounded-2xl"
+        className="min-h-0 flex-1"
         onConnected={() => {
           connected.current = true;
         }}

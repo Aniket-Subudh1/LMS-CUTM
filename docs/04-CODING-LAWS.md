@@ -19,8 +19,8 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 - Filtering, sorting and pagination are a GET `<form>` and `searchParams`, not client state.
 - One feedback pattern for mutations: `ActionForm` showing `message` / `fieldErrors`. No toasts.
 - Create and edit forms open in a `FormDialog` (08 §5.2) on the list or detail page they belong to. Fields lock while the action runs; on success the dialog shows its success state in place of the fields and closes itself. An action that creates a record the user should open next returns `{ next: '/path' }` instead of calling `redirect()`, and the dialog navigates there after closing. Large editors that are a page of their own (an assessment builder, the attempt runner) stay routes.
-- No drag-and-drop. A `<select>` or two buttons change a status.
-- No optimistic UI unless a milestone asks for it.
+- Drag-and-drop only to reorder a list, through `SortableList` (M03b; Aniket lifted the ban on 17 Oct 2026). It works from the keyboard too, and every sortable row's ⋮ menu also offers "Move to top / up / down / bottom", so nothing depends on dragging. A `<select>` or two buttons change a status.
+- No optimistic UI, with one exception: a dropped order shows at once (`useOptimistic` in `SortableList`) and returns to the saved order if the save fails.
 - No configuration for things nobody asked to configure. Constants live next to their only use.
 - No "generic" anything: no generic repository, generic CRUD factory, generic table builder, generic form builder.
 - Delete code that a change made unused, in the same commit.

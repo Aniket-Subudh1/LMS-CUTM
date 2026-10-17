@@ -13,8 +13,7 @@ import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { mailQueue } from '@/lib/queue';
-import { istDate } from '@/lib/schemas/common';
-import { PublishPlan, SaveCalendar, SavePlan } from '@/lib/schemas/content';
+import { AddPlanSession, PlanSessionRef, PublishPlan, SavePlan, UpdatePlanSession } from '@/lib/schemas/content';
 import { FillCalendar } from '@/lib/schemas/structure';
 
 const MAX_ROWS = 200;
@@ -24,44 +23,95 @@ export const savePlan = action(
   async ({ offeringId, doc }, viewer) => {
     await requireTeach(viewer, offeringId);
     await db();
-    await Offering.updateOne({ _id: offeringId }, doc ? { $set: { 'plan.doc': doc } } : { $unset: { 'plan.doc': 1 } });
+    const changedAt = new Date();
+    await Offering.updateOne(
+      { _id: offeringId },
+      doc
+        ? { $set: { 'plan.doc': doc, 'plan.changedAt': changedAt } }
+        : { $unset: { 'plan.doc': 1 }, $set: { 'plan.changedAt': changedAt } },
+    );
     refresh();
   },
 );
 
-// CRS-06: blank rows are ignored, the rest are checked one by one and stored sorted by date.
-export const saveCalendar = action({ input: SaveCalendar, roles: ['admin', 'faculty'] }, async (input, viewer) => {
-  await requireTeach(viewer, input.offeringId);
-  await db();
-  const offering = await Offering.findById(input.offeringId, { courseId: 1 }).lean();
+// CRS-06, M03b: one session at a time. Rows keep their ids and stay sorted by (date, _id); every save stamps
+// plan.changedAt so the page can offer to publish a new version.
+const SORT = { date: 1, _id: 1 } as const;
+
+async function requireOwnCos(offeringId: string, coIds: string[]) {
+  const offering = await Offering.findById(offeringId, { courseId: 1 }).lean();
   if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
+  if (coIds.length === 0) return;
   const course = await Course.findById(offering.courseId, { 'cos._id': 1 }).lean();
   const known = new Set(course?.cos.map((co) => String(co._id)) ?? []);
-
-  const errors: Record<string, string[]> = {};
-  const rows: { date: Date; topic: string; coIds: string[] }[] = [];
-  for (let i = 0; i < input.rows; i++) {
-    const date = String(input[`date_${i}`] ?? '').trim();
-    const topic = String(input[`topic_${i}`] ?? '').trim();
-    const raw = input[`cos_${i}[]`];
-    const coIds = (Array.isArray(raw) ? raw : []).map(String);
-    if (!date && !topic) continue;
-    const day = istDate.safeParse(date);
-    if (!day.success) errors[`date_${i}`] = [date ? 'Enter a real date.' : 'Enter the date.'];
-    if (!topic) errors[`topic_${i}`] = ['Enter the topic.'];
-    else if (topic.length > 200) errors[`topic_${i}`] = ['Use at most 200 characters.'];
-    if (coIds.some((id) => !known.has(id))) errors[`cos_${i}[]`] = ['Pick outcomes of this course only.'];
-    if (day.success) rows.push({ date: istDateToDate(day.data), topic, coIds });
+  if (coIds.some((id) => !known.has(id))) {
+    throw new AppError('VALIDATION', 'Pick outcomes of this course only.', {
+      'cos[]': ['Pick outcomes of this course only.'],
+    });
   }
-  if (Object.keys(errors).length > 0) {
-    throw new AppError('VALIDATION', 'Some sessions need attention. Fix the highlighted rows and save again.', errors);
-  }
-  if (rows.length > MAX_ROWS) throw new AppError('VALIDATION', `A calendar holds at most ${MAX_ROWS} sessions.`);
+}
 
-  rows.sort((a, b) => a.date.getTime() - b.date.getTime());
-  await Offering.updateOne({ _id: input.offeringId }, { $set: { calendar: rows } });
+export const addPlanSession = action({ input: AddPlanSession, roles: ['admin', 'faculty'] }, async (input, viewer) => {
+  await requireTeach(viewer, input.offeringId);
+  await db();
+  await requireOwnCos(input.offeringId, input['cos[]']);
+  // The size guard sits in the filter, so two parallel adds cannot pass the limit.
+  const added = await Offering.updateOne(
+    { _id: input.offeringId, [`calendar.${MAX_ROWS - 1}`]: { $exists: false } },
+    {
+      $push: {
+        calendar: {
+          $each: [
+            { date: istDateToDate(input.date), topic: input.topic, coIds: input['cos[]'], kind: input.kind ?? null },
+          ],
+          $sort: SORT,
+        },
+      },
+      $set: { 'plan.changedAt': new Date() },
+    },
+  );
+  if (added.matchedCount === 0) throw new AppError('VALIDATION', `A course plan holds at most ${MAX_ROWS} sessions.`);
   refresh();
 });
+
+export const updatePlanSession = action(
+  { input: UpdatePlanSession, roles: ['admin', 'faculty'] },
+  async (input, viewer) => {
+    await requireTeach(viewer, input.offeringId);
+    await db();
+    await requireOwnCos(input.offeringId, input['cos[]']);
+    const updated = await Offering.updateOne(
+      { _id: input.offeringId, 'calendar._id': input.rowId },
+      {
+        $set: {
+          'calendar.$.date': istDateToDate(input.date),
+          'calendar.$.topic': input.topic,
+          'calendar.$.coIds': input['cos[]'],
+          'calendar.$.kind': input.kind ?? null,
+          'plan.changedAt': new Date(),
+        },
+      },
+    );
+    if (updated.matchedCount === 0) throw new AppError('NOT_FOUND', 'That session is no longer in the plan.');
+    // A new date may move the row: sort again in place (an empty $each only re-sorts).
+    await Offering.updateOne({ _id: input.offeringId }, { $push: { calendar: { $each: [], $sort: SORT } } });
+    refresh();
+  },
+);
+
+export const deletePlanSession = action(
+  { input: PlanSessionRef, roles: ['admin', 'faculty'] },
+  async ({ offeringId, rowId }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    await db();
+    const removed = await Offering.updateOne(
+      { _id: offeringId, 'calendar._id': rowId },
+      { $pull: { calendar: { _id: rowId } }, $set: { 'plan.changedAt': new Date() } },
+    );
+    if (removed.matchedCount === 0) throw new AppError('NOT_FOUND', 'That session is already gone.');
+    refresh();
+  },
+);
 
 // "Start from the course's session plan" (M01b): one dated session per entry of the catalogue course's plan, on the
 // chosen weekdays from the first class date. Replacing sessions already scheduled needs the box ticked.
@@ -80,13 +130,13 @@ export const fillCalendarFromCourse = action(
       throw new AppError('VALIDATION', message, { replace: [message] });
     }
     const dates = classDates(firstDay, weekdays, plan.length);
-    const label = { theory: '', practice: 'Practice: ', project: 'Project: ' } as const;
     const calendar = plan.map((session, i) => ({
       date: istDateToDate(dates[i]),
-      topic: `${label[session.kind]}${session.topic}`.slice(0, 200),
+      topic: session.topic.slice(0, 200),
       coIds: [],
+      kind: session.kind,
     }));
-    await Offering.updateOne({ _id: offeringId }, { $set: { calendar } });
+    await Offering.updateOne({ _id: offeringId }, { $set: { calendar, 'plan.changedAt': new Date() } });
     refresh();
   },
 );

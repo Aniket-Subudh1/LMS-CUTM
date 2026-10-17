@@ -25,6 +25,8 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
   switch (input.purpose) {
     case 'lesson-video':
     case 'lesson-doc':
+    case 'lesson-thumb':
+    case 'offering-cover':
       await requireTeach(viewer, input.contextId);
       break;
     case 'syllabus':

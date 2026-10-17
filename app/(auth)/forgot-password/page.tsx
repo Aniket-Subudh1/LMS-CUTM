@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
             autoComplete="username"
             placeholder="name@cutm.ac.in"
             required
-            className="bg-card h-12 rounded-full border-transparent pl-5"
+            className="bg-card h-10 rounded-md pl-3"
           />
         </Field>
       </ActionForm>

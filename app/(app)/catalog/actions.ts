@@ -2,32 +2,40 @@
 
 import { isDeepStrictEqual } from 'node:util';
 import { refresh, updateTag } from 'next/cache';
-import mongoose, { Types } from 'mongoose';
+import mongoose, { Types, type ClientSession } from 'mongoose';
 import { action } from '@/lib/action';
-import { writeAudit } from '@/lib/audit';
+import { writeAudit, type AuditEntry } from '@/lib/audit';
 import { requireCourseEditor } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { createCoursewareRun } from '@/lib/data/imports';
 import { db, isDuplicateKey } from '@/lib/db';
-import { courseMode, nextCoCode, normalizeCode, parseSessionLines } from '@/lib/domain/catalog';
+import { coNumber, courseMode, nextCoCode, normalizeCode, parseSessionLines } from '@/lib/domain/catalog';
+import { isPermutation } from '@/lib/domain/order';
 import { parseKey } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
+import { deleteObjects } from '@/lib/integrations/storage';
 import { syncQueue } from '@/lib/queue';
 import {
+  AddCo,
   CATALOG_LIMITS,
+  CoRef,
+  CourseModuleRef,
   CourseRef,
+  ReorderCourseModules,
   SaveBooks,
   SaveCoMap,
-  SaveCos,
   SaveCourse,
+  SaveCourseModule,
   SaveObjectives,
+  SaveProjects,
   SaveSessionPlan,
-  SaveSyllabus,
   SetCoordinator,
+  SetSyllabusFile,
+  UpdateCo,
 } from '@/lib/schemas/structure';
 
 // The coordinator and the admins edit a course's content (CRS-07). Every edit is audited and sets
@@ -86,53 +94,127 @@ export const saveObjectives = action(
   },
 );
 
-// All outcomes in one save: edits keep each CO's id and code, new ones get the next code, and a removed CO's
-// mapping goes with it. The Bloom chips a person saves become the CO's levels; the import's guess is cleared.
-export const saveCos = action({ input: SaveCos, roles: EDITORS }, async ({ courseId, cos, removed }, viewer) => {
-  const course = await loadCourse(viewer, courseId, ['credits', 'cos', 'coMap']);
-  requireCredit(course.credits);
-  const known = new Map(course.cos.map((co) => [String(co._id), co]));
-  if ([...removed, ...cos.flatMap((co) => co.coId ?? [])].some((id) => !known.has(id))) {
-    throw new AppError('CONFLICT', 'The outcomes changed while you were editing. Reload the page and try again.');
-  }
-  const codes = course.cos.map((co) => ({ code: co.code }));
-  const next = cos.map((co) => {
-    const existing = co.coId ? known.get(co.coId) : undefined;
-    const code = existing?.code ?? nextCoCode(codes);
-    if (!existing) codes.push({ code });
-    return {
-      _id: existing?._id ?? new Types.ObjectId(),
-      code,
-      statement: co.statement,
-      bloomLevels: co.bloomLevels,
-      suggestedBloom: null,
-      ...(existing?.targetLevel !== undefined ? { targetLevel: existing.targetLevel } : {}),
-    };
-  });
-  const kept = new Set(next.map((co) => String(co._id)));
-  const coMap = course.coMap.filter((cell) => kept.has(String(cell.coId)));
-  const summary = (list: readonly { code: string; statement: string; bloomLevels: readonly string[] }[]) =>
-    list.map(({ code, statement, bloomLevels }) => ({ code, statement, bloomLevels: [...bloomLevels] }));
-  const before = summary(course.cos);
-  const after = summary(next);
-  const untouchedGuesses = course.cos.every((co) => !co.suggestedBloom);
-  if (isDeepStrictEqual(before, after) && untouchedGuesses) return;
-
+// One audited edit (M03b): `write` returns false when its filter matched nothing (someone changed the course first),
+// which aborts the change and its audit entry together. The entry is built after the write, so it can say what the
+// write found.
+async function commit(write: (session: ClientSession) => Promise<boolean>, missing: AppError, entry: () => AuditEntry) {
   await mongoose.connection.transaction(async (session) => {
-    await Course.updateOne({ _id: courseId }, { $set: { cos: next, coMap, contentEditedAt: new Date() } }, { session });
-    await writeAudit(
-      {
-        actorId: viewer.id,
-        action: 'course.cos_changed',
-        entity: 'course',
-        entityId: courseId,
-        before,
-        after: { cos: after, mappingLinksRemoved: course.coMap.length - coMap.length },
-      },
-      session,
-    );
+    if (!(await write(session))) throw missing;
+    await writeAudit(entry(), session);
   });
   refresh();
+}
+
+const coSummary = (co: { code: string; statement: string; bloomLevels: readonly string[] }) => ({
+  code: co.code,
+  statement: co.statement,
+  bloomLevels: [...co.bloomLevels],
+});
+const outcomesChanged = () =>
+  new AppError('CONFLICT', 'The outcomes changed while you were editing. Reload the page and try again.');
+
+// A new outcome gets the next code, CO7 after CO6 even if CO6 was deleted (`coSeq`). The filter refuses a second add
+// made from the same reading, and a course already at the limit.
+export const addCo = action({ input: AddCo, roles: EDITORS }, async (input, viewer) => {
+  const { courseId, statement } = input;
+  const course = await loadCourse(viewer, courseId, ['credits', 'cos', 'coSeq']);
+  requireCredit(course.credits);
+  if (course.cos.length >= CATALOG_LIMITS.cos) {
+    throw new AppError('CONFLICT', `A course has at most ${CATALOG_LIMITS.cos} outcomes.`);
+  }
+  // Lean reads apply no defaults: a course saved before M03b has no coSeq.
+  const code = nextCoCode(course.cos, course.coSeq ?? 0);
+  const co = { _id: new Types.ObjectId(), code, statement, bloomLevels: input['bloom[]'], suggestedBloom: null };
+  await commit(
+    async (session) =>
+      (
+        await Course.updateOne(
+          { _id: courseId, 'cos.code': { $ne: code }, [`cos.${CATALOG_LIMITS.cos - 1}`]: { $exists: false } },
+          { $push: { cos: co }, $set: { coSeq: coNumber(code), contentEditedAt: new Date() } },
+          { session },
+        )
+      ).matchedCount > 0,
+    outcomesChanged(),
+    () => ({
+      actorId: viewer.id,
+      action: 'course.cos_changed',
+      entity: 'course',
+      entityId: courseId,
+      before: null,
+      after: coSummary(co),
+    }),
+  );
+});
+
+// Saving an outcome confirms its Bloom levels: the import's guess is cleared even when nothing else changed.
+export const updateCo = action({ input: UpdateCo, roles: EDITORS }, async (input, viewer) => {
+  const { courseId, coId, statement } = input;
+  const course = await loadCourse(viewer, courseId, ['credits', 'cos']);
+  requireCredit(course.credits);
+  const co = course.cos.find((c) => String(c._id) === coId);
+  if (!co) throw outcomesChanged();
+  const before = coSummary(co);
+  const after = { ...before, statement, bloomLevels: input['bloom[]'] };
+  if (isDeepStrictEqual(before, after) && !co.suggestedBloom) return;
+  await commit(
+    async (session) =>
+      (
+        await Course.updateOne(
+          { _id: courseId, 'cos._id': co._id },
+          {
+            $set: {
+              'cos.$.statement': statement,
+              'cos.$.bloomLevels': after.bloomLevels,
+              'cos.$.suggestedBloom': null,
+              contentEditedAt: new Date(),
+            },
+          },
+          { session },
+        )
+      ).matchedCount > 0,
+    outcomesChanged(),
+    () => ({ actorId: viewer.id, action: 'course.cos_changed', entity: 'course', entityId: courseId, before, after }),
+  );
+});
+
+// The outcome's mapping links go with it, and so do the calendar tags that point at it in the course's offerings.
+// Its number stays in `coSeq`, so its code is never given to another outcome.
+export const deleteCo = action({ input: CoRef, roles: EDITORS }, async ({ courseId, coId }, viewer) => {
+  const course = await loadCourse(viewer, courseId, ['cos', 'coMap']);
+  const co = course.cos.find((c) => String(c._id) === coId);
+  if (!co) throw new AppError('NOT_FOUND', 'That outcome was already deleted.');
+  const links = course.coMap.filter((cell) => cell.coId.equals(co._id)).length;
+  let untagged = 0;
+  await commit(
+    async (session) => {
+      const { matchedCount } = await Course.updateOne(
+        { _id: courseId, 'cos._id': co._id },
+        {
+          $pull: { cos: { _id: co._id }, coMap: { coId: co._id } },
+          $max: { coSeq: coNumber(co.code) },
+          $set: { contentEditedAt: new Date() },
+        },
+        { session },
+      );
+      if (matchedCount === 0) return false;
+      const tagged = await Offering.updateMany(
+        { courseId, 'calendar.coIds': co._id },
+        { $pull: { 'calendar.$[].coIds': co._id } },
+        { session },
+      );
+      untagged = tagged.modifiedCount;
+      return true;
+    },
+    new AppError('NOT_FOUND', 'That outcome was already deleted.'),
+    () => ({
+      actorId: viewer.id,
+      action: 'course.cos_changed',
+      entity: 'course',
+      entityId: courseId,
+      before: coSummary(co),
+      after: { deleted: co.code, mappingLinksRemoved: links, offeringsUntagged: untagged },
+    }),
+  );
 });
 
 export const saveCoMap = action({ input: SaveCoMap, roles: EDITORS }, async ({ courseId, 'cell[]': raw }, viewer) => {
@@ -174,43 +256,164 @@ export const saveCoMap = action({ input: SaveCoMap, roles: EDITORS }, async ({ c
   refresh();
 });
 
-// The syllabus step: modules, the course's projects and the official PDF. The PDF's key must have been issued
-// for this course to this person (09 §5).
-export const saveSyllabus = action(
-  { input: SaveSyllabus, roles: EDITORS },
-  async ({ courseId, modules, projects, file, removeFile }, viewer) => {
-    const owner = file && parseKey(file.key);
-    if (
-      file &&
-      (!owner || owner.purpose !== 'syllabus' || owner.contextId !== courseId || owner.userId !== viewer.id)
-    ) {
-      throw new AppError('VALIDATION', 'Upload the PDF again.', { 'syllabusFile[]': ['Upload the PDF again.'] });
-    }
-    const course = await loadCourse(viewer, courseId, ['modules', 'projects', 'syllabusFileKey']);
-    const fileKey = file ? file.key : removeFile ? null : (course.syllabusFileKey ?? null);
-    const before = {
-      modules: course.modules.map(({ title, hours, topics, practicals }) => ({
-        title,
-        hours: hours ?? null,
-        topics,
-        practicals: [...practicals],
-      })),
-      projects: [...course.projects],
-      file: course.syllabusFileKey ?? null,
-    };
-    const after = { modules, projects, file: fileKey };
-    await saveContent(
-      viewer,
-      courseId,
-      'syllabus',
-      fileKey
-        ? { set: { modules, projects, syllabusFileKey: fileKey } }
-        : { set: { modules, projects }, unset: { syllabusFileKey: 1 } },
-      before,
-      after,
+const moduleSummary = (m: { title: string; hours?: string | null; topics: string; practicals: readonly string[] }) => ({
+  title: m.title,
+  hours: m.hours ?? null,
+  topics: m.topics,
+  practicals: [...m.practicals],
+});
+const syllabusEntry = (viewer: Viewer, courseId: string, section: string, before: unknown, after: unknown) => ({
+  actorId: viewer.id,
+  action: 'course.content_changed',
+  entity: 'course',
+  entityId: courseId,
+  before: { section, value: before },
+  after: { section, value: after },
+});
+const moduleGone = () => new AppError('NOT_FOUND', 'That module was deleted meanwhile. Reload the page.');
+
+// One syllabus module: edited in place, or added at the end while the course has room.
+export const saveCourseModule = action(
+  { input: SaveCourseModule, roles: EDITORS },
+  async ({ courseId, moduleId, ...fields }, viewer) => {
+    const course = await loadCourse(viewer, courseId, ['modules']);
+    const existing = moduleId ? course.modules.find((m) => String(m._id) === moduleId) : undefined;
+    if (moduleId && !existing) throw moduleGone();
+    const before = existing ? moduleSummary(existing) : null;
+    if (before && isDeepStrictEqual(before, fields)) return;
+    const contentEditedAt = new Date();
+    await commit(
+      async (session) =>
+        (existing
+          ? await Course.updateOne(
+              { _id: courseId, 'modules._id': existing._id },
+              {
+                $set: {
+                  'modules.$.title': fields.title,
+                  'modules.$.hours': fields.hours,
+                  'modules.$.topics': fields.topics,
+                  'modules.$.practicals': fields.practicals,
+                  contentEditedAt,
+                },
+              },
+              { session },
+            )
+          : await Course.updateOne(
+              { _id: courseId, [`modules.${CATALOG_LIMITS.modules - 1}`]: { $exists: false } },
+              { $push: { modules: fields }, $set: { contentEditedAt } },
+              { session },
+            )
+        ).matchedCount > 0,
+      existing ? moduleGone() : new AppError('CONFLICT', `A course has at most ${CATALOG_LIMITS.modules} modules.`),
+      () => syllabusEntry(viewer, courseId, 'syllabus module', before, fields),
     );
   },
 );
+
+export const deleteCourseModule = action(
+  { input: CourseModuleRef, roles: EDITORS },
+  async ({ courseId, moduleId }, viewer) => {
+    const course = await loadCourse(viewer, courseId, ['modules']);
+    const existing = course.modules.find((m) => String(m._id) === moduleId);
+    if (!existing) throw moduleGone();
+    await commit(
+      async (session) =>
+        (
+          await Course.updateOne(
+            { _id: courseId, 'modules._id': existing._id },
+            { $pull: { modules: { _id: existing._id } }, $set: { contentEditedAt: new Date() } },
+            { session },
+          )
+        ).matchedCount > 0,
+      moduleGone(),
+      () => syllabusEntry(viewer, courseId, 'syllabus module', moduleSummary(existing), null),
+    );
+  },
+);
+
+// The whole new order, which must hold the same modules. The array is written back from this reading, so the filter
+// on `updatedAt` refuses it if anything in the course changed since.
+export const reorderCourseModules = action(
+  { input: ReorderCourseModules, roles: EDITORS },
+  async ({ courseId, 'ids[]': ids }, viewer) => {
+    const course = await loadCourse(viewer, courseId, ['modules', 'updatedAt']);
+    const current = course.modules.map((m) => String(m._id));
+    const changed = new AppError('CONFLICT', 'The modules changed meanwhile. Reload the page and try again.');
+    if (!isPermutation(current, ids)) throw changed;
+    if (isDeepStrictEqual(current, ids)) return;
+    const byId = new Map(course.modules.map((m) => [String(m._id), m]));
+    await commit(
+      async (session) =>
+        (
+          await Course.updateOne(
+            { _id: courseId, updatedAt: course.updatedAt },
+            { $set: { modules: ids.flatMap((id) => byId.get(id) ?? []), contentEditedAt: new Date() } },
+            { session },
+          )
+        ).matchedCount > 0,
+      changed,
+      () =>
+        syllabusEntry(
+          viewer,
+          courseId,
+          'syllabus order',
+          course.modules.map((m) => m.title),
+          ids.flatMap((id) => byId.get(id)?.title ?? []),
+        ),
+    );
+  },
+);
+
+// The official PDF. Its key must have been issued for this course to this person (09 §5); the file it replaces is
+// deleted once the change is saved.
+export const setSyllabusFile = action({ input: SetSyllabusFile, roles: EDITORS }, async (input, viewer) => {
+  const { courseId } = input;
+  const key = input['syllabusFile[]'][0].key;
+  const owner = parseKey(key);
+  if (!owner || owner.purpose !== 'syllabus' || owner.contextId !== courseId || owner.userId !== viewer.id) {
+    throw new AppError('VALIDATION', 'Upload the PDF again.', { 'syllabusFile[]': ['Upload the PDF again.'] });
+  }
+  await loadCourse(viewer, courseId, ['syllabusFileKey']);
+  let previous: string | null = null;
+  await commit(
+    async (session) => {
+      const before = await Course.findOneAndUpdate(
+        { _id: courseId },
+        { $set: { syllabusFileKey: key, contentEditedAt: new Date() } },
+        { projection: { syllabusFileKey: 1 }, session },
+      ).lean();
+      previous = before?.syllabusFileKey ?? null;
+      return Boolean(before);
+    },
+    new AppError('NOT_FOUND', 'Course not found.'),
+    () => syllabusEntry(viewer, courseId, 'syllabus PDF', previous, key),
+  );
+  if (previous && previous !== key) await deleteObjects([previous]);
+});
+
+export const clearSyllabusFile = action({ input: CourseRef, roles: EDITORS }, async ({ courseId }, viewer) => {
+  const course = await loadCourse(viewer, courseId, ['syllabusFileKey']);
+  const key = course.syllabusFileKey;
+  if (!key) return;
+  await commit(
+    async (session) =>
+      (
+        await Course.updateOne(
+          { _id: courseId, syllabusFileKey: key },
+          { $unset: { syllabusFileKey: 1 }, $set: { contentEditedAt: new Date() } },
+          { session },
+        )
+      ).matchedCount > 0,
+    new AppError('CONFLICT', 'The PDF changed meanwhile. Reload the page.'),
+    () => syllabusEntry(viewer, courseId, 'syllabus PDF', key, null),
+  );
+  await deleteObjects([key]);
+});
+
+export const saveProjects = action({ input: SaveProjects, roles: EDITORS }, async ({ courseId, projects }, viewer) => {
+  const course = await loadCourse(viewer, courseId, ['projects']);
+  await saveContent(viewer, courseId, 'projects', { set: { projects } }, course.projects, projects);
+});
 
 export const saveBooks = action(
   { input: SaveBooks, roles: EDITORS },

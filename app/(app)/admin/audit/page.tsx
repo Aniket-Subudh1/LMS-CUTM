@@ -77,10 +77,10 @@ async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>
         <Input name="to" type="date" aria-label="To" defaultValue={filters.to ?? ''} />
         {/* The record and offering ids (M01) are for links from other pages; they stay out of the way until needed. */}
         <details className="relative" open={Boolean(filters.entityId || filters.offeringId)}>
-          <summary className="ring-border bg-card hover:bg-muted flex h-9 cursor-pointer list-none items-center gap-2 rounded-full px-4 text-sm ring-1 transition-colors [&::-webkit-details-marker]:hidden">
+          <summary className="ring-border bg-card hover:bg-muted flex h-8 cursor-pointer list-none items-center gap-2 rounded-md px-3 text-sm ring-1 transition-colors [&::-webkit-details-marker]:hidden">
             <SlidersHorizontalIcon className="size-4" /> More filters
           </summary>
-          <div className="bg-popover ring-border absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl p-3 ring-1">
+          <div className="bg-popover ring-border absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-md p-3 ring-1">
             <label className="grid gap-1.5 text-sm font-medium">
               Record id
               <Input name="entityId" defaultValue={filters.entityId ?? ''} />

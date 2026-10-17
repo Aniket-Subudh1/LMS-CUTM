@@ -4,8 +4,10 @@ import { Redis } from 'ioredis';
 import type { Types } from 'mongoose';
 import {
   cancelSession,
+  deleteSession,
   endSession,
   markAttendance,
+  restoreSession,
   scheduleSession,
   startSession,
   updateSession,
@@ -268,6 +270,94 @@ describe('changing, cancelling and starting a class', () => {
       ok: false,
       code: 'CLOSED',
     });
+  });
+
+  it('restores a cancelled class while its time is ahead, and tells the students (M03b T6)', async () => {
+    const w = await world();
+    const ahead = await liveClass(w, {
+      status: 'cancelled',
+      startedAt: undefined,
+      scheduledStart: new Date(Date.now() + 60 * MIN),
+      scheduledEnd: new Date(Date.now() + 120 * MIN),
+    });
+    const gone = await liveClass(w, { status: 'cancelled', startedAt: undefined });
+    await signInAs(w.student);
+    expect(await restoreSession({ offeringId: w.offeringId, sessionId: String(ahead._id) })).toMatchObject({
+      ok: false,
+      code: 'FORBIDDEN',
+    });
+    await signInAs(w.faculty);
+    expect(await restoreSession({ offeringId: w.offeringId, sessionId: String(ahead._id) })).toMatchObject({
+      ok: true,
+    });
+    expect((await LiveSession.findById(ahead._id).lean())?.status).toBe('scheduled');
+    expect(await Notification.countDocuments({ kind: 'live.changed', userId: w.student._id })).toBe(1);
+    expect(await restoreSession({ offeringId: w.offeringId, sessionId: String(gone._id) })).toMatchObject({
+      ok: false,
+      code: 'CLOSED',
+    });
+  });
+
+  it('deletes only a class that never ran and has no attendance, and audits it (M03b T6)', async () => {
+    const w = await world();
+    const ahead = {
+      status: 'scheduled' as const,
+      startedAt: undefined,
+      scheduledStart: new Date(Date.now() + 60 * MIN),
+      scheduledEnd: new Date(Date.now() + 120 * MIN),
+    };
+    const scheduled = await liveClass(w, ahead);
+    const cancelled = await liveClass(w, { ...ahead, status: 'cancelled' });
+    const notHeld = await liveClass(w, { status: 'scheduled', startedAt: undefined });
+    const ran = await liveClass(w, { status: 'ended', endedAt: new Date() });
+    const marked = await liveClass(w, { status: 'cancelled', startedAt: undefined });
+    await Attendance.create({
+      sessionId: marked._id,
+      offeringId: w.offering._id,
+      studentId: w.student._id,
+      source: 'manual',
+      status: 'absent',
+    });
+    const del = (session: { _id: Types.ObjectId }) =>
+      deleteSession({ offeringId: w.offeringId, sessionId: String(session._id) });
+
+    // The HoD follows the course's classes and changes none of them (requireTeach answers 404).
+    await signInAs(w.hod);
+    await expect(del(cancelled)).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.faculty);
+    expect(await del(scheduled)).toMatchObject({
+      ok: false,
+      code: 'CLOSED',
+      message: 'Cancel the class first, so its students are told.',
+    });
+    expect(await del(ran)).toMatchObject({ ok: false, code: 'CLOSED' });
+    expect(await del(marked)).toMatchObject({ ok: false, code: 'CLOSED' });
+    expect(await del(cancelled)).toMatchObject({ ok: true });
+    expect(await del(notHeld)).toMatchObject({ ok: true });
+    expect(await LiveSession.countDocuments({ _id: { $in: [cancelled._id, notHeld._id] } })).toBe(0);
+    expect(await LiveSession.countDocuments({ _id: { $in: [scheduled._id, ran._id, marked._id] } })).toBe(3);
+    const audit = await AuditLog.find({ action: 'live.deleted', entityId: String(cancelled._id) }).lean();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ offeringId: w.offering._id, before: { status: 'cancelled' } });
+  });
+
+  it('keeps a cancelled class that is still ahead among the upcoming ones, a page at a time', async () => {
+    const w = await world();
+    const at = (hours: number) => ({
+      status: 'scheduled' as const,
+      startedAt: undefined,
+      scheduledStart: new Date(Date.now() + hours * 60 * MIN),
+      scheduledEnd: new Date(Date.now() + (hours + 1) * 60 * MIN),
+    });
+    const cancelled = await liveClass(w, { ...at(2), status: 'cancelled' });
+    for (let h = 3; h < 14; h++) await liveClass(w, at(h));
+    await signInAs(w.faculty);
+    const first = await listSessions(w.offeringId, 1);
+    expect(first.upcomingTotal).toBe(12);
+    expect(first.upcoming).toHaveLength(10);
+    expect(first.upcoming[0]).toMatchObject({ id: String(cancelled._id), state: 'cancelled' });
+    expect(first.past.some((s) => s.id === String(cancelled._id))).toBe(false);
+    expect((await listSessions(w.offeringId, 1, 2)).upcoming).toHaveLength(2);
   });
 
   it('starts from 15 minutes early, once, and tells the students', async () => {
@@ -599,7 +689,7 @@ describe('focus beacons (T8, 07 §9)', () => {
 });
 
 describe('who sees what (09 §2–3)', () => {
-  it('gives join tokens to the teacher and enrolled students only while the class is live', async () => {
+  it('gives join tokens to the teacher, enrolled students and admins only while the class is live', async () => {
     const w = await world();
     const session = await liveClass(w, {
       scheduledStart: new Date(Date.now() - 10 * MIN),
@@ -609,11 +699,22 @@ describe('who sees what (09 §2–3)', () => {
     expect((await getSession(w.offeringId, String(session._id))).join?.token).toBe(`host-${w.faculty._id}`);
     await signInAs(w.student);
     expect((await getSession(w.offeringId, String(session._id))).join?.token).toBe(`participant-${w.student._id}`);
+    // An admin joins any class as host (Aniket, 17 Oct 2026); the HoD follows it without a token.
     await signInAs(w.admin);
-    const admin = await getSession(w.offeringId, String(session._id));
-    expect(admin).toMatchObject({ view: 'oversee', canManage: true, join: null });
+    expect(await getSession(w.offeringId, String(session._id))).toMatchObject({
+      view: 'oversee',
+      canManage: true,
+      join: { token: `host-${w.admin._id}` },
+    });
     await signInAs(w.hod);
-    expect(await getSession(w.offeringId, String(session._id))).toMatchObject({ view: 'oversee', canManage: false });
+    expect(await getSession(w.offeringId, String(session._id))).toMatchObject({
+      view: 'oversee',
+      canManage: false,
+      join: null,
+    });
+    await LiveSession.updateOne({ _id: session._id }, { $set: { status: 'ended', endedAt: new Date() } });
+    await signInAs(w.admin);
+    expect((await getSession(w.offeringId, String(session._id))).join).toBeNull();
     await signInAs(w.outsider);
     await expect(getSession(w.offeringId, String(session._id))).rejects.toThrow(NOT_FOUND);
   });
@@ -695,5 +796,10 @@ describe('who sees what (09 §2–3)', () => {
     expect((await listTodaysLiveSessions()).map((c) => [c.id, c.status])).toContainEqual([String(running._id), 'live']);
     await signInAs(w.outsider);
     expect((await listTodaysLiveSessions()).some((c) => c.id === String(running._id))).toBe(false);
+    // An admin teaches none of these courses but sees the class running now, to join it. The list holds ten, earliest
+    // end first, and earlier tests in this file leave classes live: end those first.
+    await LiveSession.updateMany({ _id: { $ne: running._id }, status: 'live' }, { $set: { status: 'ended' } });
+    await signInAs(w.admin);
+    expect((await listTodaysLiveSessions()).map((c) => [c.id, c.status])).toContainEqual([String(running._id), 'live']);
   });
 });

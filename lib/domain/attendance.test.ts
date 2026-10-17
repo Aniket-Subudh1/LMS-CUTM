@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attendancePct, deriveAttendance } from './attendance';
+import { attendancePct, deriveAttendance, shortOfAttendance } from './attendance';
 
 const at = (time: string) => new Date(`2026-10-16T${time}:00+05:30`);
 const stay = (from: string, to: string | null) => ({ joinedAt: at(from), leftAt: to ? at(to) : null });
@@ -38,5 +38,16 @@ describe('attendancePct', () => {
   it('rounds to two decimals', () => {
     expect(attendancePct(2, 3)).toBe(66.67);
     expect(attendancePct(12, 14)).toBe(85.71);
+  });
+});
+
+describe('shortOfAttendance', () => {
+  it('is short under the minimum share of the classes held, never with none held', () => {
+    expect(shortOfAttendance(3, 4, 75)).toBe(false);
+    expect(shortOfAttendance(2, 4, 75)).toBe(true);
+    expect(shortOfAttendance(5, 7, 75)).toBe(true);
+    expect(shortOfAttendance(6, 8, 75)).toBe(false);
+    expect(shortOfAttendance(0, 0, 75)).toBe(false);
+    expect(shortOfAttendance(0, 1, 0)).toBe(false);
   });
 });

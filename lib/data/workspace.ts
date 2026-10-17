@@ -2,10 +2,12 @@ import 'server-only';
 import { cache } from 'react';
 import { notFound } from 'next/navigation';
 import { Types } from 'mongoose';
-import { offeringAccess, requireTeach, type OfferingAccess } from '@/lib/auth/access';
+import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
-import { attendancePct } from '@/lib/domain/attendance';
+import { escapeRegex } from '@/lib/data/courses';
+import { getSettings } from '@/lib/data/settings';
+import { attendancePct, shortOfAttendance } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { formatDate } from '@/lib/format';
 import { Attendance } from '@/lib/models/attendance';
@@ -14,12 +16,19 @@ import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
+import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize, RichTextDoc, ROLES } from '@/lib/schemas/common';
-import type { COURSE_TYPES, OFFERING_STATUSES } from '@/lib/schemas/structure';
+import { SETTINGS } from '@/lib/schemas/settings';
+import {
+  MAX_ENROLLMENTS,
+  type COURSE_TYPES,
+  type OFFERING_STATUSES,
+  type SESSION_KINDS,
+} from '@/lib/schemas/structure';
 
 type Status = (typeof OFFERING_STATUSES)[number];
 type CourseType = (typeof COURSE_TYPES)[number];
@@ -34,6 +43,7 @@ export type MyOfferingRow = {
   credits: { theory: number; practice: number; project: number };
   section: string | null;
   units: number;
+  coverKey: string | null;
   termCode: string;
   status: Status;
   faculty: string[];
@@ -95,6 +105,7 @@ export async function listMyOfferings(
       modules: 1,
       status: 1,
       facultyIds: 1,
+      coverKey: 1,
     })
       // A word search lists the closest matches first (text score); otherwise the usual order.
       .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
@@ -166,6 +177,7 @@ export async function listMyOfferings(
         credits: { theory: o.credits.theory, practice: o.credits.practice, project: o.credits.project },
         section: o.section ?? null,
         units: o.modules.length,
+        coverKey: o.coverKey ?? null,
         termCode: termCodes.get(String(o.termId)) ?? '—',
         status: o.status,
         faculty: o.facultyIds.flatMap((fid) => names.get(String(fid)) ?? []),
@@ -286,11 +298,18 @@ export type Workspace = {
   status: Status;
   category: 'ugc' | 'skill';
   termName: string;
+  code: string;
   courseTitle: string;
-  faculty: string[];
+  section: string | null;
+  credits: { theory: number; practice: number; project: number };
+  coverKey: string | null;
+  // The offering's teachers; `coordinator` marks the one who keeps the catalogue course (the People tab's staff card).
+  faculty: { id: string; name: string; email: string; coordinator: boolean }[];
   access: OfferingAccess;
   // Admin and the offering's own faculty change enrolment, the plan and the lessons; a head of department only looks.
   canTeach: boolean;
+  // The header's chips: a student counts only published lessons (M03b).
+  stats: { modules: number; lessons: number; videoSec: number; students: number };
 };
 
 export const getWorkspace = cache(async (offeringId: string): Promise<Workspace> => {
@@ -303,12 +322,21 @@ export const getWorkspace = cache(async (offeringId: string): Promise<Workspace>
     termId: 1,
     courseId: 1,
     facultyIds: 1,
+    section: 1,
+    credits: 1,
+    coverKey: 1,
+    'modules._id': 1,
   }).lean();
   if (!offering) notFound();
-  const [term, course, faculty] = await Promise.all([
+  const [term, course, faculty, lessons, students] = await Promise.all([
     Term.findById(offering.termId, { name: 1 }).lean(),
-    Course.findById(offering.courseId, { title: 1 }).lean(),
-    User.find({ _id: { $in: offering.facultyIds } }, { name: 1 }).lean(),
+    Course.findById(offering.courseId, { code: 1, title: 1, coordinatorId: 1 }).lean(),
+    User.find({ _id: { $in: offering.facultyIds } }, { name: 1, email: 1 }).lean(),
+    Lesson.aggregate<{ count: number; videoSec: number }>([
+      { $match: { offeringId: offering._id, ...(access === 'learn' ? { published: true } : {}) } },
+      { $group: { _id: null, count: { $sum: 1 }, videoSec: { $sum: '$durationSec' } } },
+    ]),
+    Enrollment.countDocuments({ offeringId, status: 'active' }),
   ]);
   return {
     id: String(offering._id),
@@ -316,10 +344,29 @@ export const getWorkspace = cache(async (offeringId: string): Promise<Workspace>
     status: offering.status,
     category: offering.category,
     termName: term?.name ?? '—',
-    courseTitle: course?.title ?? '—',
-    faculty: faculty.map((f) => f.name),
+    code: course?.code ?? '',
+    courseTitle: course?.title ?? offering.title,
+    section: offering.section ?? null,
+    credits: {
+      theory: offering.credits.theory,
+      practice: offering.credits.practice,
+      project: offering.credits.project,
+    },
+    coverKey: offering.coverKey ?? null,
+    faculty: faculty.map((f) => ({
+      id: String(f._id),
+      name: f.name,
+      email: f.email,
+      coordinator: Boolean(course?.coordinatorId?.equals(f._id)),
+    })),
     access,
     canTeach: access === 'teach' || viewer.roles.includes('admin'),
+    stats: {
+      modules: offering.modules.length,
+      lessons: lessons[0]?.count ?? 0,
+      videoSec: lessons[0]?.videoSec ?? 0,
+      students,
+    },
   };
 });
 
@@ -337,7 +384,15 @@ export async function listPlanRequests(): Promise<PlanRequestRow[]> {
 }
 
 // `day` is the IST date (YYYY-MM-DD) for the date input; `past` lets the Overview mark the next session.
-export type CalendarRow = { id: string; date: Date; day: string; topic: string; coIds: string[]; past: boolean };
+export type CalendarRow = {
+  id: string;
+  date: Date;
+  day: string;
+  topic: string;
+  coIds: string[];
+  kind: (typeof SESSION_KINDS)[number] | null;
+  past: boolean;
+};
 
 export type CoursePlan = {
   offeringId: string;
@@ -349,6 +404,7 @@ export type CoursePlan = {
   sessionPlan: number;
   version: number;
   publishedAt: Date | null;
+  changedAt: Date | null;
   students: number;
 };
 
@@ -371,6 +427,7 @@ async function readPlan(offeringId: string): Promise<CoursePlan> {
       date: row.date,
       topic: row.topic,
       coIds: row.coIds.map(String),
+      kind: row.kind ?? null,
       day: istDayKey(row.date),
       past: istDayKey(row.date) < today,
     })),
@@ -378,22 +435,19 @@ async function readPlan(offeringId: string): Promise<CoursePlan> {
     sessionPlan: course?.sessionPlan.length ?? 0,
     version: offering.plan.version,
     publishedAt: offering.plan.publishedAt ?? null,
+    changedAt: offering.plan.changedAt ?? null,
     students,
   };
 }
 
-export async function getPlanEditor(offeringId: string): Promise<CoursePlan> {
-  const viewer = await requireViewer(['admin', 'faculty']);
-  await requireTeach(viewer, offeringId);
-  return readPlan(offeringId);
-}
-
-// Overview: everyone with access sees the plan and calendar once a version has been published.
-export async function getPublishedPlan(offeringId: string): Promise<CoursePlan | null> {
+// The Course plan tab for every role (M03b): teachers and admins edit it; a head of department reads it as saved;
+// a student reads it once a version is published (null before).
+export async function getPlanView(offeringId: string): Promise<{ plan: CoursePlan | null; canTeach: boolean }> {
   const viewer = await requireViewer();
-  await offeringAccess(viewer, offeringId);
+  const access = await offeringAccess(viewer, offeringId);
   const plan = await readPlan(offeringId);
-  return plan.publishedAt ? plan : null;
+  if (access === 'learn' && !plan.publishedAt) return { plan: null, canTeach: false };
+  return { plan, canTeach: access === 'teach' || viewer.roles.includes('admin') };
 }
 
 export type SetupStep = { done: boolean; detail: string };
@@ -449,29 +503,56 @@ export type RosterRow = {
   live: { attended: number; held: number; pct: number | null } | null;
 };
 
-export async function listRoster(
-  offeringId: string,
-  page: number,
-): Promise<{ rows: RosterRow[]; total: number; publishedLessons: number | null }> {
+export type RosterFilter = { q?: string; status?: 'active' | 'dropped' };
+
+export type Roster = {
+  rows: RosterRow[];
+  // Students matching the filter.
+  total: number;
+  // The whole class, whatever the filter: the People tab's number tiles. `short` counts active students under the
+  // minimum attendance (credit offerings; null for skill ones).
+  counts: { enrolled: number; active: number; dropped: number; short: number | null };
+  minPct: number | null;
+  publishedLessons: number | null;
+};
+
+// M03b T7: the roster by roll number, searched by roll number or email (from the start) or name (anywhere), and
+// filtered by status. An offering holds at most MAX_ENROLLMENTS enrolments (A-83), so its students are read whole and
+// the search runs on that bounded set (users by _id); the page then reads only its own rows' lesson progress.
+export async function listRoster(offeringId: string, page: number, filter: RosterFilter = {}): Promise<Roster> {
   const viewer = await requireViewer();
   if ((await offeringAccess(viewer, offeringId)) === 'learn') notFound();
   await db();
-  const offering = await Offering.findById(offeringId, { category: 1 }).lean();
+  const offering = await Offering.findById(offeringId, { category: 1, evaluation: 1 }).lean();
   if (!offering) notFound();
-  const [docs, total] = await Promise.all([
-    Enrollment.find({ offeringId }, { studentId: 1, status: 1 })
-      .sort({ studentId: 1 })
+  const skill = offering.category === 'skill';
+  const enrolments = await Enrollment.find({ offeringId }, { studentId: 1, status: 1 }).limit(MAX_ENROLLMENTS).lean();
+  const shown = filter.status ? enrolments.filter((e) => e.status === filter.status) : enrolments;
+  const enrolmentOf = new Map(shown.map((e) => [String(e.studentId), e]));
+  const q = filter.q?.trim();
+  const userFilter = {
+    _id: { $in: shown.map((e) => e.studentId) },
+    ...(q
+      ? {
+          $or: [
+            { rollNo: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
+            { email: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
+            { name: { $regex: escapeRegex(q), $options: 'i' } },
+          ],
+        }
+      : {}),
+  };
+  const [students, total] = await Promise.all([
+    User.find(userFilter, { name: 1, email: 1, rollNo: 1 })
+      .sort({ rollNo: 1, _id: 1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),
-    Enrollment.countDocuments({ offeringId }),
+    User.countDocuments(userFilter),
   ]);
-  const studentIds = docs.map((e) => e.studentId);
-  const students = await User.find({ _id: { $in: studentIds } }, { name: 1, email: 1, rollNo: 1 }).lean();
-  const byId = new Map(students.map((s) => [String(s._id), s]));
+  const studentIds = students.map((s) => s._id);
 
   // T9: per student on this page, completed published lessons, watched time and last activity (one $group).
-  const skill = offering.category === 'skill';
   const publishedIds = skill ? await Lesson.distinct('_id', { offeringId, published: true }) : [];
   const stats = skill
     ? await LessonProgress.aggregate<{
@@ -496,17 +577,12 @@ export async function listRoster(
       ])
     : [];
   const statsById = new Map(stats.map((row) => [String(row._id), row]));
-  // M03 T9: each student's rows of finished classes (a row has a status once its class is finalized or marked, A-72).
+  // M03 T9: each student's finished classes (a row has a status once its class is finalized or marked, A-72), for the
+  // whole class at once: the page's rows and the "below the minimum" tile (index offeringId, studentId).
   const live = skill
     ? []
     : await Attendance.aggregate<{ _id: Types.ObjectId; attended: number; held: number }>([
-        {
-          $match: {
-            offeringId: new Types.ObjectId(offeringId),
-            studentId: { $in: studentIds },
-            status: { $in: ['present', 'absent'] },
-          },
-        },
+        { $match: { offeringId: new Types.ObjectId(offeringId), status: { $in: ['present', 'absent'] } } },
         {
           $group: {
             _id: '$studentId',
@@ -516,29 +592,156 @@ export async function listRoster(
         },
       ]);
   const liveById = new Map(live.map((row) => [String(row._id), row]));
+  // The offering's own copy of the evaluation policy decides (05 §3.8); one made before it had the field uses today's.
+  const policy = SETTINGS.evaluation.schema.safeParse(offering.evaluation);
+  const minPct = skill
+    ? null
+    : policy.success
+      ? policy.data.attendanceMinPct
+      : (await getSettings('evaluation')).attendanceMinPct;
+  const active = enrolments.filter((e) => e.status === 'active');
   return {
-    rows: docs.map((e) => {
-      const student = byId.get(String(e.studentId));
-      const stat = statsById.get(String(e.studentId));
-      const { attended = 0, held = 0 } = liveById.get(String(e.studentId)) ?? {};
-      return {
-        id: String(e._id),
-        rollNo: student?.rollNo ?? '—',
-        name: student?.name ?? '—',
-        email: student?.email ?? '—',
-        status: e.status,
-        skill: skill
-          ? {
-              completed: stat?.completed ?? 0,
-              attendancePct: attendancePct(stat?.completed ?? 0, publishedIds.length),
-              watchedMin: Math.round((stat?.watchedSec ?? 0) / 60),
-              lastActiveAt: stat?.lastActiveAt ?? null,
-            }
-          : null,
-        live: skill ? null : { attended, held, pct: attendancePct(attended, held) },
-      };
+    rows: students.flatMap((student) => {
+      const enrolment = enrolmentOf.get(String(student._id));
+      if (!enrolment) return [];
+      const stat = statsById.get(String(student._id));
+      const { attended = 0, held = 0 } = liveById.get(String(student._id)) ?? {};
+      return [
+        {
+          id: String(enrolment._id),
+          rollNo: student.rollNo ?? '—',
+          name: student.name,
+          email: student.email,
+          status: enrolment.status,
+          skill: skill
+            ? {
+                completed: stat?.completed ?? 0,
+                attendancePct: attendancePct(stat?.completed ?? 0, publishedIds.length),
+                watchedMin: Math.round((stat?.watchedSec ?? 0) / 60),
+                lastActiveAt: stat?.lastActiveAt ?? null,
+              }
+            : null,
+          live: skill ? null : { attended, held, pct: attendancePct(attended, held) },
+        },
+      ];
     }),
     total,
+    counts: {
+      enrolled: enrolments.length,
+      active: active.length,
+      dropped: enrolments.length - active.length,
+      short:
+        minPct === null
+          ? null
+          : active.filter((e) => {
+              const row = liveById.get(String(e.studentId));
+              return row !== undefined && shortOfAttendance(row.attended, row.held, minPct);
+            }).length,
+    },
+    minPct,
     publishedLessons: skill ? publishedIds.length : null,
+  };
+}
+
+export type NextUp = {
+  live: { id: string; title: string; start: Date; end: Date; status: 'scheduled' | 'live' } | null;
+  // The next course-plan session on or after today; a student sees it once the plan is published.
+  session: { date: Date; topic: string; cos: string[] } | null;
+};
+
+// The Overview's "Up next" (M03b): one indexed read of the next class, and the calendar, stored in date order.
+export async function getNextUp(offeringId: string): Promise<NextUp> {
+  const viewer = await requireViewer();
+  const access = await offeringAccess(viewer, offeringId);
+  await db();
+  const now = new Date();
+  const today = istDateToDate(istDayKey(now));
+  const [live, offering, published] = await Promise.all([
+    LiveSession.findOne(
+      { offeringId, status: { $in: ['scheduled', 'live'] }, scheduledEnd: { $gte: now } },
+      { title: 1, scheduledStart: 1, scheduledEnd: 1, status: 1 },
+    )
+      .sort({ scheduledStart: 1 })
+      .lean(),
+    Offering.findById(offeringId, { calendar: 1, courseId: 1 }).lean(),
+    access === 'learn' ? Offering.exists({ _id: offeringId, 'plan.publishedAt': { $ne: null } }) : true,
+  ]);
+  const row = published ? offering?.calendar.find((r) => r.date >= today) : undefined;
+  const course = row?.coIds.length
+    ? await Course.findById(offering?.courseId, { 'cos._id': 1, 'cos.code': 1 }).lean()
+    : null;
+  const codes = new Map(course?.cos.map((co) => [String(co._id), co.code]));
+  return {
+    live:
+      live && (live.status === 'scheduled' || live.status === 'live')
+        ? {
+            id: String(live._id),
+            title: live.title,
+            start: live.scheduledStart,
+            end: live.scheduledEnd,
+            status: live.status,
+          }
+        : null,
+    session: row
+      ? { date: row.date, topic: row.topic, cos: row.coIds.flatMap((id) => codes.get(String(id)) ?? []) }
+      : null,
+  };
+}
+
+export type ClassProgress = {
+  students: number;
+  published: number;
+  // Students by share of the published lessons finished: under 25%, 25–50%, 50–75%, 75% and more.
+  buckets: [number, number, number, number];
+  averagePct: number;
+  notStarted: number;
+  // Present over marked, across the finalized live classes; null before the first one.
+  attendancePct: number | null;
+};
+
+// "How the class is doing" on a teacher's Overview (M03b). Bounded by the offering's students (02 §11) and lessons.
+export async function getClassProgress(offeringId: string): Promise<ClassProgress | null> {
+  const viewer = await requireViewer();
+  if ((await offeringAccess(viewer, offeringId)) === 'learn') return null;
+  await db();
+  const [enrolled, publishedIds, attendance] = await Promise.all([
+    Enrollment.distinct('studentId', { offeringId, status: 'active' }),
+    Lesson.distinct('_id', { offeringId, published: true }),
+    Attendance.aggregate<{ present: number; total: number }>([
+      { $match: { offeringId: new Types.ObjectId(offeringId), status: { $in: ['present', 'absent'] } } },
+      {
+        $group: {
+          _id: null,
+          present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+          total: { $sum: 1 },
+        },
+      },
+    ]),
+  ]);
+  const done = publishedIds.length
+    ? await LessonProgress.aggregate<{ _id: Types.ObjectId; count: number }>([
+        {
+          $match: {
+            offeringId: new Types.ObjectId(offeringId),
+            lessonId: { $in: publishedIds },
+            completedAt: { $ne: null },
+          },
+        },
+        { $group: { _id: '$studentId', count: { $sum: 1 } } },
+      ])
+    : [];
+  const doneOf = new Map(done.map((d) => [String(d._id), d.count]));
+  const pcts = enrolled.map((id) =>
+    publishedIds.length ? (100 * (doneOf.get(String(id)) ?? 0)) / publishedIds.length : 0,
+  );
+  const buckets: ClassProgress['buckets'] = [0, 0, 0, 0];
+  for (const pct of pcts) buckets[Math.min(3, Math.floor(pct / 25))] += 1;
+  return {
+    students: enrolled.length,
+    published: publishedIds.length,
+    buckets,
+    averagePct: pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0,
+    notStarted: pcts.filter((pct) => pct === 0).length,
+    attendancePct: attendance[0] ? attendancePct(attendance[0].present, attendance[0].total) : null,
   };
 }

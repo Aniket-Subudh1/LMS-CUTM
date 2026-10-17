@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Tab = { href: string; label: string; icon?: ReactNode; prefixes?: string[] };
 
-// Link tabs: the URL is the state. A tab owns its own path, anything below it and any listed prefix;
+// Link tabs as an underlined row ("B · Crisp editorial", 17 Oct 2026): the URL is the state. A tab owns its own path, anything below it and any listed prefix;
 // the longest match wins, so `/courses/x` (Overview) does not claim `/courses/x/people`.
 export function TabNav({ tabs }: { tabs: Tab[] }) {
   const pathname = usePathname();
@@ -24,17 +24,18 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
     undefined,
   );
   return (
-    <Tabs value={current?.href ?? ''} className="-m-1 mb-5 overflow-x-auto p-1 lg:mb-7">
+    <Tabs value={current?.href ?? ''} className="mb-5 overflow-x-auto lg:mb-6">
       <TabsList
         aria-label="Sections"
-        className="bg-card ring-border/80 gap-1 rounded-2xl p-1.5 ring-1 group-data-[orientation=horizontal]/tabs:h-auto"
+        variant="line"
+        className="w-full justify-start gap-6 border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto"
       >
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.href}
             value={tab.href}
             asChild
-            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary h-9 rounded-xl px-4 data-[state=active]:shadow-none [&_svg]:size-[1.125rem]"
+            className="text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground -mb-px h-10 flex-none rounded-none border-0 border-b-2 border-transparent px-0 text-[0.8125rem] font-medium data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:shadow-none [&_svg]:size-4"
           >
             <Link href={tab.href} aria-current={tab === current ? 'page' : undefined}>
               {tab.icon}

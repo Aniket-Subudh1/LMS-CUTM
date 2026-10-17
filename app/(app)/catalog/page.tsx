@@ -26,7 +26,7 @@ export const metadata: Metadata = { title: 'Course catalogue' };
 
 // A checkbox filter drawn as a pill beside the selects; it turns blue while on.
 const TOGGLE =
-  'ring-border bg-card has-checked:bg-primary/10 has-checked:text-primary has-checked:ring-primary/30 flex h-9 cursor-pointer items-center gap-2 rounded-full px-4 text-sm ring-1 transition-colors';
+  'ring-border bg-card has-checked:bg-primary/10 has-checked:text-primary has-checked:ring-primary/30 flex h-8 cursor-pointer items-center gap-2 rounded-md px-3 text-sm ring-1 transition-colors';
 
 const flag = z.literal('1').optional().catch(undefined);
 const Search = z.object({

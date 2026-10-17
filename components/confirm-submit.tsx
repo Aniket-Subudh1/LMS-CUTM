@@ -43,7 +43,7 @@ export function ConfirmSubmit({
       <span ref={anchor} hidden />
       <AlertDialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
         <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
-        <AlertDialogContent className="bg-card shadow-elevated ring-border rounded-2xl border-0 ring-1">
+        <AlertDialogContent className="bg-card shadow-elevated ring-border rounded-lg border-0 ring-1">
           <AlertDialogHeader>
             <AlertDialogTitle>{title}</AlertDialogTitle>
             <AlertDialogDescription>{message}</AlertDialogDescription>

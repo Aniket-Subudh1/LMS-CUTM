@@ -82,7 +82,7 @@ async function Notifications({ searchParams }: { searchParams: PageProps<'/notif
                     >
                       <span
                         className={cn(
-                          'grid size-10 shrink-0 place-items-center rounded-xl ring-1',
+                          'grid size-10 shrink-0 place-items-center rounded-md ring-1',
                           row.read
                             ? 'bg-background text-muted-foreground ring-border'
                             : 'bg-primary/10 text-primary ring-primary/15',

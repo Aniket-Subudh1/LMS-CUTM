@@ -338,7 +338,7 @@ function Evaluation({ page }: { page: SettingsPage<'evaluation'> }) {
               Each part a course has credits for is marked out of 100. The course percentage is their average weighted
               by the credits, rounded up once.
             </p>
-            <p className="bg-muted/50 rounded-xl p-4 font-mono text-xs leading-relaxed">
+            <p className="bg-muted/50 rounded-md p-4 font-mono text-xs leading-relaxed">
               DECT0901, credits 1-2-2
               <br />
               Theory 87, practice 89, project 92

@@ -26,7 +26,7 @@ export default function LoginPage() {
             autoComplete="username"
             placeholder="name@cutm.ac.in"
             required
-            className="bg-card h-12 rounded-full border-transparent pl-5"
+            className="bg-card h-10 rounded-md pl-3"
           />
         </Field>
         <Field name="password" label="Password">
@@ -34,7 +34,7 @@ export default function LoginPage() {
             name="password"
             autoComplete="current-password"
             required
-            className="bg-card h-12 rounded-full border-transparent pl-5"
+            className="bg-card h-10 rounded-md pl-3"
           />
         </Field>
       </ActionForm>
@@ -45,7 +45,7 @@ export default function LoginPage() {
             Reset it
           </Link>
         </p>
-        <p className="text-muted-foreground ring-foreground/10 rounded-2xl px-4 py-3 text-xs leading-relaxed ring-1">
+        <p className="text-muted-foreground ring-foreground/10 rounded-lg px-4 py-3 text-xs leading-relaxed ring-1">
           New here? Accounts are created by the university. Look for the “Your CUTM LMS account” email to set up yours.
         </p>
       </div>
