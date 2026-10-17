@@ -98,10 +98,13 @@ export function RichTextEditor({
   name,
   initial,
   placeholder,
+  onChange,
 }: {
   name: string;
   initial?: RichTextDoc | null;
   placeholder?: string;
+  // The same JSON string the hidden input holds ('' while empty), for a parent that saves as the person types (M04).
+  onChange?: (value: string) => void;
 }) {
   const [value, setValue] = useState(() => (initial ? JSON.stringify(initial) : ''));
   const [linking, setLinking] = useState(false);
@@ -110,7 +113,11 @@ export function RichTextEditor({
     content: initial ?? '',
     immediatelyRender: false,
     editorProps: { attributes: { class: 'prose-lms min-h-40 px-4 py-3 outline-none' } },
-    onUpdate: ({ editor }) => setValue(editor.isEmpty ? '' : JSON.stringify(editor.getJSON())),
+    onUpdate: ({ editor }) => {
+      const next = editor.isEmpty ? '' : JSON.stringify(editor.getJSON());
+      setValue(next);
+      onChange?.(next);
+    },
   });
   // Tiptap 3 does not re-render on every transaction; the toolbar reads just the state it shows.
   const state = useEditorState({

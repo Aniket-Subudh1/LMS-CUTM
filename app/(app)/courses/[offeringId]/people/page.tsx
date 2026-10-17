@@ -211,6 +211,12 @@ function columns(roster: Roster, workspace: Workspace) {
           },
           { header: 'Attendance', cell: (s) => <Share pct={s.skill?.attendancePct ?? null} /> },
           { header: 'Watched', cell: (s) => <span className="tabular-nums">{s.skill?.watchedMin ?? 0} min</span> },
+          // SKL-02 (M04 T9): quizzes with at least one attempt, and the average of those with published results.
+          {
+            header: 'Quizzes attempted',
+            cell: (s) => <span className="tabular-nums">{s.skill?.quizzesAttempted ?? 0}</span>,
+          },
+          { header: 'Quiz average', cell: (s) => <Share pct={s.skill?.quizAvgPct ?? null} /> },
           {
             header: 'Last active',
             cell: (s) =>

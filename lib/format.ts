@@ -1,3 +1,4 @@
+import type { AssessmentMode, ItemType } from '@/lib/schemas/assessment';
 import type { Role } from '@/lib/schemas/common';
 import type { COURSE_TYPES } from '@/lib/schemas/structure';
 
@@ -95,6 +96,16 @@ const TONE: Record<string, Tone> = {
   partial: 'warning',
   failed: 'danger',
   stopped: 'danger',
+  // M04: an assessment's window and results, and an attempt as its student or a grader sees it.
+  open: 'success',
+  late: 'warning',
+  results: 'success',
+  not_started: 'secondary',
+  in_progress: 'warning',
+  submitted: 'success',
+  graded: 'success',
+  to_grade: 'warning',
+  missing: 'outline',
 };
 
 // The one place a status becomes a Badge variant (08 §4).
@@ -147,3 +158,33 @@ export const keptBy = (coordinator: { name: string } | null) =>
   coordinator
     ? `Kept by ${coordinator.name}, the course coordinator.`
     : 'Kept by the administrators until the course has a coordinator.';
+
+export const MODE_LABEL: Record<AssessmentMode, string> = {
+  quiz: 'Quiz',
+  written_test: 'Written test',
+  assignment: 'Assignment',
+  learning_record: 'Learning record',
+  lab_record: 'Lab record',
+};
+
+// The question types in a teacher's words (M04 mock-ups).
+export const ITEM_LABEL: Record<ItemType, string> = {
+  mcq: 'One answer',
+  msq: 'Several answers',
+  numeric: 'Number',
+  text: 'Written answer',
+  file: 'Upload',
+};
+
+// "Due in 2 days" for a deadline badge (08 §7); minutes in the last hour, hours in the last two days.
+export function formatDue(due: Date, now: Date): string {
+  const minutes = (due.getTime() - now.getTime()) / 60_000;
+  if (minutes <= 0) return 'Closed';
+  const [n, unit] =
+    minutes < 60
+      ? [Math.ceil(minutes), 'minute']
+      : minutes < 48 * 60
+        ? [Math.floor(minutes / 60), 'hour']
+        : [Math.floor(minutes / 1440), 'day'];
+  return `Due in ${n} ${unit}${n === 1 ? '' : 's'}`;
+}

@@ -94,7 +94,9 @@ export function ActionForm({
       method="post"
       onSubmit={(event) => {
         event.preventDefault();
-        const fd = new FormData(event.currentTarget);
+        // The button that submitted the form posts its own name and value (M04: "Save and open the next").
+        const submitter = event.nativeEvent instanceof SubmitEvent ? event.nativeEvent.submitter : null;
+        const fd = new FormData(event.currentTarget, submitter);
         startTransition(() => formAction(fd));
       }}
       className="grid gap-5"

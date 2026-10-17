@@ -26,6 +26,7 @@ import { Progress } from '@/components/ui/progress';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { listContinueLearning, type ContinueRow } from '@/lib/data/content';
 import { listTodaysLiveSessions, type TodayClass } from '@/lib/data/live';
+import { listDueSoon, listToGrade, type DueSoonRow, type ToGradeRow } from '@/lib/data/assessments';
 import { unreadCount } from '@/lib/data/notifications';
 import {
   getHomeSummary,
@@ -36,7 +37,7 @@ import {
   type PlanRequestRow,
 } from '@/lib/data/workspace';
 import { cn } from '@/lib/cn';
-import { formatDate, formatDateTime, formatTime, initials, statusTone } from '@/lib/format';
+import { formatDate, formatDateTime, formatDue, formatTime, initials, statusTone } from '@/lib/format';
 import type { Role } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'Dashboard' };
@@ -60,13 +61,15 @@ export default function HomePage() {
 
 async function Home() {
   const viewer = await requireViewer();
-  const [summary, offerings, continueLearning, planRequests, unread, today] = await Promise.all([
+  const [summary, offerings, continueLearning, planRequests, unread, today, dueSoon, toGrade] = await Promise.all([
     getHomeSummary(),
     viewer.roles.some((r) => OFFERING_ROLES.includes(r)) ? listMyOfferings(1, {}) : null,
     viewer.roles.includes('student') ? listContinueLearning() : [],
     viewer.roles.includes('faculty') ? listPlanRequests() : [],
     unreadCount(),
     viewer.roles.some((r) => r === 'student' || r === 'faculty' || r === 'admin') ? listTodaysLiveSessions() : [],
+    viewer.roles.includes('student') ? listDueSoon() : [],
+    viewer.roles.includes('faculty') ? listToGrade() : [],
   ]);
   const [featured, ...rest] = offerings?.rows ?? [];
   const next = rest.slice(0, 3);
@@ -77,7 +80,9 @@ async function Home() {
     next.length > 0 ||
     continueLearning.length > 0 ||
     planRequests.length > 0 ||
-    today.length > 0;
+    today.length > 0 ||
+    dueSoon.length > 0 ||
+    toGrade.length > 0;
   return (
     <div className="grid gap-6">
       <h1 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
@@ -93,6 +98,8 @@ async function Home() {
           <div className="grid gap-5">
             {today.length > 0 && <TodaysClasses rows={today} student={viewer.roles.includes('student')} />}
             {planRequests.length > 0 && <PlanRequests rows={planRequests} />}
+            {dueSoon.length > 0 && <DueSoon rows={dueSoon} />}
+            {toGrade.length > 0 && <ToGrade rows={toGrade} />}
             {continueLearning.length > 0 && <ContinueLearning rows={continueLearning} />}
             {tiles.length > 0 && (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9.5rem),1fr))] gap-4">
@@ -585,6 +592,79 @@ function ContinueLearning({ rows }: { rows: ContinueRow[] }) {
 }
 
 // CRS-06, T10: active offerings the faculty member teaches without a published course plan.
+// M04 decision 1 (A-M04-4): open assessments closing within a week that the student has not handed in.
+function DueSoon({ rows }: { rows: DueSoonRow[] }) {
+  const now = new Date();
+  return (
+    <section className="surface grid gap-4 p-5">
+      <div className="flex items-start gap-3">
+        <PageIcon name="evaluation" className="size-10" />
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold tracking-tight">Due soon</h2>
+          <p className="text-muted-foreground text-sm">Open now and closing within a week.</p>
+        </div>
+      </div>
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <Link
+              href={`/courses/${row.offeringId}/assessments/${row.id}`}
+              className="surface-interactive group flex items-center gap-3 px-4 py-3"
+            >
+              <span className="grid min-w-0 flex-1">
+                <span className="truncate text-sm font-medium">{row.title}</span>
+                <span className="text-muted-foreground truncate text-xs">
+                  {row.offeringTitle} · {row.started ? 'In progress' : 'Not started'}
+                </span>
+              </span>
+              <span className="text-warning shrink-0 text-xs font-medium whitespace-nowrap">
+                {formatDue(row.closesAt, now)}
+              </span>
+              <LinkSpinner />
+              <CaretRightIcon className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// M04 decision 1: hand-ins waiting for marks in the classes the viewer teaches.
+function ToGrade({ rows }: { rows: ToGradeRow[] }) {
+  return (
+    <section className="surface ring-warning/30 grid gap-4 p-5">
+      <div className="flex items-start gap-3">
+        <PageIcon name="badge" className="size-10" />
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold tracking-tight">To grade</h2>
+          <p className="text-muted-foreground text-sm">Hand-ins waiting for your marks.</p>
+        </div>
+      </div>
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <Link
+              href={`/courses/${row.offeringId}/assessments/${row.id}/grade?status=to_grade`}
+              className="surface-interactive group flex items-center gap-3 px-4 py-3"
+            >
+              <span className="grid min-w-0 flex-1">
+                <span className="truncate text-sm font-medium">{row.title}</span>
+                <span className="text-muted-foreground truncate text-xs">{row.offeringTitle}</span>
+              </span>
+              <span className="bg-warning/10 text-warning shrink-0 rounded-sm px-1.5 py-px text-xs font-semibold tabular-nums">
+                {row.toGrade} to grade
+              </span>
+              <LinkSpinner />
+              <CaretRightIcon className="size-4 shrink-0 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function PlanRequests({ rows }: { rows: PlanRequestRow[] }) {
   return (
     <section className="surface ring-warning/30 grid gap-4 p-5">

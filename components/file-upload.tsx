@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ArrowClockwiseIcon, CheckCircleIcon, CloudArrowUpIcon, FileIcon, XIcon } from '@phosphor-icons/react';
 import { createUpload } from '@/app/(app)/actions';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,10 @@ import { UPLOAD_PURPOSES, type UploadedFile, type UploadPurpose } from '@/lib/sc
 
 type Row = {
   id: string;
-  file: File;
+  // Null for a file saved earlier (`initial`), which has nothing left to upload.
+  file: File | null;
+  name: string;
+  size: number;
   progress: number;
   state: 'uploading' | 'done' | 'failed';
   error?: string;
@@ -84,6 +87,8 @@ export function FileUpload({
   multiple = false,
   required = false,
   max,
+  initial = [],
+  onChange,
 }: {
   name: string;
   purpose: UploadPurpose;
@@ -92,14 +97,38 @@ export function FileUpload({
   required?: boolean;
   // How many files this box may still add (a lesson's notes).
   max?: number;
+  // M04: files saved before (an answer being resumed), shown as uploaded.
+  initial?: UploadedFile[];
+  // M04: the uploaded files whenever one finishes or is removed, for a parent that saves as the person goes.
+  onChange?: (files: UploadedFile[]) => void;
 }) {
   const rule = UPLOAD_PURPOSES[purpose];
   const frame = 'image' in rule ? rule.image : undefined;
   const input = useRef<HTMLInputElement>(null);
   const xhrs = useRef(new Map<string, XMLHttpRequest>());
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<Row[]>(() =>
+    initial.map((value) => ({
+      id: value.key,
+      file: null,
+      name: value.fileName,
+      size: value.size,
+      progress: 100,
+      state: 'done',
+      value,
+    })),
+  );
   const update = (id: string, patch: Partial<Row>) =>
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+
+  const done = rows.flatMap((row) => (row.value ? [row.value] : []));
+  const doneKeys = done.map((file) => file.key).join('|');
+  const reported = useRef(doneKeys);
+  const report = useEffectEvent(() => onChange?.(done));
+  useEffect(() => {
+    if (doneKeys === reported.current) return;
+    reported.current = doneKeys;
+    report();
+  }, [doneKeys]);
 
   // The form cannot be submitted while a file is still uploading, or (when required) before one has finished.
   const uploading = rows.some((row) => row.state === 'uploading');
@@ -111,35 +140,36 @@ export function FileUpload({
   }, [uploading, finished, required]);
 
   async function start(original: Row) {
-    let row = original;
-    update(row.id, { state: 'uploading', progress: 0, error: undefined });
+    if (!original.file) return;
+    let file = original.file;
+    const { id } = original;
+    update(id, { state: 'uploading', progress: 0, error: undefined });
     try {
       if (frame) {
-        const file = await toJpeg(row.file, frame.width, frame.height);
-        row = { ...row, file, preview: URL.createObjectURL(file) };
-        update(row.id, { file, preview: row.preview });
+        file = await toJpeg(file, frame.width, frame.height);
+        update(id, { file, name: file.name, size: file.size, preview: URL.createObjectURL(file) });
       }
-      const durationSec = await videoDuration(row.file);
-      if (row.file.type.startsWith('video/') && !durationSec) {
+      const durationSec = await videoDuration(file);
+      if (file.type.startsWith('video/') && !durationSec) {
         throw new Error('This video could not be read. Export it again as MP4 and upload that file.');
       }
       const ticket = await createUpload({
         purpose,
         contextId,
-        fileName: row.file.name,
-        contentType: row.file.type,
-        size: row.file.size,
+        fileName: file.name,
+        contentType: file.type,
+        size: file.size,
       });
       if (!ticket.ok) throw new Error(ticket.message);
-      await put(ticket.data.url, row.file, (progress) => update(row.id, { progress }), xhrs.current, row.id);
-      const { name: fileName, type: contentType, size } = row.file;
-      update(row.id, {
+      await put(ticket.data.url, file, (progress) => update(id, { progress }), xhrs.current, id);
+      const { name: fileName, type: contentType, size } = file;
+      update(id, {
         state: 'done',
         progress: 100,
         value: { key: ticket.data.key, fileName, contentType, size, durationSec },
       });
     } catch (error) {
-      update(row.id, {
+      update(id, {
         state: 'failed',
         error: error instanceof Error ? error.message : 'The upload failed. Try again.',
       });
@@ -153,6 +183,8 @@ export function FileUpload({
       .map((file): Row => ({
         id: crypto.randomUUID(),
         file,
+        name: file.name,
+        size: file.size,
         progress: 0,
         state: 'uploading',
       }));
@@ -220,9 +252,9 @@ export function FileUpload({
               </span>
             )}
             <div className="grid min-w-0 flex-1 gap-0.5">
-              <p className="truncate text-sm font-medium">{row.file.name}</p>
+              <p className="truncate text-sm font-medium">{row.name}</p>
               <p className="text-muted-foreground text-xs">
-                {formatBytes(row.file.size)}
+                {formatBytes(row.size)}
                 {row.value?.durationSec ? ` · ${formatDuration(row.value.durationSec)}` : ''}
                 {row.state === 'uploading' && ` · Uploading ${row.progress}%`}
                 {row.state === 'done' && ' · Uploaded'}
@@ -238,7 +270,7 @@ export function FileUpload({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={row.state === 'uploading' ? `Cancel uploading ${row.file.name}` : `Remove ${row.file.name}`}
+              aria-label={row.state === 'uploading' ? `Cancel uploading ${row.name}` : `Remove ${row.name}`}
               onClick={() => remove(row.id)}
             >
               <XIcon />
