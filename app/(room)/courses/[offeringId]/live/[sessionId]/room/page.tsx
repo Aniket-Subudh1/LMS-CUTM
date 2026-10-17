@@ -1,8 +1,8 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeftIcon, PlayIcon, StopIcon } from '@phosphor-icons/react/ssr';
-import { endSession, startSession } from '@/app/(app)/courses/[offeringId]/live/actions';
+import { ArrowLeftIcon, PlayIcon } from '@phosphor-icons/react/ssr';
+import { startSession } from '@/app/(app)/courses/[offeringId]/live/actions';
 import { ActionForm } from '@/components/action-form';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { LiveRoom } from '@/components/live-room';
@@ -10,7 +10,7 @@ import { RoomNotice } from '@/components/room-notice';
 import { Button } from '@/components/ui/button';
 import { getSession, type SessionDetail } from '@/lib/data/live';
 import { istDayKey } from '@/lib/domain/time';
-import { formatDay, formatTime } from '@/lib/format';
+import { formatDay, formatPct, formatTime } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Live class' };
 
@@ -34,6 +34,30 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
   const detail = await getSession(offeringId, sessionId);
   const { session } = detail;
   const classPage = `/courses/${offeringId}/live/${sessionId}`;
+  // While the class runs, the room draws its own title and controls over the stage ("A · Stage and side panel").
+  if (session.state === 'live' && detail.join) {
+    return (
+      <LiveRoom
+        offeringId={offeringId}
+        sessionId={session.id}
+        serverUrl={detail.join.serverUrl}
+        token={detail.join.token}
+        trackFocus={detail.view === 'student'}
+        host={detail.view !== 'student'}
+        classPage={classPage}
+        title={session.title}
+        course={detail.offeringTitle}
+        startedAt={session.startedAt}
+        endsAt={session.scheduledEnd}
+        enrolled={detail.enrolled}
+        attendanceNote={
+          detail.category === 'skill' || session.attendanceMode === 'derived'
+            ? `Attendance is automatic: present after ${formatPct(detail.thresholdPct)} of the class in the room.`
+            : 'You take attendance on the class page, with “Take attendance”.'
+        }
+      />
+    );
+  }
   const ref = (
     <>
       <input type="hidden" name="offeringId" value={offeringId} />
@@ -50,24 +74,6 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
         )}
         <span className="min-w-0 truncate font-medium">{session.title}</span>
         <span className="min-w-0 truncate text-white/50 max-sm:hidden">{detail.offeringTitle}</span>
-        {detail.canManage && session.state === 'live' && (
-          <div className="ml-auto shrink-0">
-            <ActionForm
-              action={endSession}
-              submitLabel="End class"
-              submitVariant="destructive"
-              submitSize="sm"
-              submitIcon={<StopIcon />}
-              confirm={{
-                title: 'End the class for everyone?',
-                message:
-                  'Everyone leaves the room and attendance is worked out from the time each student spent in it.',
-              }}
-            >
-              {ref}
-            </ActionForm>
-          </div>
-        )}
       </header>
       <Stage detail={detail} classPage={classPage}>
         {ref}
@@ -86,15 +92,7 @@ function Stage({ detail, classPage, children }: { detail: SessionDetail; classPa
     </Button>
   );
   if (session.state === 'live') {
-    return detail.join ? (
-      <LiveRoom
-        sessionId={session.id}
-        serverUrl={detail.join.serverUrl}
-        token={detail.join.token}
-        trackFocus={detail.view === 'student'}
-        classPage={classPage}
-      />
-    ) : (
+    return (
       <RoomNotice
         title="You follow this class from its page"
         text="Its teachers, its students and administrators join the room; heads of department see the class and its attendance from the class page."

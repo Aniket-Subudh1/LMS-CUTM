@@ -6,7 +6,9 @@ import {
   cancelSession,
   deleteSession,
   endSession,
+  lowerHands,
   markAttendance,
+  raiseHand,
   restoreSession,
   scheduleSession,
   startSession,
@@ -32,14 +34,22 @@ import { startComputeWorker } from '@/worker/jobs/compute';
 import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
 
 // The engine is replaced by events the tests hand in: a request body names one of them.
-const { events: sent, closeRoom } = vi.hoisted(() => ({
+const {
+  events: sent,
+  closeRoom,
+  setHand,
+} = vi.hoisted(() => ({
   events: new Map<string, LiveEvent>(),
   closeRoom: vi.fn(async (roomName: string) => void roomName),
+  setHand: vi.fn(
+    async (roomName: string, identity: string, raisedAt: Date | null) => void [roomName, identity, raisedAt],
+  ),
 }));
 vi.mock('@/lib/integrations/live', async () => {
   const { AppError } = await import('@/lib/errors');
   return {
     closeRoom,
+    setHand,
     joinToken: async (input: { userId: string; role: string }) => ({
       serverUrl: 'ws://live.test',
       token: `${input.role}-${input.userId}`,
@@ -685,6 +695,49 @@ describe('focus beacons (T8, 07 §9)', () => {
     await signInAs(w.student);
     expect((await focus(session._id, 30)).status).toBe(204);
     expect(await rowOf(session._id, w.student._id)).toMatchObject({ focusedSec: 0 });
+  });
+});
+
+describe('raised hands (M03b)', () => {
+  it('lets a student of the class raise a hand while the class runs, and nobody else', async () => {
+    const w = await world();
+    const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
+    const ref = { offeringId: w.offeringId, sessionId: String(session._id) };
+    await signInAs(w.student);
+    setHand.mockClear();
+    expect(await raiseHand(ref)).toMatchObject({ ok: true });
+    expect(setHand).toHaveBeenCalledWith(session.roomName, String(w.student._id), expect.any(Date));
+    await signInAs(w.faculty);
+    expect(await raiseHand(ref)).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    await signInAs(w.outsider);
+    await expect(raiseHand(ref)).rejects.toThrow(NOT_FOUND);
+    await LiveSession.updateOne({ _id: session._id }, { $set: { status: 'ended', endedAt: new Date() } });
+    await signInAs(w.student);
+    expect(await raiseHand(ref)).toMatchObject({ ok: false, code: 'CLOSED' });
+  });
+
+  it('lets a student lower only their own hand, and a host lower anyone’s', async () => {
+    const w = await world();
+    const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
+    const lower = (...ids: { _id: unknown }[]) =>
+      lowerHands({
+        offeringId: w.offeringId,
+        sessionId: String(session._id),
+        'identity[]': ids.map((u) => String(u._id)),
+      });
+    setHand.mockClear();
+    await signInAs(w.student);
+    expect(await lower(w.student)).toMatchObject({ ok: true });
+    expect(setHand).toHaveBeenLastCalledWith(session.roomName, String(w.student._id), null);
+    await expect(lower(w.second)).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.hod);
+    await expect(lower(w.student)).rejects.toThrow(NOT_FOUND);
+    for (const host of [w.faculty, w.admin]) {
+      await signInAs(host);
+      setHand.mockClear();
+      expect(await lower(w.student, w.second, w.student)).toMatchObject({ ok: true });
+      expect(setHand.mock.calls.map(([, identity]) => identity)).toEqual([String(w.student._id), String(w.second._id)]);
+    }
   });
 });
 

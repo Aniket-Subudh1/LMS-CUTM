@@ -106,6 +106,7 @@ Only the `mail` worker calls it. One recipient per message (no CC/BCC lists of s
 type LiveRole = 'host' | 'participant';
 joinToken(input: { roomName: string; userId: string; name: string; role: LiveRole; ttlSec: number }): Promise<{ serverUrl: string; token: string }>
 closeRoom(roomName: string): Promise<void>
+setHand(roomName: string, identity: string, raisedAt: Date | null): Promise<void>   // M03b: raise (the time) or lower ("") a hand
 parseWebhook(rawBody: string, authorization: string | null): Promise<LiveEvent>   // throws AppError('FORBIDDEN') if the signature is invalid
 
 type LiveEvent =
@@ -114,7 +115,7 @@ type LiveEvent =
   | { type: 'room_finished'; roomName: string; at: Date }
   | { type: 'ignored' };
 ```
-LiveKit mapping (verified against `livekit-server-sdk` 2.19.1 types): `new AccessToken(key, secret, { identity: userId, name, ttl })`, `addGrant({ roomJoin: true, room, canPublish, canSubscribe: true, canPublishData: true, roomAdmin: role === 'host' })`, `await toJwt()`. Webhooks: `new WebhookReceiver(key, secret)`, `await receive(body, authHeader)`; events `participant_joined`, `participant_left`, `room_finished`; others (including `participant_connection_aborted`) → `ignored`. `sid` is `event.participant.sid`, one per connection (a reconnect or a second tab is a new one); a `left` carries the connection's own `participant.joinedAtMs`, so a leave whose join never arrived still gives its interval. `closeRoom` treats the engine's `ServerError` with status 404 (`not_found`) as already closed. Students get `canPublish: true` (they may speak when the teacher allows in the room UI); `roomAdmin` only for hosts.
+LiveKit mapping (verified against `livekit-server-sdk` 2.19.1 types): `new AccessToken(key, secret, { identity: userId, name, ttl, attributes: { role } })` (M03b: the room tells hosts apart by the `role` attribute), `addGrant({ roomJoin: true, room, canPublish, canSubscribe: true, canPublishData: true, roomAdmin: role === 'host' })`, `await toJwt()`. Webhooks: `new WebhookReceiver(key, secret)`, `await receive(body, authHeader)`; events `participant_joined`, `participant_left`, `room_finished`; others (including `participant_connection_aborted`) → `ignored`. `sid` is `event.participant.sid`, one per connection (a reconnect or a second tab is a new one); a `left` carries the connection's own `participant.joinedAtMs`, so a leave whose join never arrived still gives its interval. `closeRoom` treats the engine's `ServerError` with status 404 (`not_found`) as already closed. Students get `canPublish: true` (they may speak when the teacher allows in the room UI); `roomAdmin` only for hosts. No token grants `canUpdateOwnMetadata`, so no browser can change its own name, role or hand. `setHand` is `RoomServiceClient.updateParticipant(room, identity, { attributes: { hand } })` with `hand` the time raised in ms, or `""` to lower it; a participant no longer in the room (`not_found`) is nothing to change (M03b, verified on the dev LiveKit server 17 Oct 2026).
 
 ### 4.4 Code runner — `code-runner.ts` (M05; reference: Judge0 CE 1.13.1)
 ```ts

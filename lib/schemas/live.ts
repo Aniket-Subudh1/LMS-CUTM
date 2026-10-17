@@ -35,6 +35,12 @@ const sessionFields = {
 export const ScheduleSession = z.object(sessionFields);
 export const UpdateSession = z.object({ ...sessionFields, sessionId: objectId });
 export const SessionRef = z.object({ offeringId: objectId, sessionId: objectId });
+// M03b: hands to lower — the viewer's own, or any for a host ("Lower all" sends everyone's, at most a room's worth).
+export const LowerHands = z.object({
+  offeringId: objectId,
+  sessionId: objectId,
+  'identity[]': z.array(objectId).min(1).max(1000),
+});
 
 // --- Attendance (ATT-01) ---
 

@@ -58,11 +58,22 @@ test('faculty runs a live class; a student joins and is marked present', async (
       page.context().waitForEvent('page'),
       page.getByRole('link', { name: 'Join class' }).click({ timeout: 60_000 }),
     ]);
-    await expect(room.locator('.lk-video-conference')).toBeVisible({ timeout: 30_000 });
+    // The room's own controls (M03b "A · Stage and side panel") show once it has connected.
+    await expect(room.getByRole('button', { name: 'People', exact: true })).toBeVisible({ timeout: 30_000 });
     return room;
   };
   const facultyRoom = await join(faculty);
   const studentRoom = await join(student);
+
+  // M03b: the student raises a hand; the teacher is told and lowers it.
+  await studentRoom.getByRole('button', { name: 'Raise your hand' }).click();
+  await expect(studentRoom.getByRole('button', { name: 'Lower your hand (1 in line)' })).toBeVisible({
+    timeout: 15_000,
+  });
+  const notice = facultyRoom.getByRole('status').filter({ hasText: 'Student 01 raised a hand' });
+  await expect(notice).toBeVisible({ timeout: 15_000 });
+  await notice.getByRole('button', { name: 'Lower' }).click();
+  await expect(studentRoom.getByRole('button', { name: 'Raise your hand' })).toBeVisible({ timeout: 15_000 });
 
   // ATT-01, decision 2: the student who joined starts ticked present; the teacher saves.
   await expect(async () => {
@@ -75,7 +86,7 @@ test('faculty runs a live class; a student joins and is marked present', async (
   const sheet = faculty.getByRole('dialog', { name: 'Take attendance' });
   await sheet.getByRole('button', { name: 'Save attendance' }).click();
   await expect(sheet).toBeHidden();
-  await expect(facultyRoom.locator('.lk-video-conference')).toBeVisible();
+  await expect(facultyRoom.getByRole('button', { name: 'People', exact: true })).toBeVisible();
 
   await faculty.getByRole('button', { name: 'End class' }).click();
   await faculty.getByRole('alertdialog').getByRole('button', { name: 'End class' }).click();

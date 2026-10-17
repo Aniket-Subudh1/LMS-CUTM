@@ -31,6 +31,9 @@
 | Lessons: add, publish, delete | ○ (published) | ✔ | ○ | ✔ | — |
 | Live sessions: schedule, start, end | — | ✔ | ○ | ✔ | — |
 | Live sessions: join | ✔ (enrolled) | ✔ (host) | — | ✔ any class, as host (Aniket, 17 Oct 2026) | — |
+| Live sessions: raise a hand (M03b) | ✔ (in the class) | — | — | — | — |
+| Live sessions: lower hands (M03b) | ◐ own | ✔ (host) | — | ✔ (host) | — |
+| Live sessions: in-class chat (M03b; not stored) | ✔ (in the room) | ✔ | — | ✔ | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Attempt / submit | ✔ (enrolled, in window) | — | — | — | — |

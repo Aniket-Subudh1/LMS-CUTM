@@ -189,6 +189,8 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-90 | Restoring a cancelled class tells students as a change (`live.changed`) and is not audited, as cancelling is not | M03b | — |
 | A-91 | "Below the minimum" counts active students of a credit course by their finished live classes against the offering's own policy `attendanceMinPct` (75 % by default); a student with no finished class is not counted | M03b | — |
 | A-92 | Dropping a student and adding them again keeps their progress and attendance rows; both are refused once marks are locked | M03b | — |
+| A-93 | A raised hand is set and cleared by the server (LiveKit participant attribute), never by the browser, so a student cannot rename themselves or change another's hand; teachers do not raise hands | M03b | — |
+| A-94 | The order of raised hands is the server's time of raising; it is not stored after the class | M03b | — |
 
 ## 5. Log
 
@@ -1263,4 +1265,26 @@ Built to Aniket's round 4 picks ("Live as shown", "People as shown").
 **Open questions** — none.
 
 **Verification** — `npm run check` → lint and typecheck clean, `Tests 279 passed (279)`; `npx vitest run --project integration` → `Tests 189 passed (189)`; the 360 px and HoD walk as described above, on a build served from port 3101 with the e2e database.
+
+### 2026-10-17 · Decision and build: the live room's layout, raised hands, in-class chat · Claude Code, at Aniket's request
+
+Aniket shared a reference meeting screen ("try to make this kind of meeting interface … raise your hand feature … classy as the ss") and picked from three static mock-ups (scratchpad `m03b/live-ui/`): **A · Stage and side panel** — kept the reference's layout with solid dark panels and the product blue (his standing preference: no glass, no violet). He decided that **the in-class chat stays for everyone** (his change to 01 §4: not stored, reaches only the people in the room) and that **a raised hand is lowered by the student or any host**. Raising a hand in class is not excluded by 01 §4 (only hand-raise analytics are); his request is the approval.
+
+**Created**
+- `lib/integrations/live.ts`: the token carries `attributes: { role }`; `setHand(roomName, identity, raisedAt | null)` through `RoomServiceClient.updateParticipant` (no browser may update its own metadata, A-93).
+- `lib/schemas/live.ts` (`LowerHands`), `app/(app)/courses/[offeringId]/live/actions.ts`: `raiseHand` (a student in the class, while it is live) and `lowerHands` (one's own, or anyone's for the class's teachers and admins).
+- `components/live-room.tsx`: rewritten on LiveKit's hooks — stage (shared screen, else a host's camera), floating title and Live time, own camera in a corner, round controls (microphone, camera, screen, raise hand, People, Chat, Leave), a host's notice of the newest hand, side panel with People (numbers, raised hands in order with Lower / Lower all, everyone in the room) and Chat; hosts end the class from the panel.
+- `app/(room)/…/room/page.tsx`: while the class runs, only the room (it draws its own title and controls); passes the class's title, course, start, end, enrolment and attendance note.
+- Tests: `tests/integration/live.test.ts` (who may raise and lower, closed class), `tests/e2e/live.spec.ts` (a student raises a hand, the teacher is told and lowers it; the room's own controls in place of `.lk-video-conference`).
+- Docs: 01 §4, 06 §4.3, 08 §5.2 (`LiveRoom`), 09 §2, the milestone (decision 7), §4 A-93, A-94.
+
+**Not done** — `tests/e2e/live.spec.ts` not run (needs a LiveKit server whose webhooks reach this machine). No sound plays on a new hand.
+
+**Assumptions** — A-93, A-94.
+
+**Open questions** — none.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/live.test.ts` → `Tests 29 passed (29)`; `npx vitest run --project unit lib/integrations/live.test.ts` → `Tests 5 passed (5)`.
+- A real class on the dev LiveKit server (from `.env`) with the build on port 3101 and the e2e database: faculty1 joined, turned the camera on and shared a screen; student01 (1440 px) and student02 (390 px) joined and raised hands; the teacher saw "Student 02 raised a hand" and both in order in the panel, student01 saw "1 in line"; student01's chat message reached the teacher (unread 1); "Lower all" cleared both; "End class for everyone" from the panel ended it and the students' tabs said so. The test class was deleted afterwards.
 

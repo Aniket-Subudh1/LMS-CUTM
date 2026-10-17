@@ -17,6 +17,11 @@ export type LiveEvent =
 let rooms: RoomServiceClient | undefined;
 let receiver: WebhookReceiver | undefined;
 
+const roomService = () =>
+  (rooms ??= new RoomServiceClient(env().LIVEKIT_API_URL, env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET));
+const missing = (error: unknown) =>
+  error instanceof ServerError && (error.status === 404 || error.code === 'not_found');
+
 export async function joinToken(input: {
   roomName: string;
   userId: string;
@@ -28,6 +33,9 @@ export async function joinToken(input: {
     identity: input.userId,
     name: input.name,
     ttl: input.ttlSec,
+    // M03b: every browser in the room tells the hosts apart by this attribute. The token grants no
+    // `canUpdateOwnMetadata`, so a participant cannot change their own name, role or hand.
+    attributes: { role: input.role },
   });
   token.addGrant({
     roomJoin: true,
@@ -41,14 +49,28 @@ export async function joinToken(input: {
 }
 
 export async function closeRoom(roomName: string): Promise<void> {
-  rooms ??= new RoomServiceClient(env().LIVEKIT_API_URL, env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET);
   try {
-    await rooms.deleteRoom(roomName);
+    await roomService().deleteRoom(roomName);
   } catch (error) {
     // A room nobody joined, or one the engine already closed, does not exist: there is nothing to close.
-    if (error instanceof ServerError && (error.status === 404 || error.code === 'not_found')) return;
+    if (missing(error)) return;
     log.error('live request failed', { operation: 'closeRoom', roomName, error });
     throw new AppError('INTEGRATION', 'The live-class service did not answer. Try again in a minute.');
+  }
+}
+
+// M03b: a raised hand is the participant attribute `hand`, the time it was raised in ms; "" lowers it. The server
+// sets it, and every browser in the room sees the change, those who join later too. Someone no longer in the room has
+// nothing to change.
+export async function setHand(roomName: string, identity: string, raisedAt: Date | null): Promise<void> {
+  try {
+    await roomService().updateParticipant(roomName, identity, {
+      attributes: { hand: raisedAt ? String(raisedAt.getTime()) : '' },
+    });
+  } catch (error) {
+    if (missing(error)) return;
+    log.error('live request failed', { operation: 'setHand', roomName, error });
+    throw new AppError('INTEGRATION', 'The live-class service did not answer. Try again in a moment.');
   }
 }
 

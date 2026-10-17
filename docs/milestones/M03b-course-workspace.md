@@ -39,6 +39,7 @@ Asked while planning; each one changes a project rule, recorded in the same comm
 4. **Charts with Recharts 3.10.1** through shadcn's chart component, loaded only on the pages that draw one. Moved forward from M06; changes 03 §3.
 5. **Admins join any live class** whenever it is running, as host, in any course (asked after T5). Their Home lists the ten classes running now across the university. A host's time in the room is not attendance (only enrolled students are recorded). Changes 09 §2.
 6. **A live class fills its own tab, like Google Meet** (asked after T5): a room page outside the app's sidebar and header, opened in a new tab by every Join button; the class page keeps attendance and the summary. Changes 08 §2 and the `LiveRoom` row.
+7. **The live room's own layout, with raised hands and chat** (asked after T5, from a reference screenshot): "A · Stage and side panel" picked from three mock-ups; students raise a hand, everyone sees it in order, the student or any host lowers it; the in-class chat is kept (Aniket's change to 01 §4: not stored, only the people in the room). Changes 06 §4.3, 08 §5.2 (`LiveRoom`), 09 §2.
 
 Standing preference: every screen is shown first as static mock-ups with variants, and Aniket picks before it is built. The picks are recorded below as each round is decided.
 

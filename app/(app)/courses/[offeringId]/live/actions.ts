@@ -4,21 +4,28 @@ import { refresh } from 'next/cache';
 import mongoose, { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { requireTeach } from '@/lib/auth/access';
+import { offeringAccess, requireTeach } from '@/lib/auth/access';
 import { START_EARLY_MS } from '@/lib/data/live';
 import { notify } from '@/lib/data/notifications';
 import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
 import { formatDateTime, formatDay, formatTime } from '@/lib/format';
-import { closeRoom } from '@/lib/integrations/live';
+import { closeRoom, setHand } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import type { NotificationKind } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { queueLiveFinalize } from '@/lib/queue';
-import { MarkAttendance, MAX_SESSIONS, ScheduleSession, SessionRef, UpdateSession } from '@/lib/schemas/live';
+import {
+  LowerHands,
+  MarkAttendance,
+  MAX_SESSIONS,
+  ScheduleSession,
+  SessionRef,
+  UpdateSession,
+} from '@/lib/schemas/live';
 
 const TEACH = ['admin', 'faculty'] as const;
 const MINUTE_MS = 60_000;
@@ -334,5 +341,33 @@ export const markAttendance = action(
       );
     });
     refresh();
+  },
+);
+
+async function liveRoom(offeringId: string, sessionId: string) {
+  await db();
+  const session = await findSession(offeringId, sessionId);
+  if (session.status !== 'live') throw new AppError('CLOSED', 'The class is not running.');
+  return session.roomName;
+}
+
+// M03b (Aniket, 17 Oct 2026): a student in the class raises a hand; everyone in the room sees it, in the order raised.
+export const raiseHand = action(
+  { input: SessionRef, roles: ['student'] },
+  async ({ offeringId, sessionId }, viewer) => {
+    if ((await offeringAccess(viewer, offeringId)) !== 'learn')
+      throw new AppError('FORBIDDEN', 'Only students raise a hand.');
+    await setHand(await liveRoom(offeringId, sessionId), viewer.id, new Date());
+  },
+);
+
+// A student lowers their own hand; a host (the class's teachers, admins) lowers anyone's, one or all.
+export const lowerHands = action(
+  { input: LowerHands, roles: ['student', 'faculty', 'admin'] },
+  async ({ offeringId, sessionId, 'identity[]': identities }, viewer) => {
+    if (identities.length === 1 && identities[0] === viewer.id) await offeringAccess(viewer, offeringId);
+    else await requireTeach(viewer, offeringId);
+    const roomName = await liveRoom(offeringId, sessionId);
+    await Promise.all([...new Set(identities)].map((identity) => setHand(roomName, identity, null)));
   },
 );
