@@ -38,10 +38,9 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/courses/[offeringId]/live/[sessionId]` | S F H A | M03 | One class. Before it: F "Ready to start", S a waiting card that refreshes itself. During it: "The class is live" with **Join class**, which opens the room page in a new tab (M03b), for its faculty, its students and admins; F, A "Take attendance" (dialog) and "End class"; H follows without joining. After it: the summary and every student's attendance (F, H, A), or the student's own result |
 | `/courses/[offeringId]/live/[sessionId]/room` | S F H A | M03b | The class itself, filling its own tab like Google Meet (Aniket, 17 Oct 2026), in the `(room)` route group, outside the sidebar and header, on LiveKit's dark stage. A slim top bar (Live, the class and course titles; "End class" for F, A) over `LiveRoom`. Before the class: S a waiting message that refreshes itself, F, A "Start class". H, and everyone after the class: a message with a link to the class page. A student a host removed (M03c): "You were removed from this class", with the link, until a host lets them back Every Join button opens it with `target="_blank"`: the class page, the Live tab's live-now card and Home's running classes |
 | `/courses/[offeringId]/assessments` | S F H A | M04 | Assessments (all modes); S sees status per item |
-| `/courses/[offeringId]/assessments/new` | F | M04 | Create (`?mode=`) |
 | `/courses/[offeringId]/assessments/[aid]` | S F H A | M04 | S: start / continue / view result; F: summary and actions |
 | `/courses/[offeringId]/assessments/[aid]/edit` | F | M04, M05 | Builder: settings, items, rubrics, CO tags, test cases |
-| `/courses/[offeringId]/assessments/[aid]/attempt` | S | M04, M05 | The attempt runner (timer, autosave, proctoring, code) |
+| `/courses/[offeringId]/assessments/[aid]/attempt` | S | M04, M05 | The attempt runner (timer, autosave, proctoring, code), a focused page in the `(attempt)` route group outside the sidebar and course header ("Runner B", M04 decision 4) |
 | `/courses/[offeringId]/assessments/[aid]/grade` | F | M04 | Submissions list with status |
 | `/courses/[offeringId]/assessments/[aid]/grade/[submissionId]` | F | M04 | Grade one submission |
 | `/courses/[offeringId]/records` | S F H A | M04 | Learning and lab records (record-mode assessments + the student's entries) |

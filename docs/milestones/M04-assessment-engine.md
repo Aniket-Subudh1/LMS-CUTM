@@ -15,6 +15,27 @@
 
 One assessment engine for every gradable activity (ADR-14). Faculty build an assessment in any M04 mode, tag every item with COs, set the window, timing, attempts and rubric, and publish. Students attempt it with autosave and a server-enforced deadline, upload scanned pages or write in the editor. Objective items grade automatically; faculty grade the rest with rubrics and comments; results are published as a complete, audited record that later feeds CE (M06) and attainment (M09).
 
+## Decisions (Aniket, 17 Oct 2026)
+
+Asked while planning; each one changes a project rule or fills a gap in this file, recorded in the same commit as the first code that needs it.
+
+1. **Home gets "Due soon" and "To grade"** (08 §6 assigns them to M04; the task list below did not). Students: open assessments closing within seven days that they have not handed in. Faculty: published assessments of their offerings with hand-ins waiting for marks. Each is shown only when it has rows.
+2. **"New assessment" is a dialog, not a page** (04 §1, A-40: only the builder and the runner are routes). It opens on the Assessments and Records tabs (`?new=<mode>`), asks for the type, title and window, and goes to the builder (`{ next }`). Everything else starts from the type's typical settings in the table below.
+3. **Each question is edited in its own dialog** ("Builder A"): questions are rows that drag to reorder, with ⋮ Edit / move / delete, as lessons, COs and plan sessions are since M03b. The milestone's `moveItem` is `reorderItems`, which `SortableList` and the `RowMenu` moves both send.
+4. **The attempt runner is a focused page of its own** ("Runner B"), outside the sidebar and course header like the live room: a top bar with the timer, the save status and Submit, and a question map. It lives in the `(attempt)` route group at the same URL (`/courses/[offeringId]/assessments/[aid]/attempt`).
+5. **Grading one hand-in has "Next to grade"** and "Save and open the next", so a teacher works down the ungraded hand-ins without returning to the list.
+6. **Results are published only after the assessment closes** (`lateUntil ?? closesAt`), when every attempt still running has expired; `publishResults` then hands those in first (A-M04-2).
+
+Standing preference: every screen is shown first as static mock-ups and Aniket picks before it is built.
+
+### Mock-up rounds
+
+| Round | Screens | Pick |
+|---|---|---|
+| 1 | Assessments tab (teacher, student), New assessment dialog, builder, a question's dialog (one answer; written answer with a rubric) | **Builder A** (each question in a dialog). The rest as shown |
+| 2 | Before starting, runner (desktop, phone), runner states (saving, five minutes left, time up, confirm), results | **Runner B** (a focused page, no sidebar; question map on the left, one column on phones). The rest as shown |
+| 3 | Hand-ins list, grading one hand-in, Records tab (teacher, student), Home's Due soon and To grade | **With "Next to grade"**. The rest as shown |
+
 ## Modes and item types in this milestone
 
 | Mode | Allowed item types | Typical settings |
@@ -42,7 +63,7 @@ Files: `lib/models/assessment.ts`, `lib/models/submission.ts`, `lib/schemas/asse
 Files: `lib/domain/round.ts`, `lib/domain/grading.ts`, `lib/domain/attempts.ts`, `lib/domain/shuffle.ts` (+ tests).
 - `round.ts`: 04 §6.10 plus `ceilTo` (07 §1) with every 07 §1 vector — first caller is `attemptTotal`.
 - `grading.ts`: `autoGrade(item, answer)` (07 §14 rows for mcq/msq/numeric; returns `null` for manual types), `rubricTotal(rubric, criteriaMarks)`, `attemptTotal(items, scores)` → number or null if any item unscored (`roundHalfUp` 2 dp). Vectors: 07 §14 mcq/msq/numeric rows; msq {a,b} vs key {a,b,c} → 0; numeric 3.14 vs 3.1416 ± 0.01 → full.
-- `attempts.ts`: `deadlineAt({ startedAt, durationMin, closesAt, lateUntil })` = min(start + duration, lateUntil ?? closesAt); `canStart({ now, opensAt, closesAt, lateUntil, attemptsUsed, attemptsAllowed, inProgress })` → `start | resume | not_open | closed | no_attempts_left`; `isLate(submittedAt, closesAt)`; `countedScore(attempts, policy)` (07 §2: best/last over graded attempts, else 0). Vectors: start 10:00, 60 min, closes 10:30, no late → 10:30; lateUntil 11:30 → 11:00; untimed with lateUntil 11:30 → 11:30; the 07 §2 attempt-policy rows.
+- `attempts.ts`: `deadlineAt({ startedAt, durationMin, closesAt, lateUntil })` = min(start + duration, lateUntil ?? closesAt); `canStart({ now, opensAt, closesAt, lateUntil, attemptsUsed, attemptsAllowed, inProgress })` → `start | resume | not_open | closed | no_attempts_left`; `isLate(submittedAt, closesAt)`; `countedScore(attempts, policy)` (07 §14: best/last over graded attempts, else 0). Vectors: start 10:00, 60 min, closes 10:30, no late → 10:30; lateUntil 11:30 → 11:00; untimed with lateUntil 11:30 → 11:30; the counted-score rows of 07 §14 (M01b rewrote 07 §2, where they first stood).
 - `shuffle.ts`: `seededShuffle(ids, seed)` — Mulberry32 seeded from a 32-bit FNV-1a hash of `seed`; deterministic (same seed → same order) and pure. Vector: the same input and seed give the same output twice; different seeds give different orders for a 10-element list.
 
 ### T3 · DAL and secrecy
@@ -53,14 +74,14 @@ File: `lib/data/assessments.ts`.
 - `listSubmissions(assessmentId, filters, page)`, `getSubmissionForGrading(submissionId)`: teach/oversee.
 
 ### T4 · Builder (faculty)
-Routes: `/courses/[offeringId]/assessments` (list; add the tab), `/assessments/new?mode=`, `/assessments/[aid]/edit`.
+Routes: `/courses/[offeringId]/assessments` (list; add the tab; "New assessment" is a dialog, `?new=<mode>`, decision 2), `/assessments/[aid]/edit`.
 
 | Action | Rules |
 |---|---|
 | `createAssessment` | teach; mode allowed for M04; title; dates via `istDateTime`; `opensAt < closesAt`; `lateUntil ≥ closesAt`; duration 1–600 or empty; attempts 1–10; policy; `status: draft`; redirect to edit |
 | `updateAssessmentSettings` | any time while draft; once submissions exist only title, instructions and dates |
 | `saveItem` | type allowed for the mode; for ugc offerings `coIds` ≥ 1 and ⊂ course COs (CPP-05/06); recompute `maxMarks`; rejected once any submission exists (CONFLICT "Items cannot change after students have started.") |
-| `deleteItem`, `moveItem` | same lock |
+| `deleteItem`, `reorderItems` | same lock (`reorderItems` takes the whole order as `ids[]`, decision 3) |
 | `publishAssessment` | ≥ 1 item; every ugc item has a CO (VALIDATION listing item numbers); rubric sums valid; `status: published`, `publishedAt`; `notify` enrolled students `assessment.published`; audit `assessment.published` |
 | `deleteAssessment` | draft only |
 
@@ -69,7 +90,7 @@ Item editor forms (no client JS needed): prompt (`RichTextEditor`), max marks, C
 Also modify M01's `deleteCo`: CONFLICT when `Assessment.exists({ 'items.coIds': coId })`, naming the assessments.
 
 ### T5 · Attempting (students)
-Routes: `/assessments/[aid]` (summary), `/assessments/[aid]/attempt` (runner).
+Routes: `/assessments/[aid]` (summary), `/assessments/[aid]/attempt` (runner, in the `(attempt)` route group, decision 4).
 
 | Action | Rules |
 |---|---|
@@ -93,7 +114,7 @@ Regrading after publication is allowed (audited) unless the offering is locked. 
 
 ### T7 · Records (REC-01 … REC-04)
 Route: `/courses/[offeringId]/records` (tab shown per 08 §3).
-- Records are `learning_record` / `lab_record` assessments created in the same builder (`/assessments/new?mode=learning_record`). The annual learning record (REC-03) is a `learning_record` assessment whose window spans the year — no special code.
+- Records are `learning_record` / `lab_record` assessments created in the same builder (the Records tab opens the New assessment dialog with `?new=learning_record` or `?new=lab_record`). The annual learning record (REC-03) is a `learning_record` assessment whose window spans the year — no special code.
 - `learn`: each record assessment with own submission status, marks after publication, and a link to write/upload.
 - `teach`/`oversee`: a students × record-assessments grid (submitted / graded / missing), each cell linking to the grading page.
 

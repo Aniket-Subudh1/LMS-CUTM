@@ -82,7 +82,7 @@ Settings (06 §7): `targetPct` T (60), level thresholds `level3Pct` (70), `level
 **CIE (internal) per CO `k`**
 1. `I_k` = items tagged with `k` in the offering's `results_published` assessments.
 2. If `I_k` is empty → CIE for `k` is `null` and a warning "COk was not assessed in any published assessment" is recorded.
-3. For each active enrolled student: `num = Σ` counted item marks on `I_k` (same counted attempt as §2; missing → 0), `den = Σ maxMarks` of `I_k`. The student **attains** `k` if `100 × num / den ≥ T`.
+3. For each active enrolled student: `num = Σ` counted item marks on `I_k` (the counted attempt of §14; missing → 0), `den = Σ maxMarks` of `I_k`. The student **attains** `k` if `100 × num / den ≥ T`.
 4. An item tagged with several COs counts in full toward each (assumption A-07).
 5. `pct = 100 × attained / students`; `cieLevel = level(pct)`.
 
@@ -325,6 +325,24 @@ Per assignee: `assigned`; `done`; `doneOnTime` (`doneAt ≤ dueAt`); `overdue` (
 | `"a b"` | `"a  b"` | no (inner whitespace is significant) |
 
 Attempt total = `roundHalfUp(Σ item marks, 2)`. Results can be published only when every submitted attempt has every item scored.
+
+**Counted score** — `countedScore(attempts, policy)` in `lib/domain/attempts.ts` (M04; these rows stood in §2 until M01b rewrote it). Only **graded** attempts count: `best` → the highest `total`; `last` → the `total` of the graded attempt with the highest `attemptNo`; no graded attempt → **0** (a missed assessment counts as zero, A-14). M06 and M09 use the same function.
+
+| Graded attempts (attemptNo: total) | Policy | Counted |
+|---|---|---|
+| 1: 6, 2: 8, 3: 7 (of 10) | best | 8 |
+| 1: 6, 2: 8, 3: 7 (of 10) | last | 7 |
+| 1: 6 graded, 2: submitted, not graded | last | 6 |
+| none | best | 0 |
+
+**Quiz average** — `quizAveragePct(quizzes)` in `lib/domain/grading.ts` (SKL-02, M04: the People tab of a skill course). Over the offering's quizzes whose results are published, the mean of each quiz's `100 × counted / maxMarks`, with a quiz the student did not attempt counted as 0; `roundHalfUp(…, 2)`; `null` when no quiz has published results (A-M04-5).
+
+| Quizzes (counted / max) | Result |
+|---|---|
+| 8/10, 15/20 | 77.5 |
+| 8/10, missed (0/10) | 40 |
+| 1/3 | 33.33 |
+| none published | null |
 
 ## 15. Proctoring violations — `lib/domain/proctoring.ts`
 

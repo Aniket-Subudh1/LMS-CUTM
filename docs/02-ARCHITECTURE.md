@@ -213,7 +213,7 @@ Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone 
 | `github-nightly` | `30 1 * * *` | enqueue `sync/githubProject` for every active GitHub project |
 | `internal-marks-nightly` | `0 2 * * *` | enqueue `compute/internalMarks` for every active UGC offering (safety net) |
 | `liveSweep` (M03) | `5 * * * *` | `compute/liveSweep`: end live sessions still open 30 min after their scheduled end and finalize ended sessions left unfinalized (M03) |
-| `assessment-sweep` | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) |
+| `assessmentSweep` (M04; BullMQ names a scheduler after its job) | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) |
 | `engagement-nightly` | `30 2 * * *` | `compute/engagementSnapshot` per active offering (M10) |
 | `proctor-retention` | `0 3 * * *` | `compute/proctorRetention` (M05) |
 

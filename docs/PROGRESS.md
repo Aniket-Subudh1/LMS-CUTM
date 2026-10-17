@@ -25,7 +25,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
-| M04 Assessment engine | Not started | | |
+| M04 Assessment engine | In progress — on branch `m04-assessments` (a worktree, so M03c's work on main is untouched); mock-ups picked | | Plan and decisions in `docs/milestones/M04-assessment-engine.md` |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -1351,3 +1351,20 @@ Aniket: "add a tung sound when someone joins". His request is the approval.
 - `npx eslint components/live-room.tsx`, `npx tsc --noEmit`: clean.
 - On the dev LiveKit server with the build on port 3101 and the e2e database, counting the tones each page made: faculty1 heard student01 join (one bell) and then student02 and student03 (two more); student01 heard nothing until they turned the sound on in More, then one bell when student04 joined; two students joining at once rang the teacher's bell once. The test classes were deleted afterwards.
 
+
+### 2026-10-17 · M04/T0 Decisions and mock-ups · Claude Code, at Aniket's request
+
+Request: "do the next milestone". M04 is built on branch `m04-assessments` in a worktree (`.claude/worktrees/m04-assessments`, excluded locally through `.git/info/exclude`), because M03c is being built on main in the same folder at the same time; commits stay local and nothing is pushed (a push to main deploys the test server). Assumptions on this branch carry provisional ids `A-M04-n` (M03c is adding A-95 onwards); they are renumbered when the branch is merged.
+
+**Created**
+- `docs/milestones/M04-assessment-engine.md`: Decisions 1–6 and the mock-up rounds; the task text follows them (the New assessment dialog, `reorderItems`, the `(attempt)` route group, the counted-score rows now in 07 §14).
+- `docs/07-ALGORITHMS.md` §14: the counted-score rows (they stood in §2 until M01b rewrote it) and the quiz average for SKL-02; §4 refers to §14 for the counted attempt.
+- `docs/02-ARCHITECTURE.md` §8: the scheduler is `assessmentSweep` (BullMQ names a scheduler after its job). `docs/08-UI-SYSTEM.md` §2: no `/assessments/new` route; the runner row names its route group.
+
+**Not done** — everything after T0.
+
+**Assumptions** — none yet in §4 (they arrive with the code that needs them).
+
+**Open questions** — none.
+
+**Verification** — Mock-ups were drawn inside the real app: a build of this branch on port 3101 with the e2e database, signed in as faculty1 and student01 on CUTM1602's Live tab, with the mock content put in place of the tab's own and Tailwind's browser compiler given our theme. 18 screens at 1440 px and 4 at 390 px, none wider than the screen. Aniket picked Builder A, Runner B and "Next to grade"; the other screens as shown.
