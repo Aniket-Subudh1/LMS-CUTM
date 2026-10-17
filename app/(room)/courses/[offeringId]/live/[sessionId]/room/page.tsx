@@ -55,6 +55,7 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
             ? `Attendance is automatic: present after ${formatPct(detail.thresholdPct)} of the class in the room.`
             : 'You take attendance on the class page, with “Take attendance”.'
         }
+        controls={detail.controls}
       />
     );
   }
@@ -91,6 +92,16 @@ function Stage({ detail, classPage, children }: { detail: SessionDetail; classPa
       </Link>
     </Button>
   );
+  if (session.state === 'live' && detail.removed) {
+    return (
+      <RoomNotice
+        title="You were removed from this class"
+        text={`A teacher removed you from “${session.title}”. You can join again if a teacher lets you back. Your time in the class so far still counts.`}
+      >
+        {back}
+      </RoomNotice>
+    );
+  }
   if (session.state === 'live') {
     return (
       <RoomNotice

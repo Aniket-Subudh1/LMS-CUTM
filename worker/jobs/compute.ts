@@ -3,18 +3,19 @@ import { Redis } from 'ioredis';
 import mongoose from 'mongoose';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { deriveAttendance } from '@/lib/domain/attendance';
-import { closeRoom } from '@/lib/integrations/live';
+import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
 import { log } from '@/lib/log';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { Setting } from '@/lib/models/setting';
 import { queueLiveFinalize } from '@/lib/queue';
-import { FinalizeLiveJob, LiveSweepJob } from '@/lib/schemas/jobs';
+import { FinalizeLiveJob, LiveControlJob, LiveSweepJob } from '@/lib/schemas/jobs';
+import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
 
-type ComputeName = 'finalizeLiveSession' | 'liveSweep';
-type ComputeData = FinalizeLiveJob | LiveSweepJob;
+type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl';
+type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -103,8 +104,34 @@ async function liveSweep(now: Date): Promise<void> {
   log.info('live sweep', { ended: overdue.length, finalizing: unfinalized.length });
 }
 
+// M03c T2: once the class has ended there is no room to change.
+async function liveControl(job: LiveControlJob): Promise<void> {
+  const live = await LiveSession.findOne(
+    { _id: job.sessionId, status: 'live' },
+    { roomName: 1, studentsMay: 1 },
+  ).lean();
+  if (!live) return;
+  const people = await roomPeople(live.roomName);
+  if (job.op === 'rights') {
+    const rights = { ...ALL_RIGHTS, ...live.studentsMay };
+    await Promise.all(people.filter((p) => !p.host).map((p) => setRights(live.roomName, p.identity, rights)));
+    return;
+  }
+  const others = people.filter((p) => p.identity !== job.byId);
+  await Promise.all(others.map((p) => muteMicrophone(live.roomName, p.identity, p.microphones)));
+  if (others.length > 0) {
+    await tell(
+      live.roomName,
+      'notice',
+      `${job.byName} muted everyone`,
+      others.map((p) => p.identity),
+    );
+  }
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
+  if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
   LiveSweepJob.parse(job.data);
   return liveSweep(new Date());
 }

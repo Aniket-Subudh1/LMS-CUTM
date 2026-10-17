@@ -24,6 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
+| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Not started | | |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
@@ -191,6 +192,13 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-92 | Dropping a student and adding them again keeps their progress and attendance rows; both are refused once marks are locked | M03b | — |
 | A-93 | A raised hand is set and cleared by the server (LiveKit participant attribute), never by the browser, so a student cannot rename themselves or change another's hand; teachers do not raise hands | M03b | — |
 | A-94 | The order of raised hands is the server's time of raising; it is not stored after the class | M03b | — |
+| A-95 | Chat and reactions are turned off for students together: LiveKit has one permission for a participant's data messages. The switch says "chat messages and reactions" | M03c | — |
+| A-96 | Hosts remove students only; a host may mute another host. "Mute everyone" mutes everyone in the room but the host who asked, other hosts too, as in Google Meet | M03c | — |
+| A-97 | What students may do is not audited (it changes no record); removing a student and letting them back are (`live.removed`, `live.allowed_back`). Students see only their own controls disabled, never who was removed | M03c | — |
+| A-98 | Join tokens live 10 minutes (M03: until 2 h after the scheduled end); LiveKit renews them while connected and Rejoin reloads the page | M03c | — |
+| A-99 | Layout, pins and the view options are the viewer's own and last as long as the tab; nothing is remembered | M03c | — |
+| A-100 | At most 100 people can be removed from one class (`MAX_REMOVED`), so the removed list stays a bounded read | M03c | — |
+| A-101 | The join sound rings for hosts by default and for students only if they turn it on (a late student joining should not ring through a lecture); at most once in 2 s; the choice lasts as long as the tab | M03c | — |
 
 ## 5. Log
 
@@ -1287,4 +1295,59 @@ Aniket shared a reference meeting screen ("try to make this kind of meeting inte
 **Verification**
 - `npx vitest run --project integration tests/integration/live.test.ts` → `Tests 29 passed (29)`; `npx vitest run --project unit lib/integrations/live.test.ts` → `Tests 5 passed (5)`.
 - A real class on the dev LiveKit server (from `.env`) with the build on port 3101 and the e2e database: faculty1 joined, turned the camera on and shared a screen; student01 (1440 px) and student02 (390 px) joined and raised hands; the teacher saw "Student 02 raised a hand" and both in order in the panel, student01 saw "1 in line"; student01's chat message reached the teacher (unread 1); "Lower all" cleared both; "End class for everyone" from the panel ended it and the students' tabs said so. The test class was deleted afterwards.
+
+### 2026-10-17 · Decision: M03c, the live room with Google Meet's major features · Claude Code, at Aniket's request
+
+Aniket asked for host mute and remove, class recording, a floating mini window when the tab is left, layouts that keep faces in view during screen sharing and let anyone be pinned, meetings scheduled with members and invited by email, and "the major features of Google Meet". Research covered Meet's host controls (mute, mute all, remove, host management locks for chat, presenting, audio and video), LiveKit's server APIs (mute, remove, permissions, Egress recording) and Chrome's automatic picture-in-picture (Chrome 120+). He decided:
+1. Recording is built now (LIV-05 leaves the backlog); he asked me to deploy LiveKit Egress on the LiveKit host.
+2. Meetings may include outside guests, admitted from a lobby.
+3. A removed person stays out until a host lets them back.
+4. All extras: emoji reactions, host locks, background blur, polls, breakout rooms, live captions, a whiteboard.
+
+This entry is the written scope approval for milestone M03c (AGENTS law 1); each item changes 01 §4 in the commit that builds it. Tasks and the mechanisms are in `docs/milestones/M03c-live-like-meet.md`. Mock-ups come first, in three rounds.
+
+### 2026-10-17 · M03c T0 (round 1) and T1–T3: layouts, pinning, the mini window, host controls, reactions · Claude Code, at Aniket's request
+
+Aniket picked from the round-1 mock-ups (scratchpad `m03b/live-ui/r1-A…E.png`): **Auto puts the faces beside a shared screen (R1-A)**, **host controls at the top of People (R1-C)**, and the tiled view with pinning and reactions (R1-B), the mini window (R1-D) and the removed screen (R1-E) **as shown**.
+
+**Created**
+- `lib/models/live-session.ts`, `lib/schemas/live.ts`: `studentsMay { share, unmute, chat }`, `removed [{ userId, at, by }]` (at most `MAX_REMOVED` = 100); `STUDENT_RIGHTS`, `ALL_RIGHTS`, `PersonRef`, `SetStudentRight`.
+- `lib/integrations/live.ts`: one error mapping for every engine call; `joinToken` takes the student's rights (`canPublishSources`, `canPublishData`), lives 10 minutes and grants no `roomAdmin`; new `roomPeople`, `muteMicrophone`, `setRights`, `removeFromRoom`, `tell`; the join event says whether a host joined.
+- `lib/schemas/jobs.ts`, `lib/queue.ts`, `worker/jobs/compute.ts`: `compute/liveControl` applies what students may do to everyone in the room, or mutes everyone but the host who asked (04 §3: it reaches every student, so it runs in the worker).
+- `app/(app)/courses/[offeringId]/live/actions.ts`: `muteParticipant`, `muteEveryone`, `setStudentRight`, `removeParticipant` (audited `live.removed`, one transaction), `allowBack` (audited `live.allowed_back`).
+- `app/api/webhooks/live/route.ts`: a removed student's join is removed again and not counted; a student's join while a right is off gets it applied.
+- `lib/data/live.ts`: `getSession` gives no token to a removed student (`removed: true`) and gives hosts `controls` (rights and the removed students with names).
+- `components/live-room.tsx`: layouts (Auto, Tiled, Spotlight, Sidebar), hide people without video, show my own tile, pin for me, "+ N more"; the More menu (layouts, mini window, full screen; reactions on a phone); the mini window (Document Picture-in-Picture with a portal, opened by Chrome on leaving the tab while the camera or microphone is on; other browsers float the video); reactions; host controls, per-person menus, the remove confirmation and the removed list in People; server notices; controls disabled with the reason; the removed screen; Rejoin reloads the page; adaptive stream and dynacast.
+- `components/ui/switch.tsx` (vendored, 08 §5.1), `document-pip.d.ts` (the browser types TypeScript lacks), `app/globals.css` (the reaction animation).
+- `app/(room)/…/room/page.tsx`, `app/(app)/courses/[offeringId]/live/[sessionId]/page.tsx`: the removed student's message on both.
+- Tests: `lib/integrations/live.test.ts` (token rights and lifetime, no room admin, a host's join), `tests/integration/live.test.ts` (mute one, mute everyone through the worker, rights saved and applied in the room and on join, remove and let back with audit and the webhook, the 100 limit).
+- Docs: 01 §4, 05 §4.3, 06 §3, §4.3, §6, 08 §5.1, §5.2, 09 §2, §6, §4 A-95 to A-100.
+
+**Not done** — not committed. No e2e spec: the real-server walk below covered T1–T3, and `tests/e2e/live.spec.ts` still needs a LiveKit server whose webhooks reach this machine. The webhook's re-removal was tested with signed events in the integration suite, not on the real server (its webhooks go to the deployed app). The mini window's automatic opening on tab switch needs a real Chrome with the camera or microphone on; it was not tried. T4–T11 not started; round-2 mock-ups (meetings, invitations, guest lobby) come next.
+
+**Assumptions** — A-95 to A-100.
+
+**Open questions** — none.
+
+**Verification**
+- `npm run check` → lint and typecheck clean, `Tests 281 passed (281)`; `npx vitest run --project integration` → `Tests 196 passed (196)` (live: 34, the adapter's unit tests: 7).
+- A scripted class on the dev LiveKit server (from `.env`), the build on port 3101 and the worker, both on the e2e database; faculty1 hosting, student01 and student02 joined in Chromium with fake devices. All 12 steps passed: turning off students' microphones took student01's open microphone off and disabled the button with the reason; turning it on again let them unmute; the teacher's Mute reached student01 with "Pradeep Sahoo muted your microphone"; student02's 👏 floated on the teacher's stage with the name; Tiled, Sidebar, Spotlight, Auto with a pin; the teacher's shared screen with the faces beside it on student02's screen; chat and reactions off disabled both for student02; Mute everyone turned off student02's microphone with "… muted everyone"; removing student01 showed them "You were removed from this class" (also after a reload) and the teacher "Removed · 1"; Let back let them join again after a reload; the mini window opened with the stage, faces and controls, a hand raised from it reached the teacher, and "Back to the class tab" closed it; at 360 px the bar fits (page width 360) and the More menu offers reactions. The test class was deleted afterwards.
+
+### 2026-10-17 · M03c: a sound when someone joins the live class · Claude Code, at Aniket's request
+
+Aniket: "add a tung sound when someone joins". His request is the approval.
+
+**Created**
+- `components/live-room.tsx`: on LiveKit's `ParticipantConnected`, a short bell (two sine tones, 784 and 1568 Hz, fading over 0.9 s) made with Web Audio — no sound file; at most one in 2 s; "Sound when someone joins" in the More menu, on for hosts and off for students at first. The browser plays it only after the viewer's first click or key press in the tab.
+- Docs: 08 §5.2 (`LiveRoom`), §4 A-101.
+
+**Not done** — not committed. No sound when someone leaves (not asked).
+
+**Assumptions** — A-101.
+
+**Open questions** — none.
+
+**Verification**
+- `npx eslint components/live-room.tsx`, `npx tsc --noEmit`: clean.
+- On the dev LiveKit server with the build on port 3101 and the e2e database, counting the tones each page made: faculty1 heard student01 join (one bell) and then student02 and student03 (two more); student01 heard nothing until they turned the sound on in More, then one bell when student04 joined; two students joining at once rang the teacher's bell once. The test classes were deleted afterwards.
 

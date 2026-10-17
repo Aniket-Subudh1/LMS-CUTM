@@ -1,12 +1,13 @@
-import type { Types } from 'mongoose';
+import { Types } from 'mongoose';
 import { db, isDuplicateKey } from '@/lib/db';
 import { AppError } from '@/lib/errors';
-import { parseWebhook, type LiveEvent } from '@/lib/integrations/live';
+import { parseWebhook, removeFromRoom, setRights, type LiveEvent } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { queueLiveFinalize } from '@/lib/queue';
 import { objectId } from '@/lib/schemas/common';
+import { ALL_RIGHTS } from '@/lib/schemas/live';
 
 // The engine retries anything but a 2xx, so every event it should not resend is answered 200, ignored or not.
 const ok = () => new Response(null, { status: 200 });
@@ -33,9 +34,18 @@ async function addConnection(room: Room, userId: string, connection: Connection,
   }
 }
 
-async function joined({ roomName, userId, sid, at }: Extract<LiveEvent, { type: 'joined' }>) {
-  const room = await LiveSession.findOne({ roomName, status: 'live' }, { offeringId: 1 }).lean();
-  if (room) await addConnection(room, userId, { sid, joinedAt: at, leftAt: null });
+// M03c T2: someone a host removed who comes back with a token they kept is removed again and not counted. A student
+// whose token was issued just before a host changed what students may do gets the change now.
+async function joined({ roomName, userId, sid, host, at }: Extract<LiveEvent, { type: 'joined' }>) {
+  const room = await LiveSession.findOne(
+    { roomName, status: 'live' },
+    { offeringId: 1, studentsMay: 1, removed: { $elemMatch: { userId: new Types.ObjectId(userId) } } },
+  ).lean();
+  if (!room) return;
+  if (room.removed?.length) return removeFromRoom(roomName, userId);
+  const rights = { ...ALL_RIGHTS, ...room.studentsMay };
+  if (!host && Object.values(rights).includes(false)) await setRights(roomName, userId, rights);
+  await addConnection(room, userId, { sid, joinedAt: at, leftAt: null });
 }
 
 // Leaves arrive after the class has ended too (ending it closes the room), so they apply in any status.

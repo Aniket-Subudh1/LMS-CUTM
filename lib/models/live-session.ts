@@ -18,6 +18,21 @@ const liveSessionSchema = new Schema(
     attendanceMode: { type: String, enum: ATTENDANCE_MODES, required: true },
     // Set once derived attendance is written (07 §10).
     finalizedAt: { type: Date, default: null },
+    // M03c T2: what students may do in the room; a host turns each off and on while the class runs.
+    studentsMay: {
+      share: { type: Boolean, default: true },
+      unmute: { type: Boolean, default: true },
+      chat: { type: Boolean, default: true },
+    },
+    // M03c T2: students a host removed. They stay out until a host lets them back (at most MAX_REMOVED).
+    removed: [
+      {
+        _id: false,
+        userId: { type: Schema.Types.ObjectId, required: true },
+        at: { type: Date, required: true },
+        by: { type: Schema.Types.ObjectId, required: true },
+      },
+    ],
     createdBy: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: true },

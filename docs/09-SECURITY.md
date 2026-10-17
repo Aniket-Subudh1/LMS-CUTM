@@ -34,6 +34,10 @@
 | Live sessions: raise a hand (M03b) | ✔ (in the class) | — | — | — | — |
 | Live sessions: lower hands (M03b) | ◐ own | ✔ (host) | — | ✔ (host) | — |
 | Live sessions: in-class chat (M03b; not stored) | ✔ (in the room) | ✔ | — | ✔ | — |
+| Live sessions: emoji reactions (M03c; not stored) | ✔ (in the room) | ✔ | — | ✔ | — |
+| Live sessions: mute someone, mute everyone (M03c; off only, never on) | — | ✔ (host) | — | ✔ (host) | — |
+| Live sessions: remove a student, let them back (M03c; audited) | — | ✔ (host) | — | ✔ (host) | — |
+| Live sessions: turn off students' screen sharing, microphones, chat and reactions (M03c) | — | ✔ (host) | — | ✔ (host) | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Attempt / submit | ✔ (enrolled, in window) | — | — | — | — |
@@ -123,6 +127,7 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `plan.published` | version, recipient count |
 | `attendance.marked` | status before/after, source |
 | `live.deleted` (M03b) | the class's title, status and scheduled start; only a class that never ran and has no attendance can be deleted |
+| `live.removed`, `live.allowed_back` (M03c) | the student removed from a running class or let back; a removed student gets no join token, a join with a token they kept is removed again by the webhook and not counted, and tokens live 10 minutes |
 | `assessment.published`, `assessment.results_published` | status |
 | `submission.graded` | per-item marks before/after |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |

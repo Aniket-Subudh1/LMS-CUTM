@@ -63,6 +63,22 @@
       stroke-dashoffset: 0;
     }
   }
+  /* M03c: an emoji reaction in the live room floats up and fades. */
+  --animate-reaction: reaction 4s ease-out both;
+  @keyframes reaction {
+    from {
+      opacity: 0;
+      transform: translateY(0) scale(0.6);
+    }
+    10% {
+      opacity: 1;
+      transform: translateY(-1rem) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-16rem) scale(1);
+    }
+  }
 }
 
 /* The blue product palette (decision of 13 Oct 2026) in the "B · Crisp editorial" language (17 Oct 2026): small

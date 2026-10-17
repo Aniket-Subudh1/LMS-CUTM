@@ -3,14 +3,19 @@ import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { Types } from 'mongoose';
 import {
+  allowBack,
   cancelSession,
   deleteSession,
   endSession,
   lowerHands,
   markAttendance,
+  muteEveryone,
+  muteParticipant,
   raiseHand,
+  removeParticipant,
   restoreSession,
   scheduleSession,
+  setStudentRight,
   startSession,
   updateSession,
 } from '@/app/(app)/courses/[offeringId]/live/actions';
@@ -36,13 +41,36 @@ import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
 // The engine is replaced by events the tests hand in: a request body names one of them.
 const {
   events: sent,
+  room,
   closeRoom,
   setHand,
+  joinToken,
+  muteMicrophone,
+  setRights,
+  removeFromRoom,
+  tell,
 } = vi.hoisted(() => ({
   events: new Map<string, LiveEvent>(),
+  // Who `roomPeople` says is in the room.
+  room: { people: [] as { identity: string; host: boolean; microphones: string[] }[] },
   closeRoom: vi.fn(async (roomName: string) => void roomName),
   setHand: vi.fn(
     async (roomName: string, identity: string, raisedAt: Date | null) => void [roomName, identity, raisedAt],
+  ),
+  joinToken: vi.fn(async (input: { userId: string; role: string; rights: Record<string, boolean> }) => ({
+    serverUrl: 'ws://live.test',
+    token: `${input.role}-${input.userId}`,
+  })),
+  muteMicrophone: vi.fn(async (roomName: string, identity: string, trackSids?: string[]) =>
+    Boolean([roomName, identity, trackSids]),
+  ),
+  setRights: vi.fn(
+    async (roomName: string, identity: string, rights: Record<string, boolean>) => void [roomName, identity, rights],
+  ),
+  removeFromRoom: vi.fn(async (roomName: string, identity: string) => void [roomName, identity]),
+  tell: vi.fn(
+    async (roomName: string, topic: string, text: string, identities?: string[]) =>
+      void [roomName, topic, text, identities],
   ),
 }));
 vi.mock('@/lib/integrations/live', async () => {
@@ -50,10 +78,12 @@ vi.mock('@/lib/integrations/live', async () => {
   return {
     closeRoom,
     setHand,
-    joinToken: async (input: { userId: string; role: string }) => ({
-      serverUrl: 'ws://live.test',
-      token: `${input.role}-${input.userId}`,
-    }),
+    joinToken,
+    muteMicrophone,
+    setRights,
+    removeFromRoom,
+    tell,
+    roomPeople: async (roomName: string) => (roomName ? room.people : []),
     parseWebhook: async (rawBody: string, authorization: string | null) => {
       if (authorization !== 'signed') throw new AppError('FORBIDDEN', 'Invalid webhook signature');
       return sent.get(rawBody) ?? { type: 'ignored' };
@@ -404,7 +434,14 @@ describe('presence webhooks (T5)', () => {
     const w = await world();
     const session = await liveClass(w);
     const response = await hook(
-      { type: 'joined', roomName: session.roomName, userId: String(w.student._id), sid: 'PA_1', at: new Date() },
+      {
+        type: 'joined',
+        host: false,
+        roomName: session.roomName,
+        userId: String(w.student._id),
+        sid: 'PA_1',
+        at: new Date(),
+      },
       'forged',
     );
     expect(response.status).toBe(401);
@@ -417,6 +454,7 @@ describe('presence webhooks (T5)', () => {
     const join = (sid: string, minutes: number) =>
       hook({
         type: 'joined',
+        host: false,
         roomName: session.roomName,
         userId: String(w.student._id),
         sid,
@@ -454,18 +492,27 @@ describe('presence webhooks (T5)', () => {
     const session = await liveClass(w);
     for (const userId of [String(w.faculty._id), String(w.outsider._id), 'not-a-user']) {
       expect(
-        (await hook({ type: 'joined', roomName: session.roomName, userId, sid: 'PA_x', at: new Date() })).status,
+        (await hook({ type: 'joined', host: false, roomName: session.roomName, userId, sid: 'PA_x', at: new Date() }))
+          .status,
       ).toBe(200);
     }
     const later = await liveClass(w, { status: 'scheduled', startedAt: undefined });
     await hook({
       type: 'joined',
+      host: false,
       roomName: later.roomName,
       userId: String(w.student._id),
       sid: 'PA_y',
       at: new Date(),
     });
-    await hook({ type: 'joined', roomName: 'ls-unknown', userId: String(w.student._id), sid: 'PA_z', at: new Date() });
+    await hook({
+      type: 'joined',
+      host: false,
+      roomName: 'ls-unknown',
+      userId: String(w.student._id),
+      sid: 'PA_z',
+      at: new Date(),
+    });
     expect(await Attendance.countDocuments({ sessionId: { $in: [session._id, later._id] } })).toBe(0);
   });
 
@@ -559,6 +606,7 @@ describe('finalizing a class (T6, 07 §10)', () => {
     const session = await liveClass(w);
     await hook({
       type: 'joined',
+      host: false,
       roomName: session.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -658,6 +706,7 @@ describe('focus beacons (T8, 07 §9)', () => {
     expect((await focus(session._id, 60)).status).toBe(404);
     await hook({
       type: 'joined',
+      host: false,
       roomName: session.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -679,6 +728,7 @@ describe('focus beacons (T8, 07 §9)', () => {
     const session = await liveClass(w);
     await hook({
       type: 'joined',
+      host: false,
       roomName: session.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -741,6 +791,137 @@ describe('raised hands (M03b)', () => {
   });
 });
 
+describe('host controls (M03c T2)', () => {
+  async function running() {
+    const w = await world();
+    const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
+    return { w, session, ref: { offeringId: w.offeringId, sessionId: String(session._id) } };
+  }
+
+  it('lets a host mute one person, who is told who did it, and nobody else mute anyone', async () => {
+    const { w, session, ref } = await running();
+    const identity = String(w.second._id);
+    await signInAs(w.student);
+    expect(await muteParticipant({ ...ref, identity })).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    await signInAs(w.hod);
+    await expect(muteParticipant({ ...ref, identity })).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.faculty);
+    muteMicrophone.mockClear();
+    tell.mockClear();
+    expect(await muteParticipant({ ...ref, identity })).toMatchObject({ ok: true });
+    expect(muteMicrophone).toHaveBeenCalledWith(session.roomName, identity);
+    expect(tell).toHaveBeenCalledWith(session.roomName, 'notice', `${w.faculty.name} muted your microphone`, [
+      identity,
+    ]);
+  });
+
+  it('mutes everyone but the host who asked, from the worker', async () => {
+    const { w, session, ref } = await running();
+    room.people = [
+      { identity: String(w.faculty._id), host: true, microphones: ['TR_f'] },
+      { identity: String(w.student._id), host: false, microphones: ['TR_s'] },
+      { identity: String(w.second._id), host: false, microphones: [] },
+    ];
+    await signInAs(w.faculty);
+    muteMicrophone.mockClear();
+    tell.mockClear();
+    expect(await muteEveryone(ref)).toMatchObject({ ok: true });
+    const others = [String(w.student._id), String(w.second._id)];
+    await vi.waitFor(() =>
+      expect(tell).toHaveBeenCalledWith(session.roomName, 'notice', `${w.faculty.name} muted everyone`, others),
+    );
+    expect(muteMicrophone.mock.calls).toEqual([
+      [session.roomName, others[0], ['TR_s']],
+      [session.roomName, others[1], []],
+    ]);
+  });
+
+  it('saves what students may do and applies it to those in the room and to those who join', async () => {
+    const { w, session, ref } = await running();
+    room.people = [
+      { identity: String(w.faculty._id), host: true, microphones: [] },
+      { identity: String(w.student._id), host: false, microphones: [] },
+    ];
+    await signInAs(w.student);
+    expect(await setStudentRight({ ...ref, right: 'unmute', allowed: false })).toMatchObject({
+      ok: false,
+      code: 'FORBIDDEN',
+    });
+    await signInAs(w.faculty);
+    setRights.mockClear();
+    tell.mockClear();
+    expect(await setStudentRight({ ...ref, right: 'unmute', allowed: false })).toMatchObject({ ok: true });
+    const rights = { share: true, unmute: false, chat: true };
+    expect((await LiveSession.findById(session._id).lean())?.studentsMay).toEqual(rights);
+    expect(tell).toHaveBeenCalledWith(session.roomName, 'controls', 'unmute');
+    await vi.waitFor(() => expect(setRights).toHaveBeenCalledWith(session.roomName, String(w.student._id), rights));
+    expect(setRights).toHaveBeenCalledTimes(1);
+    expect((await getSession(w.offeringId, String(session._id))).controls).toEqual({ rights, removed: [] });
+    // A student joining now gets a token without the microphone, and the engine is told again on their join in case
+    // their token was issued just before the change. A host's join changes nothing.
+    await signInAs(w.second);
+    joinToken.mockClear();
+    await getSession(w.offeringId, String(session._id));
+    expect(joinToken).toHaveBeenCalledWith(expect.objectContaining({ role: 'participant', rights }));
+    expect((await getSession(w.offeringId, String(session._id))).controls).toBeNull();
+    setRights.mockClear();
+    const join = (userId: unknown, host: boolean) =>
+      hook({ type: 'joined', host, roomName: session.roomName, userId: String(userId), sid: 'PA_j', at: new Date() });
+    await join(w.second._id, false);
+    await join(w.faculty._id, true);
+    expect(setRights.mock.calls).toEqual([[session.roomName, String(w.second._id), rights]]);
+  });
+
+  it('keeps a removed student out until a host lets them back, audited both ways', async () => {
+    const { w, session, ref } = await running();
+    const identity = String(w.student._id);
+    const detail = () => getSession(w.offeringId, String(session._id));
+    await signInAs(w.faculty);
+    for (const other of [w.faculty, w.outsider]) {
+      expect(await removeParticipant({ ...ref, identity: String(other._id) })).toMatchObject({
+        ok: false,
+        code: 'VALIDATION',
+      });
+    }
+    removeFromRoom.mockClear();
+    expect(await removeParticipant({ ...ref, identity })).toMatchObject({ ok: true });
+    expect(await removeParticipant({ ...ref, identity })).toMatchObject({ ok: true });
+    expect(removeFromRoom).toHaveBeenCalledWith(session.roomName, identity);
+    expect(await AuditLog.countDocuments({ action: 'live.removed', entityId: String(session._id) })).toBe(1);
+    expect((await detail()).controls?.removed).toEqual([{ id: identity, name: w.student.name, at: expect.any(Date) }]);
+    // No token; one they kept is removed again on their join, which is not counted.
+    await signInAs(w.student);
+    expect(await detail()).toMatchObject({ join: null, removed: true });
+    removeFromRoom.mockClear();
+    await hook({
+      type: 'joined',
+      host: false,
+      roomName: session.roomName,
+      userId: identity,
+      sid: 'PA_r',
+      at: new Date(),
+    });
+    expect(removeFromRoom).toHaveBeenCalledWith(session.roomName, identity);
+    expect(await rowOf(session._id, w.student._id)).toBeNull();
+    await signInAs(w.admin);
+    expect(await allowBack({ ...ref, identity })).toMatchObject({ ok: true });
+    expect(await AuditLog.countDocuments({ action: 'live.allowed_back', entityId: String(session._id) })).toBe(1);
+    await signInAs(w.student);
+    expect(await detail()).toMatchObject({ join: { token: `participant-${identity}` }, removed: false });
+  });
+
+  it('removes at most a hundred people from one class', async () => {
+    const { w, session, ref } = await running();
+    const full = Array.from({ length: 100 }, () => ({ userId: newId(), at: new Date(), by: w.faculty._id }));
+    await LiveSession.updateOne({ _id: session._id }, { $set: { removed: full } });
+    await signInAs(w.faculty);
+    expect(await removeParticipant({ ...ref, identity: String(w.student._id) })).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+    });
+  });
+});
+
 describe('who sees what (09 §2–3)', () => {
   it('gives join tokens to the teacher, enrolled students and admins only while the class is live', async () => {
     const w = await world();
@@ -777,6 +958,7 @@ describe('who sees what (09 §2–3)', () => {
     const session = await liveClass(w);
     await hook({
       type: 'joined',
+      host: false,
       roomName: session.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -802,6 +984,7 @@ describe('who sees what (09 §2–3)', () => {
     const session = await liveClass(w, { attendanceMode: 'manual' });
     await hook({
       type: 'joined',
+      host: false,
       roomName: session.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -824,6 +1007,7 @@ describe('who sees what (09 §2–3)', () => {
     const done = await liveClass(w);
     await hook({
       type: 'joined',
+      host: false,
       roomName: done.roomName,
       userId: String(w.student._id),
       sid: 'PA_1',
@@ -835,6 +1019,7 @@ describe('who sees what (09 §2–3)', () => {
     const running = await liveClass(w, { scheduledStart: new Date(), scheduledEnd: new Date(Date.now() + 60 * MIN) });
     await hook({
       type: 'joined',
+      host: false,
       roomName: running.roomName,
       userId: String(w.second._id),
       sid: 'PA_2',

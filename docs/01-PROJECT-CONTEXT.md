@@ -39,7 +39,7 @@ Nothing in this section is built without written client approval recorded in `PR
 - Native mobile apps (the web app is responsive), offline mode, push notifications to devices.
 - SSO / ERP / student-information-system integration (pending Q-13). Login is email + password.
 - Admissions, fees, payments, hostel, library, timetable generation.
-- Discussion forums, student-to-student chat, social features. (One exception, at Aniket's request on 17 Oct 2026: the chat inside a running live class, which reaches only the people in the room then and is not stored. Raising a hand in a live class is also in; hand-raise analytics stay out.)
+- Discussion forums, student-to-student chat, social features. (One exception, at Aniket's request on 17 Oct 2026: the chat inside a running live class, which reaches only the people in the room then and is not stored. Raising a hand in a live class is also in; hand-raise analytics stay out. M03c, at Aniket's request the same day: emoji reactions in a live class, sent only to the people in the room and not stored; polls, breakout rooms, a whiteboard and captions follow in their M03c tasks.)
 - A question bank shared across offerings; copying a course between terms.
 - Plagiarism detection (ASG-04 part), completion certificates (SKL-05), helpdesk/ticketing (SUP-03).
 - Excel / PDF export (CPP-10 part). Reports are printable from the browser.

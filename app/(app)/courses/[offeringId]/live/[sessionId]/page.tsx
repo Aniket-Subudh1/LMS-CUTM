@@ -10,6 +10,7 @@ import {
   PencilSimpleIcon,
   PlayIcon,
   StopIcon,
+  UserMinusIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
@@ -166,6 +167,15 @@ async function LiveSessionView({
         {session.state === 'live' &&
           (detail.join ? (
             <JoinRoom href={`/courses/${offeringId}/live/${sessionId}/room`} student={!staff} />
+          ) : detail.removed ? (
+            <Alert>
+              <UserMinusIcon />
+              <AlertTitle>A teacher removed you from this class</AlertTitle>
+              <AlertDescription>
+                You can join again if a teacher lets you back: reload this page to see. Your time in the class so far
+                still counts.
+              </AlertDescription>
+            </Alert>
           ) : (
             <Alert>
               <EyeIcon />

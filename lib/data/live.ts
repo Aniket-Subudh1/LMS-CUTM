@@ -7,14 +7,20 @@ import { getSettings } from '@/lib/data/settings';
 import { db } from '@/lib/db';
 import { attendancePct, deriveAttendance } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
-import { joinToken } from '@/lib/integrations/live';
+import { joinToken, type StudentRights } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
-import { SHEET_PAGE_SIZE, type AttendanceMode, type AttendanceStatus, type SessionStatus } from '@/lib/schemas/live';
+import {
+  ALL_RIGHTS,
+  SHEET_PAGE_SIZE,
+  type AttendanceMode,
+  type AttendanceStatus,
+  type SessionStatus,
+} from '@/lib/schemas/live';
 
 const MINUTE_MS = 60_000;
 // T3: a class can be started from 15 minutes before its start time.
@@ -229,8 +235,12 @@ export type SessionDetail = {
   offeringTitle: string;
   session: LiveSessionRow;
   canStartAt: Date;
-  // A join token for the faculty (host) and enrolled students while the class is live (T4).
+  // A join token for the faculty (host) and enrolled students while the class is live (T4), but not for a student a
+  // host removed (M03c).
   join: { serverUrl: string; token: string } | null;
+  removed: boolean;
+  // M03c T2: for hosts while the class is live — what students may do, and who was removed, the latest first.
+  controls: { rights: StudentRights; removed: { id: string; name: string; at: Date }[] } | null;
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -244,23 +254,31 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   const viewer = await requireViewer();
   const { offering, view, canManage, hosts } = await liveAccess(viewer, offeringId);
   if (!Types.ObjectId.isValid(sessionId)) notFound();
-  const doc = await LiveSession.findOne({ _id: sessionId, offeringId }, { ...SESSION_FIELDS, roomName: 1 }).lean();
+  const doc = await LiveSession.findOne(
+    { _id: sessionId, offeringId },
+    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1 },
+  ).lean();
   if (!doc) notFound();
   const now = new Date();
   const session = toRow(doc, now);
   const student = view === 'student';
-  const joins = doc.status === 'live' && (student || hosts);
-  const [join, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
-    joins
+  const removedList = doc.removed ?? [];
+  const removed = student && removedList.some((r) => r.userId.equals(viewer.id));
+  const live = doc.status === 'live';
+  const rights = { ...ALL_RIGHTS, ...doc.studentsMay };
+  const [join, removedNames, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
+    live && !removed && (student || hosts)
       ? joinToken({
           roomName: doc.roomName,
           userId: viewer.id,
           name: viewer.name,
           role: student ? 'participant' : 'host',
-          // T4: valid until two hours after the scheduled end, and never less than a minute.
-          ttlSec: Math.max(60, Math.round((doc.scheduledEnd.getTime() + 120 * MINUTE_MS - now.getTime()) / 1000)),
+          rights,
         })
       : null,
+    live && hosts && !student && removedList.length > 0
+      ? User.find({ _id: { $in: removedList.map((r) => r.userId) } }, { name: 1 }).lean()
+      : [],
     student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
     student || !doc.startedAt
@@ -301,6 +319,20 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     session,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
     join,
+    removed,
+    controls:
+      live && hosts && !student
+        ? {
+            rights,
+            removed: removedList
+              .map((r) => ({
+                id: String(r.userId),
+                name: removedNames.find((u) => u._id.equals(r.userId))?.name ?? 'A student',
+                at: r.at,
+              }))
+              .reverse(),
+          }
+        : null,
     inClass,
     enrolled,
     summary:

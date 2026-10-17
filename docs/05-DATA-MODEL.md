@@ -197,6 +197,8 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | roomName | S | `ls-<sessionId>`; unique |
 | attendanceMode | S | `manual` · `derived` (skill offerings: always `derived`) |
 | finalizedAt | D? | derived attendance computed (07 §10); stored as `null` until then |
+| studentsMay | `{ share: B, unmute: B, chat: B }` | M03c: what students may do in the room — share their screen, turn on their microphone, send chat messages and reactions; each `true` until a host turns it off while the class runs. Classes from before M03c have no field and read as all `true` |
+| removed | `[{ userId: Id, at: D, by: Id }]` | M03c: students a host removed; they get no join token until a host lets them back. At most 100 (`MAX_REMOVED`) |
 | createdBy | Id | |
 
 Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique.

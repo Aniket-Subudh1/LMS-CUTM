@@ -11,19 +11,22 @@ import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
 import { formatDateTime, formatDay, formatTime } from '@/lib/format';
-import { closeRoom, setHand } from '@/lib/integrations/live';
+import { closeRoom, muteMicrophone, removeFromRoom, setHand, tell } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import type { NotificationKind } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
-import { queueLiveFinalize } from '@/lib/queue';
+import { queueLiveControl, queueLiveFinalize } from '@/lib/queue';
 import {
   LowerHands,
   MarkAttendance,
+  MAX_REMOVED,
   MAX_SESSIONS,
+  PersonRef,
   ScheduleSession,
   SessionRef,
+  SetStudentRight,
   UpdateSession,
 } from '@/lib/schemas/live';
 
@@ -369,5 +372,124 @@ export const lowerHands = action(
     else await requireTeach(viewer, offeringId);
     const roomName = await liveRoom(offeringId, sessionId);
     await Promise.all([...new Set(identities)].map((identity) => setHand(roomName, identity, null)));
+  },
+);
+
+// --- Host controls (M03c T2). Every host sees a change at once: the room tells their browsers to reload the controls. ---
+
+// As in Google Meet, a host turns someone's microphone off, not on; they are told who did it.
+export const muteParticipant = action(
+  { input: PersonRef, roles: TEACH },
+  async ({ offeringId, sessionId, identity }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    const roomName = await liveRoom(offeringId, sessionId);
+    if (await muteMicrophone(roomName, identity)) {
+      await tell(roomName, 'notice', `${viewer.name} muted your microphone`, [identity]);
+    }
+  },
+);
+
+// Everyone's microphone but the host's own; the worker reaches them all (04 §3).
+export const muteEveryone = action({ input: SessionRef, roles: TEACH }, async ({ offeringId, sessionId }, viewer) => {
+  await requireTeach(viewer, offeringId);
+  await liveRoom(offeringId, sessionId);
+  await queueLiveControl({ op: 'muteAll', sessionId, byId: viewer.id, byName: viewer.name.slice(0, 120) });
+});
+
+// What students may do: saved on the class, so students who join later get it too, and applied by the worker to the
+// students already in the room.
+export const setStudentRight = action(
+  { input: SetStudentRight, roles: TEACH },
+  async ({ offeringId, sessionId, right, allowed }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    const roomName = await liveRoom(offeringId, sessionId);
+    await LiveSession.updateOne({ _id: sessionId, status: 'live' }, { $set: { [`studentsMay.${right}`]: allowed } });
+    await queueLiveControl({ op: 'rights', sessionId });
+    await tell(roomName, 'controls', right);
+    refresh();
+  },
+);
+
+// M03c decision 3: a removed student is disconnected and stays out of the class until a host lets them back; their
+// time in the room so far still counts. Saved before the disconnect, so a quick rejoin is refused too. Audited.
+export const removeParticipant = action(
+  { input: PersonRef, roles: TEACH },
+  async ({ offeringId, sessionId, identity }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    const roomName = await liveRoom(offeringId, sessionId);
+    if (!(await Enrollment.exists({ offeringId, studentId: identity, status: 'active' }))) {
+      throw new AppError('VALIDATION', 'Only students of this course can be removed from the class.');
+    }
+    await mongoose.connection.transaction(async (txn) => {
+      const written = await LiveSession.updateOne(
+        {
+          _id: sessionId,
+          status: 'live',
+          'removed.userId': { $ne: identity },
+          [`removed.${MAX_REMOVED - 1}`]: { $exists: false },
+        },
+        { $push: { removed: { userId: identity, at: new Date(), by: viewer.id } } },
+        { session: txn },
+      );
+      if (written.matchedCount === 0) {
+        const current = await LiveSession.findById(sessionId, {
+          status: 1,
+          removed: { $elemMatch: { userId: new Types.ObjectId(identity) } },
+        })
+          .session(txn)
+          .lean();
+        if (current?.removed?.length) return;
+        throw new AppError(
+          'CONFLICT',
+          current?.status === 'live'
+            ? `At most ${MAX_REMOVED} people can be removed from one class.`
+            : 'The class is not running.',
+        );
+      }
+      await writeAudit(
+        {
+          actorId: viewer.id,
+          action: 'live.removed',
+          entity: 'live_session',
+          entityId: sessionId,
+          offeringId,
+          after: { studentId: identity },
+        },
+        txn,
+      );
+    });
+    await removeFromRoom(roomName, identity);
+    await tell(roomName, 'controls', 'removed');
+    refresh();
+  },
+);
+
+export const allowBack = action(
+  { input: PersonRef, roles: TEACH },
+  async ({ offeringId, sessionId, identity }, viewer) => {
+    await requireTeach(viewer, offeringId);
+    await db();
+    const session = await findSession(offeringId, sessionId);
+    await mongoose.connection.transaction(async (txn) => {
+      const written = await LiveSession.updateOne(
+        { _id: sessionId, 'removed.userId': identity },
+        { $pull: { removed: { userId: identity } } },
+        { session: txn },
+      );
+      if (written.modifiedCount === 0) return;
+      await writeAudit(
+        {
+          actorId: viewer.id,
+          action: 'live.allowed_back',
+          entity: 'live_session',
+          entityId: sessionId,
+          offeringId,
+          before: { studentId: identity },
+        },
+        txn,
+      );
+    });
+    if (session.status === 'live') await tell(session.roomName, 'controls', 'allowed');
+    refresh();
   },
 );

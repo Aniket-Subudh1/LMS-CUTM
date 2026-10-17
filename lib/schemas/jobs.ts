@@ -42,3 +42,11 @@ export const FinalizeLiveJob = z.object({ sessionId: objectId });
 export type FinalizeLiveJob = z.infer<typeof FinalizeLiveJob>;
 export const LiveSweepJob = z.object({});
 export type LiveSweepJob = z.infer<typeof LiveSweepJob>;
+
+// `compute/liveControl` (06 §6, M03c T2): a host control that reaches every student in the room — what students may
+// do now, or "Mute everyone" (everyone but the host who asked).
+export const LiveControlJob = z.discriminatedUnion('op', [
+  z.object({ op: z.literal('rights'), sessionId: objectId }),
+  z.object({ op: z.literal('muteAll'), sessionId: objectId, byId: objectId, byName: z.string().min(1).max(120) }),
+]);
+export type LiveControlJob = z.infer<typeof LiveControlJob>;

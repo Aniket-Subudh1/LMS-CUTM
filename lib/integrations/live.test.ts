@@ -44,8 +44,19 @@ describe('parseWebhook', () => {
       roomName: 'ls-abc',
       userId: participant.identity,
       sid: 'PA_one',
+      host: false,
       at: new Date(1760592601_000),
     });
+  });
+
+  it('tells a host’s join by the role its token gave (M03c)', async () => {
+    const { body, authorization } = await signed({
+      event: 'participant_joined',
+      room: { name: 'ls-abc' },
+      participant: { ...participant, attributes: { role: 'host' } },
+      createdAt: '1760592601',
+    });
+    expect(await parseWebhook(body, authorization)).toMatchObject({ type: 'joined', host: true });
   });
 
   it('gives a leave the time that connection joined', async () => {
@@ -86,17 +97,39 @@ describe('parseWebhook', () => {
 });
 
 describe('joinToken', () => {
-  it('grants the room, and room admin to the host only', async () => {
-    const verifier = new TokenVerifier(KEY, SECRET);
-    const input = { roomName: 'ls-abc', userId: participant.identity, name: 'Asha Rao', ttlSec: 600 };
-    const host = await joinToken({ ...input, role: 'host' });
-    const student = await joinToken({ ...input, role: 'participant' });
+  const verifier = new TokenVerifier(KEY, SECRET);
+  const input = { roomName: 'ls-abc', userId: participant.identity, name: 'Asha Rao' };
+  const all = { share: true, unmute: true, chat: true };
+
+  it('grants the room for ten minutes, and nobody room admin (M03c)', async () => {
+    const host = await joinToken({ ...input, role: 'host', rights: { share: false, unmute: false, chat: false } });
+    const student = await joinToken({ ...input, role: 'participant', rights: all });
     expect(host.serverUrl).toBe('wss://live.test');
     const hostClaims = await verifier.verify(host.token);
     const studentClaims = await verifier.verify(student.token);
-    expect(hostClaims).toMatchObject({ sub: participant.identity, name: 'Asha Rao' });
-    expect(hostClaims.video).toMatchObject({ roomJoin: true, room: 'ls-abc', canPublish: true, roomAdmin: true });
-    expect(studentClaims.video).toMatchObject({ roomJoin: true, room: 'ls-abc', roomAdmin: false });
+    expect(hostClaims).toMatchObject({ sub: participant.identity, name: 'Asha Rao', attributes: { role: 'host' } });
+    // A host is never limited, whatever students may do.
+    expect(hostClaims.video).toMatchObject({ roomJoin: true, room: 'ls-abc', canPublish: true, canPublishData: true });
+    expect(hostClaims.video?.canPublishSources).toBeUndefined();
+    expect(hostClaims.video?.roomAdmin).toBeFalsy();
+    expect(studentClaims.video).toMatchObject({ roomJoin: true, canPublishData: true });
+    expect(studentClaims.video?.canPublishSources).toEqual([
+      'camera',
+      'microphone',
+      'screen_share',
+      'screen_share_audio',
+    ]);
+    expect(studentClaims.video?.roomAdmin).toBeFalsy();
     expect(Number(studentClaims.exp) - Number(studentClaims.nbf)).toBe(600);
+  });
+
+  it('leaves out what a host turned off for students', async () => {
+    const token = await joinToken({
+      ...input,
+      role: 'participant',
+      rights: { share: false, unmute: false, chat: false },
+    });
+    const claims = await verifier.verify(token.token);
+    expect(claims.video).toMatchObject({ canPublish: true, canPublishData: false, canPublishSources: ['camera'] });
   });
 });

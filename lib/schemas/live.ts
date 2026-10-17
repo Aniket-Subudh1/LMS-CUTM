@@ -42,6 +42,24 @@ export const LowerHands = z.object({
   'identity[]': z.array(objectId).min(1).max(1000),
 });
 
+// --- Host controls (M03c T2) ---
+
+// What students may do in the room until a host turns it off: share their screen, turn on their microphone, send chat
+// messages and reactions. Hosts are never limited.
+export const STUDENT_RIGHTS = ['share', 'unmute', 'chat'] as const;
+export type StudentRight = (typeof STUDENT_RIGHTS)[number];
+export const ALL_RIGHTS: Record<StudentRight, boolean> = { share: true, unmute: true, chat: true };
+// 05 §4.3: the removed list stays a bounded read.
+export const MAX_REMOVED = 100;
+
+export const PersonRef = z.object({ offeringId: objectId, sessionId: objectId, identity: objectId });
+export const SetStudentRight = z.object({
+  offeringId: objectId,
+  sessionId: objectId,
+  right: z.enum(STUDENT_RIGHTS),
+  allowed: z.boolean(),
+});
+
 // --- Attendance (ATT-01) ---
 
 const markStatus = z.enum(ATTENDANCE_STATUSES);
