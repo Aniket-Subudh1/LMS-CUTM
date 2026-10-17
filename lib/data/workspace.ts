@@ -7,9 +7,12 @@ import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { escapeRegex } from '@/lib/data/courses';
 import { getSettings } from '@/lib/data/settings';
+import { countedScore } from '@/lib/domain/attempts';
 import { attendancePct, shortOfAttendance } from '@/lib/domain/attendance';
+import { quizAveragePct } from '@/lib/domain/grading';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { formatDate } from '@/lib/format';
+import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
@@ -19,8 +22,10 @@ import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { Submission } from '@/lib/models/submission';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
+import { ASSESSMENT_LIMITS } from '@/lib/schemas/assessment';
 import { pageSize, RichTextDoc, ROLES } from '@/lib/schemas/common';
 import { SETTINGS } from '@/lib/schemas/settings';
 import {
@@ -498,7 +503,15 @@ export type RosterRow = {
   email: string;
   status: 'active' | 'dropped';
   // Skill offerings only (SKL-02, T9); null for UGC offerings.
-  skill: { completed: number; attendancePct: number | null; watchedMin: number; lastActiveAt: Date | null } | null;
+  skill: {
+    completed: number;
+    attendancePct: number | null;
+    watchedMin: number;
+    lastActiveAt: Date | null;
+    // SKL-02 (M04 T9): distinct quizzes with an attempt, and the average of the published ones (07 §14).
+    quizzesAttempted: number;
+    quizAvgPct: number | null;
+  } | null;
   // Credit offerings only (ATT-02, M03 T9): finished live classes the student attended; null for skill offerings.
   live: { attended: number; held: number; pct: number | null } | null;
 };
@@ -577,6 +590,39 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
       ])
     : [];
   const statsById = new Map(stats.map((row) => [String(row._id), row]));
+  // M04 T9: the class's quizzes (at most 200, A-M04-1) and this page's attempts at them.
+  const quizzes = skill
+    ? await Assessment.find(
+        { offeringId, mode: 'quiz', status: { $ne: 'draft' } },
+        { status: 1, maxMarks: 1, attemptPolicy: 1 },
+      )
+        .limit(ASSESSMENT_LIMITS.perOffering)
+        .lean()
+    : [];
+  const quizAttempts =
+    quizzes.length > 0
+      ? await Submission.find(
+          { assessmentId: { $in: quizzes.map((q) => q._id) }, studentId: { $in: studentIds } },
+          { assessmentId: 1, studentId: 1, attemptNo: 1, status: 1, total: 1 },
+        ).lean()
+      : [];
+  const quizStats = (studentId: string) => {
+    const mine = quizAttempts.filter((a) => String(a.studentId) === studentId);
+    return {
+      quizzesAttempted: new Set(mine.map((a) => String(a.assessmentId))).size,
+      quizAvgPct: quizAveragePct(
+        quizzes
+          .filter((q) => q.status === 'results_published')
+          .map((q) => ({
+            counted: countedScore(
+              mine.filter((a) => a.assessmentId.equals(q._id)),
+              q.attemptPolicy,
+            ),
+            maxMarks: q.maxMarks,
+          })),
+      ),
+    };
+  };
   // M03 T9: each student's finished classes (a row has a status once its class is finalized or marked, A-72), for the
   // whole class at once: the page's rows and the "below the minimum" tile (index offeringId, studentId).
   const live = skill
@@ -619,6 +665,7 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
                 attendancePct: attendancePct(stat?.completed ?? 0, publishedIds.length),
                 watchedMin: Math.round((stat?.watchedSec ?? 0) / 60),
                 lastActiveAt: stat?.lastActiveAt ?? null,
+                ...quizStats(String(student._id)),
               }
             : null,
           live: skill ? null : { attended, held, pct: attendancePct(attended, held) },

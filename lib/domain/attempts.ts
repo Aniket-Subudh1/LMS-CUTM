@@ -47,11 +47,12 @@ export function isLate(submittedAt: Date, closesAt: Date): boolean {
 
 // 07 §14: only graded attempts count; best or last of them; none graded → 0 (a missed assessment counts as zero).
 export function countedScore(
-  attempts: readonly { attemptNo: number; status: string; total: number | null }[],
+  attempts: readonly { attemptNo: number; status: string; total?: number | null }[],
   policy: AttemptPolicy,
 ): number {
   const graded = attempts.filter(
-    (a): a is { attemptNo: number; status: string; total: number } => a.status === 'graded' && a.total !== null,
+    (a): a is { attemptNo: number; status: string; total: number } =>
+      a.status === 'graded' && typeof a.total === 'number',
   );
   if (graded.length === 0) return 0;
   if (policy === 'best') return Math.max(...graded.map((a) => a.total));

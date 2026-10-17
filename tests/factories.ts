@@ -1,4 +1,5 @@
 import { Types, type AnyKeys } from 'mongoose';
+import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
 import { Course, type CourseDoc } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering, type OfferingDoc } from '@/lib/models/offering';
@@ -68,6 +69,21 @@ export async function makeOffering(over: Partial<OfferingDoc> = {}) {
     title: `Offering ${next()}`,
     facultyIds: [newId()],
     status: 'active',
+    ...over,
+  });
+}
+
+// A published quiz open for the hour around now, with no questions unless the test gives them.
+export async function makeAssessment(over: AnyKeys<AssessmentDoc> = {}) {
+  const now = Date.now();
+  return Assessment.create({
+    offeringId: newId(),
+    mode: 'quiz',
+    title: `Assessment ${next()}`,
+    opensAt: new Date(now - 3_600_000),
+    closesAt: new Date(now + 3_600_000),
+    status: 'published',
+    createdBy: newId(),
     ...over,
   });
 }

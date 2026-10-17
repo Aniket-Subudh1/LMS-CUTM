@@ -22,6 +22,11 @@ await computeQueue().upsertJobScheduler(
   { pattern: '5 * * * *', tz: 'Asia/Kolkata' },
   { name: 'liveSweep', data: {} },
 );
+await computeQueue().upsertJobScheduler(
+  'assessmentSweep',
+  { pattern: '0 * * * *', tz: 'Asia/Kolkata' },
+  { name: 'assessmentSweep', data: {} },
+);
 log.info('worker started', { queues: workers.map((w) => w.name) });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

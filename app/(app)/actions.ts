@@ -8,6 +8,7 @@ import { AppError } from '@/lib/errors';
 import { formatBytes } from '@/lib/format';
 import { presignUpload } from '@/lib/integrations/storage';
 import { Course } from '@/lib/models/course';
+import { Submission } from '@/lib/models/submission';
 import { limit } from '@/lib/rate-limit';
 import { ROLES } from '@/lib/schemas/common';
 import { CreateUpload, UPLOAD_PURPOSES } from '@/lib/schemas/uploads';
@@ -21,7 +22,7 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
   if (input.size > rule.maxBytes) {
     throw new AppError('VALIDATION', `This file is larger than ${formatBytes(rule.maxBytes)}.`);
   }
-  // 06 §5 "who may upload"; submissions and proctoring snapshots are authorized when M04/M05 arrive.
+  // 06 §5 "who may upload"; proctoring snapshots are authorized when M05 arrives.
   switch (input.purpose) {
     case 'lesson-video':
     case 'lesson-doc':
@@ -34,6 +35,13 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
       await requireCourseEditor(viewer, input.contextId);
       await db();
       if (!(await Course.exists({ _id: input.contextId }))) throw new AppError('NOT_FOUND', 'Course not found.');
+      break;
+    case 'submission':
+      // M04 T5: the context is the assessment; the student must have an attempt on it running.
+      await db();
+      if (!(await Submission.exists({ assessmentId: input.contextId, studentId: viewer.id, status: 'in_progress' }))) {
+        throw new AppError('FORBIDDEN', 'Start the assessment before uploading your answer.');
+      }
       break;
     default:
       throw new AppError('FORBIDDEN', 'You do not have access to this action.');

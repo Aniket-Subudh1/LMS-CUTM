@@ -1,4 +1,4 @@
-import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
+import mongoose, { Schema, type FlattenMaps, type InferSchemaType, type Model } from 'mongoose';
 import { ASSESSMENT_LIMITS, SUBMISSION_STATUSES } from '@/lib/schemas/assessment';
 
 // A file a student handed in (a `submission` upload, 06 §5); the name is the sanitized one they chose.
@@ -85,6 +85,7 @@ submissionSchema.index({ assessmentId: 1, status: 1, submittedAt: 1 });
 // The hourly sweep's expired attempts.
 submissionSchema.index({ status: 1, deadlineAt: 1 });
 
-export type SubmissionDoc = InferSchemaType<typeof submissionSchema>;
+// Every read is lean, which returns `answers` and `scores` as plain objects keyed by item id, not Maps.
+export type SubmissionDoc = FlattenMaps<InferSchemaType<typeof submissionSchema>>;
 export const Submission: Model<SubmissionDoc> =
   mongoose.models.Submission ?? mongoose.model('Submission', submissionSchema);

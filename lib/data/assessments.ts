@@ -1,0 +1,942 @@
+import 'server-only';
+import { notFound } from 'next/navigation';
+import { Types, type QueryFilter } from 'mongoose';
+import { offeringAccess } from '@/lib/auth/access';
+import { requireViewer } from '@/lib/auth/session';
+import { SAVE_GRACE_MS } from '@/lib/data/attempts';
+import { escapeRegex } from '@/lib/data/courses';
+import { db } from '@/lib/db';
+import { canStart, countedScore, windowState, type StartCheck, type WindowState } from '@/lib/domain/attempts';
+import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
+import { Course } from '@/lib/models/course';
+import { Enrollment } from '@/lib/models/enrollment';
+import { Offering } from '@/lib/models/offering';
+import { Submission, type SubmissionDoc } from '@/lib/models/submission';
+import { User } from '@/lib/models/user';
+import {
+  ASSESSMENT_LIMITS,
+  RECORD_MODES,
+  type AssessmentMode,
+  type AssessmentState,
+  type AttemptPolicy,
+  type ItemType,
+} from '@/lib/schemas/assessment';
+import { pageSize, RichTextDoc } from '@/lib/schemas/common';
+import { MAX_ENROLLMENTS, type BLOOM_LEVELS } from '@/lib/schemas/structure';
+import type { UploadedFile } from '@/lib/schemas/uploads';
+
+type BloomLevel = (typeof BLOOM_LEVELS)[number];
+const DAY_MS = 86_400_000;
+
+const docOf = (value: unknown): RichTextDoc | null => {
+  const parsed = RichTextDoc.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+async function viewerAccess(offeringId: string) {
+  const viewer = await requireViewer();
+  const access = await offeringAccess(viewer, offeringId);
+  return { viewer, access, canTeach: access === 'teach' || viewer.roles.includes('admin') };
+}
+
+// What the lists and pages call an assessment's state: a draft, the derived window of a published one (05 §5.1), or
+// published results.
+export type DisplayState = 'draft' | WindowState | 'results';
+const stateOf = (a: Pick<AssessmentDoc, 'status' | 'opensAt' | 'closesAt' | 'lateUntil'>, now: Date): DisplayState =>
+  a.status === 'draft'
+    ? 'draft'
+    : a.status === 'results_published'
+      ? 'results'
+      : windowState({ now, opensAt: a.opensAt, closesAt: a.closesAt, lateUntil: a.lateUntil ?? null });
+
+export type AssessmentSummary = {
+  id: string;
+  title: string;
+  mode: AssessmentMode;
+  questions: number;
+  maxMarks: number;
+  opensAt: Date;
+  closesAt: Date;
+  lateUntil: Date | null;
+  durationMin: number | null;
+  attemptsAllowed: number;
+  attemptPolicy: AttemptPolicy;
+  shuffleItems: boolean;
+  shuffleOptions: boolean;
+  state: DisplayState;
+};
+
+const SUMMARY = {
+  title: 1,
+  mode: 1,
+  maxMarks: 1,
+  opensAt: 1,
+  closesAt: 1,
+  lateUntil: 1,
+  durationMin: 1,
+  attemptsAllowed: 1,
+  attemptPolicy: 1,
+  shuffleItems: 1,
+  shuffleOptions: 1,
+  status: 1,
+  questions: { $size: '$items' },
+} as const;
+type SummaryRow = Pick<AssessmentDoc, Exclude<keyof typeof SUMMARY, 'questions'>> & {
+  _id: Types.ObjectId;
+  questions: number;
+};
+
+function summaryOf(a: SummaryRow, now: Date): AssessmentSummary {
+  return {
+    id: String(a._id),
+    title: a.title,
+    mode: a.mode,
+    questions: a.questions,
+    maxMarks: a.maxMarks,
+    opensAt: a.opensAt,
+    closesAt: a.closesAt,
+    lateUntil: a.lateUntil ?? null,
+    durationMin: a.durationMin ?? null,
+    attemptsAllowed: a.attemptsAllowed,
+    attemptPolicy: a.attemptPolicy,
+    shuffleItems: a.shuffleItems,
+    shuffleOptions: a.shuffleOptions,
+    state: stateOf(a, now),
+  };
+}
+
+// The Assessments tab's state filter on the indexed { offeringId, status, closesAt } (A-M04-1 bounds the rest).
+function stateFilter(state: AssessmentState | undefined, now: Date): QueryFilter<AssessmentDoc> {
+  const ends = { $or: [{ lateUntil: null, closesAt: { $gt: now } }, { lateUntil: { $gt: now } }] };
+  if (state === 'draft') return { status: 'draft' };
+  if (state === 'results') return { status: 'results_published' };
+  if (state === 'upcoming') return { status: 'published', opensAt: { $gt: now } };
+  if (state === 'open') return { status: 'published', opensAt: { $lte: now }, ...ends };
+  if (state === 'closed') {
+    return { status: 'published', $nor: [ends] };
+  }
+  return {};
+}
+
+export type MyAttempts = {
+  // Before results are published a handed-in attempt is "submitted" whether or not it is marked (no score, 09 §10).
+  status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
+  attemptsUsed: number;
+  counted: number | null;
+};
+
+export type AssessmentList =
+  | {
+      view: 'teacher';
+      canTeach: boolean;
+      rows: (AssessmentSummary & { handedIn: number; toGrade: number })[];
+      total: number;
+      enrolled: number;
+    }
+  | { view: 'student'; rows: (AssessmentSummary & { mine: MyAttempts })[]; total: number };
+
+export type AssessmentListFilter = { q?: string; mode?: AssessmentMode; state?: AssessmentState; records?: boolean };
+
+// T3: students see what is published, with their own attempts; whoever teaches or oversees sees every assessment with
+// how many students handed in and how many hand-ins wait for marks (one $group over the page's ids).
+export async function listOfferingAssessments(
+  offeringId: string,
+  filter: AssessmentListFilter,
+  page: number,
+): Promise<AssessmentList> {
+  const { viewer, access, canTeach } = await viewerAccess(offeringId);
+  await db();
+  const now = new Date();
+  const learn = access === 'learn';
+  const q = filter.q?.trim();
+  // An aggregation (for the question count) does not cast ids, so the offering id is an ObjectId here.
+  const query: QueryFilter<AssessmentDoc> = {
+    offeringId: new Types.ObjectId(offeringId),
+    ...(filter.records ? { mode: { $in: RECORD_MODES } } : filter.mode ? { mode: filter.mode } : {}),
+    ...(q ? { title: { $regex: escapeRegex(q), $options: 'i' } } : {}),
+    ...stateFilter(filter.state, now),
+  };
+  if (learn) query.status = filter.state ? query.status : { $ne: 'draft' };
+  if (learn && query.status === 'draft') return { view: 'student', rows: [], total: 0 };
+  const [docs, total] = await Promise.all([
+    Assessment.aggregate<SummaryRow>([
+      { $match: query },
+      { $sort: { closesAt: -1, _id: -1 } },
+      { $skip: (page - 1) * pageSize },
+      { $limit: pageSize },
+      { $project: SUMMARY },
+    ]),
+    Assessment.countDocuments(query),
+  ]);
+  const assessmentIds = docs.map((d) => d._id);
+  if (learn) {
+    const mine = await Submission.find(
+      { assessmentId: { $in: assessmentIds }, studentId: viewer.id },
+      { assessmentId: 1, attemptNo: 1, status: 1, total: 1 },
+    ).lean();
+    return {
+      view: 'student',
+      total,
+      rows: docs.map((doc) => {
+        const attempts = mine.filter((s) => s.assessmentId.equals(doc._id));
+        const published = doc.status === 'results_published';
+        const handedIn = attempts.filter((s) => s.status !== 'in_progress');
+        const status = attempts.some((s) => s.status === 'in_progress')
+          ? 'in_progress'
+          : handedIn.length === 0
+            ? 'not_started'
+            : published && handedIn.some((s) => s.status === 'graded')
+              ? 'graded'
+              : 'submitted';
+        return {
+          ...summaryOf(doc, now),
+          mine: {
+            status,
+            attemptsUsed: attempts.length,
+            counted: published && handedIn.length > 0 ? countedScore(attempts, doc.attemptPolicy) : null,
+          },
+        };
+      }),
+    };
+  }
+  const [counts, enrolled] = await Promise.all([
+    Submission.aggregate<{ _id: Types.ObjectId; students: Types.ObjectId[]; toGrade: number }>([
+      { $match: { assessmentId: { $in: assessmentIds }, status: { $in: ['submitted', 'graded'] } } },
+      {
+        $group: {
+          _id: '$assessmentId',
+          students: { $addToSet: '$studentId' },
+          toGrade: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
+        },
+      },
+    ]),
+    Enrollment.countDocuments({ offeringId, status: 'active' }),
+  ]);
+  const countOf = new Map(counts.map((c) => [String(c._id), c]));
+  return {
+    view: 'teacher',
+    canTeach,
+    total,
+    enrolled,
+    rows: docs.map((doc) => {
+      const count = countOf.get(String(doc._id));
+      return { ...summaryOf(doc, now), handedIn: count?.students.length ?? 0, toGrade: count?.toGrade ?? 0 };
+    }),
+  };
+}
+
+async function readAssessment(offeringId: string, assessmentId: string) {
+  if (!Types.ObjectId.isValid(assessmentId)) notFound();
+  const doc = await Assessment.findOne({ _id: assessmentId, offeringId }).lean();
+  if (!doc) notFound();
+  return doc;
+}
+type AssessmentRead = Awaited<ReturnType<typeof readAssessment>>;
+
+export type StudentItem = {
+  id: string;
+  type: ItemType;
+  prompt: RichTextDoc | null;
+  maxMarks: number;
+  options: { id: string; text: string }[] | null;
+  // Shown with the marks once results are published, so the student reads how each criterion went.
+  rubric: { id: string; criterion: string; maxMarks: number }[] | null;
+};
+
+export type StudentAssessment = Omit<AssessmentSummary, 'state' | 'questions'> & {
+  instructions: RichTextDoc | null;
+  resultsPublished: boolean;
+  items: StudentItem[];
+};
+
+// 09 §10: the only way a student's view of an assessment is built. It has no answer keys, no CO tags and, until results
+// are published, no rubric; scores live on the submission and are added only after publication.
+export function toStudentAssessment(doc: AssessmentRead): StudentAssessment {
+  const resultsPublished = doc.status === 'results_published';
+  return {
+    id: String(doc._id),
+    title: doc.title,
+    mode: doc.mode,
+    maxMarks: doc.maxMarks,
+    opensAt: doc.opensAt,
+    closesAt: doc.closesAt,
+    lateUntil: doc.lateUntil ?? null,
+    durationMin: doc.durationMin ?? null,
+    attemptsAllowed: doc.attemptsAllowed,
+    attemptPolicy: doc.attemptPolicy,
+    shuffleItems: doc.shuffleItems,
+    shuffleOptions: doc.shuffleOptions,
+    instructions: docOf(doc.instructions),
+    resultsPublished,
+    items: doc.items.map((item) => ({
+      id: String(item._id),
+      type: item.type,
+      prompt: docOf(item.prompt),
+      maxMarks: item.maxMarks,
+      options: item.options ? item.options.map((o) => ({ id: String(o._id), text: o.text })) : null,
+      rubric:
+        resultsPublished && item.rubric
+          ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
+          : null,
+    })),
+  };
+}
+
+export type TeacherItem = StudentItem & {
+  coIds: string[];
+  bloomLevel: BloomLevel | null;
+  // mcq/msq: the correct option ids; numeric: the value and its margin.
+  key: { optionIds: string[] } | { value: number; tolerance: number } | null;
+};
+
+export type Builder = {
+  canEdit: boolean;
+  // Students have started, so the questions are fixed (05 §5.1).
+  locked: boolean;
+  credit: boolean;
+  offeringTitle: string;
+  cos: { id: string; code: string; statement: string }[];
+  assessment: AssessmentSummary & {
+    status: AssessmentDoc['status'];
+    instructions: RichTextDoc | null;
+    items: TeacherItem[];
+  };
+  // What publishing still needs (T4): question numbers without a CO on a credit course.
+  missingCos: number[];
+  counts: { handedIn: number; toGrade: number; inProgress: number };
+};
+
+function teacherItems(doc: AssessmentRead): TeacherItem[] {
+  return doc.items.map((item) => {
+    const key = item.answer;
+    return {
+      id: String(item._id),
+      type: item.type,
+      prompt: docOf(item.prompt),
+      maxMarks: item.maxMarks,
+      options: item.options ? item.options.map((o) => ({ id: String(o._id), text: o.text })) : null,
+      rubric: item.rubric
+        ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
+        : null,
+      coIds: item.coIds.map(String),
+      bloomLevel: item.bloomLevel ?? null,
+      key: !key
+        ? null
+        : item.type === 'numeric'
+          ? { value: key.value ?? 0, tolerance: key.tolerance ?? 0 }
+          : {
+              optionIds:
+                item.type === 'mcq' ? (key.optionId ? [String(key.optionId)] : []) : (key.optionIds ?? []).map(String),
+            },
+    };
+  });
+}
+
+// T4: the builder for whoever teaches the class; a head of department reads it with no controls.
+export async function getBuilder(offeringId: string, assessmentId: string): Promise<Builder> {
+  const { access, canTeach } = await viewerAccess(offeringId);
+  if (access === 'learn') notFound();
+  await db();
+  const [doc, offering] = await Promise.all([
+    readAssessment(offeringId, assessmentId),
+    Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean(),
+  ]);
+  if (!offering) notFound();
+  const [course, statuses] = await Promise.all([
+    Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean(),
+    Submission.aggregate<{ _id: string; n: number }>([
+      { $match: { assessmentId: doc._id } },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
+    ]),
+  ]);
+  const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
+  const credit = offering.category === 'ugc';
+  const items = teacherItems(doc);
+  return {
+    canEdit: canTeach,
+    locked: statuses.length > 0,
+    credit,
+    offeringTitle: offering.title,
+    cos: (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })),
+    assessment: {
+      ...summaryOf({ ...doc, questions: doc.items.length }, new Date()),
+      status: doc.status,
+      instructions: docOf(doc.instructions),
+      items,
+    },
+    missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
+    counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
+  };
+}
+
+export type AnswerValue =
+  | { type: 'mcq'; optionId: string | null }
+  | { type: 'msq'; optionIds: string[] }
+  | { type: 'numeric'; value: number | null }
+  | { type: 'text'; text: RichTextDoc | null }
+  | { type: 'file'; files: UploadedFile[] };
+
+type StoredAnswer = NonNullable<NonNullable<Awaited<ReturnType<typeof readSubmission>>>['answers']>[string];
+
+function answerOf(type: ItemType, stored: StoredAnswer | undefined): AnswerValue {
+  if (type === 'mcq') return { type, optionId: stored?.optionId ? String(stored.optionId) : null };
+  if (type === 'msq') return { type, optionIds: (stored?.optionIds ?? []).map(String) };
+  if (type === 'numeric') return { type, value: stored?.value ?? null };
+  if (type === 'text') return { type, text: docOf(stored?.text) };
+  return {
+    type,
+    files: (stored?.files ?? []).map((f) => ({
+      key: f.key,
+      fileName: f.fileName,
+      contentType: f.contentType,
+      size: f.size,
+    })),
+  };
+}
+
+async function readSubmission(filter: QueryFilter<SubmissionDoc>) {
+  return Submission.findOne(filter).lean();
+}
+
+export type MyResult = {
+  total: number;
+  items: {
+    id: string;
+    marks: number | null;
+    comment: string | null;
+    criteria: { criterion: string; marks: number | null; maxMarks: number }[] | null;
+  }[];
+};
+
+export type AssessmentPage =
+  | { view: 'staff'; canTeach: boolean }
+  | {
+      view: 'student';
+      assessment: StudentAssessment;
+      state: DisplayState;
+      check: StartCheck;
+      attempts: {
+        attemptNo: number;
+        status: 'in_progress' | 'submitted' | 'graded';
+        submittedAt: Date | null;
+        late: boolean;
+        autoSubmitted: boolean;
+      }[];
+      // The counted attempt's marks per question, once results are published (T5).
+      result: MyResult | null;
+    };
+
+// T5: a student's page of one assessment. Teachers are sent to the builder by the page; a head of department reads it.
+export async function getAssessmentPage(offeringId: string, assessmentId: string): Promise<AssessmentPage> {
+  const { viewer, access, canTeach } = await viewerAccess(offeringId);
+  if (access !== 'learn') return { view: 'staff', canTeach };
+  await db();
+  const doc = await readAssessment(offeringId, assessmentId);
+  if (doc.status === 'draft') notFound();
+  const mine = await Submission.find(
+    { assessmentId: doc._id, studentId: viewer.id },
+    { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, deadlineAt: 1, scores: 1 },
+  )
+    .sort({ attemptNo: 1 })
+    .lean();
+  const now = new Date();
+  const running = mine.some(
+    (s) => s.status === 'in_progress' && now.getTime() <= s.deadlineAt.getTime() + SAVE_GRACE_MS,
+  );
+  const check = canStart({
+    now,
+    opensAt: doc.opensAt,
+    closesAt: doc.closesAt,
+    lateUntil: doc.lateUntil ?? null,
+    attemptsUsed: mine.length,
+    attemptsAllowed: doc.attemptsAllowed,
+    inProgress: running,
+  });
+  const assessment = toStudentAssessment(doc);
+  let result: MyResult | null = null;
+  if (assessment.resultsPublished) {
+    const graded = mine.filter((s) => s.status === 'graded' && s.total !== null);
+    const best = Math.max(...graded.map((s) => s.total ?? 0));
+    const counted = doc.attemptPolicy === 'best' ? graded.find((s) => s.total === best) : graded[graded.length - 1];
+    if (counted) {
+      result = {
+        total: countedScore(mine, doc.attemptPolicy),
+        items: assessment.items.map((item) => {
+          const score = counted.scores?.[item.id];
+          return {
+            id: item.id,
+            marks: score?.marks ?? null,
+            comment: score?.comment ?? null,
+            criteria: item.rubric
+              ? item.rubric.map((r) => ({
+                  criterion: r.criterion,
+                  maxMarks: r.maxMarks,
+                  marks: score?.criteria?.find((c) => String(c.criterionId) === r.id)?.marks ?? null,
+                }))
+              : null,
+          };
+        }),
+      };
+    }
+  }
+  return {
+    view: 'student',
+    assessment,
+    state: stateOf(doc, now),
+    check,
+    attempts: mine.map((s) => ({
+      attemptNo: s.attemptNo,
+      status: s.status,
+      submittedAt: s.submittedAt ?? null,
+      late: s.late,
+      autoSubmitted: s.autoSubmitted,
+    })),
+    result,
+  };
+}
+
+export type AttemptDTO = {
+  submissionId: string;
+  offeringId: string;
+  assessmentId: string;
+  title: string;
+  offeringTitle: string;
+  timed: boolean;
+  deadlineAt: Date;
+  // `saved` is what the student has saved so far, never a key.
+  items: (StudentItem & { saved: AnswerValue })[];
+};
+
+// T5: the runner's attempt, owner only: questions and options in the order this attempt was given (seededShuffle),
+// with the answers saved so far. Null when the student has no attempt running.
+export async function getAttemptForStudent(offeringId: string, assessmentId: string): Promise<AttemptDTO | null> {
+  const { viewer, access } = await viewerAccess(offeringId);
+  if (access !== 'learn') notFound();
+  await db();
+  const doc = await readAssessment(offeringId, assessmentId);
+  const [attempt, offering] = await Promise.all([
+    readSubmission({ assessmentId: doc._id, studentId: viewer.id, status: 'in_progress' }),
+    Offering.findById(offeringId, { title: 1 }).lean(),
+  ]);
+  if (!attempt || !offering) return null;
+  const assessment = toStudentAssessment(doc);
+  const itemOf = new Map(assessment.items.map((item) => [item.id, item]));
+  const items = attempt.order.flatMap(({ itemId, optionIds }) => {
+    const item = itemOf.get(String(itemId));
+    if (!item) return [];
+    const optionOf = new Map((item.options ?? []).map((o) => [o.id, o]));
+    const options = optionIds ? optionIds.flatMap((id) => optionOf.get(String(id)) ?? []) : item.options;
+    return [{ ...item, options, saved: answerOf(item.type, attempt.answers?.[item.id]) }];
+  });
+  return {
+    submissionId: String(attempt._id),
+    offeringId,
+    assessmentId,
+    title: doc.title,
+    offeringTitle: offering.title,
+    timed: doc.durationMin !== null && doc.durationMin !== undefined,
+    deadlineAt: attempt.deadlineAt,
+    items,
+  };
+}
+
+export type HandInFilter = { status?: 'to_grade' | 'graded' | 'in_progress'; late?: boolean; q?: string };
+
+export type HandIns = {
+  canTeach: boolean;
+  assessment: { id: string; title: string; maxMarks: number; state: DisplayState; status: AssessmentDoc['status'] };
+  rows: {
+    id: string;
+    student: { name: string; email: string; rollNo: string };
+    attemptNo: number;
+    status: 'in_progress' | 'submitted' | 'graded';
+    submittedAt: Date | null;
+    late: boolean;
+    autoSubmitted: boolean;
+    total: number | null;
+  }[];
+  total: number;
+  counts: { enrolled: number; handedIn: number; graded: number; toGrade: number; late: number; inProgress: number };
+};
+
+const STATUS_OF = { to_grade: ['submitted'], graded: ['graded'], in_progress: ['in_progress'] } as const;
+
+// T6: the hand-ins of one assessment, the oldest first, for whoever teaches or oversees the class.
+export async function listSubmissions(
+  offeringId: string,
+  assessmentId: string,
+  filter: HandInFilter,
+  page: number,
+): Promise<HandIns> {
+  const { access, canTeach } = await viewerAccess(offeringId);
+  if (access === 'learn') notFound();
+  await db();
+  const doc = await readAssessment(offeringId, assessmentId);
+  const q = filter.q?.trim();
+  const students = q
+    ? await User.find(
+        {
+          _id: { $in: await Enrollment.distinct('studentId', { offeringId }) },
+          $or: [
+            { rollNo: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
+            { email: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
+            { name: { $regex: escapeRegex(q), $options: 'i' } },
+          ],
+        },
+        { _id: 1 },
+      )
+        .limit(MAX_ENROLLMENTS)
+        .lean()
+    : null;
+  const query: QueryFilter<SubmissionDoc> = {
+    assessmentId: doc._id,
+    status: { $in: filter.status ? STATUS_OF[filter.status] : ['submitted', 'graded'] },
+    ...(filter.late === undefined ? {} : { late: filter.late }),
+    ...(students ? { studentId: { $in: students.map((s) => s._id) } } : {}),
+  };
+  const [docs, total, statuses, late, enrolled] = await Promise.all([
+    Submission.find(query, {
+      studentId: 1,
+      attemptNo: 1,
+      status: 1,
+      submittedAt: 1,
+      late: 1,
+      autoSubmitted: 1,
+      total: 1,
+    })
+      .sort({ submittedAt: 1, _id: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    Submission.countDocuments(query),
+    Submission.aggregate<{ _id: string; n: number }>([
+      { $match: { assessmentId: doc._id } },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
+    ]),
+    Submission.countDocuments({ assessmentId: doc._id, status: { $in: ['submitted', 'graded'] }, late: true }),
+    Enrollment.countDocuments({ offeringId, status: 'active' }),
+  ]);
+  const users = await User.find(
+    { _id: { $in: docs.map((d) => d.studentId) } },
+    { name: 1, email: 1, rollNo: 1 },
+  ).lean();
+  const userOf = new Map(users.map((u) => [String(u._id), u]));
+  const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
+  return {
+    canTeach,
+    assessment: {
+      id: String(doc._id),
+      title: doc.title,
+      maxMarks: doc.maxMarks,
+      state: stateOf(doc, new Date()),
+      status: doc.status,
+    },
+    rows: docs.map((d) => {
+      const user = userOf.get(String(d.studentId));
+      return {
+        id: String(d._id),
+        student: { name: user?.name ?? 'Unknown student', email: user?.email ?? '', rollNo: user?.rollNo ?? '—' },
+        attemptNo: d.attemptNo,
+        status: d.status,
+        submittedAt: d.submittedAt ?? null,
+        late: d.late,
+        autoSubmitted: d.autoSubmitted,
+        total: d.total ?? null,
+      };
+    }),
+    total,
+    counts: {
+      enrolled,
+      handedIn: n('submitted') + n('graded'),
+      graded: n('graded'),
+      toGrade: n('submitted'),
+      late,
+      inProgress: n('in_progress'),
+    },
+  };
+}
+
+export type GradingView = {
+  canGrade: boolean;
+  locked: boolean;
+  assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status']; items: TeacherItem[] };
+  submission: {
+    id: string;
+    attemptNo: number;
+    status: 'in_progress' | 'submitted' | 'graded';
+    submittedAt: Date | null;
+    late: boolean;
+    autoSubmitted: boolean;
+    total: number | null;
+    student: { name: string; email: string; rollNo: string };
+    answers: Record<string, AnswerValue>;
+    scores: Record<string, { marks: number; by: string; comment: string | null; criteria: Record<string, number> }>;
+  };
+  previousId: string | null;
+  // M04 decision 5: the next hand-in waiting for marks, after this one in the order they came in, else the first.
+  nextToGradeId: string | null;
+};
+
+// T6: one hand-in with the key beside each answer, for whoever teaches or oversees the class.
+export async function getSubmissionForGrading(
+  offeringId: string,
+  assessmentId: string,
+  submissionId: string,
+): Promise<GradingView> {
+  const { access, canTeach } = await viewerAccess(offeringId);
+  if (access === 'learn') notFound();
+  if (!Types.ObjectId.isValid(submissionId)) notFound();
+  await db();
+  const [doc, attempt, offering] = await Promise.all([
+    readAssessment(offeringId, assessmentId),
+    readSubmission({ _id: submissionId, assessmentId, offeringId }),
+    Offering.findById(offeringId, { lockedAt: 1 }).lean(),
+  ]);
+  if (!attempt || !offering) notFound();
+  const order = { submittedAt: attempt.submittedAt ?? new Date(0), _id: attempt._id };
+  const after = {
+    $or: [{ submittedAt: { $gt: order.submittedAt } }, { submittedAt: order.submittedAt, _id: { $gt: order._id } }],
+  };
+  const before = {
+    $or: [{ submittedAt: { $lt: order.submittedAt } }, { submittedAt: order.submittedAt, _id: { $lt: order._id } }],
+  };
+  const [user, previous, nextAfter, firstToGrade] = await Promise.all([
+    User.findById(attempt.studentId, { name: 1, email: 1, rollNo: 1 }).lean(),
+    Submission.findOne({ assessmentId, status: { $in: ['submitted', 'graded'] }, ...before }, { _id: 1 })
+      .sort({ submittedAt: -1, _id: -1 })
+      .lean(),
+    Submission.findOne({ assessmentId, status: 'submitted', ...after }, { _id: 1 })
+      .sort({ submittedAt: 1, _id: 1 })
+      .lean(),
+    Submission.findOne({ assessmentId, status: 'submitted', _id: { $ne: attempt._id } }, { _id: 1 })
+      .sort({ submittedAt: 1, _id: 1 })
+      .lean(),
+  ]);
+  const items = teacherItems(doc);
+  const next = nextAfter ?? firstToGrade;
+  return {
+    canGrade: canTeach && !offering.lockedAt,
+    locked: Boolean(offering.lockedAt),
+    assessment: { id: String(doc._id), title: doc.title, maxMarks: doc.maxMarks, status: doc.status, items },
+    submission: {
+      id: String(attempt._id),
+      attemptNo: attempt.attemptNo,
+      status: attempt.status,
+      submittedAt: attempt.submittedAt ?? null,
+      late: attempt.late,
+      autoSubmitted: attempt.autoSubmitted,
+      total: attempt.total ?? null,
+      student: { name: user?.name ?? 'Unknown student', email: user?.email ?? '', rollNo: user?.rollNo ?? '—' },
+      answers: Object.fromEntries(items.map((item) => [item.id, answerOf(item.type, attempt.answers?.[item.id])])),
+      scores: Object.fromEntries(
+        Object.entries(attempt.scores ?? {}).map(([itemId, score]) => [
+          itemId,
+          {
+            marks: score.marks,
+            by: score.by,
+            comment: score.comment ?? null,
+            criteria: Object.fromEntries((score.criteria ?? []).map((c) => [String(c.criterionId), c.marks])),
+          },
+        ]),
+      ),
+    },
+    previousId: previous ? String(previous._id) : null,
+    nextToGradeId: next ? String(next._id) : null,
+  };
+}
+
+export type RecordCell =
+  | { kind: 'graded'; total: number; maxMarks: number; submissionId: string }
+  | { kind: 'to_grade'; submissionId: string }
+  | { kind: 'writing' }
+  | { kind: 'missing' }
+  | { kind: 'not_yet' };
+
+export type RecordsGrid = {
+  canTeach: boolean;
+  columns: {
+    id: string;
+    title: string;
+    mode: AssessmentMode;
+    closesAt: Date;
+    lateUntil: Date | null;
+    state: DisplayState;
+  }[];
+  rows: { id: string; name: string; rollNo: string; cells: Record<string, RecordCell> }[];
+  total: number;
+};
+
+// T7 (REC-01–REC-04): active students by roll number × the class's published record assessments. An offering holds at
+// most MAX_ENROLLMENTS students and 200 assessments (A-83, A-M04-1), so both sides are bounded reads; a cell is the
+// student's latest attempt.
+export async function getRecordsGrid(offeringId: string, page: number, q?: string): Promise<RecordsGrid> {
+  const { access, canTeach } = await viewerAccess(offeringId);
+  if (access === 'learn') notFound();
+  await db();
+  const now = new Date();
+  const [records, enrolled] = await Promise.all([
+    Assessment.find(
+      { offeringId, mode: { $in: RECORD_MODES }, status: { $ne: 'draft' } },
+      { title: 1, mode: 1, opensAt: 1, closesAt: 1, lateUntil: 1, status: 1, maxMarks: 1 },
+    )
+      .sort({ opensAt: 1, _id: 1 })
+      .limit(ASSESSMENT_LIMITS.perOffering)
+      .lean(),
+    Enrollment.distinct('studentId', { offeringId, status: 'active' }),
+  ]);
+  const term = q?.trim();
+  const userFilter = {
+    _id: { $in: enrolled },
+    ...(term
+      ? {
+          $or: [
+            { rollNo: { $regex: `^${escapeRegex(term)}`, $options: 'i' } },
+            { name: { $regex: escapeRegex(term), $options: 'i' } },
+          ],
+        }
+      : {}),
+  };
+  const [students, total] = await Promise.all([
+    User.find(userFilter, { name: 1, rollNo: 1 })
+      .sort({ rollNo: 1, _id: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    User.countDocuments(userFilter),
+  ]);
+  const attempts = await Submission.find(
+    { assessmentId: { $in: records.map((r) => r._id) }, studentId: { $in: students.map((s) => s._id) } },
+    { assessmentId: 1, studentId: 1, attemptNo: 1, status: 1, total: 1 },
+  ).lean();
+  const latest = new Map<string, (typeof attempts)[number]>();
+  for (const a of attempts) {
+    const key = `${a.studentId}:${a.assessmentId}`;
+    const seen = latest.get(key);
+    if (!seen || a.attemptNo > seen.attemptNo) latest.set(key, a);
+  }
+  return {
+    canTeach,
+    columns: records.map((r) => ({
+      id: String(r._id),
+      title: r.title,
+      mode: r.mode,
+      closesAt: r.closesAt,
+      lateUntil: r.lateUntil ?? null,
+      state: stateOf(r, now),
+    })),
+    rows: students.map((s) => ({
+      id: String(s._id),
+      name: s.name,
+      rollNo: s.rollNo ?? '—',
+      cells: Object.fromEntries(
+        records.map((r): [string, RecordCell] => {
+          const a = latest.get(`${s._id}:${r._id}`);
+          if (a?.status === 'graded' && a.total !== null && a.total !== undefined) {
+            return [
+              String(r._id),
+              { kind: 'graded', total: a.total, maxMarks: r.maxMarks, submissionId: String(a._id) },
+            ];
+          }
+          if (a?.status === 'submitted') return [String(r._id), { kind: 'to_grade', submissionId: String(a._id) }];
+          if (a?.status === 'in_progress') return [String(r._id), { kind: 'writing' }];
+          return [
+            String(r._id),
+            { kind: stateOf(r, now) === 'closed' || stateOf(r, now) === 'results' ? 'missing' : 'not_yet' },
+          ];
+        }),
+      ),
+    })),
+    total,
+  };
+}
+
+export type DueSoonRow = {
+  id: string;
+  offeringId: string;
+  title: string;
+  offeringTitle: string;
+  closesAt: Date;
+  started: boolean;
+};
+
+// Home (M04 decision 1, A-M04-4): open assessments of the student's courses closing within seven days that they have not
+// handed in, soonest first.
+export async function listDueSoon(): Promise<DueSoonRow[]> {
+  const viewer = await requireViewer(['student']);
+  await db();
+  const now = new Date();
+  const offerings = await Offering.find(
+    {
+      _id: { $in: await Enrollment.distinct('offeringId', { studentId: viewer.id, status: 'active' }) },
+      status: { $ne: 'draft' },
+    },
+    { title: 1 },
+  ).lean();
+  const due = await Assessment.find(
+    {
+      offeringId: { $in: offerings.map((o) => o._id) },
+      status: 'published',
+      opensAt: { $lte: now },
+      closesAt: { $gt: now, $lte: new Date(now.getTime() + 7 * DAY_MS) },
+    },
+    { offeringId: 1, title: 1, closesAt: 1 },
+  )
+    .sort({ closesAt: 1 })
+    .limit(50)
+    .lean();
+  const mine = await Submission.find(
+    { assessmentId: { $in: due.map((a) => a._id) }, studentId: viewer.id },
+    { assessmentId: 1, status: 1 },
+  ).lean();
+  const titleOf = new Map(offerings.map((o) => [String(o._id), o.title]));
+  return due
+    .filter((a) => !mine.some((s) => s.assessmentId.equals(a._id) && s.status !== 'in_progress'))
+    .slice(0, 5)
+    .map((a) => ({
+      id: String(a._id),
+      offeringId: String(a.offeringId),
+      title: a.title,
+      offeringTitle: titleOf.get(String(a.offeringId)) ?? '',
+      closesAt: a.closesAt,
+      started: mine.some((s) => s.assessmentId.equals(a._id)),
+    }));
+}
+
+export type ToGradeRow = { id: string; offeringId: string; title: string; offeringTitle: string; toGrade: number };
+
+// Home (M04 decision 1): published assessments of the classes the viewer teaches with hand-ins waiting for marks.
+export async function listToGrade(): Promise<ToGradeRow[]> {
+  const viewer = await requireViewer(['faculty']);
+  await db();
+  const offerings = await Offering.find({ facultyIds: viewer.id, status: { $ne: 'completed' } }, { title: 1 })
+    .limit(100)
+    .lean();
+  const published = await Assessment.find(
+    { offeringId: { $in: offerings.map((o) => o._id) }, status: 'published' },
+    { offeringId: 1, title: 1 },
+  )
+    .limit(ASSESSMENT_LIMITS.perOffering)
+    .lean();
+  const waiting = await Submission.aggregate<{ _id: Types.ObjectId; n: number }>([
+    { $match: { assessmentId: { $in: published.map((a) => a._id) }, status: 'submitted' } },
+    { $group: { _id: '$assessmentId', n: { $sum: 1 } } },
+    { $sort: { n: -1 } },
+    { $limit: 5 },
+  ]);
+  const assessmentOf = new Map(published.map((a) => [String(a._id), a]));
+  const titleOf = new Map(offerings.map((o) => [String(o._id), o.title]));
+  return waiting.flatMap((w) => {
+    const a = assessmentOf.get(String(w._id));
+    return a
+      ? [
+          {
+            id: String(a._id),
+            offeringId: String(a.offeringId),
+            title: a.title,
+            offeringTitle: titleOf.get(String(a.offeringId)) ?? '',
+            toGrade: w.n,
+          },
+        ]
+      : [];
+  });
+}

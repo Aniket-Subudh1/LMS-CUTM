@@ -6,7 +6,9 @@ import { presignDownload } from '@/lib/integrations/storage';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
+import { Assessment } from '@/lib/models/assessment';
 import { Offering } from '@/lib/models/offering';
+import { Submission } from '@/lib/models/submission';
 
 const missing = () => new Response(null, { status: 404 });
 
@@ -74,6 +76,25 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
       (key === lesson.fileKey ? lesson.fileName : undefined) ??
       (key.endsWith('.jpg') ? 'thumbnail.jpg' : 'lesson');
     return redirect(await presignDownload(key, name));
+  }
+
+  if (owner.purpose === 'submission') {
+    // 06 §5: the student who uploaded it, and whoever teaches or oversees the assessment's class. The name is the one
+    // kept with the answer (a student has at most 10 attempts, so the search is bounded).
+    const assessment = await Assessment.findById(owner.contextId, { offeringId: 1 }).lean();
+    if (!assessment) return missing();
+    if (owner.userId !== viewer.id && (await reach(viewer, { _id: String(assessment.offeringId) })) !== 'staff') {
+      return missing();
+    }
+    const attempts = await Submission.find({ assessmentId: assessment._id, studentId: owner.userId }, { answers: 1 })
+      .limit(10)
+      .lean();
+    const file = attempts
+      .flatMap((attempt) => Object.values(attempt.answers ?? {}))
+      .flatMap((answer) => answer.files ?? [])
+      .find((f) => f.key === key);
+    if (!file && owner.userId !== viewer.id) return missing();
+    return redirect(await presignDownload(key, file?.fileName ?? 'answer'));
   }
 
   return missing();

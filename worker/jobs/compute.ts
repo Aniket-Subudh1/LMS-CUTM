@@ -1,21 +1,27 @@
 import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import mongoose from 'mongoose';
+import { handInAttempts } from '@/lib/data/attempts';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
+import { notify } from '@/lib/data/notify';
 import { deriveAttendance } from '@/lib/domain/attendance';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
+import { formatDateTime } from '@/lib/format';
 import { log } from '@/lib/log';
+import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
+import { Offering } from '@/lib/models/offering';
 import { Setting } from '@/lib/models/setting';
+import { Submission } from '@/lib/models/submission';
 import { queueLiveFinalize } from '@/lib/queue';
-import { FinalizeLiveJob, LiveControlJob, LiveSweepJob } from '@/lib/schemas/jobs';
+import { AssessmentSweepJob, FinalizeLiveJob, LiveControlJob, LiveSweepJob } from '@/lib/schemas/jobs';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
 
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl';
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob;
+type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep';
+type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -129,9 +135,69 @@ async function liveControl(job: LiveControlJob): Promise<void> {
   }
 }
 
+// The hourly scheduler `assessmentSweep` (02 §8, M04 T8): the 24-hour reminder (COM-03) to students who have not
+// handed in, claimed once per assessment by `dueNotifiedAt`; then every attempt whose deadline passed more than five
+// minutes ago (a closed tab) is handed in, in batches, through the same path as the student's Submit.
+async function assessmentSweep(now: Date): Promise<void> {
+  const due = await Assessment.find(
+    {
+      status: 'published',
+      closesAt: { $gt: now, $lte: new Date(now.getTime() + 24 * 60 * MINUTE_MS) },
+      dueNotifiedAt: null,
+    },
+    { offeringId: 1, title: 1, closesAt: 1 },
+  )
+    .limit(100)
+    .lean();
+  let reminded = 0;
+  for (const assessment of due) {
+    const claimed = await Assessment.updateOne(
+      { _id: assessment._id, dueNotifiedAt: null },
+      { $set: { dueNotifiedAt: now } },
+    );
+    if (claimed.modifiedCount === 0) continue;
+    const [students, handedIn, offering] = await Promise.all([
+      Enrollment.distinct('studentId', { offeringId: assessment.offeringId, status: 'active' }),
+      Submission.distinct('studentId', { assessmentId: assessment._id, status: { $in: ['submitted', 'graded'] } }),
+      Offering.findById(assessment.offeringId, { title: 1 }).lean(),
+    ]);
+    const done = new Set(handedIn.map(String));
+    const title = `Due ${formatDateTime(assessment.closesAt)}: ${assessment.title} (${offering?.title ?? ''})`;
+    await notify(
+      students.map(String).filter((id) => !done.has(id)),
+      {
+        kind: 'assessment.dueSoon',
+        title: title.length > 160 ? `${title.slice(0, 159)}…` : title,
+        href: `/courses/${assessment.offeringId}/assessments/${assessment._id}`,
+      },
+    );
+    reminded++;
+  }
+  let handedIn = 0;
+  for (let batch = 0; batch < 20; batch++) {
+    const expired = await Submission.find(
+      { status: 'in_progress', deadlineAt: { $lt: new Date(now.getTime() - 5 * MINUTE_MS) } },
+      { _id: 1 },
+    )
+      .limit(500)
+      .lean();
+    if (expired.length === 0) break;
+    handedIn += await handInAttempts(
+      expired.map((s) => String(s._id)),
+      now,
+    );
+    if (expired.length < 500) break;
+  }
+  log.info('assessment sweep', { reminded, handedIn });
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
+  if (job.name === 'assessmentSweep') {
+    AssessmentSweepJob.parse(job.data);
+    return assessmentSweep(new Date());
+  }
   LiveSweepJob.parse(job.data);
   return liveSweep(new Date());
 }

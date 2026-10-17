@@ -13,6 +13,7 @@ import { coNumber, courseMode, nextCoCode, normalizeCode, parseSessionLines } fr
 import { isPermutation } from '@/lib/domain/order';
 import { parseKey } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
+import { Assessment } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Offering } from '@/lib/models/offering';
@@ -187,6 +188,15 @@ export const deleteCo = action({ input: CoRef, roles: EDITORS }, async ({ course
   let untagged = 0;
   await commit(
     async (session) => {
+      // 05 §3.6 (M04): a CO that questions are tagged with stays; CO ids are unique, so the index on the tags answers.
+      const used = await Assessment.find({ 'items.coIds': co._id }, { title: 1 }).limit(3).session(session).lean();
+      if (used.length > 0) {
+        const names = used.map((a) => a.title).join(', ');
+        throw new AppError(
+          'CONFLICT',
+          `${co.code} is used by questions in ${names}${used.length === 3 ? ' and others' : ''}. Take it off those questions first.`,
+        );
+      }
       const { matchedCount } = await Course.updateOne(
         { _id: courseId, 'cos._id': co._id },
         {
