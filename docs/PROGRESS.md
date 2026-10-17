@@ -26,6 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
+| M04b Test platform | In progress — T0 picked; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -1453,3 +1454,43 @@ Built on branch `m04-assessments` in a worktree while M03c was being built on ma
 - A scripted walk of every M04 page as faculty1, student01 and the HoD, at 1440 px and 360 px, on a build with the e2e database:
   - No error page, and no page wider than the screen.
   - The builder, runner, grading and result pages match the picked mock-ups.
+
+### 2026-10-18 · M04b/T0 Test platform: decisions and mock-ups · Claude Code, at Aniket's request
+
+Request: bring every feature of Aniket's two earlier test products into the LMS's tests and assessments (the features, not their questions or formats), add the best features of the leading testing platforms, and share a test by link so people sign in and take it directly. The two products are `dsw_test_v2` and `CSE_Recruitment_Portal_CUTM`, both read for this.
+
+**What the two products do**
+- DSW test v2:
+  - A waiting room with a countdown and a camera and microphone check.
+  - A forced full screen, with right-click, copy, paste and devtools keys blocked.
+  - Shuffled questions, a question map with flags, and a summary before submitting.
+  - AI-generated multiple-choice questions.
+  - A leaderboard with an Excel export, result emails, and scorecard and certificate PDFs.
+- The CSE recruitment portal:
+  - A question bank by category and difficulty, with a paper drawn per candidate (30/45/25) in sections.
+  - Proctoring:
+    - Events are soft or hard, and an attempt ends after a limit of hard ones.
+    - A heartbeat with a session nonce catches a second tab or device, and connection gaps.
+    - It also catches devtools, window blur, printing and changes to the page.
+    - Each hard violation takes a penalty off the score.
+  - Coding questions on Judge0 with public and hidden cases and a run limit.
+  - AI-suggested code grades in four bands, with an admin override.
+  - Recommendation bands and section breakdowns, and a per-attempt PDF report.
+  - This answers Q-25 (b): the recruitment platform's compiler service is Judge0.
+
+**Decisions** — `docs/milestones/M04b-test-platform.md` decisions 1–5:
+- Links for the class or for guests.
+- Proctoring and coding pulled forward from M05; a question bank with random papers; AI helpers with a person confirming.
+- Rich results, a leaderboard, certificates and scorecards, Excel and PDF exports.
+- A phased build.
+- The mock-up picks: the guest landing in the LMS's own sign-in layout, lobby B, runner A, the rest as shown.
+- The owner requests are TP-01 to TP-12 (01 §7.14). The new `candidate` role is in 01 §5.
+- 01 §4 records what moves into scope; AI "cheating" verdicts stay out.
+
+**Not done** — phases A–E.
+
+**Assumptions** — none yet.
+
+**Open questions** — Judge0 server and token for coding questions; an Anthropic API key for the AI helpers; the certificate's design and signatory; how long guest records are kept (defaults in the milestone file).
+
+**Verification** — 20 mock-ups drawn inside the real app (a build of this branch on port 3101 with the e2e database) at 1440 px, plus 4 at 390 px. Aniket's picks are recorded in decision 5. The phone mock-ups of the runner and the coding screen were wider than the screen; the build is checked at 360 px.

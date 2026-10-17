@@ -40,11 +40,11 @@ Nothing in this section is built without written client approval recorded in `PR
 - SSO / ERP / student-information-system integration (pending Q-13). Login is email + password.
 - Admissions, fees, payments, hostel, library, timetable generation.
 - Discussion forums, student-to-student chat, social features. (One exception, at Aniket's request on 17 Oct 2026: the chat inside a running live class, which reaches only the people in the room then and is not stored. Raising a hand in a live class is also in; hand-raise analytics stay out. M03c, at Aniket's request the same day: emoji reactions in a live class, sent only to the people in the room and not stored; polls, breakout rooms, a whiteboard and captions follow in their M03c tasks.)
-- A question bank shared across offerings; copying a course between terms.
-- Plagiarism detection (ASG-04 part), completion certificates (SKL-05), helpdesk/ticketing (SUP-03).
-- Excel / PDF export (CPP-10 part). Reports are printable from the browser.
+- Copying a course between terms. (A question bank shared across offerings is in scope since M04b: Aniket's change, 18 Oct 2026, TP-05.)
+- Plagiarism detection beyond M04b's similarity flag between hand-ins (ASG-04 part), course completion certificates (SKL-05), helpdesk/ticketing (SUP-03). Test scorecards and certificates are in scope since M04b (TP-12).
+- Excel / PDF export of attainment reports (CPP-10 part); those reports are printable from the browser. Excel and PDF exports of test results are in scope since M04b (TP-12).
 - Indirect attainment (course-exit surveys), at-risk alerting (ENG-04), live-class recordings (LIV-05).
-- Chat / poll / hand-raise analytics, AI review of code diffs, AI-written feedback to students, any AI that writes marks or attendance.
+- Chat / poll / hand-raise analytics, AI review of code diffs, AI-written feedback to students, any AI that writes marks or attendance, AI "cheating" verdicts in proctoring. (AI drafting questions and suggesting a grade band, each confirmed by a person, is in scope since M04b, TP-10.)
 - Multi-language UI. The UI is English.
 - Language switching, translation, ambient monitoring beyond the proctoring set in M05.
 - Google Meet scheduling for reviews (pending Q-03).
@@ -61,6 +61,7 @@ A user has one or more roles (`roles: Role[]`). A head of department usually als
 | `faculty` | Teachers | Course plan and calendar, content, live classes, attendance, assessments, grading, records, projects (as project manager), CE review, CO tagging. A faculty member who is a course's **coordinator** also edits that catalogue course (CRS-07) |
 | `student` | Learners | Attend live or recorded lectures, submit records/assignments, take quizzes and lab tests, work on projects, see own results and grade sheet |
 | `support` | Vendor-side support executive (SUP-01) | Find users, reset passwords, see a student's enrollments and submission statuses (not answers or marks edits) |
+| `candidate` | An outside person taking a shared test (M04b, TP-03): a recruitment, placement or entrance candidate | Registers through a test link with name and email, signs in with a one-time code sent to that email, takes the tests they were let into and sees their own results. No password, no courses |
 
 The **university exam system** is an external system, not a login role. The full permission matrix is in `09-SECURITY.md` §2.
 
@@ -236,6 +237,22 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | NFR-06 | Security & privacy: RBAC, TLS, secure storage, backups | Should | M00, M11 | Build |
 | NFR-07 | Usability: desktop and mobile browsers; uploads work on low bandwidth | Should | all; verified M11 | Build |
 | NFR-08 | Availability target (e.g. 99.5%), higher during exams and live sessions | Should | M11 | Build |
+
+### 7.14 Test platform (owner requests, Aniket, 18 Oct 2026 — M04b)
+| ID | Requirement | Priority | Milestone | Decision |
+|---|---|---|---|---|
+| TP-01 | Share links per test: audience class or guests; access code, opening and expiry, use limit, allowed email domains; copy, QR code, email invitations | Must | M04b | Build |
+| TP-02 | Standalone tests outside a course (recruitment, placement, entrance), owned by staff | Must | M04b | Build |
+| TP-03 | Guest (candidate) registration through a link, confirmed by a one-time code sent to the email | Must | M04b | Build |
+| TP-04 | A lobby: window and countdown, rules to accept, device check | Must | M04b | Build |
+| TP-05 | A question bank per course and per owner, tagged by CO, Bloom, difficulty and topic; random papers drawn by rules | Must | M04b | Build |
+| TP-06 | Sections with time and order rules; true/false, fill in the blank, matching, ordering, passages; pictures; negative marking, partial credit, explanations | Must | M04b | Build |
+| TP-07 | Runner: one question at a time, question map, flag for review, review page, time per question, text size, offline-safe autosave, extra time per student | Must | M04b | Build |
+| TP-08 | Proctoring suite with soft and hard violations, ending after a limit, an optional penalty, snapshots, watermark and a live monitor | Must | M04b (from M05) | Build |
+| TP-09 | Coding questions on Judge0 with public and hidden cases and run limits | Must | M04b (from M05) | Build |
+| TP-10 | AI drafts questions and suggests grade bands; a person confirms | Should | M04b | Build |
+| TP-11 | Results: release rules, answers and explanations, section and CO breakdowns, recommendation bands, rank, percentile, leaderboard, item analysis, similarity flag | Must | M04b | Build |
+| TP-12 | Scorecards, certificates and per-attempt PDF reports; Excel exports | Should | M04b | Build |
 
 ## 8. Glossary
 
