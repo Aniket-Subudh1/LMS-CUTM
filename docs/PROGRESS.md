@@ -985,3 +985,77 @@ Motion: the cards used to render visible, vanish when GSAP took over, then anima
 **Open questions** — none.
 
 **Verification** — `npm run check` → lint and typecheck clean, `Tests 258 passed`. `npm run build` → compiled; the standalone build served on port 3101 and captured with Playwright at 1920, 1440, 1280, 1024 and 390 px: `/login`, `/forgot-password` and `/reset-password?token=x` render, `scrollWidth` equals the viewport at every width. Card opacity sampled every 100 ms after load: each card stays at 0 until hydration, rises once to 1 by 1.4 s, never dips; with `reducedMotion: reduce` all three are visible with no animation. Signing in through the new form was not walked (the form, field names and action are unchanged). The running `next dev` kept serving the old `globals.css` rule after the edit; restarting it picks up the change.
+
+### 2026-10-17 · Sidebar items on icon chips · Claude Code, at Aniket's request
+
+Aniket said the sidebar looked bad: every item was a grey pill 8 px from the next, the open Structure item was a solid blue block, and its pages hung off a faint line that started mid-air, so nothing marked the page actually open. Four flat versions were mocked up as static HTML in the agent's scratchpad (quiet rows, a grey block around the open section, tidied grey pills, icon chips) and he chose “D · Icon chips”.
+
+**Created** (*changed*)
+- `components/app-nav.tsx`: rows have no fill (grey on hover) and sit 2 px apart; each icon is on a 32 px `bg-sidebar-accent` chip that darkens on hover and is solid primary, with a semibold label, for the current item. Structure has a caret, pointing right when closed and down while one of its pages is current; its pages are plain text rows aligned with its label, with no guide line, the current one primary and semibold. The foot group (Profile, Sign out) uses the same rows, so the `PILL`/`PLAIN` split is gone. On the collapsed rail the chip fills the primitive's 32 px square.
+- 08 §3 (sidebar item look; TabNav no longer says “as in the sidebar”).
+
+**Verification** — `tsc --noEmit` and eslint on `components/app-nav.tsx` clean; Prettier applied. On the running `next dev`, signed in with Playwright as `admin@seed.cutm.test` at 1280 px: `/admin/departments` (Structure open, Departments current), hovering Offerings, `/home` (Dashboard current, Structure closed) and the collapsed rail were screenshotted and reviewed. The test suite and the e2e specs were not run; the e2e locator `getByRole('link', { name: 'Structure', exact: true })` still matches, since the chip and caret carry no text.
+
+### 2026-10-17 · Course cards with a cover and progress · Claude Code, at Aniket's request
+
+Aniket supplied a reference (an e-learning dashboard whose course cards have a thumbnail, tag chips, a progress bar with a percentage, duration and lesson counts, and a Continue button) and asked for course cards like it, "aesthetic and premium". Three versions were mocked up as static HTML from the seed's real courses (cover on top, side thumbnail, full-bleed cover); he chose "A · Cover on top". Courses have no images, so the cover is a flat tone with the course code. The reference's violet is replaced by the product's blue, a new teal and the existing gold. The near-black third tone tried first looked heavy beside the black buttons and became gold.
+
+**Created** (*changed*)
+- `lib/data/workspace.ts`: `MyOfferingRow` gains the course's code, title and type, the offering's credits, section and unit count, and `view`. For an offering the viewer is enrolled in (the `offeringAccess` rule), `view` is the lessons they have completed among the published ones, the published count and the video seconds. For one they teach or oversee, it is the active enrolments and whether the course plan is published. Four bounded queries serve a page: courses by id, an enrolment count per offering (`{ offeringId, status }`), a published-lesson count and duration per offering (`{ offeringId, published }`), and the viewer's completed lessons per offering (`{ offeringId, studentId }`, joined to `lessons` by `_id` so a lesson unpublished after completion stops counting, as in `getContent`). A `distinct` on the page's taught ids gives the published plans.
+- `components/offering-card.tsx`: rewritten to the design in 08 §5.2; the `featured` prop and the dark card are gone.
+- `app/(app)/home/page.tsx`: the offerings row no longer marks its first card.
+- `app/globals.css`: `--teal` / `bg-teal`, and the `cover-dots` utility.
+- `tests/integration/workspace.test.ts`: a student's row carries the course's parts and counts one of two published lessons (a completed lesson that was later unpublished is left out); the teacher's rows carry the class size and plan state.
+- 08 §4 (`--teal`, `cover-dots`), §5.2 (`OfferingCard`), Home.
+
+**Not done** — The seed has no published lessons, so the progress bar with a percentage was checked only through the integration test, not on screen.
+
+**Assumptions** — A cover's tone comes from the sum of the course code's character codes, modulo three: decorative, stable for a course, and not tied to department or type.
+
+**Open questions** — none.
+
+**Verification** — `npm run check` → lint and typecheck clean, `Tests 258 passed`. `npx vitest run --project integration` (with a temporary local Redis) → `15 passed` files, `165 passed` tests, including the new one. `npm run build` compiled; the standalone build on port 3101 was captured with Playwright at 1440 px for `student01`, `faculty1` and `admin` on `/home` and `/courses`, and at 390 px on `/courses` (`scrollWidth` 390 for each). The running `next dev` did not pick up the new `--teal` token until a build; restarting it will.
+
+### 2026-10-17 · List pages in one card, search and filters everywhere, ten rows a page · Claude Code, at Aniket's request
+
+Aniket supplied a reference (a students list: a stats strip, filter pills, a search box and a compact table with avatars and status pills) and asked for the catalogue, programmes, offerings, audit log and users pages to look like it. He said every page's header looked big and blunt, that no list ever showed a next page (each showed 25 and the data fit), and that every list should have a search box and filters. Three versions of the users page were mocked up from the seed's real users; he chose "B · Header inside the card". He also asked why some course cards were completely white: his running `next dev` had not reloaded `app/globals.css` since `--teal` was added (new component classes reached it, theme changes did not, even after a touch), so the teal covers had no colour. Restarting it fixes that; the production build was right.
+
+**Created** (*changed*)
+- `components/page-header.tsx`: the header is a white card (icon chip, 18 px title, description, actions) with optional `stats` tiles and `children`, per 08 §5.2. Aniket then enlarged the icon chip to 48 px himself.
+- `components/data-table.tsx`: grey header band, striped rows with hairlines, wrapping cells (the vendored cell's `whitespace-nowrap` pushed the offerings' action buttons off the card), `bare` for use inside the header card, and a numbered pager in `PageNav`.
+- `components/filter-form.tsx`: the toolbar: search box plus filter pills that apply on change; `plain` unchanged.
+- `lib/schemas/common.ts`: `pageSize` 10 (was 25); 04 §2 snippet and 06 §1 updated.
+- Search: `listPrograms(page, { q, departmentId, status })` (new text index on programmes' code and name), `listOfferings` and `listMyOfferings` take `q` (new text index on offerings' title); 05 lists both indexes. A word search on users, the catalogue, programmes, offerings and My courses now sorts by text score before the usual order. Without that, "Student 05" matched every "student" and the newest came first, which at ten a page pushed the person searched for to page 2.
+- Counts for the tiles: `getUserStats` (users, students, faculty and HoDs counted once, yet to sign in), `getCatalogStats` (courses, active, needing review, without a coordinator), `getOfferingStats` (all, active, draft, completed), `getAuditStats` (entries, today, last seven IST days, people in those days) and `listAuditEntities` (the audit filter's choices, a distinct scan of `{ entity, at }`); `getStructureCounts` also returns batches and programmes without a department. Each count is an estimated count or uses an existing index.
+- Pages: `/admin/users`, `/catalog`, `/admin/programs`, `/admin/offerings`, `/admin/audit` rebuilt as one card. The users table shows name over email. The audit log's search is the person's email, its kind-of-record filter lists the entities in the log, its dates are pills, and the record-id and offering-id filters that M01 specifies sit under "More filters". `/courses` has a search box for everyone, with the term and department pills for admins.
+- `components/offering-card.tsx`: the card link is named by the offering's full title, so a screen reader announces the course rather than the whole card.
+- Tests: integration for the programme search and filters, the offering search and counts, the scoped My courses search, every count function, ranking ("Rankcheck 07" first among twelve), and ten-a-page audit paging; e2e specs search for the seeded offering (earlier runs leave offerings behind) and open page 2 of the roster.
+- 08 §1 rule 6, §5.2 (`PageHeader`, `FilterForm`, `DataTable`), §6 List page.
+
+**Not done** — The reference's checkboxes and row "⋮" menus are left out: there are no bulk actions, and rows that have actions (offerings) keep their buttons. Its "last active" column is left out because the LMS does not record activity. No sort control: each list keeps its one order.
+
+**Assumptions** — A-79: ten rows a page for every list. A-80: the tiles count the whole collection, not the filtered list.
+
+**Open questions** — none.
+
+**Verification** — `npm run check` → lint and typecheck clean, `Tests 258 passed`. `npx vitest run --project integration` (temporary local Redis) → `15 passed` files, `172 passed` tests. `npm run db:indexes` against the development database created the two text indexes (additive). `npm run build` compiled; on the standalone build at port 3101, signed in as `admin@seed.cutm.test`, `/admin/users`, `/catalog`, `/admin/programs`, `/admin/offerings`, `/admin/audit`, `/courses`, `/admin/departments` and `/profile` rendered with no error and no horizontal scroll at 1440 px and on `/admin/users` at 390 px; choosing a role reloaded the list with `role=faculty`, and typing "Pradeep" with Enter left one row. `npx playwright test` on the e2e database: `admin-structure.spec.ts` 4/4 and `catalog.spec.ts` 1/1 passed. Three failures need services that were not running locally: the invited-admin test in `auth.spec.ts` (Mailpit), both tests in `content.spec.ts` (file storage for the upload, and Mailpit), and `live.spec.ts` (LiveKit). The live test got through the course search and scheduling before stopping at the video room.
+
+### 2026-10-17 · A generated mark for every page · Cursor
+
+Aniket asked for a unique, professional icon on every page. They follow the sign-in panel's clay marks: royal blue, one gold accent, no text.
+
+**Created**
+- `public/icons/*.png` (37): dashboard, courses, catalog, notifications, profile, structure, departments, programmes, diploma, terms, offerings, imports, globe, settings, video, evaluation, attendance, audit, users, badge, overview, plan, lessons, lesson, live, session, people, course, signin, envelope, key, missing, outcomes, mapping, books, baskets, devices
+- `components/page-icon.tsx`: `PageIcon`
+- `app/(app)/courses/[offeringId]/workspace-mark.tsx`: the offering header's mark follows the open tab
+
+**Changed** — the mark is the page's identity in the sidebar (Structure's children included), `PageHeader` and its count tiles, home, admin cards, section cards (outcomes, syllabus, books, batches, attendance and the rest), lesson types, notification rows, the course workspace header and tabs, and the sign-in, forgot-password, reset-password, error and 404 headings. A generated mark stays on a light chip: the current nav item and course tab use a primary tint, and a hovered card does not fill the chip or put a white square behind the picture. Phosphor stays on buttons and on status actions (disable, sign out).
+- 08 §1.5, §3, §5.2
+
+**Not done** — the test suite and a production build were not re-run.
+
+**Assumptions** — A page, its sections and its create dialog share one mark when they name the same thing. A button keeps a Phosphor icon.
+
+**Open questions** — none.
+
+**Verification** — `tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied. On `next dev`, signed in as `admin@seed.cutm.test`: `/home` shows the dashboard mark beside the greeting and in the sidebar; Structure opens with Departments, Programmes and Terms marks; a programme page shows the basket mark on Baskets; a catalogue course shows readiness, objectives, outcomes, mapping, syllabus, books, session plan and programmes marks, every image loaded (`naturalWidth` 256, none broken); a course overview header and its Overview tab use the overview mark, and the active tab is a light tint. Hovering a home count tile leaves the mark on its light chip (the picture's background stays transparent; the chip does not fill).

@@ -2,12 +2,14 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { z } from 'zod';
 import Loading from '../../loading';
-import { ClockCounterClockwiseIcon } from '@phosphor-icons/react/ssr';
+import { SlidersHorizontalIcon } from '@phosphor-icons/react/ssr';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Input } from '@/components/ui/input';
-import { listAudit } from '@/lib/data/audit';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { getAuditStats, listAudit, listAuditEntities } from '@/lib/data/audit';
 import { formatDateTime } from '@/lib/format';
 import { objectId, page as pageParam, pageSize } from '@/lib/schemas/common';
 
@@ -33,40 +35,82 @@ export default function AuditPage({ searchParams }: PageProps<'/admin/audit'>) {
 
 async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>['searchParams'] }) {
   const { page, ...filters } = Search.parse(await searchParams);
-  const { rows, total } = await listAudit(page, filters);
+  const [{ rows, total }, stats, entities] = await Promise.all([
+    listAudit(page, filters),
+    getAuditStats(),
+    listAuditEntities(),
+  ]);
   const query = Object.fromEntries(
     Object.entries(filters).filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
   return (
-    <>
-      <PageHeader
-        icon={<ClockCounterClockwiseIcon weight="duotone" />}
-        title="Audit log"
-        description="Every change to marks, structure and access, newest first. Dates are in IST."
-      />
-      <FilterForm action="/admin/audit">
-        {(
-          [
-            ['entity', 'Entity', 'text', 'w-36'],
-            ['entityId', 'Entity id', 'text', 'w-56'],
-            ['actorEmail', 'Actor email', 'text', 'w-56'],
-            ['offeringId', 'Offering id', 'text', 'w-56'],
-            ['from', 'From', 'date', 'w-40'],
-            ['to', 'To', 'date', 'w-40'],
-          ] as const
-        ).map(([name, label, type, width]) => (
-          <label key={name} className="grid gap-1.5 text-sm font-medium">
-            {label}
-            <Input name={name} type={type} defaultValue={filters[name] ?? ''} className={width} />
-          </label>
-        ))}
+    <PageHeader
+      icon={<PageIcon name="audit" />}
+      title="Audit log"
+      description="Every change to marks, structure and access, newest first. Dates are in IST."
+      stats={[
+        { label: 'Entries', value: stats.total, icon: <PageIcon name="audit" className="size-7" /> },
+        { label: 'Today', value: stats.today, icon: <PageIcon name="terms" className="size-7" /> },
+        { label: 'Last 7 days', value: stats.week, icon: <PageIcon name="audit" className="size-7" /> },
+        { label: 'People in the last 7 days', value: stats.people, icon: <PageIcon name="users" className="size-7" /> },
+      ]}
+    >
+      <FilterForm
+        action="/admin/audit"
+        submitLabel="Search"
+        search={{
+          name: 'actorEmail',
+          label: 'Email of the person who made the change',
+          placeholder: 'Search by email',
+          defaultValue: filters.actorEmail,
+        }}
+      >
+        <NativeSelect name="entity" aria-label="Kind of record" defaultValue={filters.entity ?? ''}>
+          <NativeSelectOption value="">All records</NativeSelectOption>
+          {entities.map((e) => (
+            <NativeSelectOption key={e} value={e}>
+              {entityLabel(e)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <Input name="from" type="date" aria-label="From" defaultValue={filters.from ?? ''} />
+        <Input name="to" type="date" aria-label="To" defaultValue={filters.to ?? ''} />
+        {/* The record and offering ids (M01) are for links from other pages; they stay out of the way until needed. */}
+        <details className="relative" open={Boolean(filters.entityId || filters.offeringId)}>
+          <summary className="ring-border bg-card hover:bg-muted flex h-9 cursor-pointer list-none items-center gap-2 rounded-full px-4 text-sm ring-1 transition-colors [&::-webkit-details-marker]:hidden">
+            <SlidersHorizontalIcon className="size-4" /> More filters
+          </summary>
+          <div className="bg-popover ring-border absolute right-0 z-10 mt-2 grid w-72 gap-3 rounded-xl p-3 ring-1">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Record id
+              <Input name="entityId" defaultValue={filters.entityId ?? ''} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Offering id
+              <Input name="offeringId" defaultValue={filters.offeringId ?? ''} />
+            </label>
+            <p className="text-muted-foreground text-xs">Press Enter to apply.</p>
+          </div>
+        </details>
       </FilterForm>
       <DataTable
+        bare
         columns={[
-          { header: 'When', cell: (a) => <span className="whitespace-nowrap">{formatDateTime(a.at)}</span> },
-          { header: 'Actor', cell: (a) => a.actor },
+          {
+            header: 'When',
+            cell: (a) => <span className="text-muted-foreground whitespace-nowrap">{formatDateTime(a.at)}</span>,
+          },
+          { header: 'Person', cell: (a) => a.actor },
           { header: 'Action', cell: (a) => <span className="font-medium">{a.action}</span> },
-          { header: 'Entity', cell: (a) => `${a.entity} ${a.entityId}` },
+          {
+            header: 'Record',
+            cell: (a) => (
+              <span className="grid leading-tight">
+                <span>{entityLabel(a.entity)}</span>
+                <span className="text-muted-foreground font-mono text-xs">{a.entityId}</span>
+              </span>
+            ),
+          },
           { header: 'Reason', cell: (a) => a.reason ?? '—' },
           { header: 'Change', cell: (a) => <Change before={a.before} after={a.after} /> },
         ]}
@@ -79,9 +123,15 @@ async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>
         path="/admin/audit"
         empty="No audit entries match these filters."
       />
-    </>
+    </PageHeader>
   );
 }
+
+// "course_list" → "Course list".
+const entityLabel = (entity: string) => {
+  const words = entity.replaceAll('_', ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 function Change({ before, after }: { before: unknown; after: unknown }) {
   if (before === undefined && after === undefined) return '—';

@@ -33,6 +33,7 @@ beforeAll(async () => {
   await Promise.all(
     [AuditLog, Department, Program, Batch, Course, CurriculumEntry, Offering, Term].map((m) => m.createCollection()),
   );
+  await Program.createIndexes();
 });
 
 async function asAdmin() {
@@ -58,21 +59,23 @@ describe('who may change the structure', () => {
   it('keeps every read behind the admin role', async () => {
     await signInAs(await makeUser({ roles: ['faculty'] }));
     await expect(listDepartments(1)).rejects.toMatchObject(redirectsTo('/home'));
-    await expect(listPrograms(1)).rejects.toMatchObject(redirectsTo('/home'));
+    await expect(listPrograms(1, {})).rejects.toMatchObject(redirectsTo('/home'));
     await expect(getStructureCounts()).rejects.toMatchObject(redirectsTo('/home'));
     switchBrowser(new Map());
-    await expect(listPrograms(1)).rejects.toMatchObject(redirectsTo('/login'));
+    await expect(listPrograms(1, {})).rejects.toMatchObject(redirectsTo('/login'));
   });
 });
 
 describe('getStructureCounts', () => {
-  it('counts departments, programmes and terms', async () => {
+  it('counts departments, programmes, terms, batches and programmes without a department', async () => {
     await asAdmin();
     await makeDepartment('CNT');
     expect(await getStructureCounts()).toEqual({
       departments: await Department.countDocuments(),
       programs: await Program.countDocuments(),
       terms: await Term.countDocuments(),
+      batches: await Batch.countDocuments(),
+      noDepartment: await Program.countDocuments({ departmentId: null }),
     });
   });
 });
@@ -364,11 +367,26 @@ describe('reads', () => {
     await asAdmin();
     const dept = await makeDepartment('RD-1');
     await Program.create({ code: 'RD-PROG', name: 'Reads', departmentId: dept._id, durationSemesters: 8 });
-    const { rows, total } = await listPrograms(1);
-    expect(rows.length).toBeLessThanOrEqual(25);
+    const { rows, total } = await listPrograms(1, {});
+    expect(rows.length).toBeLessThanOrEqual(10);
     expect(total).toBe(await Program.countDocuments());
     expect(rows.find((r) => r.code === 'RD-PROG')?.departmentCode).toBe('RD-1');
-    expect((await listDepartments(1)).rows.length).toBeLessThanOrEqual(25);
+    expect((await listDepartments(1)).rows.length).toBeLessThanOrEqual(10);
+  });
+
+  it('searches programmes by code or name and filters them by department and status', async () => {
+    await asAdmin();
+    const dept = await makeDepartment('SRCH-D');
+    await Program.create([
+      { code: 'SRCH-ALPHA', name: 'Quillwork Studies', departmentId: dept._id },
+      { code: 'SRCH-BETA', name: 'Other Things', departmentId: dept._id, status: 'archived' },
+    ]);
+    const codes = async (filters: Parameters<typeof listPrograms>[1]) =>
+      (await listPrograms(1, filters)).rows.map((r) => r.code);
+    expect(await codes({ q: 'quillwork' })).toEqual(['SRCH-ALPHA']);
+    expect(await codes({ departmentId: String(dept._id) })).toEqual(['SRCH-ALPHA', 'SRCH-BETA']);
+    expect(await codes({ departmentId: String(dept._id), status: 'archived' })).toEqual(['SRCH-BETA']);
+    expect((await listPrograms(1, { q: 'quillwork' })).total).toBe(1);
   });
 
   it('answers 404 for a programme id that is invalid or unknown', async () => {

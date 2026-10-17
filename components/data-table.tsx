@@ -20,6 +20,7 @@ export function DataTable<T>({
   query,
   path,
   empty,
+  bare = false,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -30,16 +31,24 @@ export function DataTable<T>({
   query: Record<string, string>;
   path: string;
   empty: string;
+  // Inside a PageHeader card, which already draws the card.
+  bare?: boolean;
 }) {
-  if (rows.length === 0) return <EmptyState text={empty} />;
+  if (rows.length === 0) return bare ? <EmptyMessage text={empty} /> : <EmptyState text={empty} />;
   return (
-    <div className="surface px-3 pt-1 pb-3 sm:px-4">
-      {/* Each row is its own rounded, outlined strip, as in the reference's student list. */}
-      <Table className="border-separate border-spacing-y-2 [&_td]:px-4 [&_td]:py-3 [&_th]:px-4">
+    <div className={cn('grid gap-3', !bare && 'surface p-3 sm:p-4')}>
+      {/* A grey header band over striped rows with hairlines between them (design B, 17 Oct 2026). */}
+      <Table className="border-separate border-spacing-0 [&_td]:px-3.5 [&_td]:py-3 [&_td]:whitespace-normal [&_th]:px-3.5">
         <TableHeader className="[&_tr]:border-0">
           <TableRow className="hover:bg-transparent">
             {columns.map((c) => (
-              <TableHead key={c.header} className={cn('text-muted-foreground h-9 text-sm font-medium', c.className)}>
+              <TableHead
+                key={c.header}
+                className={cn(
+                  'bg-muted text-muted-foreground h-9 text-xs font-medium first:rounded-l-lg last:rounded-r-lg',
+                  c.className,
+                )}
+              >
                 {c.header}
               </TableHead>
             ))}
@@ -49,7 +58,7 @@ export function DataTable<T>({
           {rows.map((row) => (
             <TableRow
               key={rowKey(row)}
-              className="[&>td]:border-border/80 [&:hover>td]:bg-primary/[0.03] hover:bg-transparent [&>td]:border-y [&>td:first-child]:rounded-l-xl [&>td:first-child]:border-l [&>td:last-child]:rounded-r-xl [&>td:last-child]:border-r"
+              className="even:[&>td]:bg-muted/40 [&:hover>td]:bg-primary/[0.04] [&>td]:border-border/70 border-0 hover:bg-transparent [&:not(:last-child)>td]:border-b"
             >
               {columns.map((c) => (
                 <TableCell key={c.header} className={c.className}>
@@ -67,9 +76,19 @@ export function DataTable<T>({
         pageSize={pageSize}
         query={query}
         path={path}
-        className="px-1 pt-2"
+        className="border-t px-1 pt-3"
       />
     </div>
+  );
+}
+
+// The empty sentence inside a card that already has its header.
+function EmptyMessage({ text }: { text: string }) {
+  return (
+    <p className="text-muted-foreground flex items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-10 text-center text-sm">
+      <TrayIcon weight="duotone" className="size-5 shrink-0" />
+      {text}
+    </p>
   );
 }
 
@@ -77,7 +96,7 @@ export function EmptyState({ text, icon }: { text: string; icon?: ReactNode }) {
   return (
     <Empty className="surface border-0">
       <EmptyHeader>
-        <EmptyMedia className="icon-chip size-12 [&_svg]:size-7">{icon ?? <TrayIcon weight="duotone" />}</EmptyMedia>
+        <EmptyMedia className="icon-chip size-14 [&_svg]:size-7">{icon ?? <TrayIcon weight="duotone" />}</EmptyMedia>
         <EmptyTitle>Nothing here yet</EmptyTitle>
         <EmptyDescription>{text}</EmptyDescription>
       </EmptyHeader>
@@ -85,7 +104,7 @@ export function EmptyState({ text, icon }: { text: string; icon?: ReactNode }) {
   );
 }
 
-// The range and Previous/Next links under a table or a card grid.
+// The range, then Previous, the page numbers around the current one (the first and last always) and Next.
 export function PageNav({
   shown,
   total,
@@ -110,46 +129,64 @@ export function PageNav({
     return `${path}?${params}`;
   };
   const first = (page - 1) * pageSize + 1;
+  const numbers = [...new Set([1, page - 1, page, page + 1, pages])]
+    .filter((n) => n >= 1 && n <= pages)
+    .sort((a, b) => a - b);
   return (
     <div className={cn('flex flex-wrap items-center justify-between gap-3', className)}>
       <p className="text-muted-foreground text-sm">
         Showing{' '}
         <span className="text-foreground font-medium tabular-nums">
-          {first}–{first + shown - 1}
+          {total === 0 ? 0 : first}–{first + shown - 1}
         </span>{' '}
         of <span className="text-foreground font-medium tabular-nums">{total}</span>
       </p>
-      {pages > 1 && (
-        <Pagination className="mx-0 w-auto">
-          <PaginationContent>
-            <PaginationItem>
-              <PageLink href={page > 1 ? href(page - 1) : null}>
-                <CaretLeftIcon /> Previous
-              </PageLink>
+      <Pagination className="mx-0 w-auto">
+        <PaginationContent className="gap-1.5">
+          <PaginationItem>
+            <PageLink href={page > 1 ? href(page - 1) : null} label="Previous page">
+              <CaretLeftIcon />
+            </PageLink>
+          </PaginationItem>
+          {numbers.map((n, i) => (
+            <PaginationItem key={n} className="flex items-center gap-1.5">
+              {i > 0 && n - numbers[i - 1] > 1 && <span className="text-muted-foreground px-0.5">…</span>}
+              {n === page ? (
+                <span
+                  aria-current="page"
+                  className="bg-primary text-primary-foreground grid size-8 place-items-center rounded-lg text-sm font-medium tabular-nums"
+                >
+                  {n}
+                </span>
+              ) : (
+                <PageLink href={href(n)} label={`Page ${n}`}>
+                  {n}
+                </PageLink>
+              )}
             </PaginationItem>
-            <PaginationItem className="text-muted-foreground px-2 text-sm tabular-nums">
-              Page {page} of {pages}
-            </PaginationItem>
-            <PaginationItem>
-              <PageLink href={page < pages ? href(page + 1) : null}>
-                Next <CaretRightIcon />
-              </PageLink>
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      )}
+          ))}
+          <PaginationItem>
+            <PageLink href={page < pages ? href(page + 1) : null} label="Next page">
+              <CaretRightIcon />
+            </PageLink>
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   );
 }
 
-function PageLink({ href, children }: { href: string | null; children: ReactNode }) {
-  const className = buttonVariants({ variant: 'outline', size: 'sm' });
+function PageLink({ href, label, children }: { href: string | null; label: string; children: ReactNode }) {
+  const className = cn(
+    buttonVariants({ variant: 'outline', size: 'icon-sm' }),
+    'rounded-lg text-sm font-medium tabular-nums',
+  );
   return href ? (
-    <Link href={href} className={className}>
+    <Link href={href} aria-label={label} className={className}>
       {children}
     </Link>
   ) : (
-    <span aria-disabled="true" className={cn(className, 'pointer-events-none opacity-50')}>
+    <span aria-disabled="true" aria-label={label} className={cn(className, 'pointer-events-none opacity-40')}>
       {children}
     </span>
   );

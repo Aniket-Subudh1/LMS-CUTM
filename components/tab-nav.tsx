@@ -34,7 +34,7 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
             key={tab.href}
             value={tab.href}
             asChild
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-9 rounded-xl px-4 data-[state=active]:shadow-none data-[state=active]:[&_path[opacity]]:hidden [&_svg]:size-[1.125rem]"
+            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary h-9 rounded-xl px-4 data-[state=active]:shadow-none [&_svg]:size-[1.125rem]"
           >
             <Link href={tab.href} aria-current={tab === current ? 'page' : undefined}>
               {tab.icon}

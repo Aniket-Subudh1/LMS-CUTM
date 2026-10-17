@@ -1,11 +1,12 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { DevicesIcon, KeyIcon, LockKeyIcon, ShieldCheckIcon, UserCircleIcon } from '@phosphor-icons/react/ssr';
+import { LockKeyIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../loading';
 import { changePassword, signOutEverywhere } from './actions';
 import { ActionForm, Field } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { PasswordInput } from '@/components/password-input';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +29,7 @@ async function Profile() {
   return (
     <>
       <PageHeader
-        icon={<UserCircleIcon weight="duotone" />}
+        icon={<PageIcon name="profile" />}
         title="Profile"
         description="Name and email are set by the university."
       />
@@ -57,7 +58,7 @@ async function Profile() {
         </section>
 
         <Section
-          icon={<ShieldCheckIcon weight="duotone" />}
+          icon={<PageIcon name="signin" className="size-8" />}
           title="Security"
           description="Keep your account yours. Both actions are recorded in the audit log."
         >
@@ -65,7 +66,7 @@ async function Profile() {
             <li className="surface flex flex-col gap-4 p-5">
               <div className="flex items-start gap-3">
                 <span className="icon-chip size-10 [&_svg]:size-5">
-                  <KeyIcon weight="duotone" />
+                  <PageIcon name="key" className="size-8" />
                 </span>
                 <div>
                   <h3 className="font-medium">Password</h3>
@@ -78,7 +79,7 @@ async function Profile() {
                     <LockKeyIcon weight="duotone" /> Change password
                   </Button>
                 }
-                icon={<KeyIcon weight="duotone" />}
+                icon={<PageIcon name="key" className="size-8" />}
                 title="Change password"
                 description="You stay signed in on this browser."
                 openParam="password"
@@ -100,7 +101,7 @@ async function Profile() {
             <li className="surface flex flex-col gap-4 p-5">
               <div className="flex items-start gap-3">
                 <span className="icon-chip size-10 [&_svg]:size-5">
-                  <DevicesIcon weight="duotone" />
+                  <PageIcon name="devices" className="size-8" />
                 </span>
                 <div>
                   <h3 className="font-medium">Other devices</h3>

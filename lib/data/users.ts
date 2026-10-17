@@ -10,7 +10,7 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { User } from '@/lib/models/user';
-import { pageSize, type Role } from '@/lib/schemas/common';
+import { pageSize, ROLES, type Role } from '@/lib/schemas/common';
 
 type Status = 'invited' | 'active' | 'disabled';
 
@@ -24,6 +24,21 @@ export type UserRow = {
 };
 
 // An address is looked up exactly; anything else goes through the text index (name, email, roll number).
+export type UserStats = { total: number; students: number; staff: number; invited: number };
+
+// The tiles above the user list. Each count is served by the { roles, status } index.
+export async function getUserStats(): Promise<UserStats> {
+  await requireViewer(['admin', 'support']);
+  await db();
+  const [total, students, staff, invited] = await Promise.all([
+    User.estimatedDocumentCount(),
+    User.countDocuments({ roles: 'student' }),
+    User.countDocuments({ roles: { $in: ['faculty', 'hod'] } }),
+    User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
+  ]);
+  return { total, students, staff, invited };
+}
+
 export async function listUsers(
   page: number,
   filters: { q?: string; role?: Role; status?: Status },
@@ -38,7 +53,8 @@ export async function listUsers(
   };
   const [docs, total] = await Promise.all([
     User.find(filter, { name: 1, email: 1, roles: 1, status: 1, rollNo: 1, employeeId: 1 })
-      .sort({ _id: -1 })
+      // A word search lists the closest matches first (text score); otherwise the usual order.
+      .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),

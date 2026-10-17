@@ -8,10 +8,7 @@ import {
   CheckCircleIcon,
   CheckIcon,
   DeviceMobileIcon,
-  FilePdfIcon,
-  LinkSimpleIcon,
   PencilSimpleIcon,
-  PlayCircleIcon,
   TrashIcon,
 } from '@phosphor-icons/react/ssr';
 import Loading from '../../../../loading';
@@ -21,6 +18,7 @@ import { FormDialog } from '@/components/form-dialog';
 import { LinkSpinner } from '@/components/link-spinner';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { RichTextView } from '@/components/rich-text-view';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,10 +33,10 @@ import type { LessonKind } from '@/lib/schemas/content';
 
 export const metadata: Metadata = { title: 'Lesson' };
 
-const KIND: Record<LessonKind, { label: string; icon: typeof PlayCircleIcon }> = {
-  video: { label: 'Video', icon: PlayCircleIcon },
-  document: { label: 'PDF', icon: FilePdfIcon },
-  link: { label: 'Link', icon: LinkSimpleIcon },
+const KIND: Record<LessonKind, { label: string; icon: PageIconName }> = {
+  video: { label: 'Video', icon: 'video' },
+  document: { label: 'PDF', icon: 'books' },
+  link: { label: 'Link', icon: 'globe' },
 };
 
 export default function LessonPage({ params }: PageProps<'/courses/[offeringId]/content/[lessonId]'>) {
@@ -67,24 +65,29 @@ async function LessonView({ params }: { params: PageProps<'/courses/[offeringId]
     <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="grid min-w-0 gap-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="grid min-w-0 gap-1">
-            <p className="text-muted-foreground text-sm">
-              <Link href={base} className="hover:text-foreground">
-                {learn ? 'Lessons' : 'Content'}
-              </Link>
-              {unit && ` / ${unit.title}`}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">{lesson.title}</h1>
-            <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-              {KIND[lesson.kind].label}
-              {lesson.durationSec && ` · ${formatDuration(lesson.durationSec)}`}
-              {lesson.size && ` · ${formatBytes(lesson.size)}`}
-              {!learn && (
-                <Badge variant={lesson.published ? 'success' : 'secondary'}>
-                  {lesson.published ? 'Published' : 'Draft'}
-                </Badge>
-              )}
-            </p>
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="bg-primary/10 grid size-12 shrink-0 place-items-center rounded-2xl">
+              <PageIcon name="lesson" />
+            </span>
+            <div className="grid min-w-0 gap-1">
+              <p className="text-muted-foreground text-sm">
+                <Link href={base} className="hover:text-foreground">
+                  {learn ? 'Lessons' : 'Content'}
+                </Link>
+                {unit && ` / ${unit.title}`}
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight text-balance">{lesson.title}</h1>
+              <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+                {KIND[lesson.kind].label}
+                {lesson.durationSec && ` · ${formatDuration(lesson.durationSec)}`}
+                {lesson.size && ` · ${formatBytes(lesson.size)}`}
+                {!learn && (
+                  <Badge variant={lesson.published ? 'success' : 'secondary'}>
+                    {lesson.published ? 'Published' : 'Draft'}
+                  </Badge>
+                )}
+              </p>
+            </div>
           </div>
           {content.canTeach && <TeacherActions lesson={lesson} content={content} />}
         </header>
@@ -181,12 +184,9 @@ function Resource({
 
   const href = lesson.kind === 'document' && lesson.fileKey ? `/api/files/${lesson.fileKey}` : lesson.url;
   if (!href) return null;
-  const Icon = KIND[lesson.kind].icon;
   return (
     <section className="surface flex flex-wrap items-center gap-4 p-5 sm:p-6">
-      <span className="bg-primary/8 text-primary grid size-14 shrink-0 place-items-center rounded-2xl">
-        <Icon weight="duotone" className="size-8" />
-      </span>
+      <PageIcon name={KIND[lesson.kind].icon} className="size-14" />
       <div className="grid min-w-0 flex-1 gap-0.5">
         <p className="truncate font-medium">{lesson.kind === 'document' ? (lesson.fileName ?? 'Lesson PDF') : href}</p>
         <p className="text-muted-foreground text-sm">
@@ -337,6 +337,5 @@ function Outline({ content, current }: { content: Content; current: string }) {
 }
 
 function OutlineIcon({ kind }: { kind: LessonKind }) {
-  const Icon = KIND[kind].icon;
-  return <Icon className="text-muted-foreground size-4 shrink-0" />;
+  return <PageIcon name={KIND[kind].icon} className="size-5 shrink-0" />;
 }

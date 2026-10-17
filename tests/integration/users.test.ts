@@ -8,7 +8,7 @@ import {
   updateUserRoles,
 } from '@/app/(app)/admin/users/actions';
 import { db } from '@/lib/db';
-import { getUserDetail, listUsers } from '@/lib/data/users';
+import { getUserDetail, getUserStats, listUsers } from '@/lib/data/users';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
 import { Department } from '@/lib/models/department';
@@ -453,5 +453,31 @@ describe('reads', () => {
     });
     await expect(getUserDetail(String(newId()))).rejects.toMatchObject({ digest: NOT_FOUND });
     await expect(getUserDetail('nope')).rejects.toMatchObject({ digest: NOT_FOUND });
+  });
+});
+
+describe('getUserStats', () => {
+  it('counts users, students, faculty and heads of department once each, and invitations not yet taken', async () => {
+    await makeUser({ roles: ['faculty', 'hod'] });
+    await makeUser({ roles: ['student'], status: 'invited' });
+    await signInAs(await makeUser({ roles: ['support'] }));
+    expect(await getUserStats()).toEqual({
+      total: await User.countDocuments(),
+      students: await User.countDocuments({ roles: 'student' }),
+      staff: await User.countDocuments({ roles: { $in: ['faculty', 'hod'] } }),
+      invited: await User.countDocuments({ status: 'invited' }),
+    });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    await expect(getUserStats()).rejects.toMatchObject(redirectsTo('/home'));
+  });
+});
+
+describe('listUsers ranking', () => {
+  it('puts the closest match first when a search shares a word with many people', async () => {
+    for (let i = 1; i <= 12; i++) await makeUser({ name: `Rankcheck ${String(i).padStart(2, '0')}` });
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    const { rows, total } = await listUsers(1, { q: 'Rankcheck 07' });
+    expect(total).toBeGreaterThanOrEqual(12);
+    expect(rows[0]?.name).toBe('Rankcheck 07');
   });
 });

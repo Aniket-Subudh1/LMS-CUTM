@@ -1,17 +1,7 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowRightIcon,
-  BroadcastIcon,
-  CalendarDotsIcon,
-  ChartBarIcon,
-  ClockCounterClockwiseIcon,
-  PencilSimpleIcon,
-  PlayIcon,
-  PlusIcon,
-  XIcon,
-} from '@phosphor-icons/react/ssr';
+import { ArrowRightIcon, PencilSimpleIcon, PlayIcon, PlusIcon, XIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { cancelSession } from './actions';
@@ -20,6 +10,7 @@ import { ActionForm } from '@/components/action-form';
 import { DataTable, EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,7 +48,7 @@ async function Live({
   return (
     <>
       <PageHeader
-        icon={<BroadcastIcon weight="duotone" />}
+        icon={<PageIcon name="live" />}
         title="Live classes"
         description={
           list.view === 'student'
@@ -100,7 +91,7 @@ function MyAttendance({ mine }: { mine: NonNullable<SessionList['mine']> }) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="icon-chip size-10 [&_svg]:size-5">
-            <ChartBarIcon weight="duotone" />
+            <PageIcon name="attendance" className="size-8" />
           </span>
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Your attendance in live classes</h2>
@@ -154,7 +145,7 @@ function dayWord(start: Date, now: Date) {
 function Upcoming({ list, offeringId, base, now }: { list: SessionList; offeringId: string; base: string; now: Date }) {
   return (
     <Section
-      icon={<CalendarDotsIcon weight="duotone" />}
+      icon={<PageIcon name="live" className="size-8" />}
       title="Upcoming"
       description={
         list.canManage
@@ -164,7 +155,7 @@ function Upcoming({ list, offeringId, base, now }: { list: SessionList; offering
     >
       {list.upcoming.length === 0 ? (
         <EmptyState
-          icon={<CalendarDotsIcon weight="duotone" />}
+          icon={<PageIcon name="live" className="size-8" />}
           text={
             list.canManage
               ? 'No classes scheduled. Schedule the next one — students are told straight away.'
@@ -329,7 +320,7 @@ function Past({ list, base, page }: { list: SessionList; base: string; page: num
         ];
   return (
     <Section
-      icon={<ClockCounterClockwiseIcon weight="duotone" />}
+      icon={<PageIcon name="session" className="size-8" />}
       title="Past classes"
       description={
         list.view === 'student'

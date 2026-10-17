@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CloudArrowDownIcon, FileArrowUpIcon, GlobeIcon, TableIcon } from '@phosphor-icons/react/ssr';
+import { CloudArrowDownIcon, FileArrowUpIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { importCourseList, startCoursewareImport } from './actions';
@@ -9,6 +9,7 @@ import { Field } from '@/components/action-form';
 import { DataTable, EmptyState } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -52,13 +53,13 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/admin/impor
   return (
     <>
       <PageHeader
-        icon={<CloudArrowDownIcon weight="duotone" />}
+        icon={<PageIcon name="imports" />}
         title="Imports"
         description="Load CUTM's courses into the catalogue: first the course list, then each course's content from courseware."
       />
       <div className="grid gap-6">
         <Section
-          icon={<TableIcon weight="duotone" />}
+          icon={<PageIcon name="catalog" className="size-8" />}
           title="1 · Course list"
           description="CUTM's Course Repository as a CSV: which programme lists which course, with its credits. Upload it again whenever it changes; nothing is ever deleted."
           action={<UploadDialog />}
@@ -118,13 +119,13 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/admin/impor
         </Section>
 
         <Section
-          icon={<GlobeIcon weight="duotone" />}
+          icon={<PageIcon name="globe" />}
           title="2 · Course content from courseware"
           description="Reads the objectives, outcomes, mapping, syllabus, books and session plan of each course from courseware.cutm.ac.in. A full import takes from a few minutes to a few hours, depending on how fast courseware answers. It runs in the background, so you can leave this page."
           action={<StartDialog />}
         >
           {runs.rows.length === 0 ? (
-            <EmptyState icon={<GlobeIcon weight="duotone" />} text="No courseware import has run yet." />
+            <EmptyState icon={<PageIcon name="globe" />} text="No courseware import has run yet." />
           ) : (
             <DataTable
               columns={[
@@ -206,7 +207,7 @@ function StartDialog() {
           <CloudArrowDownIcon weight="duotone" /> Start an import
         </Button>
       }
-      icon={<CloudArrowDownIcon weight="duotone" />}
+      icon={<PageIcon name="imports" className="size-8" />}
       title="Import from courseware"
       description="Content edited here is never overwritten. Anything an import cannot settle is noted on the course as “Needs review”."
       openParam="courseware"

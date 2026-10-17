@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { ChalkboardTeacherIcon, PlusIcon, UserSwitchIcon } from '@phosphor-icons/react/ssr';
+import { PlusIcon, UserSwitchIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { createOfferings, setOfferingStatus, updateOfferingFaculty } from './actions';
@@ -9,11 +9,13 @@ import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  getOfferingStats,
   listBatchesForSelect,
   listCurriculumForSelect,
   listDepartmentFaculty,
@@ -30,6 +32,7 @@ export const metadata: Metadata = { title: 'Offerings' };
 
 const Search = z.object({
   page: pageParam.catch(1),
+  q: z.string().trim().max(100).optional().catch(undefined),
   term: objectId.optional().catch(undefined),
   department: objectId.optional().catch(undefined),
   status: z.enum(OFFERING_STATUSES).optional().catch(undefined),
@@ -46,59 +49,61 @@ export default function OfferingsPage({ searchParams }: PageProps<'/admin/offeri
 }
 
 async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/offerings'>['searchParams'] }) {
-  const { page, term, department, status, batch } = Search.parse(await searchParams);
-  const [{ rows, total }, terms, departments] = await Promise.all([
-    listOfferings(page, { termId: term, departmentId: department, status }),
+  const { page, q, term, department, status, batch } = Search.parse(await searchParams);
+  const [{ rows, total }, terms, departments, stats] = await Promise.all([
+    listOfferings(page, { q, termId: term, departmentId: department, status }),
     listTermsForSelect(),
     listDepartmentsForSelect(),
+    getOfferingStats(),
   ]);
   const query = Object.fromEntries(
-    Object.entries({ term, department, status }).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    Object.entries({ q, term, department, status }).filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
   return (
-    <>
-      <PageHeader
-        icon={<ChalkboardTeacherIcon weight="duotone" />}
-        title="Offerings"
-        description="A course taught to one batch (or section) in one term. Students see an offering once it is active."
-        actions={<NewOffering batchId={batch} terms={terms} />}
-      />
-      <FilterForm action="/admin/offerings">
-        <label className="grid gap-1.5 text-sm font-medium">
-          Term
-          <NativeSelect name="term" defaultValue={term ?? ''}>
-            <NativeSelectOption value="">All terms</NativeSelectOption>
-            {terms.map((t) => (
-              <NativeSelectOption key={t.id} value={t.id}>
-                {t.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Department
-          <NativeSelect name="department" defaultValue={department ?? ''}>
-            <NativeSelectOption value="">All departments</NativeSelectOption>
-            {departments.map((d) => (
-              <NativeSelectOption key={d.id} value={d.id}>
-                {d.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Status
-          <NativeSelect name="status" defaultValue={status ?? ''}>
-            <NativeSelectOption value="">Any status</NativeSelectOption>
-            {OFFERING_STATUSES.map((s) => (
-              <NativeSelectOption key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
+    <PageHeader
+      icon={<PageIcon name="offerings" />}
+      title="Offerings"
+      description="A course taught to one batch (or section) in one term. Students see an offering once it is active."
+      actions={<NewOffering batchId={batch} terms={terms} />}
+      stats={[
+        { label: 'Offerings', value: stats.total, icon: <PageIcon name="offerings" className="size-7" /> },
+        { label: 'Active', value: stats.active, icon: <PageIcon name="course" className="size-7" /> },
+        { label: 'Draft', value: stats.draft, icon: <PageIcon name="plan" className="size-7" /> },
+        { label: 'Completed', value: stats.completed, icon: <PageIcon name="diploma" className="size-7" /> },
+      ]}
+    >
+      <FilterForm
+        action="/admin/offerings"
+        submitLabel="Search"
+        search={{ name: 'q', label: 'Search offerings', placeholder: 'Course code or title', defaultValue: q }}
+      >
+        <NativeSelect name="term" aria-label="Term" defaultValue={term ?? ''}>
+          <NativeSelectOption value="">All terms</NativeSelectOption>
+          {terms.map((t) => (
+            <NativeSelectOption key={t.id} value={t.id}>
+              {t.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="department" aria-label="Department" defaultValue={department ?? ''} className="max-w-60">
+          <NativeSelectOption value="">All departments</NativeSelectOption>
+          {departments.map((d) => (
+            <NativeSelectOption key={d.id} value={d.id}>
+              {d.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="status" aria-label="Status" defaultValue={status ?? ''}>
+          <NativeSelectOption value="">Any status</NativeSelectOption>
+          {OFFERING_STATUSES.map((s) => (
+            <NativeSelectOption key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </FilterForm>
       <DataTable
+        bare
         columns={[
           { header: 'Offering', cell: (o) => <span className="font-medium">{o.title}</span> },
           { header: 'Term', cell: (o) => o.termCode },
@@ -116,7 +121,7 @@ async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/off
         path="/admin/offerings"
         empty="No offerings match. Create one with New offering."
       />
-    </>
+    </PageHeader>
   );
 }
 
@@ -143,7 +148,7 @@ async function NewOffering({
         </Button>
       }
       size="wide"
-      icon={<ChalkboardTeacherIcon weight="duotone" />}
+      icon={<PageIcon name="offerings" className="size-8" />}
       title="New offering"
       description="One offering per ticked section, each with its students enrolled. The course must be in the batch's programme."
       openParam="offering"

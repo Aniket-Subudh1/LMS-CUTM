@@ -8,6 +8,8 @@ import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
+import { Lesson } from '@/lib/models/lesson';
+import { LessonProgress } from '@/lib/models/lesson-progress';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
@@ -19,7 +21,10 @@ const redirectsTo = (path: string) => ({ digest: expect.stringMatching(new RegEx
 
 beforeAll(async () => {
   await db();
-  await Promise.all([Course, Department, Enrollment, Offering, Program, Term].map((m) => m.createCollection()));
+  await Promise.all(
+    [Course, Department, Enrollment, Lesson, LessonProgress, Offering, Program, Term].map((m) => m.createCollection()),
+  );
+  await Offering.createIndexes();
 });
 
 let seq = 0;
@@ -98,6 +103,73 @@ describe('listMyOfferings', () => {
     expect(await ids(1, { termId: String(w.term._id), departmentId: String(w.deptB._id) })).toEqual([
       String(w.offB._id),
     ]);
+  });
+
+  it("gives a student the course's parts and their progress through published lessons, and a teacher the class", async () => {
+    const w = await world();
+    const course = await makeCourse({ title: 'Computer Networks', type: 'core' });
+    await Offering.updateOne(
+      { _id: w.offA._id },
+      {
+        courseId: course._id,
+        section: 'A',
+        'plan.publishedAt': new Date(),
+        $push: { modules: { title: 'Unit 1', order: 1 } },
+      },
+    );
+    const student = await makeUser({ roles: ['student'] });
+    await enroll(w.offA._id, student._id);
+    const lesson = (published: boolean, durationSec: number) =>
+      Lesson.create({
+        offeringId: w.offA._id,
+        moduleId: newId(),
+        order: 1,
+        kind: 'video',
+        title: 'L',
+        published,
+        durationSec,
+      });
+    const [done, , unpublished] = await Promise.all([lesson(true, 600), lesson(true, 300), lesson(false, 900)]);
+    // A lesson completed and later unpublished no longer counts, as on the course's Overview.
+    await LessonProgress.create(
+      [done, unpublished].map((l) => ({
+        lessonId: l._id,
+        offeringId: w.offA._id,
+        studentId: student._id,
+        completedAt: new Date(),
+      })),
+    );
+    await signInAs(student);
+    expect((await listMyOfferings(1, {})).rows).toEqual([
+      expect.objectContaining({
+        code: course.code,
+        courseTitle: 'Computer Networks',
+        courseType: 'core',
+        section: 'A',
+        units: 1,
+        view: { as: 'learner', completed: 1, published: 2, videoSec: 900 },
+      }),
+    ]);
+    await signInAs(w.facultyA);
+    const rows = (await listMyOfferings(1, {})).rows;
+    expect(rows.find((r) => r.id === String(w.offA._id))?.view).toEqual({
+      as: 'teacher',
+      students: 1,
+      planPublished: true,
+    });
+    expect(rows.find((r) => r.id === String(w.draftA._id))?.view).toEqual({
+      as: 'teacher',
+      students: 0,
+      planPublished: false,
+    });
+  });
+
+  it('searches only within the offerings the viewer may see', async () => {
+    const w = await world();
+    await Offering.updateOne({ _id: w.offA._id }, { title: `Volcanology ${seq}` });
+    await Offering.updateOne({ _id: w.offB._id }, { title: `Volcanology elsewhere ${seq}` });
+    await signInAs(w.facultyA);
+    expect(await ids(1, { q: 'volcanology' })).toEqual([String(w.offA._id)]);
   });
 
   it('is not for support or signed-out visitors', async () => {

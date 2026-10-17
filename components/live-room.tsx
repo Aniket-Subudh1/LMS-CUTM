@@ -14,14 +14,11 @@ type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed';
 
 const BEACON_MS = 60_000;
 
-// The live class (T4, ADR-18): LiveKit's own conference view, joined with microphone and camera off. A student's
-// focused time — connected, with this tab visible — goes to /api/beacon every minute and when the page closes (LIV-03).
-// It never reconnects by itself after leaving, so two tabs of one student cannot push each other out in a loop.
+
 export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>('in');
-  // The page mints a new token whenever it re-renders (saving attendance, say); the room keeps the token it joined
-  // with, since a new one would reconnect it, and takes the latest only when rejoining.
+
   const [joined, setJoined] = useState({ token, attempt: 0 });
   const [deviceFailed, setDeviceFailed] = useState(false);
   const connected = useRef(false);
@@ -30,7 +27,6 @@ export function LiveRoom({ sessionId, serverUrl, token, trackFocus }: Props) {
     if (!trackFocus) return;
     let focusedMs = 0;
     let last = Date.now();
-    // A hidden tab's timers slow to once a minute, so at most 2 s are added per tick.
     const count = () => {
       const now = Date.now();
       if (connected.current && document.visibilityState === 'visible') focusedMs += Math.min(now - last, 2_000);

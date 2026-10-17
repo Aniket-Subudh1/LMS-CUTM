@@ -72,7 +72,25 @@ export type CatalogFilter = {
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export async function listCatalog(page: number, filters: CatalogFilter): Promise<{ rows: CatalogRow[]; total: number }> {
+export type CatalogStats = { total: number; active: number; review: number; unassigned: number };
+
+// The tiles above the catalogue, each served by one of the course indexes.
+export async function getCatalogStats(): Promise<CatalogStats> {
+  await requireViewer(STAFF);
+  await db();
+  const [total, active, review, unassigned] = await Promise.all([
+    Course.estimatedDocumentCount(),
+    Course.countDocuments({ status: 'active' }),
+    Course.countDocuments({ reviewNeeded: true }),
+    Course.countDocuments({ coordinatorId: null }),
+  ]);
+  return { total, active, review, unassigned };
+}
+
+export async function listCatalog(
+  page: number,
+  filters: CatalogFilter,
+): Promise<{ rows: CatalogRow[]; total: number }> {
   const viewer = await requireViewer(STAFF);
   await db();
   const q = filters.q?.trim() ?? '';
@@ -103,13 +121,17 @@ export async function listCatalog(page: number, filters: CatalogFilter): Promise
   };
   const [docs, total] = await Promise.all([
     Course.find(filter, { code: 1, title: 1, credits: 1, type: 1, coordinatorId: 1, status: 1, reviewNeeded: 1 })
-      .sort({ code: 1 })
+      // A word search lists the closest matches first (text score); otherwise the usual order.
+      .sort('$text' in filter ? { score: { $meta: 'textScore' }, code: 1 } : { code: 1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),
     Object.keys(filter).length > 0 ? Course.countDocuments(filter) : Course.estimatedDocumentCount(),
   ]);
-  const coordinators = await User.find({ _id: { $in: docs.flatMap((c) => c.coordinatorId ?? []) } }, { name: 1 }).lean();
+  const coordinators = await User.find(
+    { _id: { $in: docs.flatMap((c) => c.coordinatorId ?? []) } },
+    { name: 1 },
+  ).lean();
   const names = new Map(coordinators.map((u) => [String(u._id), u.name]));
   return {
     rows: docs.map((c) => ({

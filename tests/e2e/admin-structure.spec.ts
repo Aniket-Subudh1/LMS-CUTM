@@ -7,6 +7,13 @@ const run = Date.now();
 // Next keeps the previous page mounted but hidden; getByLabel would match its fields too.
 const field = (page: Page, label: string) => page.getByLabel(label, { exact: true }).filter({ visible: true });
 
+// My courses shows ten a page and earlier runs leave offerings behind, so find the seeded one by searching for it.
+async function findCourse(page: Page, title: string) {
+  await field(page, 'Search courses').fill(title);
+  await field(page, 'Search courses').press('Enter');
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === title);
+}
+
 async function signIn(page: Page, email: string) {
   await page.goto('/login');
   await field(page, 'Email').fill(email);
@@ -32,20 +39,23 @@ test('admin adds a department, finds a user and opens a course workspace', async
   await expect(page.getByText(code, { exact: true }).filter({ visible: true })).toBeVisible();
 
   await page.goto('/admin/users');
-  await field(page, 'Search').fill('Student 05');
-  await page.getByRole('button', { name: 'Search' }).click();
+  await field(page, 'Search users').fill('Student 05');
+  await field(page, 'Search users').press('Enter');
   await page.getByRole('link', { name: 'Student 05' }).click();
   await expect(page.getByRole('heading', { name: 'Student 05' })).toBeVisible();
   await expect(page.getByText('2501CSE005').filter({ visible: true })).toBeVisible();
   await expect(page.getByText('CUTM1602 · Programming in C').filter({ visible: true })).toBeVisible();
 
   await page.goto('/courses');
+  await findCourse(page, 'CUTM1602 · Programming in C · 2026-ODD · A');
   await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
   await expect(page.getByRole('heading', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' })).toBeVisible();
   await expect(page.getByText('Explain the basic constructs of C.')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'PSO3' })).toBeVisible();
   await page.getByRole('tab', { name: 'People' }).click();
   await expect(page.getByRole('cell', { name: '2501CSE001' })).toBeVisible();
+  // Ten to a page: the twentieth student is on the second.
+  await page.getByRole('link', { name: 'Page 2' }).click();
   await expect(page.getByRole('cell', { name: '2501CSE020' })).toBeVisible();
 
   await page.goto('/admin/audit');
@@ -106,6 +116,7 @@ test('faculty drops and re-adds a student from the roster', async ({ page }) => 
   await signIn(page, 'faculty1@seed.cutm.test');
   await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
+  await findCourse(page, 'CUTM1602 · Programming in C · 2026-ODD · A');
   await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
   await page.getByRole('tab', { name: 'People' }).click();
 
@@ -137,12 +148,15 @@ test('a student sees only their own course and cannot open administration', asyn
   await expect(page.getByRole('link', { name: 'Structure', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
+  await findCourse(page, 'CUTM1602 · Programming in C · 2026-ODD · A');
   await expect(page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' })).toBeVisible();
+  await findCourse(page, 'Excel Basics');
   await expect(page.getByRole('link', { name: /Excel Basics/ })).toHaveCount(0);
 
   await page.goto('/admin/users');
   await expect(page).toHaveURL(/\/home$/);
   await page.goto('/courses');
+  await findCourse(page, 'CUTM1602 · Programming in C · 2026-ODD · A');
   await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
   await expect(page.getByRole('tab', { name: 'People' })).toHaveCount(0);
 });

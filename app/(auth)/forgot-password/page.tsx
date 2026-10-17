@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowLeftIcon } from '@phosphor-icons/react/ssr';
 import { ActionForm, Field } from '@/components/action-form';
+import { PageIcon } from '@/components/page-icon';
 import { Input } from '@/components/ui/input';
 import { requestPasswordReset } from '../actions';
 
@@ -10,11 +11,14 @@ export const metadata: Metadata = { title: 'Forgot password' };
 export default function ForgotPasswordPage() {
   return (
     <div className="grid gap-8">
-      <div className="grid gap-2 text-center">
-        <h1 className="text-3xl leading-tight font-semibold tracking-tight">Forgot your password?</h1>
-        <p className="text-muted-foreground text-sm text-balance">
-          Enter your university email. We will send you a link to choose a new password.
-        </p>
+      <div className="grid justify-items-center gap-4 text-center">
+        <PageIcon name="envelope" className="size-16" />
+        <div className="grid gap-2">
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight">Forgot your password?</h1>
+          <p className="text-muted-foreground text-sm text-balance">
+            Enter your university email. We will send you a link to choose a new password.
+          </p>
+        </div>
       </div>
       <ActionForm
         action={requestPasswordReset}

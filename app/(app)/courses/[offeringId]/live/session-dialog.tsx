@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { CalendarPlusIcon, ChalkboardTeacherIcon, HourglassIcon, PencilSimpleIcon } from '@phosphor-icons/react/ssr';
 import { scheduleSession, updateSession } from './actions';
 import { Field, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { formatDuration, formatPct } from '@/lib/format';
@@ -40,19 +40,19 @@ export function SessionDialog({
       value: 'manual',
       label: 'I take attendance in class',
       hint: 'Students who join are ticked present; you correct the list and save.',
-      icon: ChalkboardTeacherIcon,
+      icon: 'attendance' satisfies PageIconName,
     },
     {
       value: 'derived',
       label: 'Automatic',
       hint: `Present after ${formatPct(thresholdPct)} of the class in the room.`,
-      icon: HourglassIcon,
+      icon: 'live' satisfies PageIconName,
     },
   ] as const;
   return (
     <FormDialog
       trigger={trigger}
-      icon={session ? <PencilSimpleIcon weight="duotone" /> : <CalendarPlusIcon weight="duotone" />}
+      icon={<PageIcon name="session" className="size-8" />}
       title={session ? 'Change this class' : 'Schedule a live class'}
       description={
         session
@@ -100,7 +100,7 @@ export function SessionDialog({
         <fieldset className="grid gap-2">
           <legend className="mb-1 text-sm font-medium">Attendance</legend>
           <div className="grid gap-2 sm:grid-cols-2">
-            {modes.map(({ value, label, hint, icon: Icon }) => (
+            {modes.map(({ value, label, hint, icon }) => (
               <label
                 key={value}
                 className="ring-border has-checked:ring-primary has-checked:bg-primary/4 has-focus-visible:ring-ring flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition-colors has-checked:ring-2"
@@ -112,7 +112,7 @@ export function SessionDialog({
                   defaultChecked={value === mode}
                   className="sr-only"
                 />
-                <Icon weight="duotone" className="text-primary size-6 shrink-0" />
+                <PageIcon name={icon} className="size-8" />
                 <span className="grid">
                   <span className="text-sm font-medium">{label}</span>
                   <span className="text-muted-foreground text-xs">{hint}</span>

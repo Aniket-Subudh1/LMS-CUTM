@@ -59,6 +59,8 @@ offeringSchema.index({ departmentId: 1, termId: 1 });
 offeringSchema.index({ batchId: 1, termId: 1 });
 offeringSchema.index({ termId: 1, status: 1 });
 offeringSchema.index({ status: 1, _id: -1 });
+// The admin offering list's search box: the title carries the course code and title, term and section (17 Oct 2026).
+offeringSchema.index({ title: 'text' });
 
 export type OfferingDoc = InferSchemaType<typeof offeringSchema>;
 export const Offering: Model<OfferingDoc> = mongoose.models.Offering ?? mongoose.model('Offering', offeringSchema);

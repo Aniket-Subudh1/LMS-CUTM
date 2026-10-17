@@ -16,15 +16,25 @@ import { OUTCOME_CODES, type BASKET_SCOPES } from '@/lib/schemas/structure';
 
 const skip = (page: number) => (page - 1) * pageSize;
 
-export async function getStructureCounts(): Promise<{ departments: number; programs: number; terms: number }> {
+// The admin landing's and the programme list's counts. "No department" is the programmes from the course list still
+// to place (A-61); { departmentId, status } serves it.
+export async function getStructureCounts(): Promise<{
+  departments: number;
+  programs: number;
+  terms: number;
+  batches: number;
+  noDepartment: number;
+}> {
   await requireViewer(['admin']);
   await db();
-  const [departments, programs, terms] = await Promise.all([
+  const [departments, programs, terms, batches, noDepartment] = await Promise.all([
     Department.estimatedDocumentCount(),
     Program.estimatedDocumentCount(),
     Term.estimatedDocumentCount(),
+    Batch.estimatedDocumentCount(),
+    Program.countDocuments({ departmentId: null }),
   ]);
-  return { departments, programs, terms };
+  return { departments, programs, terms, batches, noDepartment };
 }
 
 export type DepartmentRow = { id: string; code: string; name: string; status: 'active' | 'archived' };
@@ -57,16 +67,28 @@ export type ProgramRow = {
   status: 'active' | 'archived';
 };
 
-export async function listPrograms(page: number): Promise<{ rows: ProgramRow[]; total: number }> {
+export type ProgramFilter = { q?: string; departmentId?: string; status?: ProgramRow['status'] };
+
+export async function listPrograms(
+  page: number,
+  filters: ProgramFilter,
+): Promise<{ rows: ProgramRow[]; total: number }> {
   await requireViewer(['admin']);
   await db();
+  const q = filters.q?.trim();
+  const filter = {
+    ...(q ? { $text: { $search: q } } : {}),
+    ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+  };
   const [docs, total] = await Promise.all([
-    Program.find({}, { code: 1, name: 1, departmentId: 1, durationSemesters: 1, status: 1 })
-      .sort({ code: 1 })
+    Program.find(filter, { code: 1, name: 1, departmentId: 1, durationSemesters: 1, status: 1 })
+      // A word search lists the closest matches first (text score); otherwise the usual order.
+      .sort('$text' in filter ? { score: { $meta: 'textScore' }, code: 1 } : { code: 1 })
       .skip(skip(page))
       .limit(pageSize)
       .lean(),
-    Program.estimatedDocumentCount(),
+    Object.keys(filter).length > 0 ? Program.countDocuments(filter) : Program.estimatedDocumentCount(),
   ]);
   const departments = await Department.find(
     { _id: { $in: docs.flatMap((p) => p.departmentId ?? []) } },

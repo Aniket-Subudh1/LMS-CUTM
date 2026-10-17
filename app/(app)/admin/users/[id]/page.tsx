@@ -1,20 +1,12 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import {
-  BookOpenTextIcon,
-  EnvelopeSimpleIcon,
-  IdentificationBadgeIcon,
-  PencilSimpleIcon,
-  ProhibitIcon,
-  ShieldCheckIcon,
-  SignOutIcon,
-  UserCircleIcon,
-} from '@phosphor-icons/react/ssr';
+import { PencilSimpleIcon, ProhibitIcon, SignOutIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { revokeUserSessions, sendResetLink, setUserStatus, updateUserRoles } from '../actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,7 +42,7 @@ async function User({ params }: { params: PageProps<'/admin/users/[id]'>['params
   return (
     <>
       <PageHeader
-        icon={<UserCircleIcon weight="duotone" />}
+        icon={<PageIcon name="badge" />}
         title={user.name}
         description={user.roles.map((r) => ROLE_LABEL[r]).join(', ')}
         actions={<Badge variant={statusTone(user.status)}>{user.status}</Badge>}
@@ -75,7 +67,7 @@ async function User({ params }: { params: PageProps<'/admin/users/[id]'>['params
 function Enrollments({ enrollments }: { enrollments: UserDetail['enrollments'] }) {
   return (
     <Section
-      icon={<BookOpenTextIcon weight="duotone" />}
+      icon={<PageIcon name="courses" className="size-8" />}
       title="Enrolments"
       description="The offerings this student is on."
     >
@@ -124,14 +116,14 @@ function Access({ user, isAdmin }: { user: UserDetail; isAdmin: boolean }) {
   const disabled = user.status === 'disabled';
   return (
     <Section
-      icon={<ShieldCheckIcon weight="duotone" />}
+      icon={<PageIcon name="signin" className="size-8" />}
       title="Access"
       description="Every change here is recorded in the audit log."
     >
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4">
         {!disabled && (
           <AccessCard
-            icon={<EnvelopeSimpleIcon weight="duotone" />}
+            icon={<PageIcon name="envelope" className="size-8" />}
             title="Password link"
             description="Emails a link, valid for 30 minutes, to set a new password."
           >
@@ -148,7 +140,7 @@ function Access({ user, isAdmin }: { user: UserDetail; isAdmin: boolean }) {
         {isAdmin && (
           <>
             <AccessCard
-              icon={<IdentificationBadgeIcon weight="duotone" />}
+              icon={<PageIcon name="badge" className="size-8" />}
               title="Roles"
               description={user.roles.map((r) => ROLE_LABEL[r]).join(', ')}
             >
@@ -158,7 +150,7 @@ function Access({ user, isAdmin }: { user: UserDetail; isAdmin: boolean }) {
                     <PencilSimpleIcon weight="duotone" /> Change roles
                   </Button>
                 }
-                icon={<IdentificationBadgeIcon weight="duotone" />}
+                icon={<PageIcon name="badge" className="size-8" />}
                 title={`Roles of ${user.name}`}
                 description="A student needs a batch and a head of department needs a department."
                 action={updateUserRoles}

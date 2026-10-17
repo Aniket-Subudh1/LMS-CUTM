@@ -1,10 +1,11 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { CalendarDotsIcon, CheckIcon, PaperPlaneTiltIcon, WarningCircleIcon } from '@phosphor-icons/react/ssr';
+import { CheckIcon, PaperPlaneTiltIcon, WarningCircleIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { fillCalendarFromCourse, publishPlan, saveCalendar, savePlan } from './actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ async function Plan({ params }: { params: PageProps<'/courses/[offeringId]/plan'
   return (
     <>
       <PageHeader
-        icon={<CalendarDotsIcon weight="duotone" />}
+        icon={<PageIcon name="plan" />}
         title="Course plan"
         description="Three steps: write the plan, schedule the sessions, then publish. Students see the plan once you publish it."
         actions={

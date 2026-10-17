@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ActionForm, Field } from '@/components/action-form';
+import { PageIcon } from '@/components/page-icon';
 import { PasswordInput } from '@/components/password-input';
 import { Input } from '@/components/ui/input';
 import { login } from '../actions';
@@ -10,9 +11,12 @@ export const metadata: Metadata = { title: 'Sign in' };
 export default function LoginPage() {
   return (
     <div className="grid gap-8">
-      <div className="grid gap-2 text-center">
-        <h1 className="text-3xl leading-tight font-semibold tracking-tight">Sign in to your account</h1>
-        <p className="text-muted-foreground text-sm">Use your university email address.</p>
+      <div className="grid justify-items-center gap-4 text-center">
+        <PageIcon name="signin" className="size-16" />
+        <div className="grid gap-2">
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight">Sign in to your account</h1>
+          <p className="text-muted-foreground text-sm">Use your university email address.</p>
+        </div>
       </div>
       <ActionForm action={login} submitLabel="Sign in" fullWidth>
         <Field name="email" label="Email">

@@ -3,25 +3,10 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useFormStatus } from 'react-dom';
-import {
-  BellIcon,
-  BookOpenTextIcon,
-  BooksIcon,
-  CaretRightIcon,
-  ChalkboardTeacherIcon,
-  CircleNotchIcon,
-  ClockCounterClockwiseIcon,
-  CloudArrowDownIcon,
-  GearSixIcon,
-  SignOutIcon,
-  SquaresFourIcon,
-  TreeStructureIcon,
-  UserCircleIcon,
-  UsersThreeIcon,
-  type Icon,
-} from '@phosphor-icons/react';
+import { CaretDownIcon, CaretRightIcon, CircleNotchIcon, SignOutIcon } from '@phosphor-icons/react';
 import { logout } from '@/app/(auth)/actions';
 import { LinkSpinner } from '@/components/link-spinner';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { cn } from '@/lib/cn';
 import type { Role } from '@/lib/schemas/common';
 import {
@@ -36,8 +21,8 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
-type Leaf = { href: string; label: string };
-type Item = Leaf & { icon: Icon; roles?: Role[]; children?: Leaf[] };
+type Leaf = { href: string; label: string; icon?: PageIconName };
+type Item = Leaf & { icon: PageIconName; roles?: Role[]; children?: Leaf[] };
 
 // Groups and items by role (08 §3); a user with several roles sees the union. `roles` absent means everyone.
 // The `foot` group sits at the bottom of the sidebar, unlabelled, above Sign out.
@@ -45,10 +30,10 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
   {
     label: 'Menu',
     items: [
-      { href: '/home', label: 'Dashboard', icon: SquaresFourIcon },
-      { href: '/courses', label: 'My courses', icon: BooksIcon, roles: ['student', 'faculty', 'hod', 'admin'] },
-      { href: '/catalog', label: 'Course catalogue', icon: BookOpenTextIcon, roles: ['faculty', 'hod', 'admin'] },
-      { href: '/notifications', label: 'Notifications', icon: BellIcon },
+      { href: '/home', label: 'Dashboard', icon: 'dashboard' },
+      { href: '/courses', label: 'My courses', icon: 'courses', roles: ['student', 'faculty', 'hod', 'admin'] },
+      { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
+      { href: '/notifications', label: 'Notifications', icon: 'notifications' },
     ],
   },
   {
@@ -57,29 +42,31 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       {
         href: '/admin',
         label: 'Structure',
-        icon: TreeStructureIcon,
+        icon: 'structure',
         roles: ['admin'],
         children: [
-          { href: '/admin/departments', label: 'Departments' },
-          { href: '/admin/programs', label: 'Programmes' },
-          { href: '/admin/terms', label: 'Terms' },
+          { href: '/admin/departments', label: 'Departments', icon: 'departments' },
+          { href: '/admin/programs', label: 'Programmes', icon: 'programmes' },
+          { href: '/admin/terms', label: 'Terms', icon: 'terms' },
         ],
       },
-      { href: '/admin/offerings', label: 'Offerings', icon: ChalkboardTeacherIcon, roles: ['admin'] },
-      { href: '/admin/imports', label: 'Imports', icon: CloudArrowDownIcon, roles: ['admin'] },
-      { href: '/admin/settings', label: 'Settings', icon: GearSixIcon, roles: ['admin'] },
-      { href: '/admin/audit', label: 'Audit log', icon: ClockCounterClockwiseIcon, roles: ['admin'] },
-      { href: '/admin/users', label: 'Users', icon: UsersThreeIcon, roles: ['admin', 'support'] },
+      { href: '/admin/offerings', label: 'Offerings', icon: 'offerings', roles: ['admin'] },
+      { href: '/admin/imports', label: 'Imports', icon: 'imports', roles: ['admin'] },
+      { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
+      { href: '/admin/audit', label: 'Audit log', icon: 'audit', roles: ['admin'] },
+      { href: '/admin/users', label: 'Users', icon: 'users', roles: ['admin', 'support'] },
     ],
   },
-  { label: 'Account', foot: true, items: [{ href: '/profile', label: 'Profile', icon: UserCircleIcon }] },
+  { label: 'Account', foot: true, items: [{ href: '/profile', label: 'Profile', icon: 'profile' }] },
 ];
 
-const PILL =
-  'bg-sidebar-accent hover:bg-sidebar-border data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:hover:bg-primary/90 data-[active=true]:hover:text-primary-foreground';
-const PLAIN = 'data-[active=true]:bg-primary/10 data-[active=true]:text-primary';
-// Collapsed, each item is the primitive's 32 px square, centred in the 48 px rail by the group's 8 px padding.
-const BUTTON = 'h-10 gap-3 rounded-lg px-3 [&>svg]:size-5 group-data-[collapsible=icon]:p-1.5!';
+// Design "D · Icon chips" (chosen by Aniket from four mock-ups, 17 Oct 2026): rows have no fill and each icon sits
+// on a 32 px chip. The current item's chip is a light primary tint (a solid chip would hide the generated mark)
+// and its label is primary. On the 48 px rail the chip fills the primitive's square.
+const BUTTON =
+  'group/nav h-11 gap-3 rounded-lg px-1.5 data-[active=true]:bg-transparent data-[active=true]:font-semibold data-[active=true]:text-primary data-[active=true]:hover:bg-sidebar-accent group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0!';
+const CHIP = 'grid size-8 shrink-0 place-items-center rounded-md transition-colors [&>svg]:size-4.5';
+const CHIP_IDLE = 'bg-sidebar-accent group-hover/nav:bg-sidebar-border';
 
 type Match = { item: Item; child?: Leaf };
 
@@ -102,7 +89,9 @@ function SignOut() {
   const { pending } = useFormStatus();
   return (
     <SidebarMenuButton type="submit" disabled={pending} tooltip="Sign out" className={BUTTON}>
-      {pending ? <CircleNotchIcon className="animate-spin" /> : <SignOutIcon />}
+      <span className={cn(CHIP, CHIP_IDLE)}>
+        {pending ? <CircleNotchIcon className="animate-spin" /> : <SignOutIcon />}
+      </span>
       <span>Sign out</span>
     </SidebarMenuButton>
   );
@@ -125,29 +114,31 @@ export function AppNav({ roles }: { roles: Role[] }) {
           {group.label}
         </SidebarGroupLabel>
       )}
-      <SidebarMenu className={group.foot ? 'gap-0.5' : 'gap-2'}>
+      <SidebarMenu className="gap-0.5">
         {group.items.map((item) => {
           const active = item === current?.item;
           return (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton
-                asChild
-                isActive={active}
-                tooltip={item.label}
-                className={cn(BUTTON, group.foot ? PLAIN : PILL)}
-              >
+              <SidebarMenuButton asChild isActive={active} tooltip={item.label} className={BUTTON}>
                 <Link
                   href={item.href}
                   aria-current={active && !current?.child ? 'page' : undefined}
                   onClick={() => setOpenMobile(false)}
                 >
-                  <item.icon />
+                  <span className={cn(CHIP, active ? 'bg-primary/10 ring-primary/30 ring-1' : CHIP_IDLE)}>
+                    <PageIcon name={item.icon} className="size-6" />
+                  </span>
                   <span className="flex-1 truncate">{item.label}</span>
                   <LinkSpinner />
+                  {item.children && (
+                    <CaretDownIcon
+                      className={cn('text-muted-foreground transition-transform', !active && '-rotate-90')}
+                    />
+                  )}
                 </Link>
               </SidebarMenuButton>
               {item.children && active && (
-                <SidebarMenuSub className="border-primary/15 mr-0 ml-5 py-1">
+                <SidebarMenuSub className="mr-0 ml-6 gap-0 border-l-0 px-0 pt-0.5 pb-1.5">
                   {item.children.map((child) => {
                     const here = child === current?.child;
                     return (
@@ -155,13 +146,14 @@ export function AppNav({ roles }: { roles: Role[] }) {
                         <SidebarMenuSubButton
                           asChild
                           isActive={here}
-                          className="data-[active=true]:text-primary data-[active=true]:bg-primary/10 rounded-md data-[active=true]:font-medium"
+                          className="text-muted-foreground hover:text-foreground data-[active=true]:text-primary h-8 data-[active=true]:bg-transparent data-[active=true]:font-semibold"
                         >
                           <Link
                             href={child.href}
                             aria-current={here ? 'page' : undefined}
                             onClick={() => setOpenMobile(false)}
                           >
+                            {child.icon && <PageIcon name={child.icon} className="size-5" />}
                             <span className="flex-1 truncate">{child.label}</span>
                             <LinkSpinner className="size-3.5" />
                           </Link>

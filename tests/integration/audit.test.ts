@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { listAudit } from '@/lib/data/audit';
+import { getAuditStats, listAudit, listAuditEntities } from '@/lib/data/audit';
 import { AuditLog } from '@/lib/models/audit-log';
 import { makeUser, newId, signInAs } from '../factories';
 import { switchBrowser } from '../next-request';
@@ -61,11 +61,11 @@ describe('listAudit', () => {
     expect((await listAudit(1, { actorEmail: 'nobody@cutm.test' })).total).toBe(0);
   });
 
-  it('pages 25 at a time', async () => {
+  it('pages 10 at a time', async () => {
     await signInAs(await makeUser({ roles: ['admin'] }));
     const entityId = newId();
     await AuditLog.insertMany(
-      Array.from({ length: 30 }, (_, i) => ({
+      Array.from({ length: 13 }, (_, i) => ({
         at: new Date(Date.UTC(2026, 0, 1, 0, i)),
         actorId: newId(),
         action: 'bulk.row',
@@ -75,6 +75,30 @@ describe('listAudit', () => {
     );
     const first = await listAudit(1, { entity: 'paging' });
     const second = await listAudit(2, { entity: 'paging' });
-    expect([first.rows.length, second.rows.length, first.total]).toEqual([25, 5, 30]);
+    expect([first.rows.length, second.rows.length, first.total]).toEqual([10, 3, 13]);
+  });
+});
+
+describe('getAuditStats and listAuditEntities', () => {
+  it('counts entries today and in the last seven IST days, who made them, and lists the kinds of record', async () => {
+    await signInAs(await makeUser({ roles: ['admin'] }));
+    const [one, two] = [newId(), newId()];
+    const entry = (actorId: typeof one, daysAgo: number, entity: string) => ({
+      at: new Date(Date.now() - daysAgo * 86_400_000),
+      actorId,
+      action: 'stats.row',
+      entity,
+      entityId: newId(),
+    });
+    const before = await getAuditStats();
+    await AuditLog.insertMany([entry(one, 0, 'stats_today'), entry(two, 3, 'stats_week'), entry(two, 30, 'stats_old')]);
+    const after = await getAuditStats();
+    expect(after.total - before.total).toBe(3);
+    expect(after.week - before.week).toBe(2);
+    expect(after.people - before.people).toBe(2);
+    expect(after.today - before.today).toBe(1);
+    expect(await listAuditEntities()).toEqual(expect.arrayContaining(['stats_old', 'stats_today', 'stats_week']));
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    await expect(getAuditStats()).rejects.toMatchObject(redirectsTo('/home'));
   });
 });

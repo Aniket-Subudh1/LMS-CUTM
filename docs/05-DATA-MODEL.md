@@ -71,7 +71,7 @@ Invariants: a student has `programId` and `batchId`; an `hod` has `departmentId`
 | baskets | `[{ _id: Id, name: S, title: S?, scope: S?, minCredits: N? }]` | ≤ 12; `name` ≤ 60, unique within the programme ("Basket I"); `title` ≤ 120; `scope` `core` · `choice`; `minCredits` 0–300 in 0.5 steps |
 | status | S | `active` · `archived` |
 
-Indexes: `{ code: 1 }` unique · `{ departmentId: 1, status: 1 }`.
+Indexes: `{ code: 1 }` unique · `{ departmentId: 1, status: 1 }` · text `{ code: 'text', name: 'text' }` (the programme list's search, 17 Oct 2026).
 Invariants: a programme with offerings keeps its department (offerings copy it). Renaming a basket renames it in the programme's curriculum entries in the same transaction; a basket that lists courses cannot be removed.
 
 ### 3.4 `batches`
@@ -136,7 +136,7 @@ There is no collection: the evaluation policy is the settings key `evaluation` (
 | lockedAt, lockedBy | D?, Id? | internal-marks lock (M08) |
 | lastPushedAt | D? | last CE export/push |
 
-Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }` · `{ status: 1, _id: -1 }` (the admin list filtered by status alone).
+Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }` · `{ status: 1, _id: -1 }` (the admin list filtered by status alone) · text `{ title: 'text' }` (the admin list's search, 17 Oct 2026).
 Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, evaluation copy or internal mark for this offering. The course must be in the batch programme's curriculum when the offering is created. End-sem marks are imported after the lock and freeze when the student's grade sheet is published (M08).
 
 ### 3.9 `enrollments`

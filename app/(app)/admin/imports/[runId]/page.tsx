@@ -1,11 +1,12 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowClockwiseIcon, ArrowLeftIcon, GlobeIcon, WarningIcon } from '@phosphor-icons/react/ssr';
+import { ArrowClockwiseIcon, ArrowLeftIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,7 @@ async function Run({ params }: { params: PageProps<'/admin/imports/[runId]'>['pa
   return (
     <>
       <PageHeader
-        icon={<GlobeIcon weight="duotone" />}
+        icon={<PageIcon name="globe" />}
         title="Courseware import"
         description={`Started ${formatDateTime(run.startedAt)} by ${run.actor}.`}
         actions={
@@ -81,12 +82,12 @@ async function Run({ params }: { params: PageProps<'/admin/imports/[runId]'>['pa
           </p>
         </section>
         <Section
-          icon={<WarningIcon weight="duotone" />}
+          icon={<PageIcon name="missing" className="size-8" />}
           title="Pages that could not be read"
           description="Fix the course on its courseware page, or add it to the course list, then import that page again."
         >
           {run.failures.length === 0 ? (
-            <EmptyState icon={<WarningIcon weight="duotone" />} text="None so far." />
+            <EmptyState icon={<PageIcon name="missing" className="size-8" />} text="None so far." />
           ) : (
             <ul className="surface grid gap-2 p-4 text-sm">
               {run.failures.map((f, i) => (

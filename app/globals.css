@@ -27,6 +27,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-gold: var(--gold);
+  --color-teal: var(--teal);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -85,6 +86,7 @@
   --success: oklch(0.52 0.13 152);
   --warning: oklch(0.56 0.14 62);
   --gold: oklch(0.613 0.108 79.8);
+  --teal: oklch(0.5 0.09 195);
   --border: oklch(0.918 0.005 264);
   --input: oklch(0.885 0.007 264);
   --ring: oklch(0.52 0.22 263);
@@ -113,18 +115,26 @@
   @apply bg-card text-card-foreground ring-border/80 rounded-2xl ring-1;
 }
 
-/* A card that is a link or opens something: its ring takes the brand tint and its icon chip fills. */
+/* A card that is a link or opens something: its ring takes the brand tint. A Phosphor chip fills; a generated mark stays as it is. */
 @utility surface-interactive {
   @apply surface focus-visible:ring-ring/60 hover:ring-primary/35 outline-none focus-visible:ring-2 motion-safe:transition-[box-shadow,background-color] motion-safe:duration-200;
-  &:hover .icon-chip,
-  &:focus-visible .icon-chip {
+  /* A generated mark stays on the light chip. Filling it would hide the blue artwork, and a white
+     plate behind the picture reads as a stuck sticker. */
+  &:hover .icon-chip:not(:has(img)),
+  &:focus-visible .icon-chip:not(:has(img)) {
     @apply bg-primary text-primary-foreground ring-primary;
   }
   /* A duotone icon's 20% layer turns white on the filled chip and reads as a smudge (08 §1). */
-  &:hover .icon-chip path[opacity],
-  &:focus-visible .icon-chip path[opacity] {
+  &:hover .icon-chip:not(:has(img)) path[opacity],
+  &:focus-visible .icon-chip:not(:has(img)) path[opacity] {
     display: none;
   }
+}
+
+/* A course card's cover: a flat tone, set on the element, under a fine white dot grid. */
+@utility cover-dots {
+  background-image: radial-gradient(oklch(1 0 0 / 0.2) 1px, transparent 1.2px);
+  background-size: 14px 14px;
 }
 
 /* A small outlined square holding an icon in the primary colour, as on the reference dashboard's stat tiles. */

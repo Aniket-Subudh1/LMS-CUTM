@@ -1,22 +1,13 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import {
-  BellIcon,
-  BroadcastIcon,
-  CalendarCheckIcon,
-  CalendarPlusIcon,
-  CalendarXIcon,
-  CaretRightIcon,
-  ChecksIcon,
-  ClipboardTextIcon,
-  ClockClockwiseIcon,
-} from '@phosphor-icons/react/ssr';
+import { CaretRightIcon, ChecksIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { markAllRead, openNotification } from './actions';
 import { ActionForm } from '@/components/action-form';
 import { EmptyState, PageNav } from '@/components/data-table';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { listMyNotifications, unreadCount } from '@/lib/data/notifications';
 import { cn } from '@/lib/cn';
 import { formatDateTime } from '@/lib/format';
@@ -27,13 +18,13 @@ export const metadata: Metadata = { title: 'Notifications' };
 
 const Search = z.object({ page: pageParam.catch(1) });
 
-const KIND: Record<NotificationKind, { label: string; icon: typeof BellIcon }> = {
-  'plan.requested': { label: 'Course plan needed', icon: ClipboardTextIcon },
-  'plan.published': { label: 'Course plan published', icon: CalendarCheckIcon },
-  'live.scheduled': { label: 'Live class scheduled', icon: CalendarPlusIcon },
-  'live.changed': { label: 'Live class changed', icon: ClockClockwiseIcon },
-  'live.cancelled': { label: 'Live class cancelled', icon: CalendarXIcon },
-  'live.started': { label: 'Live class started', icon: BroadcastIcon },
+const KIND: Record<NotificationKind, { label: string; icon: PageIconName }> = {
+  'plan.requested': { label: 'Course plan needed', icon: 'plan' },
+  'plan.published': { label: 'Course plan published', icon: 'plan' },
+  'live.scheduled': { label: 'Live class scheduled', icon: 'live' },
+  'live.changed': { label: 'Live class changed', icon: 'session' },
+  'live.cancelled': { label: 'Live class cancelled', icon: 'missing' },
+  'live.started': { label: 'Live class started', icon: 'live' },
 };
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {
@@ -50,7 +41,7 @@ async function Notifications({ searchParams }: { searchParams: PageProps<'/notif
   return (
     <>
       <PageHeader
-        icon={<BellIcon weight="duotone" />}
+        icon={<PageIcon name="notifications" />}
         title="Notifications"
         description={
           unread > 0
@@ -70,14 +61,14 @@ async function Notifications({ searchParams }: { searchParams: PageProps<'/notif
       />
       {rows.length === 0 ? (
         <EmptyState
-          icon={<BellIcon weight="duotone" />}
+          icon={<PageIcon name="notifications" />}
           text="Nothing yet. You will be told here when a course plan is published or needs your attention."
         />
       ) : (
         <>
           <ul className="surface divide-border/80 divide-y overflow-hidden">
             {rows.map((row) => {
-              const { label, icon: Icon } = KIND[row.kind];
+              const { label, icon } = KIND[row.kind];
               return (
                 <li key={row.id}>
                   <form action={openNotification}>
@@ -97,7 +88,7 @@ async function Notifications({ searchParams }: { searchParams: PageProps<'/notif
                             : 'bg-primary/10 text-primary ring-primary/15',
                         )}
                       >
-                        <Icon weight="duotone" className="size-5" />
+                        <PageIcon name={icon} className="size-8" />
                       </span>
                       <span className="grid min-w-0 flex-1 gap-0.5">
                         <span className={cn('truncate', row.read ? 'font-medium' : 'font-semibold')}>{row.title}</span>

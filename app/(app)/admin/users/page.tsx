@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { FileArrowUpIcon, UserPlusIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
+import { FileArrowUpIcon, UserPlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { createUser, importUsers } from './actions';
@@ -10,13 +10,14 @@ import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { requireViewer } from '@/lib/auth/session';
-import { getUserFormOptions, listUsers } from '@/lib/data/users';
+import { getUserFormOptions, getUserStats, listUsers } from '@/lib/data/users';
 import { initials, ROLE_LABEL, statusTone } from '@/lib/format';
 import { page as pageParam, pageSize, ROLES } from '@/lib/schemas/common';
 
@@ -42,77 +43,87 @@ export default function UsersPage({ searchParams }: PageProps<'/admin/users'>) {
 async function Users({ searchParams }: { searchParams: PageProps<'/admin/users'>['searchParams'] }) {
   const viewer = await requireViewer(['admin', 'support']);
   const { page, q, role, status } = Search.parse(await searchParams);
-  const { rows, total } = await listUsers(page, { q, role, status });
+  const [{ rows, total }, stats] = await Promise.all([listUsers(page, { q, role, status }), getUserStats()]);
   const query = Object.fromEntries(
     Object.entries({ q, role, status }).filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
   return (
-    <>
-      <PageHeader
-        icon={<UsersThreeIcon weight="duotone" />}
-        title="Users"
-        description="Search by name, roll number or email address."
-        actions={
-          viewer.roles.includes('admin') && (
-            <>
-              <ImportUsers />
-              <NewUser />
-            </>
-          )
-        }
-      />
-      <FilterForm action="/admin/users" submitLabel="Search">
-        <label className="grid min-w-56 flex-1 gap-1.5 text-sm font-medium sm:max-w-80">
-          Search
-          <Input
-            name="q"
-            type="search"
-            defaultValue={q ?? ''}
-            maxLength={100}
-            placeholder="Name, roll number or email"
-          />
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Role
-          <NativeSelect name="role" defaultValue={role ?? ''}>
-            <NativeSelectOption value="">Any role</NativeSelectOption>
-            {ROLES.map((r) => (
-              <NativeSelectOption key={r} value={r}>
-                {ROLE_LABEL[r]}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Status
-          <NativeSelect name="status" defaultValue={status ?? ''}>
-            <NativeSelectOption value="">Any status</NativeSelectOption>
-            {STATUSES.map((s) => (
-              <NativeSelectOption key={s} value={s}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
+    <PageHeader
+      icon={<PageIcon name="users" />}
+      title="Users"
+      description="Everyone who can sign in: students, faculty, heads of department and staff."
+      actions={
+        viewer.roles.includes('admin') && (
+          <>
+            <ImportUsers />
+            <NewUser />
+          </>
+        )
+      }
+      stats={[
+        { label: 'Users', value: stats.total, icon: <PageIcon name="users" className="size-7" /> },
+        { label: 'Students', value: stats.students, icon: <PageIcon name="badge" className="size-7" /> },
+        { label: 'Faculty and HoDs', value: stats.staff, icon: <PageIcon name="profile" className="size-7" /> },
+        { label: 'Yet to sign in', value: stats.invited, icon: <PageIcon name="envelope" className="size-7" /> },
+      ]}
+    >
+      <FilterForm
+        action="/admin/users"
+        submitLabel="Search"
+        search={{ name: 'q', label: 'Search users', placeholder: 'Search name, roll number or email', defaultValue: q }}
+      >
+        <NativeSelect name="role" aria-label="Role" defaultValue={role ?? ''}>
+          <NativeSelectOption value="">Any role</NativeSelectOption>
+          {ROLES.map((r) => (
+            <NativeSelectOption key={r} value={r}>
+              {ROLE_LABEL[r]}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="status" aria-label="Status" defaultValue={status ?? ''}>
+          <NativeSelectOption value="">Any status</NativeSelectOption>
+          {STATUSES.map((s) => (
+            <NativeSelectOption key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </FilterForm>
       <DataTable
+        bare
         columns={[
           {
             header: 'Name',
             cell: (u) => (
-              <Link href={`/admin/users/${u.id}`} className="group flex items-center gap-2.5 font-medium">
-                <Avatar className="size-8 rounded-lg">
-                  <AvatarFallback className="bg-primary/10 text-primary rounded-lg text-xs font-semibold">
+              <Link href={`/admin/users/${u.id}`} className="group flex min-w-0 items-center gap-3">
+                <Avatar className="size-9">
+                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
                     {initials(u.name)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="group-hover:text-primary group-hover:underline">{u.name}</span>
+                <span className="grid min-w-0 leading-tight">
+                  <span className="group-hover:text-primary truncate font-medium">{u.name}</span>
+                  <span className="text-muted-foreground truncate text-xs">{u.email}</span>
+                </span>
               </Link>
             ),
           },
-          { header: 'Email', cell: (u) => u.email },
-          { header: 'Roll no. / Employee id', cell: (u) => u.identifier ?? '—' },
-          { header: 'Roles', cell: (u) => u.roles.map((r) => ROLE_LABEL[r]).join(', ') },
+          {
+            header: 'Roll no. / Employee id',
+            cell: (u) => <span className="text-muted-foreground tabular-nums">{u.identifier ?? '—'}</span>,
+          },
+          {
+            header: 'Roles',
+            cell: (u) => (
+              <span className="flex flex-wrap gap-1">
+                {u.roles.map((r) => (
+                  <span key={r} className="bg-muted rounded-md px-2 py-0.5 text-xs">
+                    {ROLE_LABEL[r]}
+                  </span>
+                ))}
+              </span>
+            ),
+          },
           { header: 'Status', cell: (u) => <Badge variant={statusTone(u.status)}>{u.status}</Badge> },
         ]}
         rows={rows}
@@ -124,7 +135,7 @@ async function Users({ searchParams }: { searchParams: PageProps<'/admin/users'>
         path="/admin/users"
         empty="No users match this search."
       />
-    </>
+    </PageHeader>
   );
 }
 

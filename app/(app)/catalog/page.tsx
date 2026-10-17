@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BooksIcon, PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react/ssr';
+import { PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { saveCourse } from './actions';
@@ -11,18 +11,22 @@ import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { requireViewer } from '@/lib/auth/session';
-import { listCatalog, listProgramsForSelect, type CatalogRow } from '@/lib/data/courses';
+import { getCatalogStats, listCatalog, listProgramsForSelect, type CatalogRow } from '@/lib/data/courses';
 import { creditTotal, formatCredits } from '@/lib/domain/catalog';
 import { COURSE_TYPE_LABEL, statusTone } from '@/lib/format';
 import { objectId, page as pageParam, pageSize } from '@/lib/schemas/common';
 import { COURSE_TYPES } from '@/lib/schemas/structure';
 
 export const metadata: Metadata = { title: 'Course catalogue' };
+
+// A checkbox filter drawn as a pill beside the selects; it turns blue while on.
+const TOGGLE =
+  'ring-border bg-card has-checked:bg-primary/10 has-checked:text-primary has-checked:ring-primary/30 flex h-9 cursor-pointer items-center gap-2 rounded-full px-4 text-sm ring-1 transition-colors';
 
 const flag = z.literal('1').optional().catch(undefined);
 const Search = z.object({
@@ -48,7 +52,7 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
   const search = Search.parse(await searchParams);
   const viewer = await requireViewer(['admin', 'hod', 'faculty']);
   const isAdmin = viewer.roles.includes('admin');
-  const [{ rows, total }, programmes] = await Promise.all([
+  const [{ rows, total }, programmes, stats] = await Promise.all([
     listCatalog(search.page, {
       q: search.q,
       type: search.type,
@@ -59,6 +63,7 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
       mine: search.mine === '1',
     }),
     listProgramsForSelect(),
+    getCatalogStats(),
   ]);
   const baskets = programmes.find((p) => p.id === search.program)?.baskets ?? [];
   const query = Object.fromEntries(
@@ -67,90 +72,88 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
     ),
   );
   return (
-    <>
-      <PageHeader
-        icon={<BooksIcon weight="duotone" />}
-        title="Course catalogue"
-        description="Every CUTM course, once. Open a course to see what it teaches; its coordinator keeps it complete."
-        actions={
-          isAdmin && (
-            <>
-              <Button asChild variant="outline">
-                <Link href="/admin/imports">
-                  <UploadSimpleIcon weight="duotone" /> Import courses
-                  <LinkSpinner />
-                </Link>
-              </Button>
-              <FormDialog
-                trigger={
-                  <Button>
-                    <PlusIcon weight="bold" /> New course
-                  </Button>
-                }
-                icon={<BooksIcon weight="duotone" />}
-                title="New course"
-                description="Most courses come from the course list upload. Add one here when it is not in the list yet."
-                openParam="course"
-                action={saveCourse}
-                submitLabel="Add course"
-                successMessage="Course added. Opening it…"
-              >
-                <CourseFields />
-              </FormDialog>
-            </>
-          )
-        }
-      />
-      <FilterForm action="/catalog" submitLabel="Search">
-        <label className="grid min-w-56 flex-1 gap-1.5 text-sm font-medium">
-          Code or title
-          <Input name="q" defaultValue={search.q} placeholder="CUTM1535 or complex analysis" />
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Programme
-          <NativeSelect name="program" defaultValue={search.program ?? ''}>
-            <NativeSelectOption value="">All programmes</NativeSelectOption>
-            {programmes.map((p) => (
-              <NativeSelectOption key={p.id} value={p.id}>
-                {p.label}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </label>
+    <PageHeader
+      icon={<PageIcon name="catalog" />}
+      title="Course catalogue"
+      description="Every CUTM course, once. Open a course to see what it teaches; its coordinator keeps it complete."
+      actions={
+        isAdmin && (
+          <>
+            <Button asChild variant="outline">
+              <Link href="/admin/imports">
+                <UploadSimpleIcon weight="duotone" /> Import courses
+                <LinkSpinner />
+              </Link>
+            </Button>
+            <FormDialog
+              trigger={
+                <Button>
+                  <PlusIcon weight="bold" /> New course
+                </Button>
+              }
+              icon={<PageIcon name="catalog" className="size-8" />}
+              title="New course"
+              description="Most courses come from the course list upload. Add one here when it is not in the list yet."
+              openParam="course"
+              action={saveCourse}
+              submitLabel="Add course"
+              successMessage="Course added. Opening it…"
+            >
+              <CourseFields />
+            </FormDialog>
+          </>
+        )
+      }
+      stats={[
+        { label: 'Courses', value: stats.total, icon: <PageIcon name="catalog" className="size-7" /> },
+        { label: 'Active', value: stats.active, icon: <PageIcon name="course" className="size-7" /> },
+        { label: 'Need review', value: stats.review, icon: <PageIcon name="missing" className="size-7" /> },
+        { label: 'No coordinator', value: stats.unassigned, icon: <PageIcon name="profile" className="size-7" /> },
+      ]}
+    >
+      <FilterForm
+        action="/catalog"
+        submitLabel="Search"
+        search={{
+          name: 'q',
+          label: 'Search courses',
+          placeholder: 'Code or title, like CUTM1535',
+          defaultValue: search.q,
+        }}
+      >
+        <NativeSelect name="program" aria-label="Programme" defaultValue={search.program ?? ''} className="max-w-56">
+          <NativeSelectOption value="">All programmes</NativeSelectOption>
+          {programmes.map((p) => (
+            <NativeSelectOption key={p.id} value={p.id}>
+              {p.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
         {baskets.length > 0 && (
-          <label className="grid gap-1.5 text-sm font-medium">
-            Basket
-            <NativeSelect name="basket" defaultValue={search.basket ?? ''}>
-              <NativeSelectOption value="">All baskets</NativeSelectOption>
-              {baskets.map((b) => (
-                <NativeSelectOption key={b} value={b}>
-                  {b}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </label>
-        )}
-        <label className="grid gap-1.5 text-sm font-medium">
-          Type
-          <NativeSelect name="type" defaultValue={search.type ?? ''}>
-            <NativeSelectOption value="">Any type</NativeSelectOption>
-            {COURSE_TYPES.map((type) => (
-              <NativeSelectOption key={type} value={type}>
-                {COURSE_TYPE_LABEL[type]}
+          <NativeSelect name="basket" aria-label="Basket" defaultValue={search.basket ?? ''} className="max-w-48">
+            <NativeSelectOption value="">All baskets</NativeSelectOption>
+            {baskets.map((b) => (
+              <NativeSelectOption key={b} value={b}>
+                {b}
               </NativeSelectOption>
             ))}
           </NativeSelect>
-        </label>
-        <label className="grid gap-1.5 text-sm font-medium">
-          Status
-          <NativeSelect name="status" defaultValue={search.status ?? ''}>
-            <NativeSelectOption value="">Any status</NativeSelectOption>
-            <NativeSelectOption value="active">Active</NativeSelectOption>
-            <NativeSelectOption value="draft">Draft</NativeSelectOption>
-            <NativeSelectOption value="archived">Archived</NativeSelectOption>
-          </NativeSelect>
-        </label>
-        <label className="flex h-9 items-center gap-2 text-sm">
+        )}
+        <NativeSelect name="type" aria-label="Type" defaultValue={search.type ?? ''}>
+          <NativeSelectOption value="">Any type</NativeSelectOption>
+          {COURSE_TYPES.map((type) => (
+            <NativeSelectOption key={type} value={type}>
+              {COURSE_TYPE_LABEL[type]}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="status" aria-label="Status" defaultValue={search.status ?? ''}>
+          <NativeSelectOption value="">Any status</NativeSelectOption>
+          <NativeSelectOption value="active">Active</NativeSelectOption>
+          <NativeSelectOption value="draft">Draft</NativeSelectOption>
+          <NativeSelectOption value="archived">Archived</NativeSelectOption>
+        </NativeSelect>
+        <label className={TOGGLE}>
           <input
             type="checkbox"
             name="review"
@@ -161,7 +164,7 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
           Needs review
         </label>
         {viewer.roles.includes('faculty') && (
-          <label className="flex h-9 items-center gap-2 text-sm">
+          <label className={TOGGLE}>
             <input
               type="checkbox"
               name="mine"
@@ -174,13 +177,14 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
         )}
       </FilterForm>
       <DataTable
+        bare
         columns={[
           {
             header: 'Course',
             cell: (c: CatalogRow) => (
-              <Link href={`/catalog/${c.id}`} className="grid gap-0.5 hover:underline">
-                <span className="font-medium">{c.code}</span>
-                <span className="text-muted-foreground text-sm">{c.title}</span>
+              <Link href={`/catalog/${c.id}`} className="group grid leading-tight">
+                <span className="group-hover:text-primary font-medium">{c.code}</span>
+                <span className="text-muted-foreground text-xs">{c.title}</span>
               </Link>
             ),
           },
@@ -220,6 +224,6 @@ async function Catalog({ searchParams }: { searchParams: PageProps<'/catalog'>['
             : 'The catalogue is empty. An administrator loads it from Import courses.'
         }
       />
-    </>
+    </PageHeader>
   );
 }

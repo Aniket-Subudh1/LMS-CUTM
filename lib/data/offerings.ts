@@ -110,7 +110,27 @@ export type OfferingRow = {
   students: number;
 };
 
-export type OfferingFilter = { termId?: string; departmentId?: string; status?: (typeof OFFERING_STATUSES)[number] };
+export type OfferingFilter = {
+  q?: string;
+  termId?: string;
+  departmentId?: string;
+  status?: (typeof OFFERING_STATUSES)[number];
+};
+
+export type OfferingStats = { total: number; active: number; draft: number; completed: number };
+
+// The tiles above the admin offering list, each a count on the { status, _id } index.
+export async function getOfferingStats(): Promise<OfferingStats> {
+  await requireViewer(['admin']);
+  await db();
+  const [total, active, draft, completed] = await Promise.all([
+    Offering.estimatedDocumentCount(),
+    Offering.countDocuments({ status: 'active' }),
+    Offering.countDocuments({ status: 'draft' }),
+    Offering.countDocuments({ status: 'completed' }),
+  ]);
+  return { total, active, draft, completed };
+}
 
 export async function listOfferings(
   page: number,
@@ -118,14 +138,17 @@ export async function listOfferings(
 ): Promise<{ rows: OfferingRow[]; total: number }> {
   await requireViewer(['admin']);
   await db();
+  const q = filters.q?.trim();
   const filter = {
+    ...(q ? { $text: { $search: q } } : {}),
     ...(filters.termId ? { termId: filters.termId } : {}),
     ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
     ...(filters.status ? { status: filters.status } : {}),
   };
   const [docs, total] = await Promise.all([
     Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1 })
-      .sort({ _id: -1 })
+      // A word search lists the closest matches first (text score); otherwise the usual order.
+      .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),

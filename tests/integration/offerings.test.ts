@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createOfferings, setOfferingStatus, updateOfferingFaculty } from '@/app/(app)/admin/offerings/actions';
 import { changeEnrollments } from '@/app/(app)/courses/actions';
 import { db } from '@/lib/db';
-import { listOfferings } from '@/lib/data/offerings';
+import { getOfferingStats, listOfferings } from '@/lib/data/offerings';
 import type { Credits } from '@/lib/domain/catalog';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
@@ -384,9 +384,32 @@ describe('listOfferings', () => {
     expect((await listOfferings(1, { status: 'completed', termId: String(s.term._id) })).total).toBe(0);
     expect((await listOfferings(1, { departmentId: String(s.department._id) })).total).toBe(1);
     const all = await listOfferings(1, { status: 'draft' });
-    expect(all.rows.length).toBeLessThanOrEqual(25);
+    expect(all.rows.length).toBeLessThanOrEqual(10);
     expect(all.total).toBe(await Offering.countDocuments({ status: 'draft' }));
     const unfiltered = await listOfferings(1, { termId: undefined, departmentId: undefined, status: undefined });
     expect(unfiltered.total).toBe(await Offering.countDocuments());
+  });
+});
+
+describe('the offering search and counts', () => {
+  it('finds offerings by a word of their title and counts them by status', async () => {
+    await asAdmin();
+    const term = newId();
+    await Promise.all([
+      makeOffering({ termId: term, title: 'ZZQB1001 · Hydroponic Gardening · T · A', status: 'active' }),
+      makeOffering({ termId: term, title: 'ZZQB1002 · Desert Survival · T · A', status: 'draft' }),
+    ]);
+    const found = await listOfferings(1, { q: 'hydroponic' });
+    expect(found.rows.map((r) => r.title)).toEqual(['ZZQB1001 · Hydroponic Gardening · T · A']);
+    expect(found.total).toBe(1);
+    expect((await listOfferings(1, { q: 'ZZQB1002', status: 'active' })).total).toBe(0);
+    expect(await getOfferingStats()).toEqual({
+      total: await Offering.countDocuments(),
+      active: await Offering.countDocuments({ status: 'active' }),
+      draft: await Offering.countDocuments({ status: 'draft' }),
+      completed: await Offering.countDocuments({ status: 'completed' }),
+    });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    await expect(getOfferingStats()).rejects.toMatchObject({ digest: expect.stringMatching(/;\/home;/) });
   });
 });

@@ -1,16 +1,11 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowRightIcon,
-  BuildingsIcon,
-  CalendarDotsIcon,
-  GraduationCapIcon,
-  TreeStructureIcon,
-} from '@phosphor-icons/react/ssr';
+import { ArrowRightIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../loading';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { getStructureCounts } from '@/lib/data/structure';
 
 export const metadata: Metadata = { title: 'Academic structure' };
@@ -20,21 +15,21 @@ const SECTIONS = [
     href: '/admin/departments',
     title: 'Departments',
     text: 'The departments that own programmes and courses.',
-    icon: BuildingsIcon,
+    icon: 'departments' satisfies PageIconName,
     count: 'departments',
   },
   {
     href: '/admin/programs',
     title: 'Programmes',
     text: 'Programmes, their batches and their PO and PSO lists.',
-    icon: GraduationCapIcon,
+    icon: 'programmes' satisfies PageIconName,
     count: 'programs',
   },
   {
     href: '/admin/terms',
     title: 'Terms',
     text: 'Academic terms and which one is current.',
-    icon: CalendarDotsIcon,
+    icon: 'terms' satisfies PageIconName,
     count: 'terms',
   },
 ] as const;
@@ -52,7 +47,7 @@ async function Admin() {
   return (
     <>
       <PageHeader
-        icon={<TreeStructureIcon weight="duotone" />}
+        icon={<PageIcon name="structure" />}
         title="Academic structure"
         description="Set up the academic structure that courses, offerings and marks hang from."
       />
@@ -61,8 +56,8 @@ async function Admin() {
           <li key={s.href}>
             <Link href={s.href} className="surface-interactive group flex h-full flex-col gap-4 p-5">
               <span className="flex items-start justify-between gap-3">
-                <span className="icon-chip size-12 [&_svg]:size-7">
-                  <s.icon weight="duotone" />
+                <span className="icon-chip size-12">
+                  <PageIcon name={s.icon} />
                 </span>
                 <span className="text-3xl font-semibold tracking-tight tabular-nums">{counts[s.count]}</span>
               </span>

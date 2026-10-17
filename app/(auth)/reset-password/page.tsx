@@ -2,8 +2,9 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { CheckCircleIcon, CircleIcon, LinkBreakIcon } from '@phosphor-icons/react/ssr';
+import { CheckCircleIcon, CircleIcon } from '@phosphor-icons/react/ssr';
 import { ActionForm, Field } from '@/components/action-form';
+import { PageIcon } from '@/components/page-icon';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/password-input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,9 +46,7 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
     return (
       <div className="grid gap-8">
         <div className="grid justify-items-center gap-3 text-center">
-          <span className="bg-warning/12 text-warning grid size-12 place-items-center rounded-full">
-            <LinkBreakIcon weight="duotone" className="size-6" />
-          </span>
+          <PageIcon name="missing" className="size-16" />
           <h1 className="text-3xl leading-tight font-semibold tracking-tight">Link not valid</h1>
           <p className="text-muted-foreground text-sm">This link has expired or was already used.</p>
         </div>
@@ -60,15 +59,18 @@ async function ResetForm({ searchParams }: { searchParams: PageProps<'/reset-pas
   const invite = data.purpose === 'invite';
   return (
     <div className="grid gap-8">
-      <div className="grid gap-2 text-center">
-        <h1 className="text-3xl leading-tight font-semibold tracking-tight">
-          {invite ? 'Set up your account' : 'Choose a new password'}
-        </h1>
-        <p className="text-muted-foreground text-sm text-balance">
-          {invite
-            ? 'Welcome to the CUTM LMS. Choose a password to activate your account; you will be signed in once it is saved.'
-            : 'You will be signed in once it is saved.'}
-        </p>
+      <div className="grid justify-items-center gap-4 text-center">
+        <PageIcon name="key" className="size-16" />
+        <div className="grid gap-2">
+          <h1 className="text-3xl leading-tight font-semibold tracking-tight">
+            {invite ? 'Set up your account' : 'Choose a new password'}
+          </h1>
+          <p className="text-muted-foreground text-sm text-balance">
+            {invite
+              ? 'Welcome to the CUTM LMS. Choose a password to activate your account; you will be signed in once it is saved.'
+              : 'You will be signed in once it is saved.'}
+          </p>
+        </div>
       </div>
       <ActionForm action={resetPassword} submitLabel="Save password" fullWidth>
         <input type="hidden" name="token" value={token} />

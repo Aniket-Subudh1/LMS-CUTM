@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { BuildingsIcon, PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
+import { PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { saveDepartment } from '../actions';
@@ -8,6 +8,7 @@ import { Field } from '@/components/action-form';
 import { EmptyState, PageNav } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,20 +35,20 @@ async function Departments({ searchParams }: { searchParams: PageProps<'/admin/d
   return (
     <>
       <PageHeader
-        icon={<BuildingsIcon weight="duotone" />}
+        icon={<PageIcon name="departments" />}
         title="Departments"
         description="Every programme and course belongs to one department."
         actions={<DepartmentDialog />}
       />
       {rows.length === 0 ? (
-        <EmptyState icon={<BuildingsIcon weight="duotone" />} text="Add the first department with Add department." />
+        <EmptyState icon={<PageIcon name="departments" />} text="Add the first department with Add department." />
       ) : (
         <div className="grid gap-5">
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-4">
             {rows.map((d) => (
               <li key={d.id} className="surface flex items-start gap-4 p-5">
-                <span className="icon-chip size-11 [&_svg]:size-6">
-                  <BuildingsIcon weight="duotone" />
+                <span className="icon-chip size-11">
+                  <PageIcon name="departments" className="size-8" />
                 </span>
                 <div className="grid min-w-0 flex-1 gap-1">
                   <p className="text-muted-foreground text-xs font-semibold tracking-wide">{d.code}</p>
@@ -88,7 +89,7 @@ function DepartmentDialog({ department }: { department?: DepartmentRow }) {
           </Button>
         )
       }
-      icon={<BuildingsIcon weight="duotone" />}
+      icon={<PageIcon name="departments" className="size-8" />}
       title={department ? `Edit ${department.code}` : 'Add a department'}
       description="Programmes and courses are filed under a department."
       openParam={department ? undefined : 'department'}

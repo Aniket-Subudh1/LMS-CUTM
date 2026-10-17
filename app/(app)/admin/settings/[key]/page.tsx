@@ -2,11 +2,12 @@ import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeftIcon, BroadcastIcon, CalculatorIcon, ExamIcon, InfoIcon, VideoIcon } from '@phosphor-icons/react/ssr';
+import { ArrowLeftIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { saveSettings } from '../actions';
 import { ActionForm, Field } from '@/components/action-form';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,9 +66,13 @@ const changed = (page: { updated: { at: Date; by: string } | null }) =>
 function Lessons({ page }: { page: SettingsPage<'lessons'> }) {
   return (
     <>
-      <Header page={page} icon={<VideoIcon weight="duotone" />} />
+      <Header page={page} icon={<PageIcon name="video" />} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Section icon={<VideoIcon weight="duotone" />} title="When is a video complete?" description={changed(page)}>
+        <Section
+          icon={<PageIcon name="video" className="size-8" />}
+          title="When is a video complete?"
+          description={changed(page)}
+        >
           <ActionForm action={saveSettings} submitLabel="Save" successMessage="Saved. New progress follows this rule.">
             <input type="hidden" name="key" value={page.key} />
             <Field
@@ -96,7 +101,7 @@ function Lessons({ page }: { page: SettingsPage<'lessons'> }) {
         </Section>
 
         <Section
-          icon={<InfoIcon weight="duotone" />}
+          icon={<PageIcon name="video" className="size-8" />}
           title="Where this applies"
           description="What changes when you save."
         >
@@ -125,10 +130,10 @@ function Attendance({ page }: { page: SettingsPage<'attendance'> }) {
   const minutes = Math.ceil((60 * page.value.liveThresholdPct) / 100);
   return (
     <>
-      <Header page={page} icon={<BroadcastIcon weight="duotone" />} />
+      <Header page={page} icon={<PageIcon name="attendance" />} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Section
-          icon={<BroadcastIcon weight="duotone" />}
+          icon={<PageIcon name="attendance" className="size-8" />}
           title="When is a student present?"
           description={changed(page)}
         >
@@ -163,7 +168,11 @@ function Attendance({ page }: { page: SettingsPage<'attendance'> }) {
           </ActionForm>
         </Section>
 
-        <Section icon={<InfoIcon weight="duotone" />} title="For example" description="With the value saved now.">
+        <Section
+          icon={<PageIcon name="attendance" className="size-8" />}
+          title="For example"
+          description="With the value saved now."
+        >
           <ul className="text-muted-foreground grid gap-3 text-sm leading-relaxed">
             <li>
               <span className="text-foreground font-medium">A 60-minute class:</span> present after {minutes} minutes in
@@ -265,9 +274,13 @@ function Evaluation({ page }: { page: SettingsPage<'evaluation'> }) {
   const example = coursePercentage({ theory: 1, practice: 2, project: 2 }, { theory: 87, practice: 89, project: 92 });
   return (
     <>
-      <Header page={page} icon={<ExamIcon weight="duotone" />} />
+      <Header page={page} icon={<PageIcon name="evaluation" />} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Section icon={<ExamIcon weight="duotone" />} title="Marks of each part" description={changed(page)}>
+        <Section
+          icon={<PageIcon name="evaluation" className="size-8" />}
+          title="Marks of each part"
+          description={changed(page)}
+        >
           <ActionForm
             action={saveSettings}
             submitLabel="Save policy"
@@ -316,7 +329,7 @@ function Evaluation({ page }: { page: SettingsPage<'evaluation'> }) {
         </Section>
 
         <Section
-          icon={<CalculatorIcon weight="duotone" />}
+          icon={<PageIcon name="evaluation" className="size-8" />}
           title="How a course mark is calculated"
           description="The policy's own example."
         >

@@ -3,19 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowSquareOutIcon,
-  BookBookmarkIcon,
-  BookOpenTextIcon,
-  CalendarDotsIcon,
-  ClipboardTextIcon,
   DownloadSimpleIcon,
-  FileTextIcon,
-  GraduationCapIcon,
-  GridFourIcon,
-  ListChecksIcon,
   PencilSimpleIcon,
   SealCheckIcon,
-  TargetIcon,
-  UserCircleGearIcon,
   WarningIcon,
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
@@ -42,6 +32,7 @@ import { FileUpload } from '@/components/file-upload';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -95,7 +86,7 @@ async function Course({
   return (
     <>
       <PageHeader
-        icon={<BookOpenTextIcon weight="duotone" />}
+        icon={<PageIcon name="course" />}
         title={`${course.code} · ${course.title}`}
         description={[
           course.type ? COURSE_TYPE_LABEL[course.type] : null,
@@ -121,7 +112,7 @@ async function Course({
                     <PencilSimpleIcon weight="duotone" /> Edit details
                   </Button>
                 }
-                icon={<BookOpenTextIcon weight="duotone" />}
+                icon={<PageIcon name="course" className="size-8" />}
                 title={`Edit ${course.code}`}
                 description="Offerings keep the credits they were created with; a change applies to new offerings."
                 action={saveCourse}
@@ -246,7 +237,7 @@ function Readiness({ course }: { course: CatalogCourse }) {
   });
   return (
     <Checklist
-      icon={<ListChecksIcon weight="duotone" />}
+      icon={<PageIcon name="overview" className="size-8" />}
       title="Course readiness"
       readyTitle="This course is complete"
       steps={steps}
@@ -359,14 +350,14 @@ function Editor({
 function Objectives({ course }: { course: CatalogCourse }) {
   return (
     <Section
-      icon={<ClipboardTextIcon weight="duotone" />}
+      icon={<PageIcon name="plan" className="size-8" />}
       title="Objectives"
       description="What the course sets out to do."
       action={
         <Editor
           course={course}
           param="objectives"
-          icon={<ClipboardTextIcon weight="duotone" />}
+          icon={<PageIcon name="plan" className="size-8" />}
           title="Objectives"
           description={`One objective per line, at most ${CATALOG_LIMITS.objectives}.`}
           size="wide"
@@ -380,7 +371,7 @@ function Objectives({ course }: { course: CatalogCourse }) {
       }
     >
       {course.objectives.length === 0 ? (
-        <EmptyState icon={<ClipboardTextIcon weight="duotone" />} text="No objectives yet." />
+        <EmptyState icon={<PageIcon name="plan" className="size-8" />} text="No objectives yet." />
       ) : (
         <ol className="surface grid list-decimal gap-2 p-5 pl-10 text-sm">
           {course.objectives.map((o, i) => (
@@ -399,14 +390,14 @@ function Outcomes({ course }: { course: CatalogCourse }) {
   ];
   return (
     <Section
-      icon={<TargetIcon weight="duotone" />}
+      icon={<PageIcon name="outcomes" className="size-8" />}
       title="Course outcomes"
       description="What a student can do after the course, each at one to three Bloom levels."
       action={
         <Editor
           course={course}
           param="outcomes"
-          icon={<TargetIcon weight="duotone" />}
+          icon={<PageIcon name="outcomes" className="size-8" />}
           title="Course outcomes"
           description="Edit, add or remove outcomes and tick their Bloom levels. A level marked “suggested” was guessed from the first verb; saving confirms it."
           size="wide"
@@ -478,7 +469,7 @@ function Outcomes({ course }: { course: CatalogCourse }) {
       }
     >
       {course.cos.length === 0 ? (
-        <EmptyState icon={<TargetIcon weight="duotone" />} text="No course outcomes yet." />
+        <EmptyState icon={<PageIcon name="outcomes" className="size-8" />} text="No course outcomes yet." />
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-3">
           {course.cos.map((co) => (
@@ -510,14 +501,14 @@ function Outcomes({ course }: { course: CatalogCourse }) {
 function Mapping({ course }: { course: CatalogCourse }) {
   return (
     <Section
-      icon={<GridFourIcon weight="duotone" />}
+      icon={<PageIcon name="mapping" className="size-8" />}
       title="CO–PO mapping"
       description="How strongly each outcome supports the programme outcomes PO1–PO12 and PSO1–PSO3 (1 slight, 3 high)."
       action={
         <Editor
           course={course}
           param="mapping"
-          icon={<GridFourIcon weight="duotone" />}
+          icon={<PageIcon name="mapping" className="size-8" />}
           title="CO–PO mapping"
           description="Each programme titles the codes in its own words; the codes are the same everywhere."
           size="full"
@@ -541,7 +532,7 @@ function Syllabus({ course }: { course: CatalogCourse }) {
   ];
   return (
     <Section
-      icon={<FileTextIcon weight="duotone" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title="Syllabus"
       description="The modules in teaching order, their practicals, the course's projects and the official PDF."
       action={
@@ -556,7 +547,7 @@ function Syllabus({ course }: { course: CatalogCourse }) {
           <Editor
             course={course}
             param="syllabus"
-            icon={<FileTextIcon weight="duotone" />}
+            icon={<PageIcon name="lessons" className="size-8" />}
             title="Syllabus"
             description="Modules in teaching order. Hours as 6 or 4+0+2 (theory + practice + project)."
             size="wide"
@@ -617,7 +608,7 @@ function Syllabus({ course }: { course: CatalogCourse }) {
       }
     >
       {course.modules.length === 0 && course.projects.length === 0 ? (
-        <EmptyState icon={<FileTextIcon weight="duotone" />} text="No modules yet." />
+        <EmptyState icon={<PageIcon name="lessons" className="size-8" />} text="No modules yet." />
       ) : (
         <div className="grid gap-3">
           {course.modules.map((m, i) => (
@@ -660,14 +651,14 @@ function Syllabus({ course }: { course: CatalogCourse }) {
 function Books({ course }: { course: CatalogCourse }) {
   return (
     <Section
-      icon={<BookBookmarkIcon weight="duotone" />}
+      icon={<PageIcon name="books" className="size-8" />}
       title="Books"
       description="Textbooks students need, and further reading."
       action={
         <Editor
           course={course}
           param="books"
-          icon={<BookBookmarkIcon weight="duotone" />}
+          icon={<PageIcon name="books" className="size-8" />}
           title="Books"
           description="One book per line."
           size="wide"
@@ -684,7 +675,7 @@ function Books({ course }: { course: CatalogCourse }) {
       }
     >
       {course.textbooks.length + course.references.length === 0 ? (
-        <EmptyState icon={<BookBookmarkIcon weight="duotone" />} text="No books yet." />
+        <EmptyState icon={<PageIcon name="books" className="size-8" />} text="No books yet." />
       ) : (
         <div className="surface grid gap-4 p-5 text-sm md:grid-cols-2">
           {(
@@ -714,14 +705,14 @@ function Books({ course }: { course: CatalogCourse }) {
 function SessionPlan({ course }: { course: CatalogCourse }) {
   return (
     <Section
-      icon={<CalendarDotsIcon weight="duotone" />}
+      icon={<PageIcon name="session" className="size-8" />}
       title="Session plan"
       description="The classes in order. A teacher fills an offering's calendar from it by choosing the first date and the weekdays."
       action={
         <Editor
           course={course}
           param="sessions"
-          icon={<CalendarDotsIcon weight="duotone" />}
+          icon={<PageIcon name="session" className="size-8" />}
           title="Session plan"
           description="One session per line, in order. Put “Practice:” or “Project:” in front of practice and project sessions."
           size="wide"
@@ -740,7 +731,7 @@ function SessionPlan({ course }: { course: CatalogCourse }) {
       }
     >
       {course.sessionPlan.length === 0 ? (
-        <EmptyState icon={<CalendarDotsIcon weight="duotone" />} text="No sessions yet." />
+        <EmptyState icon={<PageIcon name="session" className="size-8" />} text="No sessions yet." />
       ) : (
         <ol className="surface grid gap-1.5 p-4 text-sm">
           {course.sessionPlan.map((s, i) => (
@@ -759,12 +750,15 @@ function SessionPlan({ course }: { course: CatalogCourse }) {
 function Programmes({ course }: { course: CatalogCourse }) {
   return (
     <Section
-      icon={<GraduationCapIcon weight="duotone" />}
+      icon={<PageIcon name="programmes" className="size-8" />}
       title="Used in programmes"
       description="The programmes whose curriculum lists this course."
     >
       {course.programmes.length === 0 ? (
-        <EmptyState icon={<GraduationCapIcon weight="duotone" />} text="No programme lists this course yet." />
+        <EmptyState
+          icon={<PageIcon name="programmes" className="size-8" />}
+          text="No programme lists this course yet."
+        />
       ) : (
         <ul className="surface grid gap-2 p-4 text-sm">
           {course.programmes.map((p) => (
@@ -795,10 +789,10 @@ async function CoordinatorDialog({ course, search }: { course: CatalogCourse; se
     <FormDialog
       trigger={
         <Button variant="outline">
-          <UserCircleGearIcon weight="duotone" /> Coordinator
+          <PageIcon name="profile" className="size-8" /> Coordinator
         </Button>
       }
-      icon={<UserCircleGearIcon weight="duotone" />}
+      icon={<PageIcon name="profile" className="size-8" />}
       title="Course coordinator"
       description="The faculty member who keeps this course's outcomes, mapping, syllabus and sessions up to date."
       openParam="coordinator"

@@ -7,13 +7,9 @@ import {
   ArrowUpIcon,
   CaretRightIcon,
   CheckIcon,
-  FilePdfIcon,
   FolderPlusIcon,
-  LinkSimpleIcon,
   PencilSimpleIcon,
-  PlayCircleIcon,
   PlusIcon,
-  StackIcon,
 } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { createLesson, moveLesson, moveModule, saveModule, setLessonPublished } from './actions';
@@ -23,6 +19,7 @@ import { FileUpload } from '@/components/file-upload';
 import { FormDialog } from '@/components/form-dialog';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,10 +34,10 @@ import type { LessonKind } from '@/lib/schemas/content';
 
 export const metadata: Metadata = { title: 'Lessons' };
 
-const KIND: Record<LessonKind, { label: string; hint: string; icon: typeof PlayCircleIcon }> = {
-  video: { label: 'Video', hint: 'A recorded lecture', icon: PlayCircleIcon },
-  document: { label: 'PDF', hint: 'Notes or a handout', icon: FilePdfIcon },
-  link: { label: 'Link', hint: 'A page on another site', icon: LinkSimpleIcon },
+const KIND: Record<LessonKind, { label: string; hint: string; icon: PageIconName }> = {
+  video: { label: 'Video', hint: 'A recorded lecture', icon: 'video' },
+  document: { label: 'PDF', hint: 'Notes or a handout', icon: 'books' },
+  link: { label: 'Link', hint: 'A page on another site', icon: 'globe' },
 };
 
 export default function ContentPage({ params }: PageProps<'/courses/[offeringId]/content'>) {
@@ -65,7 +62,7 @@ function Teach({ content }: { content: Content }) {
   return (
     <>
       <PageHeader
-        icon={<StackIcon weight="duotone" />}
+        icon={<PageIcon name="lessons" />}
         title="Content"
         description={
           lessons.length === 0
@@ -199,10 +196,9 @@ function meta(lesson: ContentLesson) {
 }
 
 function LessonIcon({ kind, className }: { kind: LessonKind; className?: string }) {
-  const Icon = KIND[kind].icon;
   return (
-    <span className={cn('bg-primary/8 text-primary grid size-9 shrink-0 place-items-center rounded-lg', className)}>
-      <Icon weight="duotone" className="size-5" />
+    <span className={cn('grid size-9 shrink-0 place-items-center', className)}>
+      <PageIcon name={KIND[kind].icon} className="size-8" />
     </span>
   );
 }
@@ -321,14 +317,14 @@ function LessonDialog({
         <legend className="mb-2 text-sm font-medium">Lesson type</legend>
         <div className="grid gap-2 sm:grid-cols-3">
           {(Object.keys(KIND) as LessonKind[]).map((kind) => {
-            const { label, hint, icon: Icon } = KIND[kind];
+            const { label, hint, icon } = KIND[kind];
             return (
               <label
                 key={kind}
                 className="ring-border has-checked:ring-primary has-checked:bg-primary/4 has-focus-visible:ring-ring flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 ring-1 transition-colors has-checked:ring-2"
               >
                 <input type="radio" name="kind" value={kind} defaultChecked={kind === 'video'} className="sr-only" />
-                <Icon weight="duotone" className="text-primary size-6 shrink-0" />
+                <PageIcon name={icon} className="size-8" />
                 <span className="grid">
                   <span className="text-sm font-medium">{label}</span>
                   <span className="text-muted-foreground text-xs">{hint}</span>
@@ -383,13 +379,13 @@ function Learn({ content }: { content: Content }) {
   return (
     <>
       <PageHeader
-        icon={<PlayCircleIcon weight="duotone" />}
+        icon={<PageIcon name="lessons" />}
         title="Lessons"
         description="Work through them in order. Videos complete as you watch; mark PDFs and links done when you finish them."
       />
       {lessons.length === 0 ? (
         <EmptyState
-          icon={<PlayCircleIcon weight="duotone" />}
+          icon={<PageIcon name="lessons" />}
           text="Your teacher has not published any lessons yet. Check back soon."
         />
       ) : (

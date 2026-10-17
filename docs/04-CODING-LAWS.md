@@ -183,7 +183,7 @@ import { z } from 'zod';
 
 export const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 export const page = z.coerce.number().int().min(1).max(10_000).default(1);
-export const pageSize = 25;
+export const pageSize = 10;
 
 export const ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
 export type Role = (typeof ROLES)[number];

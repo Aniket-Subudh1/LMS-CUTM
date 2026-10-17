@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import { CalendarDotsIcon, PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
+import { PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { saveTerm } from '../actions';
@@ -8,6 +8,7 @@ import { Field } from '@/components/action-form';
 import { EmptyState, PageNav } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,13 +38,13 @@ async function Terms({ searchParams }: { searchParams: PageProps<'/admin/terms'>
   return (
     <>
       <PageHeader
-        icon={<CalendarDotsIcon weight="duotone" />}
+        icon={<PageIcon name="terms" />}
         title="Terms"
         description="Exactly one term is current. Making another current closes the previous one."
         actions={<TermDialog />}
       />
       {rows.length === 0 ? (
-        <EmptyState icon={<CalendarDotsIcon weight="duotone" />} text="Add the first term with Add term." />
+        <EmptyState icon={<PageIcon name="terms" />} text="Add the first term with Add term." />
       ) : (
         <div className="grid gap-5">
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-4">
@@ -52,8 +53,8 @@ async function Terms({ searchParams }: { searchParams: PageProps<'/admin/terms'>
                 key={t.id}
                 className={cn('surface flex items-start gap-4 p-5', t.status === 'current' && 'ring-primary/40')}
               >
-                <span className="icon-chip size-11 [&_svg]:size-6">
-                  <CalendarDotsIcon weight={t.status === 'current' ? 'fill' : 'duotone'} />
+                <span className="icon-chip size-11">
+                  <PageIcon name="terms" className="size-8" />
                 </span>
                 <div className="grid min-w-0 flex-1 gap-1">
                   <p className="text-muted-foreground text-xs font-semibold tracking-wide">
@@ -92,7 +93,7 @@ function TermDialog({ term }: { term?: TermRow }) {
           </Button>
         )
       }
-      icon={<CalendarDotsIcon weight="duotone" />}
+      icon={<PageIcon name="terms" className="size-8" />}
       title={term ? `Edit ${term.code}` : 'Add a term'}
       description="Offerings run in a term. Making this term current closes the one that is current now."
       openParam={term ? undefined : 'term'}

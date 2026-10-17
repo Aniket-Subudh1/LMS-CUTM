@@ -19,16 +19,28 @@ import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize, RichTextDoc, ROLES } from '@/lib/schemas/common';
-import type { OFFERING_STATUSES } from '@/lib/schemas/structure';
+import type { COURSE_TYPES, OFFERING_STATUSES } from '@/lib/schemas/structure';
 
 type Status = (typeof OFFERING_STATUSES)[number];
+type CourseType = (typeof COURSE_TYPES)[number];
 
 export type MyOfferingRow = {
   id: string;
+  // The offering's full title ("CUTM1602 · Programming in C · 2026-ODD · A"); the course card shows its parts.
   title: string;
+  code: string;
+  courseTitle: string;
+  courseType: CourseType | null;
+  credits: { theory: number; practice: number; project: number };
+  section: string | null;
+  units: number;
   termCode: string;
   status: Status;
   faculty: string[];
+  // A student sees their own progress through the published lessons; whoever teaches or oversees sees the class.
+  view:
+    | { as: 'learner'; completed: number; published: number; videoSec: number }
+    | { as: 'teacher'; students: number; planPublished: boolean };
 };
 
 // Offerings the viewer teaches or, as a head of department, oversees.
@@ -60,38 +72,113 @@ async function offeringScope(viewer: Viewer) {
 
 export async function listMyOfferings(
   page: number,
-  filters: { termId?: string; departmentId?: string },
+  filters: { q?: string; termId?: string; departmentId?: string },
 ): Promise<{ rows: MyOfferingRow[]; total: number }> {
   const viewer = await requireViewer(['admin', 'hod', 'faculty', 'student']);
   await db();
   const scope = await offeringScope(viewer);
+  const q = filters.q?.trim();
   const filter = {
     ...scope,
+    ...(q ? { $text: { $search: q } } : {}),
     ...(filters.termId ? { termId: filters.termId } : {}),
     ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
   };
   const [docs, total] = await Promise.all([
-    Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1 })
-      .sort({ _id: -1 })
+    Offering.find(filter, {
+      title: 1,
+      courseId: 1,
+      termId: 1,
+      departmentId: 1,
+      section: 1,
+      credits: 1,
+      modules: 1,
+      status: 1,
+      facultyIds: 1,
+    })
+      // A word search lists the closest matches first (text score); otherwise the usual order.
+      .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
       .skip((page - 1) * pageSize)
       .limit(pageSize)
       .lean(),
     Offering.countDocuments(filter),
   ]);
-  const [terms, faculty] = await Promise.all([
+  // The same rule as offeringAccess: an offering the viewer neither oversees nor teaches is one they are enrolled in.
+  const learns = (o: (typeof docs)[number]) =>
+    !viewer.roles.includes('admin') &&
+    !o.facultyIds.some((id) => id.equals(viewer.id)) &&
+    !(viewer.roles.includes('hod') && viewer.departmentId !== null && o.departmentId.equals(viewer.departmentId));
+  const learnIds = docs.filter(learns).map((o) => o._id);
+  const teachIds = docs.filter((o) => !learns(o)).map((o) => o._id);
+  const [terms, faculty, courses, students, planned, lessons, completed] = await Promise.all([
     Term.find({ _id: { $in: docs.map((o) => o.termId) } }, { code: 1 }).lean(),
     User.find({ _id: { $in: docs.flatMap((o) => o.facultyIds) } }, { name: 1 }).lean(),
+    Course.find({ _id: { $in: docs.map((o) => o.courseId) } }, { code: 1, title: 1, type: 1 }).lean(),
+    Enrollment.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { offeringId: { $in: teachIds }, status: 'active' } },
+      { $group: { _id: '$offeringId', count: { $sum: 1 } } },
+    ]),
+    Offering.distinct('_id', { _id: { $in: teachIds }, 'plan.publishedAt': { $ne: null } }),
+    Lesson.aggregate<{ _id: Types.ObjectId; count: number; videoSec: number }>([
+      { $match: { offeringId: { $in: learnIds }, published: true } },
+      { $group: { _id: '$offeringId', count: { $sum: 1 }, videoSec: { $sum: '$durationSec' } } },
+    ]),
+    // As in getContent, a completed lesson counts only while it is published, so the card agrees with the Overview.
+    LessonProgress.aggregate<{ _id: Types.ObjectId; count: number }>([
+      {
+        $match: {
+          offeringId: { $in: learnIds },
+          studentId: new Types.ObjectId(viewer.id),
+          completedAt: { $ne: null },
+        },
+      },
+      {
+        $lookup: {
+          from: Lesson.collection.name,
+          localField: 'lessonId',
+          foreignField: '_id',
+          pipeline: [{ $match: { published: true } }, { $project: { _id: 1 } }],
+          as: 'lesson',
+        },
+      },
+      { $match: { lesson: { $ne: [] } } },
+      { $group: { _id: '$offeringId', count: { $sum: 1 } } },
+    ]),
   ]);
   const termCodes = new Map(terms.map((t) => [String(t._id), t.code]));
   const names = new Map(faculty.map((f) => [String(f._id), f.name]));
+  const courseOf = new Map(courses.map((c) => [String(c._id), c]));
+  const studentsOf = new Map(students.map((e) => [String(e._id), e.count]));
+  const planPublished = new Set(planned.map(String));
+  const lessonsOf = new Map(lessons.map((l) => [String(l._id), l]));
+  const completedOf = new Map(completed.map((p) => [String(p._id), p.count]));
   return {
-    rows: docs.map((o) => ({
-      id: String(o._id),
-      title: o.title,
-      termCode: termCodes.get(String(o.termId)) ?? '—',
-      status: o.status,
-      faculty: o.facultyIds.flatMap((id) => names.get(String(id)) ?? []),
-    })),
+    rows: docs.map((o): MyOfferingRow => {
+      const id = String(o._id);
+      const course = courseOf.get(String(o.courseId));
+      const published = lessonsOf.get(id);
+      return {
+        id,
+        title: o.title,
+        code: course?.code ?? '',
+        courseTitle: course?.title ?? o.title,
+        courseType: course?.type ?? null,
+        credits: { theory: o.credits.theory, practice: o.credits.practice, project: o.credits.project },
+        section: o.section ?? null,
+        units: o.modules.length,
+        termCode: termCodes.get(String(o.termId)) ?? '—',
+        status: o.status,
+        faculty: o.facultyIds.flatMap((fid) => names.get(String(fid)) ?? []),
+        view: learns(o)
+          ? {
+              as: 'learner',
+              completed: completedOf.get(id) ?? 0,
+              published: published?.count ?? 0,
+              videoSec: published?.videoSec ?? 0,
+            }
+          : { as: 'teacher', students: studentsOf.get(id) ?? 0, planPublished: planPublished.has(id) },
+      };
+    }),
     total,
   };
 }

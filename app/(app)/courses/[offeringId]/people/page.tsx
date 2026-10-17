@@ -1,12 +1,13 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { FileArrowUpIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
+import { FileArrowUpIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { changeEnrollments } from '../../actions';
 import { Field } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -113,7 +114,7 @@ async function People({
   ];
   return (
     <Section
-      icon={<UsersThreeIcon weight="duotone" />}
+      icon={<PageIcon name="people" className="size-8" />}
       title="Roster"
       description={
         publishedLessons === null

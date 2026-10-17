@@ -3,16 +3,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ArrowLeftIcon,
-  BroadcastIcon,
-  CalendarXIcon,
-  ChecksIcon,
   EyeIcon,
   HourglassIcon,
   ListChecksIcon,
   PencilSimpleIcon,
   PlayIcon,
   StopIcon,
-  UsersThreeIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
@@ -25,6 +21,7 @@ import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { LiveRoom } from '@/components/live-room';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -92,7 +89,7 @@ async function LiveSessionView({
         </Link>
       </Button>
       <PageHeader
-        icon={<BroadcastIcon weight="duotone" />}
+        icon={<PageIcon name="session" />}
         title={session.title}
         description={describe(detail)}
         actions={
@@ -188,7 +185,7 @@ async function LiveSessionView({
         {(session.state === 'cancelled' || session.state === 'not_held') && (
           <section className="surface grid place-items-center gap-2 p-10 text-center">
             <span className="icon-chip size-12 [&_svg]:size-7">
-              <CalendarXIcon weight="duotone" />
+              <PageIcon name="missing" className="size-10" />
             </span>
             <h2 className="text-lg font-semibold">
               {session.state === 'cancelled' ? 'This class was cancelled' : 'This class was not held'}
@@ -263,7 +260,7 @@ function Waiting({ detail, now }: { detail: SessionDetail; now: Date }) {
     <section className="surface grid place-items-center gap-3 p-8 text-center sm:p-10">
       {soon && <AutoRefresh seconds={20} />}
       <span className="icon-chip size-12 [&_svg]:size-7">
-        <HourglassIcon weight="duotone" />
+        <PageIcon name="session" className="size-10" />
       </span>
       <h2 className="text-lg font-semibold">
         Starts{' '}
@@ -316,7 +313,7 @@ function MyResult({ detail }: { detail: SessionDetail }) {
     <section className="surface grid gap-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-center gap-3">
         <span className="icon-chip size-10 [&_svg]:size-5">
-          <ChecksIcon weight="duotone" />
+          <PageIcon name="attendance" className="size-8" />
         </span>
         <h2 className="text-lg font-semibold tracking-tight">Your attendance</h2>
         {mine?.status && (
@@ -385,7 +382,7 @@ function AttendanceList({
       : '';
   return (
     <Section
-      icon={<UsersThreeIcon weight="duotone" />}
+      icon={<PageIcon name="attendance" className="size-8" />}
       title={live ? 'Attendance so far' : 'Attendance'}
       description={`${sheet.total} ${sheet.total === 1 ? 'student' : 'students'}, by roll number.${unmarkedNote}`}
     >
@@ -425,7 +422,7 @@ function AttendanceDialog({
         </Button>
       }
       size="wide"
-      icon={<ListChecksIcon weight="duotone" />}
+      icon={<PageIcon name="attendance" className="size-8" />}
       title={live ? 'Take attendance' : 'Change attendance'}
       description={
         manual && !detail.session.finalized

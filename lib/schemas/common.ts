@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 export const page = z.coerce.number().int().min(1).max(10_000).default(1);
-export const pageSize = 25;
+export const pageSize = 10;
 
 // Rich text is Tiptap JSON from StarterKit (05 §1, ADR-11). Only these node and mark types are stored, so a document
 // that passes this schema always renders with @tiptap/html (which throws on an unknown type).

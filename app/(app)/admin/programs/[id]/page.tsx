@@ -1,15 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  BasketIcon,
-  BooksIcon,
-  GraduationCapIcon,
-  PencilSimpleIcon,
-  PlusIcon,
-  TargetIcon,
-  UsersFourIcon,
-} from '@phosphor-icons/react/ssr';
+import { PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import {
@@ -25,6 +17,7 @@ import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,7 +74,7 @@ async function Program({
   return (
     <>
       <PageHeader
-        icon={<GraduationCapIcon weight="duotone" />}
+        icon={<PageIcon name="diploma" />}
         title={`${program.code} · ${program.name}`}
         description={department ?? 'No department yet: set one before creating offerings.'}
         actions={
@@ -91,7 +84,7 @@ async function Program({
                 <PencilSimpleIcon weight="duotone" /> Edit details
               </Button>
             }
-            icon={<GraduationCapIcon weight="duotone" />}
+            icon={<PageIcon name="diploma" className="size-8" />}
             title={`Edit ${program.code}`}
             description="Offerings copy the programme's department, so a programme with offerings keeps its department."
             action={saveProgram}
@@ -164,7 +157,7 @@ async function Program({
         <Outcomes program={program} />
 
         <Section
-          icon={<UsersFourIcon weight="duotone" />}
+          icon={<PageIcon name="users" className="size-8" />}
           title="Batches"
           description="An intake year of students. Sections split a batch for offerings and enrolment."
           action={<BatchDialog programId={program.id} />}
@@ -200,7 +193,7 @@ function Baskets({ program }: { program: ProgramDetail }) {
   const rows = [...program.baskets, ...Array.from({ length: Math.min(2, 12 - program.baskets.length) }, () => null)];
   return (
     <Section
-      icon={<BasketIcon weight="duotone" />}
+      icon={<PageIcon name="baskets" className="size-8" />}
       title="Baskets"
       description="The groups of the programme structure, such as Basket I (core) or Basket IV (choice), with the credits a student takes from each."
       action={
@@ -211,7 +204,7 @@ function Baskets({ program }: { program: ProgramDetail }) {
             </Button>
           }
           size="wide"
-          icon={<BasketIcon weight="duotone" />}
+          icon={<PageIcon name="baskets" className="size-8" />}
           title="Baskets"
           description="Renaming a basket keeps its courses. A basket that lists courses cannot be removed until they move."
           action={saveBaskets}
@@ -311,7 +304,7 @@ function Curriculum({
 }) {
   return (
     <Section
-      icon={<BooksIcon weight="duotone" />}
+      icon={<PageIcon name="books" className="size-8" />}
       title="Curriculum"
       description="The catalogue courses this programme lists. Offerings for its batches can only be of these courses."
       action={
@@ -321,7 +314,7 @@ function Curriculum({
               <PlusIcon weight="bold" /> Add course
             </Button>
           }
-          icon={<BooksIcon weight="duotone" />}
+          icon={<PageIcon name="books" className="size-8" />}
           title="Add a course to the curriculum"
           description="The course must be in the catalogue. Most courses arrive with the course list upload."
           action={addProgrammeCourse}
@@ -429,7 +422,7 @@ function BatchDialog({ programId, batch }: { programId: string; batch?: BatchRow
           </Button>
         )
       }
-      icon={<UsersFourIcon weight="duotone" />}
+      icon={<PageIcon name="users" className="size-8" />}
       title={batch ? `Edit ${batch.name}` : 'Add a batch'}
       description="Students are created into a batch and section; offerings enrol a whole batch or one section."
       action={saveBatch}
@@ -467,7 +460,7 @@ function Outcomes({ program }: { program: ProgramDetail }) {
   const titled = program.outcomes.filter((o) => o.title).length;
   return (
     <Section
-      icon={<TargetIcon weight="duotone" />}
+      icon={<PageIcon name="outcomes" className="size-8" />}
       title="Programme outcomes"
       description={`The codes PO1–PO12 and PSO1–PSO3 are the same in every programme; ${titled} of 15 have this programme's titles.`}
       action={
@@ -478,7 +471,7 @@ function Outcomes({ program }: { program: ProgramDetail }) {
             </Button>
           }
           size="wide"
-          icon={<TargetIcon weight="duotone" />}
+          icon={<PageIcon name="outcomes" className="size-8" />}
           title="Programme outcome titles"
           description="Leave a box empty if the programme does not use that code; course mappings and reports then show the code alone."
           action={saveProgramOutcomes}

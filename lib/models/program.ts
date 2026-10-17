@@ -34,6 +34,8 @@ const programSchema = new Schema(
 
 programSchema.index({ code: 1 }, { unique: true });
 programSchema.index({ departmentId: 1, status: 1 });
+// The programme list's search box (17 Oct 2026).
+programSchema.index({ code: 'text', name: 'text' });
 
 export type ProgramDoc = InferSchemaType<typeof programSchema>;
 export const Program: Model<ProgramDoc> = mongoose.models.Program ?? mongoose.model('Program', programSchema);

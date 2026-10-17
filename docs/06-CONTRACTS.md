@@ -48,7 +48,7 @@ export type ActionResult<T> =
 | Name | Definition | Notes |
 |---|---|---|
 | `objectId` | `z.string().regex(/^[a-f\d]{24}$/i)` | |
-| `page` | `z.coerce.number().int().min(1).max(10_000).default(1)` | `pageSize = 25`; `max per page = 100` |
+| `page` | `z.coerce.number().int().min(1).max(10_000).default(1)` | `pageSize = 10` (25 until 17 Oct 2026, when Aniket asked for ten rows a page); `max per page = 100` |
 | `richText` | the editor's hidden input (a JSON string, `''` when empty), ≤ 100 KB, parsed into `RichTextDoc`: a `doc` whose nodes and marks are StarterKit's (`paragraph text heading bulletList orderedList listItem blockquote codeBlock hardBreak horizontalRule`; marks `bold italic underline strike code link`), any other type → "Unsupported content." A document without text becomes `null` | `lib/schemas` may import only `zod`, so the type list stands in for a test render; `lib/domain/rich-text.ts` renders with `@tiptap/html/server` and its tests prove the output is inert. DAL reads parse stored documents with `RichTextDoc` |
 | `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)`; the action converts it with `parseIstLocal` (`lib/schemas` imports only `zod`) | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z`. Added with its first caller (M04) |
 | `istTime` | `HH:mm`, 00:00–23:59 (M03) | `<input type="time">`; the action joins it to an `istDate` and converts with `parseIstLocal` (scheduling a live class: date, start time and length, A-68) |

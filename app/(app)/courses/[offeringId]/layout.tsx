@@ -1,14 +1,7 @@
 import { Suspense } from 'react';
-import {
-  BookOpenTextIcon,
-  BroadcastIcon,
-  CalendarBlankIcon,
-  ChalkboardTeacherIcon,
-  CalendarDotsIcon,
-  PlayCircleIcon,
-  SquaresFourIcon,
-  UsersThreeIcon,
-} from '@phosphor-icons/react/ssr';
+import { CalendarBlankIcon, ChalkboardTeacherIcon } from '@phosphor-icons/react/ssr';
+import { PageIcon } from '@/components/page-icon';
+import { WorkspaceMark } from './workspace-mark';
 import { TabNav } from '@/components/tab-nav';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,19 +13,19 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
   const base = `/courses/${workspace.id}`;
   // 08 §3. Teachers get the Plan tab after Overview: write the plan first, then add lessons.
   const tabs = [
-    { href: base, label: 'Overview', icon: <SquaresFourIcon weight="duotone" /> },
+    { href: base, label: 'Overview', icon: <PageIcon name="overview" className="size-5" /> },
     ...(workspace.canTeach
-      ? [{ href: `${base}/plan`, label: 'Course plan', icon: <CalendarDotsIcon weight="duotone" /> }]
+      ? [{ href: `${base}/plan`, label: 'Course plan', icon: <PageIcon name="plan" className="size-5" /> }]
       : []),
     {
       href: `${base}/content`,
       label: workspace.access === 'learn' ? 'Lessons' : 'Content',
-      icon: <PlayCircleIcon weight="duotone" />,
+      icon: <PageIcon name="lessons" className="size-5" />,
     },
-    { href: `${base}/live`, label: 'Live', icon: <BroadcastIcon weight="duotone" /> },
+    { href: `${base}/live`, label: 'Live', icon: <PageIcon name="live" className="size-5" /> },
     ...(workspace.access === 'learn'
       ? []
-      : [{ href: `${base}/people`, label: 'People', icon: <UsersThreeIcon weight="duotone" /> }]),
+      : [{ href: `${base}/people`, label: 'People', icon: <PageIcon name="people" className="size-5" /> }]),
   ];
   return (
     <>
@@ -42,8 +35,8 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
           className="from-primary/[0.06] pointer-events-none absolute inset-0 bg-linear-to-r via-transparent to-transparent"
         />
         <div className="relative flex flex-wrap items-start gap-4">
-          <span className="icon-chip size-12 [&_svg]:size-7">
-            <BookOpenTextIcon weight="duotone" />
+          <span className="icon-chip size-14">
+            <WorkspaceMark base={base} />
           </span>
           <div className="grid min-w-0 flex-1 gap-2">
             <div className="flex flex-wrap items-center gap-2">

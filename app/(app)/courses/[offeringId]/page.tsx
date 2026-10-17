@@ -1,22 +1,13 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowRightIcon,
-  CalendarDotsIcon,
-  DownloadSimpleIcon,
-  FileTextIcon,
-  GridFourIcon,
-  InfoIcon,
-  PlayCircleIcon,
-  RocketLaunchIcon,
-  TargetIcon,
-} from '@phosphor-icons/react/ssr';
+import { ArrowRightIcon, DownloadSimpleIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../loading';
 import { Checklist } from '@/components/checklist';
 import { CoPoMatrix } from '@/components/co-po-matrix';
 import { EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
+import { PageIcon } from '@/components/page-icon';
 import { RichTextView } from '@/components/rich-text-view';
 import { Fact, Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
@@ -84,7 +75,7 @@ function Setup({
   const link = (href: string) => (canTeach ? href : null);
   return (
     <Checklist
-      icon={<RocketLaunchIcon weight="duotone" />}
+      icon={<PageIcon name="overview" className="size-8" />}
       title="Get this course ready"
       readyTitle="This course is ready"
       hint={canTeach ? 'Follow them in order; each one links to where it is done.' : undefined}
@@ -140,7 +131,7 @@ function MyProgress({ progress, base }: { progress: LearnerProgress; base: strin
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="icon-chip size-10 [&_svg]:size-5">
-            <PlayCircleIcon weight="duotone" />
+            <PageIcon name="lessons" className="size-8" />
           </span>
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight">Your progress</h2>
@@ -189,7 +180,7 @@ function PlanSection({
   const next = plan?.calendar.find((row) => !row.past);
   return (
     <Section
-      icon={<CalendarDotsIcon weight="duotone" />}
+      icon={<PageIcon name="plan" className="size-8" />}
       title="Course plan"
       description={
         plan?.publishedAt
@@ -209,7 +200,7 @@ function PlanSection({
     >
       {!plan ? (
         <EmptyState
-          icon={<CalendarDotsIcon weight="duotone" />}
+          icon={<PageIcon name="plan" className="size-8" />}
           text={
             canTeach
               ? 'Not published yet. Write the plan, schedule the sessions and publish it from the Course plan tab.'
@@ -257,7 +248,7 @@ function Syllabus({ course }: { course: OfferingCourse }) {
   const books = [...course.textbooks, ...course.references];
   return (
     <Section
-      icon={<FileTextIcon weight="duotone" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title="Syllabus"
       description="The modules this course covers, in order, with their practicals, the projects and the books."
       action={
@@ -274,7 +265,7 @@ function Syllabus({ course }: { course: OfferingCourse }) {
       {course.modules.length === 0 && books.length === 0 ? (
         !course.syllabusFileKey && (
           <EmptyState
-            icon={<FileTextIcon weight="duotone" />}
+            icon={<PageIcon name="lessons" className="size-8" />}
             text="The syllabus has not been added to this course yet."
           />
         )
@@ -327,7 +318,7 @@ function Syllabus({ course }: { course: OfferingCourse }) {
 function About({ course }: { course: OfferingCourse }) {
   return (
     <Section
-      icon={<InfoIcon weight="duotone" />}
+      icon={<PageIcon name="course" className="size-8" />}
       title={`${course.code} · ${course.title}`}
       description="The catalogue course this offering runs."
     >
@@ -357,12 +348,15 @@ function Outcomes({ course }: { course: OfferingCourse }) {
   return (
     <>
       <Section
-        icon={<TargetIcon weight="duotone" />}
+        icon={<PageIcon name="outcomes" className="size-8" />}
         title="Course outcomes"
         description="What a student can do after this course."
       >
         {course.cos.length === 0 ? (
-          <EmptyState text="No course outcomes have been defined yet." icon={<TargetIcon weight="duotone" />} />
+          <EmptyState
+            text="No course outcomes have been defined yet."
+            icon={<PageIcon name="outcomes" className="size-8" />}
+          />
         ) : (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
             {course.cos.map((co) => (
@@ -385,7 +379,7 @@ function Outcomes({ course }: { course: OfferingCourse }) {
       </Section>
       {course.cos.length > 0 && (
         <Section
-          icon={<GridFourIcon weight="duotone" />}
+          icon={<PageIcon name="mapping" className="size-8" />}
           title="CO–PO–PSO mapping"
           description="How strongly each course outcome supports each programme outcome (1 low, 3 high). Hover a code for its title."
         >

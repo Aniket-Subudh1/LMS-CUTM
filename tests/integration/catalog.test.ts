@@ -10,7 +10,7 @@ import {
   saveSyllabus,
   setCoordinator,
 } from '@/app/(app)/catalog/actions';
-import { getCatalogCourse, listCatalog } from '@/lib/data/courses';
+import { getCatalogCourse, getCatalogStats, listCatalog } from '@/lib/data/courses';
 import { db } from '@/lib/db';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
@@ -309,5 +309,19 @@ describe('listCatalog', () => {
     expect(await codes({ q: 'quantum' })).toEqual(['ZZQA1001']);
     expect(await codes({ q: 'zzqa', mine: true })).toEqual(['ZZQA1001']);
     expect(await codes({ q: 'zzqa', review: true })).toEqual(['ZZQA1002']);
+  });
+});
+
+describe('getCatalogStats', () => {
+  it('counts the courses, the active ones, those to review and those without a coordinator', async () => {
+    await makeCourse({ reviewNeeded: true, issues: ['Check me.'] });
+    await makeCourse({ status: 'draft', coordinatorId: newId() });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    expect(await getCatalogStats()).toEqual({
+      total: await Course.countDocuments(),
+      active: await Course.countDocuments({ status: 'active' }),
+      review: await Course.countDocuments({ reviewNeeded: true }),
+      unassigned: await Course.countDocuments({ coordinatorId: null }),
+    });
   });
 });

@@ -1,6 +1,7 @@
 import 'server-only';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { istDayKey } from '@/lib/domain/time';
 import { AuditLog } from '@/lib/models/audit-log';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
@@ -29,6 +30,31 @@ export type AuditFilters = {
 
 const DAY = 24 * 60 * 60 * 1000;
 const istStart = (day: string) => new Date(`${day}T00:00:00+05:30`);
+
+export type AuditStats = { total: number; today: number; week: number; people: number };
+
+// The tiles above the audit log: entries in all, today and in the last seven IST days, and who made the week's.
+export async function getAuditStats(): Promise<AuditStats> {
+  await requireViewer(['admin']);
+  await db();
+  const today = istStart(istDayKey(new Date()));
+  const week = new Date(today.getTime() - 6 * DAY);
+  const [total, todayCount, weekCount, people] = await Promise.all([
+    AuditLog.estimatedDocumentCount(),
+    AuditLog.countDocuments({ at: { $gte: today } }),
+    AuditLog.countDocuments({ at: { $gte: week } }),
+    AuditLog.distinct('actorId', { at: { $gte: week } }),
+  ]);
+  return { total, today: todayCount, week: weekCount, people: people.length };
+}
+
+// The kinds of record the log holds, for its filter. The { entity, at } index serves a distinct scan.
+export async function listAuditEntities(): Promise<string[]> {
+  await requireViewer(['admin']);
+  await db();
+  const entities: string[] = await AuditLog.distinct('entity');
+  return entities.toSorted();
+}
 
 export async function listAudit(page: number, filters: AuditFilters): Promise<{ rows: AuditRow[]; total: number }> {
   await requireViewer(['admin']);

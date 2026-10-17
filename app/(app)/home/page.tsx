@@ -4,29 +4,20 @@ import Link from 'next/link';
 import {
   ArrowRightIcon,
   ArrowUpRightIcon,
-  BellIcon,
-  BookOpenTextIcon,
   BooksIcon,
-  BroadcastIcon,
   CalendarBlankIcon,
   CaretRightIcon,
-  ChalkboardTeacherIcon,
-  ClipboardTextIcon,
-  ClockCounterClockwiseIcon,
-  GraduationCapIcon,
   MagnifyingGlassIcon,
   MedalIcon,
   PencilSimpleLineIcon,
-  PlayCircleIcon,
   PlusIcon,
-  SlidersHorizontalIcon,
-  UserIcon,
   UsersThreeIcon,
 } from '@phosphor-icons/react/ssr';
 import type { Icon } from '@phosphor-icons/react';
 import Loading from './loading';
 import { EmptyState } from '@/components/data-table';
 import { LinkSpinner } from '@/components/link-spinner';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { OfferingCard } from '@/components/offering-card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -56,7 +47,7 @@ const changes = (n: number) => `${count.format(n)} ${n === 1 ? 'change' : 'chang
 
 const OFFERING_ROLES: Role[] = ['admin', 'hod', 'faculty', 'student'];
 
-type Tile = { href: string; label: string; value: number; note?: string; icon: Icon };
+type Tile = { href: string; label: string; value: number; note?: string; icon: PageIconName };
 type Action = { href: string; label: string; icon: Icon };
 
 export default function HomePage() {
@@ -89,7 +80,10 @@ async function Home() {
     today.length > 0;
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">Hello, {viewer.name.split(' ')[0]}</h1>
+      <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
+        <PageIcon name="dashboard" className="size-12" />
+        Hello, {viewer.name.split(' ')[0]}
+      </h1>
       <div className={cn('grid items-start gap-5', side && 'xl:grid-cols-[19rem_minmax(0,1fr)]')}>
         <div className="grid gap-5">
           <Hero viewer={viewer} featured={featured} />
@@ -107,8 +101,8 @@ async function Home() {
                     <Link href={t.href} className="surface-interactive relative flex h-full flex-col gap-5 p-4">
                       {/* On a phone a tile is about 150 px wide: the label goes under its icon so one long word fits. */}
                       <span className="flex items-start gap-3 max-sm:flex-col max-sm:gap-2">
-                        <span className="icon-chip size-10 [&_svg]:size-5">
-                          <t.icon weight="duotone" />
+                        <span className="icon-chip size-10">
+                          <PageIcon name={t.icon} className="size-8" />
                         </span>
                         <span className="text-muted-foreground text-sm leading-tight sm:max-w-24">{t.label}</span>
                         <LinkSpinner className="absolute top-4 right-4" />
@@ -155,9 +149,9 @@ async function Home() {
                   </Link>
                 </div>
                 <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {next.map((o, i) => (
+                  {next.map((o) => (
                     <li key={o.id}>
-                      <OfferingCard offering={o} featured={i === 0} />
+                      <OfferingCard offering={o} />
                     </li>
                   ))}
                 </ul>
@@ -172,48 +166,46 @@ async function Home() {
 
 function tilesFor(viewer: Viewer, summary: HomeSummary, unread: number): Tile[] {
   const studentOnly = viewer.roles.every((r) => r === 'student');
-  return [
-    ...(summary.myOfferings !== null
-      ? [
-          {
-            href: '/courses',
-            label: studentOnly ? 'My courses' : 'My offerings',
-            value: summary.myOfferings,
-            icon: BooksIcon,
-          },
-        ]
-      : []),
-    ...(summary.enrolments !== null
-      ? [{ href: '/courses', label: 'Student enrolments', value: summary.enrolments, icon: UsersThreeIcon }]
-      : []),
-    ...(summary.admin
-      ? [
-          {
-            href: '/admin/users',
-            label: 'Users',
-            value: summary.admin.users,
-            note: `${count.format(summary.admin.invited)} yet to sign in`,
-            icon: UsersThreeIcon,
-          },
-          {
-            href: '/admin/offerings?status=active',
-            label: 'Active offerings',
-            value: summary.admin.activeOfferings,
-            icon: ChalkboardTeacherIcon,
-          },
-          { href: '/catalog', label: 'Courses', value: summary.admin.courses, icon: BookOpenTextIcon },
-          { href: '/admin/programs', label: 'Programmes', value: summary.admin.programs, icon: GraduationCapIcon },
-        ]
-      : []),
-    // T10: every role sees its unread notifications.
-    {
-      href: '/notifications',
-      label: 'Notifications',
-      value: unread,
-      note: unread === 0 ? 'all caught up' : 'unread',
-      icon: BellIcon,
-    },
-  ];
+  const tiles: Tile[] = [];
+  if (summary.myOfferings !== null) {
+    tiles.push({
+      href: '/courses',
+      label: studentOnly ? 'My courses' : 'My offerings',
+      value: summary.myOfferings,
+      icon: 'courses',
+    });
+  }
+  if (summary.enrolments !== null) {
+    tiles.push({ href: '/courses', label: 'Student enrolments', value: summary.enrolments, icon: 'users' });
+  }
+  if (summary.admin) {
+    tiles.push(
+      {
+        href: '/admin/users',
+        label: 'Users',
+        value: summary.admin.users,
+        note: `${count.format(summary.admin.invited)} yet to sign in`,
+        icon: 'users',
+      },
+      {
+        href: '/admin/offerings?status=active',
+        label: 'Active offerings',
+        value: summary.admin.activeOfferings,
+        icon: 'offerings',
+      },
+      { href: '/catalog', label: 'Courses', value: summary.admin.courses, icon: 'catalog' },
+      { href: '/admin/programs', label: 'Programmes', value: summary.admin.programs, icon: 'programmes' },
+    );
+  }
+  // T10: every role sees its unread notifications.
+  tiles.push({
+    href: '/notifications',
+    label: 'Notifications',
+    value: unread,
+    note: unread === 0 ? 'all caught up' : 'unread',
+    icon: 'notifications',
+  });
+  return tiles;
 }
 
 // The viewer's newest offering with a way in; without one, what to do first.
@@ -234,9 +226,11 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
       {featured ? (
         <>
           <div className="flex items-start gap-4">
-            <span className="bg-primary text-primary-foreground grid size-20 shrink-0 place-content-center justify-items-center gap-1 rounded-xl">
-              <BookOpenTextIcon weight="fill" className="size-7" />
-              <span className="max-w-16 truncate text-[0.625rem] font-semibold tracking-wide">{featured.termCode}</span>
+            <span className="grid w-16 shrink-0 justify-items-center gap-1">
+              <PageIcon name="course" className="size-16" />
+              <span className="text-muted-foreground max-w-full truncate text-[0.625rem] font-semibold tracking-wide">
+                {featured.termCode}
+              </span>
             </span>
             <div className="grid min-w-0 gap-1.5">
               <h2 className="line-clamp-3 leading-snug font-semibold">{featured.title}</h2>
@@ -256,8 +250,8 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
         </>
       ) : (
         <div className="flex items-start gap-4">
-          <span className="bg-primary text-primary-foreground grid size-16 shrink-0 place-items-center rounded-xl">
-            <GraduationCapIcon weight="fill" className="size-7" />
+          <span className="grid size-16 shrink-0 place-items-center">
+            <PageIcon name="dashboard" className="size-16" />
           </span>
           <div className="grid min-w-0 gap-1.5">
             <h2 className="leading-snug font-semibold">Welcome to the LMS</h2>
@@ -301,14 +295,13 @@ function Hero({ viewer, featured }: { viewer: Viewer; featured?: MyOfferingRow }
   );
 }
 
-const ENTITY: Record<string, { icon: Icon; tone: string }> = {
-  user: { icon: UserIcon, tone: 'bg-primary' },
-  user_import: { icon: UsersThreeIcon, tone: 'bg-primary' },
-  course: { icon: BookOpenTextIcon, tone: 'bg-foreground' },
-  offering: { icon: ChalkboardTeacherIcon, tone: 'bg-success' },
-  scheme: { icon: SlidersHorizontalIcon, tone: 'bg-gold' },
+const ENTITY: Record<string, PageIconName> = {
+  user: 'badge',
+  user_import: 'users',
+  course: 'catalog',
+  offering: 'offerings',
+  scheme: 'evaluation',
 };
-const OTHER = { icon: ClockCounterClockwiseIcon, tone: 'bg-muted-foreground' };
 
 function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>['recent'] }) {
   return (
@@ -327,17 +320,15 @@ function RecentActivity({ recent }: { recent: NonNullable<HomeSummary['admin']>[
         </Link>
       </div>
       {recent.length === 0 ? (
-        <EmptyState text="Nothing has been recorded yet." icon={<ClockCounterClockwiseIcon weight="duotone" />} />
+        <EmptyState text="Nothing has been recorded yet." icon={<PageIcon name="audit" />} />
       ) : (
         <ol className="grid gap-4">
           {recent.map((a) => {
-            const e = ENTITY[a.entity] ?? OTHER;
+            const mark = ENTITY[a.entity] ?? 'audit';
             return (
               <li key={a.id} className="flex items-center gap-3">
-                <span
-                  className={cn('text-primary-foreground grid size-14 shrink-0 place-items-center rounded-xl', e.tone)}
-                >
-                  <e.icon className="size-6" />
+                <span className="bg-primary/10 grid size-14 shrink-0 place-items-center rounded-2xl">
+                  <PageIcon name={mark} className="size-11" />
                 </span>
                 <span className="grid min-w-0 flex-1 gap-0.5 leading-tight">
                   <span className="truncate text-sm font-semibold first-letter:uppercase">
@@ -528,8 +519,8 @@ function TodaysClasses({ rows, student }: { rows: TodayClass[]; student: boolean
                 row.status === 'live' && 'ring-destructive/30 bg-destructive/[0.03]',
               )}
             >
-              <span className="icon-chip size-10 [&_svg]:size-5">
-                <BroadcastIcon weight="duotone" />
+              <span className="icon-chip size-10">
+                <PageIcon name="live" className="size-8" />
               </span>
               <span className="grid min-w-0 flex-1">
                 <span className="truncate text-sm font-medium">{row.title}</span>
@@ -565,8 +556,8 @@ function ContinueLearning({ rows }: { rows: ContinueRow[] }) {
               href={`/courses/${row.offeringId}/content/${row.lessonId}`}
               className="surface-interactive group flex items-center gap-4 p-3"
             >
-              <span className="icon-chip size-10 [&_svg]:size-5">
-                <PlayCircleIcon weight="duotone" />
+              <span className="icon-chip size-10">
+                <PageIcon name="lesson" className="size-8" />
               </span>
               <span className="grid min-w-0 flex-1 gap-1.5">
                 <span className="grid min-w-0">
@@ -596,8 +587,8 @@ function PlanRequests({ rows }: { rows: PlanRequestRow[] }) {
   return (
     <section className="surface ring-warning/30 grid gap-4 p-5">
       <div className="flex items-start gap-3">
-        <span className="bg-warning/10 text-warning grid size-10 shrink-0 place-items-center rounded-xl">
-          <ClipboardTextIcon weight="duotone" className="size-5" />
+        <span className="bg-warning/10 grid size-10 shrink-0 place-items-center rounded-xl">
+          <PageIcon name="plan" className="size-8" />
         </span>
         <div className="min-w-0">
           <h2 className="text-lg font-semibold tracking-tight">Publish your course plan</h2>

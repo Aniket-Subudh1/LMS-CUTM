@@ -1,62 +1,120 @@
 import Link from 'next/link';
-import { CaretRightIcon } from '@phosphor-icons/react/ssr';
+import { PlayCircleIcon, StackIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
 import { LinkSpinner } from '@/components/link-spinner';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/cn';
 import type { MyOfferingRow } from '@/lib/data/workspace';
-import { initials, statusTone } from '@/lib/format';
+import { creditTotal, formatCredits } from '@/lib/domain/catalog';
+import { COURSE_TYPE_LABEL, formatDuration, formatPct, initials, statusTone } from '@/lib/format';
 
-// `featured` is the dark first card of a row on Home.
-export function OfferingCard({ offering, featured = false }: { offering: MyOfferingRow; featured?: boolean }) {
-  const [lead, ...others] = offering.faculty;
+// Design "A · Cover on top" (chosen by Aniket from three mock-ups, 17 Oct 2026). There are no course images, so the
+// cover is a flat tone picked from the course code, which keeps a course the same colour on every page.
+const TONES = [
+  { cover: 'bg-primary text-primary-foreground', chip: 'bg-primary/10 text-primary' },
+  { cover: 'bg-teal text-primary-foreground', chip: 'bg-teal/10 text-teal' },
+  { cover: 'bg-gold text-foreground', chip: 'bg-gold/15 text-foreground' },
+];
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+export function OfferingCard({ offering: o }: { offering: MyOfferingRow }) {
+  const [lead, ...others] = o.faculty;
+  const tone = TONES[[...o.code].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % TONES.length];
+  const credits = creditTotal(o.credits);
+  const { view } = o;
+  const pct = view.as === 'learner' && view.published > 0 ? (100 * view.completed) / view.published : 0;
   return (
-    <Link
-      href={`/courses/${offering.id}`}
-      className={cn(
-        'surface-interactive flex h-full flex-col gap-3 p-4',
-        featured && 'bg-foreground! text-background! ring-foreground!',
-      )}
-    >
-      <span className="flex items-center justify-between gap-2">
-        <Badge variant={featured ? 'default' : statusTone(offering.status)} className="capitalize">
-          {offering.status}
-        </Badge>
-        <span className={cn('truncate text-xs', featured ? 'text-background/70' : 'text-muted-foreground')}>
-          {offering.termCode}
+    // Named by the offering's full title, so a screen reader announces the course rather than the whole card.
+    <Link href={`/courses/${o.id}`} aria-label={o.title} className="surface-interactive flex h-full flex-col p-2">
+      <span
+        className={cn(
+          'cover-dots relative flex h-32 flex-col justify-end overflow-hidden rounded-xl px-4 py-3.5',
+          tone.cover,
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute -top-4 -right-1.5 text-8xl leading-none font-extrabold tracking-tighter opacity-10"
+        >
+          {o.code.replace(/^\D+/, '')}
         </span>
+        <LinkSpinner className="absolute top-3 right-3" />
+        <span className="relative text-xl font-bold tracking-tight">{o.code}</span>
+        <span className="relative text-xs opacity-80">{o.termCode}</span>
       </span>
-      <span className="line-clamp-2 text-lg leading-snug font-semibold tracking-tight">{offering.title}</span>
-      <span className="mt-auto flex items-center gap-2 pt-2">
-        <Avatar className="size-8">
-          <AvatarFallback
-            className={cn(
-              'text-xs font-semibold',
-              featured ? 'bg-background/15 text-background' : 'bg-primary/10 text-primary',
-            )}
-          >
-            {lead ? initials(lead) : '–'}
-          </AvatarFallback>
-        </Avatar>
-        <span className="grid min-w-0 flex-1 leading-tight">
-          <span className={cn('text-xs', featured ? 'text-background/60' : 'text-muted-foreground')}>Faculty</span>
-          <span className="truncate text-sm font-medium">
+      <span className="flex flex-1 flex-col gap-2.5 px-2 pt-3 pb-2">
+        <span className="flex flex-wrap gap-1.5 text-xs font-medium">
+          {o.courseType && (
+            <span className={cn('rounded-md px-2 py-0.5', tone.chip)}>{COURSE_TYPE_LABEL[o.courseType]}</span>
+          )}
+          <span className="bg-muted text-muted-foreground rounded-md px-2 py-0.5">
+            {credits > 0 ? `${plural(credits, 'credit')} · ${formatCredits(o.credits)}` : 'Non-credit'}
+          </span>
+        </span>
+        <span className="line-clamp-2 text-base leading-snug font-semibold tracking-tight">{o.courseTitle}</span>
+        <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-sm">
+          <Avatar className="size-6">
+            <AvatarFallback className="bg-primary/10 text-primary text-[0.625rem] font-semibold">
+              {lead ? initials(lead) : '–'}
+            </AvatarFallback>
+          </Avatar>
+          <span className="truncate">
             {lead ? `${lead}${others.length > 0 ? ` +${others.length}` : ''}` : 'Not assigned'}
           </span>
+          {o.section && <span className="shrink-0">· Section {o.section}</span>}
         </span>
-        {featured ? (
-          <span className="bg-background text-foreground inline-flex h-8 shrink-0 items-center gap-0.5 rounded-full pr-2 pl-3 text-[0.8125rem] font-medium">
-            Open
-            <LinkSpinner />
-            <CaretRightIcon className="size-4" />
+        {view.as === 'learner' ? (
+          <span className="grid gap-1.5 text-xs">
+            <span className="text-muted-foreground flex justify-between gap-2">
+              Progress
+              <span className={cn(view.published > 0 && 'text-foreground font-semibold')}>
+                {view.published > 0 ? formatPct(pct) : 'No lessons yet'}
+              </span>
+            </span>
+            {view.published > 0 ? (
+              <Progress value={pct} className="bg-muted h-1.5" aria-label="Lessons complete" />
+            ) : (
+              <span className="bg-muted h-1.5 rounded-full" />
+            )}
           </span>
         ) : (
-          <span className="bg-foreground text-background inline-flex h-8 shrink-0 items-center gap-0.5 rounded-full pr-2 pl-3 text-[0.8125rem] font-medium">
-            Open
-            <LinkSpinner />
-            <CaretRightIcon className="size-4" />
+          <span className="flex items-center justify-between gap-2 text-xs">
+            <Badge variant={statusTone(o.status)}>{o.status}</Badge>
+            <span className="text-muted-foreground truncate">
+              {view.planPublished ? 'Course plan published' : 'No course plan yet'}
+            </span>
           </span>
         )}
+        <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1">
+          <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs [&_svg]:size-4 [&_svg]:shrink-0">
+            {view.as === 'learner' ? (
+              <>
+                {view.published > 0 ? <PlayCircleIcon /> : <StackIcon />}
+                <span className="truncate">
+                  {view.published > 0
+                    ? `${view.completed} of ${plural(view.published, 'lesson')}${view.videoSec > 0 ? ` · ${formatDuration(view.videoSec)}` : ''}`
+                    : plural(o.units, 'unit')}
+                </span>
+              </>
+            ) : (
+              <>
+                <UsersThreeIcon />
+                <span className="truncate">
+                  {plural(view.students, 'student')} · {plural(o.units, 'unit')}
+                </span>
+              </>
+            )}
+          </span>
+          <span className="bg-foreground text-background ml-auto inline-flex h-9 shrink-0 items-center rounded-full px-4 text-[0.8125rem] font-medium">
+            {view.as === 'teacher'
+              ? 'Open workspace'
+              : view.completed > 0 && view.completed < view.published
+                ? 'Continue'
+                : 'Open course'}
+          </span>
+        </span>
       </span>
     </Link>
   );

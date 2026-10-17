@@ -16,7 +16,11 @@ async function signedIn(browser: Browser, email: string): Promise<Page> {
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/home$/);
+  // My courses shows ten a page and earlier runs leave offerings behind, so search for the seeded one.
   await page.goto('/courses');
+  await page.getByLabel('Search courses', { exact: true }).fill(COURSE);
+  await page.getByLabel('Search courses', { exact: true }).press('Enter');
+  await expect(page).toHaveURL((url) => url.searchParams.get('q') === COURSE);
   await page.getByRole('link', { name: COURSE }).click();
   await expect(page.getByRole('heading', { name: COURSE })).toBeVisible();
   await page.getByRole('tab', { name: 'Live' }).click();
