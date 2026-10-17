@@ -53,7 +53,7 @@ export type ActionResult<T> =
 | `istDateTime` | `z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)`; the action converts it with `parseIstLocal` (`lib/schemas` imports only `zod`) | `<input type="datetime-local">` sends no time zone; the server interprets it as **IST (+05:30)**. `parseIstLocal('2026-10-12T10:30')` → `2026-10-12T05:00:00.000Z`. Added with its first caller (M04) |
 | `istTime` | `HH:mm`, 00:00–23:59 (M03) | `<input type="time">`; the action joins it to an `istDate` and converts with `parseIstLocal` (scheduling a live class: date, start time and length, A-68) |
 | `istDate` | `YYYY-MM-DD` string, checked to be a real date | for calendar dates; `lib/schemas` imports `zod` only, so the action converts it with `istDateToDate` (`lib/domain/time.ts`) to a `Date` at 00:00 IST |
-| `marks` | `z.coerce.number().min(0).max(1000)` then `roundHalfUp(x, 2)` | all hand-entered marks |
+| `marks` | `z.coerce.number().min(0).max(1000)` then `roundHalfUp(x, 2)` in the action (`lib/schemas` imports only `zod`) | all hand-entered marks (M04) |
 | `ids[]` | `z.array(objectId).max(n)` with the `name[]` form convention | |
 | `email` | `z.email().toLowerCase()` | |
 
@@ -222,7 +222,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `compute/finalizeLiveSession` | `FinalizeLiveJob { sessionId }` (M03) | `live-final-<sessionId>` | one transaction: the claim on `finalizedAt` and every write commit together, so a crash is retried from the start and a second run finds nothing to claim; manual marks untouched | 07 §10 |
 | `compute/liveSweep` | `LiveSweepJob {}` (M03) | scheduler `liveSweep` | ends a session only while it is `live`; re-adding a finalize job is deduped by its id, and a failed one is retried instead | ends classes still live 30 min after `scheduledEnd` (at `scheduledEnd`, closing their rooms) and finalizes ended sessions left unfinalized for 10 min (02 §8) |
 | `compute/liveControl` | `LiveControlJob { op: 'rights', sessionId } \| { op: 'muteAll', sessionId, byId, byName }` (M03c) | none: each control is its own job | reads the class as it is when it runs, so a repeat applies the same state; nothing once the class is not live | `rights`: `setRights` with the class's `studentsMay` for every student in the room. `muteAll`: `muteMicrophone` for everyone but `byId`, then `tell` them "<byName> muted everyone" |
-| `compute/assessmentSweep` | `{}` | scheduler | `dueNotifiedAt` guards reminders; auto-submit is idempotent | 24 h reminders (COM-03) + auto-submit expired attempts (M04) |
+| `compute/assessmentSweep` | `AssessmentSweepJob {}` (M04) | scheduler `assessmentSweep` | a reminder is claimed by setting `dueNotifiedAt` only where it is null; an attempt is handed in only while `in_progress`, so its counters go up once | 24 h reminders (COM-03) to enrolled students without a submission + hand in attempts whose `deadlineAt` is more than 5 min past, in batches (M04) |
 | `compute/gradeCode` | `{ submissionId }` | `code-<submissionId>` | overwrites the same results | M05 |
 | `compute/engagementSnapshot` | `{ offeringId }` | `eng-<offeringId>-<day>` | overwrites `enrollments.engagement` | M10 |
 | `compute/proctorRetention` | `{}` | scheduler | deletes keys then `$unset` | 05 §8 |

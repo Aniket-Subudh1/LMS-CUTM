@@ -4,24 +4,6 @@ import { db } from '@/lib/db';
 import { Notification, type NotificationKind } from '@/lib/models/notification';
 import { pageSize } from '@/lib/schemas/common';
 
-const KEEP_MS = 90 * 86_400_000;
-
-// COM-03: one row per recipient, written in chunks; actions and the worker both call it.
-export async function notify(
-  userIds: readonly string[],
-  input: { kind: NotificationKind; title: string; href: string },
-) {
-  const unique = [...new Set(userIds)];
-  await db();
-  const expiresAt = new Date(Date.now() + KEEP_MS);
-  for (let start = 0; start < unique.length; start += 1_000) {
-    await Notification.insertMany(
-      unique.slice(start, start + 1_000).map((userId) => ({ userId, ...input, expiresAt })),
-      { ordered: false },
-    );
-  }
-}
-
 export type NotificationRow = {
   id: string;
   kind: NotificationKind;

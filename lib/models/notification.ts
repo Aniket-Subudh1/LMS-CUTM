@@ -8,6 +8,9 @@ export const NOTIFICATION_KINDS = [
   'live.changed',
   'live.cancelled',
   'live.started',
+  'assessment.published',
+  'assessment.dueSoon',
+  'results.published',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

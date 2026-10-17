@@ -3,6 +3,7 @@ import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
 import type {
+  AssessmentSweepJob,
   CoursewareListJob,
   CoursewarePageJob,
   FinalizeLiveJob,
@@ -16,8 +17,8 @@ import type {
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
 type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
 type SyncQueue = Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob;
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl';
+type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob;
+type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;

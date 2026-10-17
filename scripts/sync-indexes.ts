@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { db } from '@/lib/db';
 import { log } from '@/lib/log';
+import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Batch } from '@/lib/models/batch';
@@ -16,6 +17,7 @@ import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Setting } from '@/lib/models/setting';
+import { Submission } from '@/lib/models/submission';
 import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
@@ -36,6 +38,8 @@ const models = [
   Enrollment,
   LiveSession,
   Attendance,
+  Assessment,
+  Submission,
   EngagementDaily,
   Notification,
   Setting,

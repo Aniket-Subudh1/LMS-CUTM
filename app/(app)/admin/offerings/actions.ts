@@ -4,7 +4,7 @@ import { refresh } from 'next/cache';
 import mongoose, { type Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { notify } from '@/lib/data/notifications';
+import { notify } from '@/lib/data/notify';
 import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { courseMode } from '@/lib/domain/catalog';

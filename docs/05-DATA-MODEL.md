@@ -222,7 +222,7 @@ Invariants: a manual mark overrides a derived one and is audited (`attendance.ma
 ## 5. Assessment and marks
 
 ### 5.1 `assessments`
-Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`.
+Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`. M04 builds the first five (`ASSESSMENT_MODES`, with the question types each may hold in `MODE_ITEM_TYPES`, `lib/schemas/assessment.ts`); M05 adds the coding modes, `proctoring` and the `code` items, M07 `project_review` and `observation` items. Sizes are `ASSESSMENT_LIMITS` there.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -230,7 +230,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | mode | S | one of the modes above |
 | title | S | ≤ 160 |
 | instructions | RichText? | |
-| items | [Item] | 1–100 (see below) |
+| items | [Item] | 0–100 while a draft, 1–100 to publish (see below) |
 | maxMarks | N | Σ `items.maxMarks`, stored |
 | opensAt, closesAt | D | opensAt < closesAt |
 | lateUntil | D? | ≥ closesAt; null = no late submissions |
@@ -252,7 +252,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | maxMarks | N | > 0 |
 | coIds | [Id] | **≥ 1 for ugc offerings** (CPP-05/06); each ∈ course.cos |
 | bloomLevel | S? | |
-| options | `[{ _id: Id, text: S }]?` | mcq/msq: 2–8, text ≤ 500 |
+| options | `[{ _id: Id, text: S }]?` | mcq/msq: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-M04-7) |
 | answer | `{ optionId? , optionIds?, value?, tolerance? }?` | mcq: optionId; msq: optionIds; numeric: value + tolerance ≥ 0. **Never sent to students** |
 | rubric | `[{ _id: Id, criterion: S, maxMarks: N }]?` | text/file/observation; max 10; Σ maxMarks = item.maxMarks |
 | code | `{ languages: [S], starter: { [lang]: S }, timeLimitSec: N, memoryKb: N, testCases: [{ _id: Id, input: S, expected: S, hidden: B, weight: N }] }?` | code only; ≤ 5 code items per assessment; 1–15 test cases; input/expected ≤ 8 KB; hidden cases **never sent to students** |
@@ -260,7 +260,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 `observation` items have no student answer — faculty score them (project reviews, viva). `text`/`file` items are what records and written assignments are made of.
 
 Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }`.
-Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft`.
+Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft`. An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
 
 ### 5.2 `submissions` (one document per attempt)
 | Field | Type | Rules |
@@ -272,17 +272,17 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | deadlineAt | D | min(startedAt + duration, lateUntil ?? closesAt) |
 | submittedAt | D? | |
 | late | B | submittedAt > closesAt |
-| autoSubmitted | B | time ran out or proctoring limit hit |
+| autoSubmitted | B | time ran out or proctoring limit hit; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-M04-3) |
 | order | `[{ itemId: Id, optionIds: [Id]? }]` | per-attempt shuffle |
-| answers | Map `<itemId>` → `{ optionId?, optionIds?, value?, text?: RichText, fileKeys?: [S], code?: { language: S, source: S } }` | Map keyed by item id so each save is one atomic `$set: { 'answers.<itemId>': … }`; fileKeys max 10; source ≤ 64 KB |
+| answers | Map `<itemId>` → `{ optionId?, optionIds?, value?, text?: RichText, files?: [{ key: S, fileName: S, contentType: S, size: N }], code?: { language: S, source: S } }` | Map keyed by item id so each save is one atomic `$set: { 'answers.<itemId>': … }`; files max 10, each a `submission` upload of this student for this assessment with its sanitized name (M04: the name is shown to the grader, so the answer keeps more than the key); source ≤ 64 KB (M05) |
 | runs | `[{ itemId, at: D, passed: N, total: N }]` | code runs (LAB-03); max 200 (`$slice: -200`) |
 | results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | final graded code results |
-| scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: 'auto' \| Id, comment: S? }` | comment ≤ 1000 |
+| scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000 |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |
 | proctor | `{ violations: N, events: [{ type: S, at: D, detail: S? }], snapshots: [{ key: S, at: D }] }` | events max 300, snapshots max 120 (`$slice`) |
 
-Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1 }`.
+Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04).
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
 
 ### 5.3 `internalMarks`

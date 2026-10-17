@@ -73,5 +73,15 @@ export const istDate = z
 // A wall-clock time typed into <input type="time"> (HH:mm); the action reads it as IST with parseIstLocal (06 §2).
 export const istTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Enter a time.');
 
+// <input type="datetime-local"> sends no time zone; the action reads it as IST with parseIstLocal (06 §2). Two of these
+// compare as strings in the same order as the times they name.
+export const istDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Enter a date and time.');
+
+// Hand-entered marks (06 §2); the action rounds them to 2 decimals with roundHalfUp (07 §1).
+export const marks = z.coerce
+  .number({ error: 'Enter a number.' })
+  .min(0, 'Marks cannot be negative.')
+  .max(1000, 'Use at most 1000 marks.');
+
 export const ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
 export type Role = (typeof ROLES)[number];

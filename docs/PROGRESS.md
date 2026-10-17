@@ -199,6 +199,13 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-99 | Layout, pins and the view options are the viewer's own and last as long as the tab; nothing is remembered | M03c | — |
 | A-100 | At most 100 people can be removed from one class (`MAX_REMOVED`), so the removed list stays a bounded read | M03c | — |
 | A-101 | The join sound rings for hosts by default and for students only if they turn it on (a late student joining should not ring through a lecture); at most once in 2 s; the choice lasts as long as the tab | M03c | — |
+| A-M04-1 | An offering holds at most 200 assessments (`createAssessment` refuses the 201st), so its lists and the Records grid are bounded reads | M04 | — |
+| A-M04-2 | Results are published only after the assessment closes (`lateUntil ?? closesAt`), when every running attempt has expired; `publishResults` hands those in first | M04 | — |
+| A-M04-3 | An attempt the system hands in (time up, the sweep) gets `submittedAt = deadlineAt`, so a sweep that runs later does not flag it late | M04 | — |
+| A-M04-4 | Home's "Due soon" lists assessments open now, closing within seven days, that the student has not handed in (at most five) | M04 | — |
+| A-M04-5 | A skill course's "Quiz average %" is the mean of each published quiz's counted percentage, a quiz not attempted counting as 0 | M04 | Q-02 |
+| A-M04-6 | The New assessment dialog asks only for the type, title and window; time limit, attempts and shuffling start from the type's typical settings and are changed in the builder | M04 | — |
+| A-M04-7 | A question's options get new ids each time it is saved, which is allowed only before any student starts | M04 | — |
 
 ## 5. Log
 

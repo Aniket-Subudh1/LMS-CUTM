@@ -6,7 +6,7 @@ import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { offeringAccess, requireTeach } from '@/lib/auth/access';
 import { START_EARLY_MS } from '@/lib/data/live';
-import { notify } from '@/lib/data/notifications';
+import { notify } from '@/lib/data/notify';
 import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';

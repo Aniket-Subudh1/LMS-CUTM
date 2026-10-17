@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { requireTeach } from '@/lib/auth/access';
-import { notify } from '@/lib/data/notifications';
+import { notify } from '@/lib/data/notify';
 import { db } from '@/lib/db';
 import { classDates, istDateToDate } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';

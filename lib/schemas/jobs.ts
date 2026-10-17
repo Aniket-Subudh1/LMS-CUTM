@@ -50,3 +50,7 @@ export const LiveControlJob = z.discriminatedUnion('op', [
   z.object({ op: z.literal('muteAll'), sessionId: objectId, byId: objectId, byName: z.string().min(1).max(120) }),
 ]);
 export type LiveControlJob = z.infer<typeof LiveControlJob>;
+
+// `compute/assessmentSweep` (06 §6, M04): the hourly 24-hour reminders and the hand-in of expired attempts.
+export const AssessmentSweepJob = z.object({});
+export type AssessmentSweepJob = z.infer<typeof AssessmentSweepJob>;
