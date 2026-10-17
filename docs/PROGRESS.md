@@ -25,7 +25,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
-| M04 Assessment engine | In progress — on branch `m04-assessments` (a worktree, so M03c's work on main is untouched); mock-ups picked | | Plan and decisions in `docs/milestones/M04-assessment-engine.md` |
+| M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -182,7 +182,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-82 | A lesson's video can be replaced only while no student has progress on it; otherwise the teacher adds a new lesson | M03b | — |
 | A-83 | An offering holds at most 1,000 enrolments, active and dropped together, so the roster search is bounded | M03b | — |
 | A-84 | The coverage chart shows each PO's average level over the COs linked to it, not over all COs; it describes the mapping and is not an attainment value | M03b | — |
-| A-85 | Deleting a CO is allowed while offering calendars tag it: the tags go with it. Until M04 nothing else refers to a CO | M03b | — |
+| A-85 | Deleting a CO is allowed while offering calendars tag it: the tags go with it. Until M04 nothing else referred to a CO; since M04 a CO that a question is tagged with cannot be deleted (05 §3.6) | M03b | — |
 | A-86 | Students see the Syllabus and Outcomes tabs in full, the mapping and coverage chart included, read only | M03b | — |
 | A-87 | A replaced or removed syllabus PDF is deleted from storage (M01b kept it) | M03b | — |
 | A-88 | An admin joins a class as host (the same room rights as its teacher, under their own name), not as a hidden observer | M03b | Aniket |
@@ -1375,3 +1375,81 @@ Request: "do the next milestone". M04 is built on branch `m04-assessments` in a 
 **Open questions** — none.
 
 **Verification** — Mock-ups were drawn inside the real app: a build of this branch on port 3101 with the e2e database, signed in as faculty1 and student01 on CUTM1602's Live tab, with the mock content put in place of the tab's own and Tailwind's browser compiler given our theme. 18 screens at 1440 px and 4 at 390 px, none wider than the screen. Aniket picked Builder A, Runner B and "Next to grade"; the other screens as shown.
+
+### 2026-10-17 · M04 Assessment engine (T1–T10) · Claude Code, at Aniket's request
+
+Built on branch `m04-assessments` in a worktree while M03c was being built on main in the same folder (decision with Aniket). Local commits only, nothing pushed: `04622fc` docs, `016f8c4` foundation, `ff0221c` server, `319b0c8` UI, `a0607f9` tests, and the report with this entry. A trial merge against main (`893787c`) shows no conflict. Whatever M03c commits meanwhile to the shared files (PROGRESS, `lib/queue.ts`, `worker/jobs/compute.ts`, the notification kinds, Home, the workspace tabs) is merged by hand, and the `A-M04-n` assumptions take the next free numbers then.
+
+**Created**
+- Models and schemas:
+  - `lib/models/{assessment,submission}.ts` (05 §5.1–5.2). Answers and scores are maps keyed by item id. Indexes: `{ 'items.coIds': 1 }`, `{ assessmentId, status, submittedAt }`, `{ status, deadlineAt }`.
+  - `lib/schemas/assessment.ts`: modes, question types per mode, each mode's typical settings, and the question, answer and grading inputs.
+  - `istDateTime` and `marks` in `lib/schemas/common.ts`; `AssessmentSweepJob`.
+  - The notification kinds `assessment.published`, `assessment.dueSoon` and `results.published`.
+  - `scripts/sync-indexes.ts`.
+- Rules (07 §14, each with its test vectors):
+  - `lib/domain/grading.ts`: `autoGrade`, `rubricTotal`, `attemptTotal`, `quizAveragePct`.
+  - `lib/domain/attempts.ts`: `windowState`, `deadlineAt`, `canStart`, `isLate`, `countedScore`.
+  - `lib/domain/shuffle.ts`: `seededShuffle`.
+  - `roundHalfUp` and `ceilTo` were already there with every 07 §1 vector.
+- Server:
+  - `lib/data/attempts.ts`: `handInAttempts`, the one hand-in path for Submit, a late save, a resume, `publishResults` and the sweep. It is safe to load in the worker.
+  - `lib/data/assessments.ts`: the lists, `toStudentAssessment`, the builder, the student's page and attempt, hand-ins, grading, the records grid, and Home's lists.
+  - `lib/data/notify.ts`: `notify` moved out of `notifications.ts` so the worker can load it; its three callers are updated.
+  - The new counters in `lib/data/engagement.ts`, and the skill roster's quiz columns in `lib/data/workspace.ts`.
+  - Teacher actions in `app/(app)/courses/[offeringId]/assessments/actions.ts`: create, settings, instructions, save, delete and reorder a question, publish, delete a draft, grade, publish results.
+  - Student actions in `app/(attempt)/…/attempt/actions.ts`: start, save an answer, submit.
+  - The `submission` upload purpose in `createUpload` and `/api/files`.
+  - `deleteCo` refuses a CO that a question uses.
+  - `assessmentSweep` in `worker/jobs/compute.ts`, scheduled hourly in `worker/index.ts`.
+- UI:
+  - The Assessments and Records tabs.
+  - Pages: `assessments/{page,new-assessment-dialog,student-list}.tsx` and `[aid]/{page,edit/page,grade/page,grade/[submissionId]/page}.tsx`.
+  - The runner page in the new `(attempt)` route group, and `components/assessment-runner.tsx`.
+  - Home's Due soon and To grade sections; People's quiz columns on a skill course.
+  - Changed components: `RichTextEditor` (`onChange`), `FileUpload` (`initial`, `onChange`), `ActionForm` (posts the button that submitted the form).
+  - `lib/format.ts`: `MODE_LABEL`, `ITEM_LABEL`, `formatDue` and the new status tones; the labels on the notifications page.
+- Tests:
+  - Unit: `lib/domain/{grading,attempts,shuffle}.test.ts`, `lib/schemas/assessment.test.ts`.
+  - Integration: `tests/integration/assessments.test.ts` (23 tests), and `makeAssessment` in `tests/factories.ts`.
+  - E2E: `tests/e2e/assessments.spec.ts`.
+- Docs:
+  - The milestone file: decisions 1–6, the mock-up rounds, and the task text.
+  - 02 §8; 05 §5.1–5.2; 06 §2 and §6; 07 §4 and §14; 09 §10.
+  - 08 §2, §6 and §5.2 (`ActionForm`, `RichTextEditor`, `FileUpload`, `AssessmentRunner`, `PageIcon`).
+  - §4: A-M04-1 to A-M04-7, and A-85.
+
+**Acceptance criteria**
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC-M04-01 | Pass | Integration: publishing is refused with "Tag question 2 with a course outcome before publishing."; `saveItem` refuses a credit-course question without a CO or with another course's. E2E: the readiness strip shows "Every question has a course outcome" before Publish |
+| AC-M04-02 | Pass | Integration: the serialized student view, attempt, page and list hold no `"answer"`, `coIds`, rubric or numeric key. By hand: every response student02's browser received on the assessment and attempt pages (114 responses, 4.46 MB), searched for `"answer"`, `tolerance`, `coIds`, `bloomLevel` and `"key"`. None appears in a page or data response; `"key"` appears only inside Next's static JavaScript |
+| AC-M04-03 | Pass | Integration: a save 10 s after the deadline is refused ("Time is up — your answers were submitted."), and the attempt is handed in at its deadline with the answer saved before it. The sweep hands in an attempt whose tab was closed. The countdown follows the server's clock (`serverNow`); a device clock set wrong was not tried in a browser |
+| AC-M04-04 | Partly | Integration: `createUpload` takes a 24 MB PDF and a HEIC photo, but only for a running attempt. The key is the student's own, and another student's key is refused. The owner and the teacher download the file; another student gets 404. Not done: uploading from a phone's camera (no phone here, and RustFS was not running for a browser upload) |
+| AC-M04-05 | Pass | Unit vectors (07 §14). Integration: objective questions are marked on submit and a written one waits; a rubric question's marks are its criteria's total; a rubric that does not add up is refused. E2E: 3 + 1 on a 3 + 2 rubric gives 4, and a total of 9 / 10 |
+| AC-M04-06 | Pass | Integration: refused before the window closes (CLOSED) and with "2 submissions still need grading."; the publish hands in an expired attempt; only the two students who handed in are told. E2E: the teacher closes the window and publishes, and the student reads the marks |
+| AC-M04-07 | Pass | Integration: `submission.graded` records each changed question's marks before and after; saving the same marks again writes nothing; a regrade after publication writes a second entry; nothing changes while marks are locked |
+| AC-M04-08 | Pass | Integration: the Records grid shows a graded record and a missing one; a student gets 404 for the grid and sees their records as a list. Records are lab and learning record assessments built in the same builder |
+
+**Not done**
+- Page marks for Assessments, Records and grading. They are generated images, which this session cannot make; the pages use `evaluation`, `books` and `badge` instead (08 §5.2 says so).
+- A phone walk: camera uploads, a throttled connection, a HEIC photo in a browser. The 360 px layout was checked in headless Chromium instead (below).
+- `tests/e2e/admin-structure.spec.ts`: two of its tests also fail on main, and are not changed here.
+  - One looks for a "Change enrolment" button that M03b's People redesign removed.
+  - The other does not find a new department's code on the ten-a-page list.
+- CI has not run (nothing is pushed).
+
+**Assumptions** — A-M04-1 to A-M04-7 (§4).
+
+**Open questions** — none new. Q-41 (how assessments map to the policy's parts) still waits for M06.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 26 passed (26)`, `Tests 342 passed (342)`.
+- `TEST_MONGODB_URI=… npx vitest run --project integration` (local replica set and Redis) → exit 0; `Test Files 16 passed (16)`, `Tests 219 passed (219)`.
+- `npm run build` → exit 0 (the seven M04 routes partially prerendered).
+- `npm run check:bundle` → "105 files scanned for 4 names and 0 secret values; clean".
+- `npx playwright test tests/e2e/assessments.spec.ts` → `1 passed` (27 s), twice in a row. Together with `people`, `catalog` and `admin-structure`: 4 passed, plus the two admin-structure failures above.
+- A scripted walk of every M04 page as faculty1, student01 and the HoD, at 1440 px and 360 px, on a build with the e2e database:
+  - No error page, and no page wider than the screen.
+  - The builder, runner, grading and result pages match the picked mock-ups.

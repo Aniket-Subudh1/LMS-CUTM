@@ -169,9 +169,9 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 
 ## 10. Assessment secrecy
 
-- Student-facing assessment DTOs are built by one function, `toStudentAssessment()`, which omits `items[].answer` and every `testCases` entry with `hidden: true` (visible cases are shown with input and expected output).
+- Student-facing assessment DTOs are built by one function, `toStudentAssessment()`, which omits `items[].answer`, CO tags and Bloom levels, the rubric until results are published, and every `testCases` entry with `hidden: true` (visible cases are shown with input and expected output). The attempt DTO calls the student's own saved answers `saved`, so a search for `answer` in what a student receives finds nothing (M04).
 - Auto-grading runs on the server against the stored keys; the browser never receives a score before results are published.
-- Attempt timing is server-side: `deadlineAt` is computed when the attempt starts; saves after `deadlineAt` are rejected and the attempt is auto-submitted.
+- Attempt timing is server-side: `deadlineAt` is computed when the attempt starts; a save more than 5 s after `deadlineAt` (the grace for one sent just before 0:00, `SAVE_GRACE_MS`) is rejected and the attempt is auto-submitted with the answers saved until then. The runner's countdown runs on the server's clock (M04), and a closed tab is handed in by the hourly sweep.
 - Integration test (M04/M05): serialize the student DTO of an assessment with answers and hidden cases and assert neither appears.
 
 ## 11. Proctoring privacy (M05)
