@@ -10,6 +10,8 @@ type Tab = { href: string; label: string; icon?: ReactNode; prefixes?: string[] 
 
 // Link tabs as an underlined row ("B · Crisp editorial", 17 Oct 2026): the URL is the state. A tab owns its own path, anything below it and any listed prefix;
 // the longest match wins, so `/courses/x` (Overview) does not claim `/courses/x/people`.
+// The trigger's own border is the underline; the primitive's `after:` bar is hidden because it hangs 5px below the row,
+// which inside `overflow-x-auto` shows a vertical scrollbar.
 export function TabNav({ tabs }: { tabs: Tab[] }) {
   const pathname = usePathname();
   const matchLength = (tab: Tab) =>
@@ -35,7 +37,7 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
             key={tab.href}
             value={tab.href}
             asChild
-            className="text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground -mb-px h-10 flex-none rounded-none border-0 border-b-2 border-transparent px-0 text-[0.8125rem] font-medium data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:shadow-none [&_svg]:size-4"
+            className="text-muted-foreground hover:text-foreground data-[state=active]:border-foreground data-[state=active]:text-foreground -mb-px h-10 flex-none rounded-none border-0 border-b-2 border-transparent px-0 text-[0.8125rem] font-medium after:hidden data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:shadow-none [&_svg]:size-4"
           >
             <Link href={tab.href} aria-current={tab === current ? 'page' : undefined}>
               {tab.icon}
