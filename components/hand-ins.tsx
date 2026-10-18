@@ -187,6 +187,11 @@ export async function HandInsView({
                       {row.endedBy === 'warnings' ? 'Ended at the warning limit' : 'Ended by staff'}
                     </Badge>
                   )}
+                  {row.similar && (
+                    <Badge variant="warning" className="normal-case">
+                      Similar to another
+                    </Badge>
+                  )}
                   {row.warnings > 0 && (
                     <Badge variant="warning">
                       {row.warnings} warning{row.warnings === 1 ? '' : 's'}

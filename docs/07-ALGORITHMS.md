@@ -481,3 +481,25 @@ Fixture vectors (`lib/integrations/courseware.test.ts`, eight real pages): 1084 
 - `frameAtSec(durationSec)` → where the thumbnail frame is taken: a tenth into the video, at least 1 s in, never past its last second: `min(max(1, round(d / 10)), max(0, d − 1))`. 1 s → 0; 2 s → 1; 5 s → 1; 60 s → 6; 7200 s → 720.
 - `isPermutation(current, proposed)` → true when `proposed` holds exactly the members of `current`, each once, in any order. A dropped or "Move up / down" order is accepted only then, so a list built from a stale page is refused instead of half-applied. [a b c] → [c a b] true; same order true; [] → [] true; [a b c] → [a b] false; [a b] → [a b c] false; [a b c] → [a b d] false; [a b c] → [a a c] false.
 
+## 19. Results — `lib/domain/results.ts`, `lib/domain/similarity.ts` (M04b, TP-11)
+
+Everything is worked out over each taker's **counted attempt** (`countedAttempt`, §14: graded attempts only; the best, the first of equals, or the last). Percentages are `roundHalfUp(100 × total / maxMarks, 2)`.
+
+**Rank and percentile** (`rankAll`). Competition ranking: equal totals share a rank and the next rank skips (1, 2, 2, 4). The percentile is `round(100 × (below + ½ × level) / n)`, where `level` counts the taker and everyone with the same total.
+
+| Totals | Rank, percentile |
+|---|---|
+| 74, 70, 70, 40 | 74 → 1st, 88 · 70 → 2nd, 50 (both) · 40 → 4th, 13 |
+| 160 distinct totals, the 7th highest | 7th, 96 |
+| a lone taker | 1st, 50 |
+
+**Band** (`bandOf`): the highest band whose minimum the percentage reaches (bands Recommended 75, Waitlist 60: 78 → Recommended; 75 → Recommended; 74.9 → Waitlist; 59 → none).
+
+**Histogram**: ten bins of 10 points, `floor(pct / 10)`, 100 % in the last (0, 9.9, 10, 55, 99, 100 → 2, 1, 0, 0, 0, 1, 0, 0, 0, 2).
+
+**Item analysis** (`itemStats`). Per question, over the takers who had it: *correct* is the share who earned all its marks; *discrimination* is the share correct in the top 27 % of takers by percentage minus that in the bottom 27 % (`round(0.27 n)` each; none below 10 takers); the *most picked wrong* is the wrong option (one-answer and true/false) chosen most, as a share of the question's takers. Labels: correct < 20 very hard, < 40 hard, > 80 easy, > 90 very easy; discrimination < 0.2 weak, ≥ 0.4 strong. A question is "to look at" when it is very hard, very easy or weak. Vector: ten takers ordered by percentage, a question right for the top seven → correct 70, discrimination 1 (the top three all right, the bottom three all wrong); right for the bottom three only → 30, −1.
+
+**Breakdown** (`breakdown`): marks and the possible marks per section and per outcome; a question with two outcomes counts to each; a negative mark counts as 0 (CO1 2/2, CO1 and CO2 1.5/4, CO2 −0.25/1 → CO1 3.5/6, CO2 1.5/5).
+
+**Alike answers** (`similarPairs`). For the test's own written and code questions (at most 600 answers each): tokens are words and numbers after dropping `//`, `#` and `/* */` comments and case; answers under 20 tokens are skipped; two answers are alike when the Jaccard similarity of their three-token shingles is at least 0.85. A copy with its spacing, case and comments changed scores 1; a different program solving the same task stays below. It is a flag for a teacher (Q-09), never a mark.
+

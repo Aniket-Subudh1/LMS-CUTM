@@ -4,8 +4,14 @@ import mongoose, { type Types } from 'mongoose';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
+import { releaseResults } from '@/lib/data/results';
+import { countedAttempt, windowState } from '@/lib/domain/attempts';
 import { deriveAttendance } from '@/lib/domain/attendance';
 import { codeItemMarks, testStatus } from '@/lib/domain/code';
+import { histogram, itemStats, rankAll, type ItemRow } from '@/lib/domain/results';
+import { plainText } from '@/lib/domain/rich-text';
+import { roundHalfUp } from '@/lib/domain/round';
+import { similarPairs } from '@/lib/domain/similarity';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
 import { runBatch, type RunJob } from '@/lib/integrations/code-runner';
@@ -14,14 +20,18 @@ import { formatDateTime } from '@/lib/format';
 import { log } from '@/lib/log';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
+import { BankItem } from '@/lib/models/bank-item';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
-import { queueLiveFinalize } from '@/lib/queue';
-import type { RunStatus } from '@/lib/schemas/assessment';
+import { TestStats } from '@/lib/models/test-stats';
+import { User } from '@/lib/models/user';
+import { queueLiveFinalize, queueTestStats } from '@/lib/queue';
+import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
+import { RichTextDoc } from '@/lib/schemas/common';
 import {
   AssessmentSweepJob,
   FinalizeLiveJob,
@@ -29,6 +39,7 @@ import {
   LiveControlJob,
   LiveSweepJob,
   ProctorRetentionJob,
+  TestStatsJob,
 } from '@/lib/schemas/jobs';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
@@ -39,14 +50,16 @@ type ComputeName =
   | 'liveControl'
   | 'assessmentSweep'
   | 'proctorRetention'
-  | 'gradeCode';
+  | 'gradeCode'
+  | 'testStats';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
   | LiveControlJob
   | AssessmentSweepJob
   | ProctorRetentionJob
-  | GradeCodeJob;
+  | GradeCodeJob
+  | TestStatsJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -216,7 +229,28 @@ async function assessmentSweep(now: Date): Promise<void> {
     );
     if (expired.length < 500) break;
   }
-  log.info('assessment sweep', { reminded, handedIn });
+  // TP-11: a test whose rule publishes its results does so once it has closed, nobody is writing and every hand-in
+  // is marked; the audit log names whoever chose the rule.
+  const closed = await Assessment.find(
+    { 'results.release': 'on_close', status: 'published', closesAt: { $lte: now } },
+    { title: 1, offeringId: 1, opensAt: 1, closesAt: 1, lateUntil: 1, results: 1, createdBy: 1 },
+  )
+    .limit(100)
+    .lean();
+  let released = 0;
+  for (const test of closed) {
+    const state = windowState({
+      now,
+      opensAt: test.opensAt,
+      closesAt: test.closesAt,
+      lateUntil: test.lateUntil ?? null,
+    });
+    if (state !== 'closed') continue;
+    if (await Submission.exists({ assessmentId: test._id, status: { $in: ['in_progress', 'submitted'] } })) continue;
+    const actor = String(test.results?.setBy ?? test.createdBy);
+    if (await releaseResults(test, actor, now, 'Published by its release rule')) released++;
+  }
+  log.info('assessment sweep', { reminded, handedIn, released });
 }
 
 // The daily scheduler `proctorRetention` (05 §8, M04b TP-08): the camera snapshots of tests whose results went out
@@ -279,7 +313,12 @@ async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
       ? languages.find((l) => l.key === answer.language)
       : undefined;
     for (const test of item.code.testCases) {
-      tests.push({ itemId: item._id, testCaseId: test._id, expected: test.expected, run: language ? jobs.length : null });
+      tests.push({
+        itemId: item._id,
+        testCaseId: test._id,
+        expected: test.expected,
+        run: language ? jobs.length : null,
+      });
       if (language) {
         jobs.push({
           runnerLanguageId: language.runnerId,
@@ -356,10 +395,244 @@ async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
     );
     if (written.matchedCount > 0) {
       log.info('code graded', { submissionId, runs: jobs.length });
+      // Marks changed after the results went out: ranks follow.
+      const test = await Assessment.findById(current.assessmentId, { status: 1 }).lean();
+      if (test?.status === 'results_published') await queueTestStats(String(current.assessmentId));
       return;
     }
   }
   throw new Error('The attempt kept changing while its code was marked; the job will try again.');
+}
+
+const plainOf = (value: unknown) => {
+  const doc = RichTextDoc.safeParse(value);
+  return doc.success ? plainText(doc.data) : '';
+};
+const titleOf = (prompt: unknown) => {
+  const text = plainOf(prompt).replace(/\s+/g, ' ').trim();
+  return (text.length > 117 ? `${text.slice(0, 116)}…` : text) || 'Question';
+};
+
+type StatsRow = {
+  _id: Types.ObjectId;
+  total: number;
+  scores: Record<string, { marks: number } | undefined>;
+  paper: {
+    _id: Types.ObjectId;
+    type: string;
+    maxMarks: number;
+    bankItemId: Types.ObjectId | null;
+    sectionId: Types.ObjectId | null;
+    coIds: Types.ObjectId[];
+    options: { _id: Types.ObjectId; text: string }[] | null;
+    answer: { optionId?: Types.ObjectId; truth?: boolean } | null;
+  }[];
+  picks: { k: string; optionId?: Types.ObjectId; truth?: boolean }[];
+};
+
+// `compute/testStats` (06 §6, TP-11, 07 §19): a test's results over each taker's counted attempt — rank and percentile
+// on those attempts (cleared on the others), the histogram, item analysis (a drawn question by its bank id, across
+// papers), alike written and code answers, and the leaderboard — into `testStats`, rebuilt whole, so a repeat writes
+// the same. Attempts are read slim and in batches.
+async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
+  const test = await Assessment.findById(assessmentId, { attemptPolicy: 1, maxMarks: 1, items: 1, sections: 1 }).lean();
+  if (!test) return;
+  const attempts = await Submission.find(
+    { assessmentId: test._id, status: { $ne: 'in_progress' } },
+    { studentId: 1, attemptNo: 1, status: 1, total: 1 },
+  ).lean();
+  const byStudent = Map.groupBy(attempts, (attempt) => String(attempt.studentId));
+  const counted = [...byStudent.values()].flatMap((mine) => countedAttempt(mine, test.attemptPolicy) ?? []);
+  const pctOf = (total: number) => (test.maxMarks > 0 ? roundHalfUp((100 * total) / test.maxMarks, 2) : 0);
+
+  const ranks = rankAll(counted.map((attempt) => ({ id: String(attempt._id), total: attempt.total })));
+  await Submission.updateMany(
+    { assessmentId: test._id, rank: { $ne: null } },
+    { $set: { rank: null, percentile: null } },
+  );
+  if (counted.length > 0) {
+    await Submission.bulkWrite(
+      counted.map((attempt) => ({
+        updateOne: { filter: { _id: attempt._id }, update: { $set: { ...ranks.get(String(attempt._id)) } } },
+      })),
+    );
+  }
+
+  const rows: ItemRow[] = [];
+  const meta = new Map<
+    string,
+    {
+      type: string;
+      sectionId: Types.ObjectId | null;
+      coIds: Types.ObjectId[];
+      right: string | null;
+      options: Map<string, string>;
+    }
+  >();
+  for (let at = 0; at < counted.length; at += 500) {
+    const docs = await Submission.aggregate<StatsRow>([
+      { $match: { _id: { $in: counted.slice(at, at + 500).map((attempt) => attempt._id) } } },
+      {
+        $project: {
+          total: 1,
+          scores: 1,
+          paper: {
+            $map: {
+              input: '$paper',
+              as: 'p',
+              in: {
+                _id: '$$p._id',
+                type: '$$p.type',
+                maxMarks: '$$p.maxMarks',
+                bankItemId: { $ifNull: ['$$p.bankItemId', null] },
+                sectionId: { $ifNull: ['$$p.sectionId', null] },
+                coIds: { $ifNull: ['$$p.coIds', []] },
+                options: { $ifNull: ['$$p.options', null] },
+                answer: { $ifNull: ['$$p.answer', null] },
+              },
+            },
+          },
+          picks: {
+            $map: {
+              input: { $objectToArray: { $ifNull: ['$answers', {}] } },
+              as: 'a',
+              in: { k: '$$a.k', optionId: '$$a.v.optionId', truth: '$$a.v.truth' },
+            },
+          },
+        },
+      },
+    ]);
+    for (const doc of docs) {
+      const picks = new Map(doc.picks.map((pick) => [pick.k, pick]));
+      const items: Record<string, { earned: number; picked: string | null }> = {};
+      for (const item of doc.paper) {
+        const score = doc.scores?.[String(item._id)];
+        if (!score) continue;
+        const key = String(item.bankItemId ?? item._id);
+        const pick = picks.get(String(item._id));
+        const picked =
+          item.type === 'mcq' && pick?.optionId
+            ? String(pick.optionId)
+            : item.type === 'true_false' && typeof pick?.truth === 'boolean'
+              ? String(pick.truth)
+              : null;
+        items[key] = { earned: item.maxMarks > 0 ? Math.min(1, Math.max(0, score.marks / item.maxMarks)) : 0, picked };
+        if (!meta.has(key)) {
+          meta.set(key, {
+            type: item.type,
+            sectionId: item.sectionId,
+            coIds: item.coIds,
+            right:
+              item.type === 'mcq' && item.answer?.optionId
+                ? String(item.answer.optionId)
+                : item.type === 'true_false' && typeof item.answer?.truth === 'boolean'
+                  ? String(item.answer.truth)
+                  : null,
+            options: new Map([
+              ...(item.options ?? []).map((option): [string, string] => [String(option._id), option.text]),
+              ['true', 'True'],
+              ['false', 'False'],
+            ]),
+          });
+        }
+      }
+      rows.push({ pct: pctOf(doc.total), items });
+    }
+  }
+  const analysed = itemStats(rows, (key) => meta.get(key)?.right ?? null);
+  const fixed = new Map(test.items.map((item) => [String(item._id), item.prompt]));
+  const drawn = await BankItem.find(
+    { _id: { $in: [...meta.keys()].filter((key) => !fixed.has(key)) } },
+    { prompt: 1 },
+  ).lean();
+  const prompts = new Map([...fixed, ...drawn.map((doc): [string, unknown] => [String(doc._id), doc.prompt])]);
+  const sectionTitle = new Map(test.sections.map((section) => [String(section._id), section.title]));
+
+  // Alike answers to the test's own written and code questions (drawn ones are all marked automatically), at most
+  // 600 answers a question.
+  const alike = new Map<string, { submissionId: Types.ObjectId; itemId: Types.ObjectId; score: number }[]>();
+  const countedIds = counted.map((attempt) => attempt._id);
+  for (const item of test.items) {
+    if (item.type !== 'text' && item.type !== 'code') continue;
+    const path = `answers.${String(item._id)}`;
+    const answered = await Submission.aggregate<{
+      _id: Types.ObjectId;
+      answer: { code?: { source?: string }; text?: unknown };
+    }>([
+      { $match: { _id: { $in: countedIds }, [path]: { $exists: true } } },
+      { $limit: 600 },
+      { $project: { answer: `$${path}` } },
+    ]);
+    const texts = answered.flatMap((doc) => {
+      const text = item.type === 'code' ? (doc.answer.code?.source ?? '') : plainOf(doc.answer.text);
+      return text ? [{ id: String(doc._id), text }] : [];
+    });
+    for (const pair of similarPairs(texts)) {
+      for (const [one, other] of [
+        [pair.a, pair.b],
+        [pair.b, pair.a],
+      ]) {
+        const list = alike.get(one) ?? [];
+        list.push({ submissionId: new mongoose.Types.ObjectId(other), itemId: item._id, score: pair.score });
+        alike.set(one, list);
+      }
+    }
+  }
+  await Submission.updateMany({ assessmentId: test._id, 'similar.0': { $exists: true } }, { $set: { similar: [] } });
+  if (alike.size > 0) {
+    await Submission.bulkWrite(
+      [...alike].map(([id, list]) => ({
+        updateOne: {
+          filter: { _id: id },
+          update: { $set: { similar: list.sort((a, b) => b.score - a.score).slice(0, RESULT_LIMITS.similar) } },
+        },
+      })),
+    );
+  }
+
+  const top = counted
+    .map((attempt) => ({ attempt, rank: ranks.get(String(attempt._id))?.rank ?? 0 }))
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, RESULT_LIMITS.leaderboard);
+  const people = await User.find({ _id: { $in: top.map((t) => t.attempt.studentId) } }, { name: 1 }).lean();
+  const nameOf = new Map(people.map((person) => [String(person._id), person.name]));
+  const pcts = counted.map((attempt) => pctOf(attempt.total));
+  await TestStats.replaceOne(
+    { _id: test._id },
+    {
+      _id: test._id,
+      computedAt: new Date(),
+      takers: counted.length,
+      averagePct: pcts.length > 0 ? roundHalfUp(pcts.reduce((sum, pct) => sum + pct, 0) / pcts.length, 2) : null,
+      highestPct: pcts.length > 0 ? Math.max(...pcts) : null,
+      histogram: histogram(pcts),
+      items: [...analysed].slice(0, RESULT_LIMITS.statsItems).map(([key, stat]) => {
+        const about = meta.get(key);
+        return {
+          key: new mongoose.Types.ObjectId(key),
+          type: about?.type ?? 'text',
+          title: titleOf(prompts.get(key)),
+          sectionTitle: about?.sectionId ? (sectionTitle.get(String(about.sectionId)) ?? null) : null,
+          coIds: about?.coIds ?? [],
+          n: stat.n,
+          correctPct: stat.correctPct,
+          discrimination: stat.discrimination,
+          wrongPick: stat.wrongPick
+            ? { text: about?.options.get(stat.wrongPick.optionId) ?? 'Another option', pct: stat.wrongPick.pct }
+            : null,
+        };
+      }),
+      flagged: alike.size,
+      leaderboard: top.map(({ attempt, rank }) => ({
+        studentId: attempt.studentId,
+        name: nameOf.get(String(attempt.studentId)) ?? 'Unknown',
+        total: attempt.total,
+        rank,
+      })),
+    },
+    { upsert: true },
+  );
+  log.info('test stats', { assessmentId, takers: counted.length, flagged: alike.size });
 }
 
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
@@ -370,6 +643,7 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
     return assessmentSweep(new Date());
   }
   if (job.name === 'gradeCode') return gradeCode(GradeCodeJob.parse(job.data));
+  if (job.name === 'testStats') return testStats(TestStatsJob.parse(job.data));
   if (job.name === 'proctorRetention') {
     ProctorRetentionJob.parse(job.data);
     return proctorRetention(new Date());

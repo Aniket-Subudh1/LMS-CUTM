@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity) and D (code) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity), D (code) and E1 (results) built and committed locally; E2 (PDFs, certificates, Excel) and E3 (AI helpers) left; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
 | M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -93,6 +93,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
 | Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
 | Q-53 | The syllabus PDF opens for admins and for whoever teaches, oversees or studies an offering of the course (`reach` in `/api/files`), so a coordinator who teaches none of its offerings cannot open the PDF they uploaded. Should every staff member who can open the catalogue course open its PDF? | @dev | As built in M01b (offerings only) | — | Answered 17 Oct 2026 (@dev, at Aniket's request): yes — admins, HoDs and faculty open it; a student only for a course they study (`/api/files`) |
+| Q-56 | TP-10 asks the AI to "suggest a mark band for written and code answers", which means sending students' answers (without names, roll numbers or emails) to the AI; 09 §12 says answers are never sent. Should anonymous answer text be sent for these suggestions? | @client | Not built: the AI only drafts questions (no student data) | TP-10's mark-band suggestion | Open |
 | Q-55 | Code questions run on Judge0's free public server (ce.judge0.com) until the university has its own: students' code goes to a third party, and its rate limits are not ours. Before going public, which Judge0 server and token (or a paid key) should be used? | @client | The free public server (Aniket, 18 Oct 2026) | Going public | Open |
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
@@ -243,6 +244,12 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-32 | A hand-in with code questions shows "To grade" until the gradeCode job marks them, in seconds. A grader's own mark on a code question stays when the tests run again, and an empty mark box keeps the tests' mark | M04b | — |
 | A-M04b-33 | "Run sample tests" waits for the runner in the request (a few seconds), as M05 planned; the full marking runs in the worker | M04b | — |
 | A-M04b-34 | Tests are stored with \n line ends; memory is asked in MB and stored as MB × 1000 KB, as Judge0 takes it | M04b | — |
+| A-M04b-35 | Results are worked out over each taker's counted attempt; ranks are competition ranks (1, 2, 2, 4); the percentile is those below plus half of those level | M04b | — |
+| A-M04b-36 | Results go out by hand (the default, as M04), by themselves within the hour after the test closes once nobody is writing and all is marked, or each person's at once when marked (ranks wait for the published results). The rule changes no mark, so it can change at any time; an automatic release is audited in the name of whoever saved the rule | M04b | — |
+| A-M04b-37 | Item analysis: "correct" is the share who earned full marks; discrimination is the upper-minus-lower 27 % index, shown only with 10 or more takers; a question is "to look at" when under 20 % or over 90 % correct, or its discrimination is under 0.2 | M04b | — |
+| A-M04b-38 | Alike answers: the test's own written and code questions only, at most 600 answers each, 20 tokens or more, three-token shingles with Jaccard ≥ 0.85; a flag for a teacher, never a mark (Q-09) | M04b | Q-09 |
+| A-M04b-39 | The leaderboard is off by default; on, it names the first 10 to everyone who took the test | M04b | — |
+| A-M04b-40 | Ranks and analysis are worked out when results go out, again after a regrade, waived penalty or code re-run, and on request — not live while people write | M04b | — |
 
 ## 5. Log
 
@@ -1788,4 +1795,53 @@ Phase D of `docs/milestones/M04b-test-platform.md` (TP-09; CE-03's coding modes 
   - admin, at 1440 px: the Code questions setting with the runner's 71 languages.
   - student05 at 1440 px and student06 at 390 px: the runner, a compile error, "2 of 2 passed", handing in.
   - No error page, and no page wider than the screen. The runner matches mock-up B3.
+
+### 2026-10-18 · M04b/E1 Test platform: results — release rules, results page, analytics, leaderboard, similarity · Claude Code, at Aniket's request
+
+Phase E's first part (TP-11) of `docs/milestones/M04b-test-platform.md`, on branch `m04-assessments`, committed locally and not pushed. E2 (scorecards, certificates and reports in PDF; Excel exports) and E3 (the AI helpers) follow.
+
+**Created**
+- **The rules (07 §19).**
+  - `lib/domain/results.ts`: `rankAll`, `bandOf`, `histogram`, `itemStats`, the labels and `breakdown`.
+  - `lib/domain/similarity.ts`: `tokens`, `shingles`, `jaccard`, `similarPairs`.
+  - `countedAttempt` (`lib/domain/attempts.ts`) names the counted attempt; `countedScore` uses it.
+  - All with vectors.
+- **Release rules.**
+  - `assessments.results`, set by `saveResultRules` from the builder's Results card and dialog: by hand, by themselves once it closes, or each person's at once; right answers, explanations, a leaderboard, up to 5 bands.
+  - `releaseResults` (`lib/data/results.ts`) is the one publish, by hand or by the hourly sweep.
+- **The testStats job.**
+  - `compute/testStats` (`queueTestStats`) works out over each taker's counted attempt: rank and percentile (on submissions), the histogram, item analysis (drawn questions by their bank id), alike answers (`submissions.similar`) and the leaderboard.
+  - Results go into the new `testStats` collection (05 §5.2e).
+  - Queued on publishing, regrading, waiving or re-running code after publication, and by "Work them out again".
+- **The student's result (mock-up C5).** A ring with the percentage, the marks, the band, rank and percentile, by section, each answer with what was given and — as the rules allow — the right answer and the explanation, the leaderboard with "You", and by outcome.
+- **Results and analytics (mock-up C6).** `…/results` for a course's assessment and a standalone test (`components/test-results.tsx`): tiles, the score histogram, and the questions to look at with correct %, discrimination and the most picked wrong option.
+- **Similarity flags.** "Similar to another" on hand-ins, and "Alike answers — worth a look, not a verdict" on the grading page with links.
+- **Tests.**
+  - Unit: 27 results and similarity vectors.
+  - Integration: `tests/integration/results.test.ts`, 5 cases. They cover the rules and who may set them; the "at once" release with answers and explanations shown only when allowed; ranks, percentiles, bands, item analysis, alike answers and the leaderboard through the real queue; a regrade re-ranking; the automatic release and its audit.
+  - E2E: `tests/e2e/results.spec.ts`. `tests/e2e/assessments.spec.ts` follows the new result page and checks that no right answer shows by default.
+- **Docs.** 02 §8; 05 §5.1, §5.2, §5.2e; 06 §6, §6.2; 07 §19 (new); 08 (routes, the lobby and results row, builder, hand-ins, `TestResultsView`); 09 §3, §6.
+
+**Not done**
+- E2 and E3 (above). The AI's suggested mark bands for written and code answers wait on Q-56.
+- The results page has no filter for "your answers" (mock-up C5's "All questions" picker); every question shows.
+- The Assessments list still shows "Handed in" until results are published, even when the "at once" rule shows the marks on the test's page.
+
+**Assumptions** — A-M04b-35 to A-M04b-40 (§4).
+
+**Open questions** — Q-56.
+
+**Bugs found and fixed while verifying**
+- With one stats job a minute, a regrade within a minute of publishing left ranks stale; found by the integration test. A finished job is now removed and queued again, and a running one gets a follow-up.
+- On a phone the result page was 9 px wider than the screen; found by the 390 px walk. A grid column without a template grew to fit a truncated label.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 32 passed (32)`, `Tests 497 passed (497)`.
+- `npm run test:integration` → exit 0; `Test Files 22 passed (22)`, `Tests 275 passed (275)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "119 files scanned … clean".
+- `npx playwright test` of the results, assessments, tests, auth, proctoring and code specs → exit 0, `10 passed` (before the phone fix).
+- A scripted walk on a sectioned quiz seeded with 20 graded attempts and published results, the stats worked out by the worker:
+  - student01's result at 1440 px and 390 px.
+  - faculty1's results page, builder, Results dialog and hand-ins.
+  - No error page, and no page wider than the screen after the fix. They match mock-ups C5 and C6; the two copied essays were flagged.
 

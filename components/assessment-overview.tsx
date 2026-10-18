@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import {
   ArrowLeftIcon,
+  CheckIcon,
+  TrophyIcon,
+  XIcon,
   CameraIcon,
   ChatTextIcon,
   CheckSquareIcon,
@@ -53,33 +56,26 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
           <ArrowLeftIcon /> {offeringId ? 'All assessments' : 'All tests'}
         </Link>
       </Button>
-      <section className="surface mb-4 flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
-        <div className="grid min-w-0 gap-1.5">
-          <ModeChip mode={a.mode} />
-          <h1 className="text-[1.0625rem] font-semibold tracking-tight text-balance">{a.title}</h1>
-          <p className="text-muted-foreground text-[0.8125rem]">
-            {a.questions} question{a.questions === 1 ? '' : 's'} · {a.maxMarks} marks
-            {a.sections.length > 0 && ` · ${a.sections.length} sections`}
-          </p>
-        </div>
-        {result ? (
-          <div className="text-right">
-            <b className="text-3xl font-semibold tabular-nums">
-              {result.total}
-              <span className="text-muted-foreground text-lg"> / {a.maxMarks}</span>
-            </b>
-            <p className="text-muted-foreground text-xs">Your counted marks</p>
+      {result ? (
+        <Results page={page} />
+      ) : (
+        <section className="surface mb-4 flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
+          <div className="grid min-w-0 gap-1.5">
+            <ModeChip mode={a.mode} />
+            <h1 className="text-[1.0625rem] font-semibold tracking-tight text-balance">{a.title}</h1>
+            <p className="text-muted-foreground text-[0.8125rem]">
+              {a.questions} question{a.questions === 1 ? '' : 's'} · {a.maxMarks} marks
+              {a.sections.length > 0 && ` · ${a.sections.length} sections`}
+            </p>
           </div>
-        ) : (
           <Badge variant={statusTone(page.state)} className="normal-case">
             {page.state === 'open' ? `Open now · ${formatDue(a.closesAt, now).toLowerCase()}` : STATE_LABEL[page.state]}
           </Badge>
-        )}
-      </section>
+        </section>
+      )}
 
-      {result ? (
-        <Results page={page} />
-      ) : lobby ? (
+      {/* TP-11: with marks shown at once, someone with attempts left sees the lobby under their result. */}
+      {lobby ? (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <div className="grid gap-4">
             <DeviceCheck fullscreen={a.proctoring?.fullscreen} camera={a.proctoring?.camera} />
@@ -123,38 +119,40 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
           </div>
         </div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <Section icon={<InfoIcon />} title="Instructions" description="As they were given.">
-            {a.instructions ? (
-              <RichTextView doc={a.instructions} />
-            ) : (
-              <p className="text-muted-foreground text-[0.8125rem]">No instructions for this one.</p>
-            )}
-          </Section>
-          <section className="surface grid gap-3 p-5">
-            <h2 className="text-[0.9375rem] font-semibold">{check === 'closed' ? 'Closed' : 'All attempts used'}</h2>
-            <p className="text-muted-foreground text-[0.8125rem]">
-              {attempts.length > 0
-                ? 'Your answers are handed in. You will see your marks here once they are published.'
-                : `It closed on ${formatDateTime(end)}.`}
-            </p>
-            {attempts[attempts.length - 1]?.endedBy && (
-              <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
-                <WarningIcon className="size-4 shrink-0" />
-                {attempts[attempts.length - 1]?.endedBy === 'warnings'
-                  ? 'Your last attempt reached the limit of serious warnings, so the answers you had saved were handed in.'
-                  : 'Your teacher ended your last attempt; the answers you had saved were handed in.'}
+        !result && (
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <Section icon={<InfoIcon />} title="Instructions" description="As they were given.">
+              {a.instructions ? (
+                <RichTextView doc={a.instructions} />
+              ) : (
+                <p className="text-muted-foreground text-[0.8125rem]">No instructions for this one.</p>
+              )}
+            </Section>
+            <section className="surface grid gap-3 p-5">
+              <h2 className="text-[0.9375rem] font-semibold">{check === 'closed' ? 'Closed' : 'All attempts used'}</h2>
+              <p className="text-muted-foreground text-[0.8125rem]">
+                {attempts.length > 0
+                  ? 'Your answers are handed in. You will see your marks here once they are published.'
+                  : `It closed on ${formatDateTime(end)}.`}
               </p>
-            )}
-            {attempts[attempts.length - 1]?.autoSubmitted && (
-              <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
-                <CheckSquareIcon className="size-4 shrink-0" />
-                Time ran out on your last attempt; the answers you had saved were handed in.
-              </p>
-            )}
-            <Attempts attempts={attempts} />
-          </section>
-        </div>
+              {attempts[attempts.length - 1]?.endedBy && (
+                <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
+                  <WarningIcon className="size-4 shrink-0" />
+                  {attempts[attempts.length - 1]?.endedBy === 'warnings'
+                    ? 'Your last attempt reached the limit of serious warnings, so the answers you had saved were handed in.'
+                    : 'Your teacher ended your last attempt; the answers you had saved were handed in.'}
+                </p>
+              )}
+              {attempts[attempts.length - 1]?.autoSubmitted && (
+                <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
+                  <CheckSquareIcon className="size-4 shrink-0" />
+                  Time ran out on your last attempt; the answers you had saved were handed in.
+                </p>
+              )}
+              <Attempts attempts={attempts} />
+            </section>
+          </div>
+        )
       )}
     </>
   );
@@ -283,60 +281,222 @@ function Attempts({ attempts }: { attempts: StudentPage['attempts'] }) {
   );
 }
 
-// T5: the counted attempt's marks per question, the rubric's criteria and the grader's comments. No answer keys.
-function Results({ page }: { page: StudentPage }) {
-  const { result } = page;
-  if (!result) return null;
+function Bar({ label, marks, maxMarks }: { label: string; marks: number; maxMarks: number }) {
   return (
-    <Section
-      icon={<CheckSquareIcon />}
-      title="Your marks"
-      description="Per question, with the grader’s comments. Correct answers are not shown."
-    >
-      <ol className="grid">
-        {result.items.map((item, i) => {
-          return (
-            <li key={item.id} className="border-border/70 flex gap-3 border-b py-3 last:border-0">
-              <span className="bg-muted grid size-6 shrink-0 place-items-center rounded-sm text-xs font-semibold">
-                {i + 1}
-              </span>
-              <div className="grid min-w-0 flex-1 gap-2 text-[0.8125rem]">
-                {item.prompt && <RichTextView doc={item.prompt} />}
-                {item.criteria && (
-                  <div className="bg-muted/60 grid gap-1.5 rounded-md p-3 text-xs">
-                    {item.criteria.map((c) => (
-                      <div key={c.criterion} className="flex justify-between gap-3">
-                        <span>{c.criterion}</span>
-                        <b className="tabular-nums">
-                          {c.marks ?? '—'} / {c.maxMarks}
-                        </b>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {item.comment && (
-                  <p className="flex gap-2">
-                    <ChatTextIcon className="text-primary size-4 shrink-0" />
-                    {item.comment}
-                  </p>
-                )}
-              </div>
-              <b className="text-[0.8125rem] font-semibold whitespace-nowrap tabular-nums">
-                {item.marks ?? '—'} / {item.maxMarks}
-              </b>
-            </li>
-          );
-        })}
-      </ol>
-      {result.penalty > 0 && (
-        <p className="bg-muted flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[0.8125rem]">
-          <span className="flex items-center gap-2">
-            <MinusCircleIcon className="size-4 shrink-0" />
-            Taken off for {result.warnings} serious warning{result.warnings === 1 ? '' : 's'}
+    <div className="grid grid-cols-1 gap-1.5 text-[0.8125rem]">
+      <div className="flex justify-between gap-3">
+        <span className="min-w-0 truncate">{label}</span>
+        <b className="font-semibold whitespace-nowrap tabular-nums">
+          {marks} / {maxMarks}
+        </b>
+      </div>
+      <span className="bg-muted h-2 overflow-hidden rounded-full">
+        <span
+          className="bg-primary block h-full rounded-full"
+          style={{ width: `${maxMarks > 0 ? Math.min(100, (100 * marks) / maxMarks) : 0}%` }}
+        />
+      </span>
+    </div>
+  );
+}
+
+// T5 and TP-11 (mock-up C5): the counted attempt's result — its percentage, band and, once the results are out, its
+// place among the others; marks by section and by outcome; each question with its marks, what was answered and, as the
+// test's rules allow, the right answer and the explanation; and a leaderboard when the test shows one. Nothing else of
+// the key reaches the page (09 §10).
+function Results({ page }: { page: StudentPage }) {
+  const { result, assessment: a } = page;
+  if (!result) return null;
+  const ring = 2 * Math.PI * 44;
+  const you = result.leaderboard?.some((row) => row.you);
+  return (
+    <div className="mb-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid min-w-0 gap-4">
+        <section className="surface flex flex-wrap items-center gap-5 p-4 sm:p-6">
+          <span className="relative grid size-28 shrink-0 place-items-center">
+            <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90" aria-hidden>
+              <circle cx="50" cy="50" r="44" fill="none" strokeWidth="8" className="stroke-muted" />
+              <circle
+                cx="50"
+                cy="50"
+                r="44"
+                fill="none"
+                strokeWidth="8"
+                strokeLinecap="round"
+                className="stroke-primary"
+                strokeDasharray={`${(ring * Math.min(100, result.pct)) / 100} ${ring}`}
+              />
+            </svg>
+            <span className="grid text-center leading-tight">
+              <b className="text-2xl font-semibold tabular-nums">{Math.round(result.pct)}%</b>
+              <span className="text-muted-foreground text-xs">final</span>
+            </span>
           </span>
-          <b className="tabular-nums">−{result.penalty}</b>
-        </p>
-      )}
-    </Section>
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <ModeChip mode={a.mode} />
+            <h1 className="text-[1.0625rem] font-semibold tracking-tight text-balance">{a.title}</h1>
+            <p>
+              <b className="text-2xl font-semibold tabular-nums">{result.total}</b>
+              <span className="text-muted-foreground text-lg"> / {result.maxMarks} marks</span>
+            </p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem]">
+              {result.band && (
+                <span className="text-success flex items-center gap-1.5 font-medium">
+                  <span className="bg-success size-1.5 rounded-full" />
+                  {result.band}
+                </span>
+              )}
+              {result.standing ? (
+                <span className="text-muted-foreground">
+                  Rank <b className="text-foreground">{result.standing.rank}</b> of {result.standing.of} ·{' '}
+                  <b className="text-foreground">{ordinal(result.standing.percentile)}</b> percentile
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  {a.resultsPublished
+                    ? 'Your place is being worked out.'
+                    : 'Your place appears when the results are published.'}
+                </span>
+              )}
+            </p>
+            {(result.warnings > 0 || result.penalty > 0) && (
+              <p className="text-muted-foreground flex items-center gap-2 text-[0.8125rem]">
+                <MinusCircleIcon className="size-4 shrink-0" />
+                Proctoring: {result.warnings} serious warning{result.warnings === 1 ? '' : 's'},{' '}
+                {result.penalty > 0 ? `${result.penalty} marks taken off` : 'no deduction'}
+              </p>
+            )}
+          </div>
+        </section>
+
+        {result.sections.length > 0 && (
+          <section className="surface grid gap-4 p-4 sm:p-6">
+            <h2 className="text-[0.9375rem] font-semibold">By section</h2>
+            {result.sections.map((section) => (
+              <Bar key={section.title} label={section.title} marks={section.marks} maxMarks={section.maxMarks} />
+            ))}
+          </section>
+        )}
+
+        <Section
+          icon={<CheckSquareIcon />}
+          title="Your answers"
+          description="Each question with your marks and the grader’s comments."
+        >
+          <ol className="grid gap-3">
+            {result.items.map((item, i) => {
+              const full = item.marks !== null && item.marks >= item.maxMarks;
+              const none = item.marks !== null && item.marks <= 0;
+              return (
+                <li key={item.id} className="ring-border/70 grid gap-2 rounded-md p-3 text-[0.8125rem] ring-1 sm:p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="bg-muted grid size-6 shrink-0 place-items-center rounded-sm text-xs font-semibold">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">{item.prompt && <RichTextView doc={item.prompt} />}</div>
+                    <span
+                      className={cn(
+                        'inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs font-semibold tabular-nums',
+                        item.marks === null
+                          ? 'bg-muted text-muted-foreground'
+                          : full
+                            ? 'bg-success/10 text-success'
+                            : none
+                              ? 'bg-destructive/10 text-destructive'
+                              : 'bg-warning/10 text-warning',
+                      )}
+                    >
+                      {item.marks !== null &&
+                        (full ? <CheckIcon className="size-3.5" /> : none && <XIcon className="size-3.5" />)}
+                      {item.marks === null ? 'Not marked' : `${item.marks} / ${item.maxMarks}`}
+                    </span>
+                  </div>
+                  <p className="pl-9">
+                    <span className="text-muted-foreground">You:</span> {item.given ?? 'No answer'}
+                    {item.correct && (
+                      <>
+                        {' '}
+                        · <span className="text-muted-foreground">Right answer:</span> {item.correct}
+                      </>
+                    )}
+                  </p>
+                  {item.explanation && (
+                    <div className="bg-muted/60 ml-9 flex gap-2 rounded-md p-3">
+                      <InfoIcon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                      <div className="min-w-0">
+                        <RichTextView doc={item.explanation} />
+                      </div>
+                    </div>
+                  )}
+                  {item.criteria && (
+                    <div className="bg-muted/60 ml-9 grid gap-1.5 rounded-md p-3 text-xs">
+                      {item.criteria.map((c) => (
+                        <div key={c.criterion} className="flex justify-between gap-3">
+                          <span>{c.criterion}</span>
+                          <b className="tabular-nums">
+                            {c.marks ?? '—'} / {c.maxMarks}
+                          </b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {item.comment && (
+                    <p className="ml-9 flex gap-2">
+                      <ChatTextIcon className="text-primary size-4 shrink-0" />
+                      {item.comment}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </Section>
+      </div>
+
+      <div className="grid min-w-0 grid-cols-1 gap-4">
+        {result.leaderboard && (
+          <section className="surface grid grid-cols-1 gap-2 p-4 sm:p-5">
+            <h2 className="mb-1 flex items-center gap-2 text-[0.9375rem] font-semibold">
+              <TrophyIcon className="text-warning size-5" /> Leaderboard
+            </h2>
+            <ol className="grid grid-cols-1 gap-1 text-[0.8125rem]">
+              {result.leaderboard.map((row) => (
+                <li
+                  key={`${row.rank}-${row.name}`}
+                  className={cn(
+                    'flex items-center gap-3 rounded-md px-2 py-1.5',
+                    row.you && 'bg-primary/10 font-semibold',
+                  )}
+                >
+                  <span className="text-muted-foreground w-5 tabular-nums">{row.rank}</span>
+                  <span className="min-w-0 flex-1 truncate">{row.you ? 'You' : row.name}</span>
+                  <b className="tabular-nums">{row.total}</b>
+                </li>
+              ))}
+              {!you && result.standing && (
+                <>
+                  <li className="text-muted-foreground text-center" aria-hidden>
+                    …
+                  </li>
+                  <li className="bg-primary/10 flex items-center gap-3 rounded-md px-2 py-1.5 font-semibold">
+                    <span className="w-5 tabular-nums">{result.standing.rank}</span>
+                    <span className="flex-1">You</span>
+                    <b className="tabular-nums">{result.total}</b>
+                  </li>
+                </>
+              )}
+            </ol>
+          </section>
+        )}
+        {result.outcomes.length > 0 && (
+          <section className="surface grid grid-cols-1 gap-4 p-4 sm:p-5">
+            <h2 className="text-[0.9375rem] font-semibold">By outcome</h2>
+            {result.outcomes.map((co) => (
+              <Bar key={co.code} label={`${co.code} · ${co.statement}`} marks={co.marks} maxMarks={co.maxMarks} />
+            ))}
+          </section>
+        )}
+      </div>
+    </div>
   );
 }

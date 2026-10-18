@@ -11,6 +11,7 @@ import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
+import { releaseResults } from '@/lib/data/results';
 import { db } from '@/lib/db';
 import { deadlineAt, windowState } from '@/lib/domain/attempts';
 import { rubricTotal } from '@/lib/domain/grading';
@@ -28,7 +29,7 @@ import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
-import { queueGradeCode } from '@/lib/queue';
+import { queueGradeCode, queueTestStats } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
@@ -46,6 +47,7 @@ import {
   SaveInstructions,
   SaveItem,
   SaveProctoring,
+  SaveResultRules,
   SaveSection,
   SectionRef,
   SetExtraTime,
@@ -585,7 +587,7 @@ export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async 
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
   await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
-  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1 }).lean();
+  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1, status: 1 }).lean();
   const hard = attempt.proctor?.hard ?? 0;
   if (!rules?.proctoring?.penaltyEach || hard === 0) {
     throw new AppError('VALIDATION', 'This attempt has no penalty for warnings.');
@@ -613,6 +615,7 @@ export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async 
       session,
     );
   });
+  if (rules.status === 'results_published') await queueTestStats(String(attempt.assessmentId));
   refresh();
 });
 
@@ -697,7 +700,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
   await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
-  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1 }).lean();
+  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1, status: 1 }).lean();
   // M04b: the questions this attempt was given.
   const paper = attempt.paper;
   const posted = input['item[]'];
@@ -810,6 +813,8 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
       );
     });
   }
+  // TP-11: marks changed after the results went out, so the ranks follow.
+  if (changed.length > 0 && rules?.status === 'results_published') await queueTestStats(String(attempt.assessmentId));
   if (input.then === 'next') {
     // M04 decision 5: the next hand-in waiting for marks, else back to the list.
     const next = await Submission.findOne(
@@ -822,6 +827,25 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     redirect(next ? `${list}/${next._id}` : list);
   }
   refresh();
+});
+
+// TP-11 (07 §19): when the results go out and what they show — answers, explanations, a leaderboard and the
+// recommendation bands. They change no mark, so they may change at any time; whoever saves an automatic release is
+// the one the audit log names when it publishes the results.
+export const saveResultRules = action({ input: SaveResultRules, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  const { release, showAnswers, showExplanations, leaderboard, bands } = input;
+  await Assessment.updateOne(
+    { _id: assessment._id },
+    { $set: { results: { release, showAnswers, showExplanations, leaderboard, bands, setBy: viewer.id } } },
+  );
+  refresh();
+});
+
+// TP-11: "Work them out again" on the results page — ranks, analysis and similar answers (the testStats job).
+export const refreshResults = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  await queueTestStats(String(assessment._id));
 });
 
 // TP-09: a grader's "Run the tests again" — the code questions of a handed-in attempt are run on every test and
@@ -880,32 +904,8 @@ export const publishResults = action({ input: AssessmentRef, roles: TEACH }, asy
       `${ungraded} submission${ungraded === 1 ? '' : 's'} still need${ungraded === 1 ? 's' : ''} grading.`,
     );
   }
-  await mongoose.connection.transaction(async (session) => {
-    const written = await Assessment.updateOne(
-      { _id: assessment._id, status: 'published' },
-      { $set: { status: 'results_published', resultsPublishedAt: now } },
-      { session },
-    );
-    if (written.modifiedCount === 0) throw new AppError('CONFLICT', 'Results are already published.');
-    await writeAudit(
-      {
-        actorId: viewer.id,
-        action: 'assessment.results_published',
-        entity: 'assessment',
-        entityId: String(assessment._id),
-        offeringId: assessment.offeringId ? String(assessment.offeringId) : undefined,
-        before: { status: 'published' },
-        after: { status: 'results_published' },
-      },
-      session,
-    );
-  });
-  const offering = assessment.offeringId ? await Offering.findById(assessment.offeringId, { title: 1 }).lean() : null;
-  const students = await Submission.distinct('studentId', { assessmentId: assessment._id });
-  await notify(students.map(String), {
-    kind: 'results.published',
-    title: fit(`Results: ${assessment.title}${offering ? ` (${offering.title})` : ''}`),
-    href: pathOf(assessment),
-  });
+  if (!(await releaseResults(assessment, viewer.id, now))) {
+    throw new AppError('CONFLICT', 'Results are already published.');
+  }
   refresh();
 });

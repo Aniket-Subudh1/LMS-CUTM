@@ -69,6 +69,7 @@ Every exported DAL function and every action applies these filters; integration 
 | Standalone tests (M04b) | anyone with a `testGrants` row (made by a share link), `status ≠ draft`; their own submissions | their own (`ownerIds ∋ me`): manage | — | all: manage |
 | Question banks (M04b) | — | a course's bank through an offering they teach (edit); their own bank | a course's bank of an offering in their department (read) | all |
 | Share links (M04b) | — (a link's page shows only the test's title, owner, window and counts) | of tests they manage | — | all |
+| Results analytics and similarity flags (M04b) | their own result; the right answers and explanations only when the test's rules show them; a leaderboard (others' names and totals) only when the test shows one | of tests they manage | of their department's offerings: read | all |
 | Live monitor and proctoring records (M04b) | their own warnings count and the monitor's messages to them; never their snapshots | of tests they manage: act (time, messages, end, waive) | of their department's offerings: watch and read | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
@@ -140,7 +141,7 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `attendance.marked` | status before/after, source |
 | `live.deleted` (M03b) | the class's title, status and scheduled start; only a class that never ran and has no attendance can be deleted |
 | `live.removed`, `live.allowed_back` (M03c) | the student removed from a running class or let back; a removed student gets no join token, a join with a token they kept is removed again by the webhook and not counted, and tokens live 10 minutes |
-| `assessment.published`, `assessment.results_published` | status |
+| `assessment.published`, `assessment.results_published` | status; when a test's release rule publishes them (M04b), the actor is whoever chose the rule and the reason says so |
 | `submission.graded` | per-item marks before/after |
 | `submission.code_rerun` (M04b) | who asked the code to be tested again (the marks follow from the `gradeCode` job) |
 | `assessment.time_added` (M04b, the live monitor) | minutes and the number of attempts given them; entity the attempt, or the test for everyone |

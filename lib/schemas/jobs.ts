@@ -59,6 +59,10 @@ export type AssessmentSweepJob = z.infer<typeof AssessmentSweepJob>;
 export const GradeCodeJob = z.object({ submissionId: objectId });
 export type GradeCodeJob = z.infer<typeof GradeCodeJob>;
 
+// `compute/testStats` (06 §6, M04b TP-11): a test's ranks, item analysis, histogram, similarity flags and leaderboard.
+export const TestStatsJob = z.object({ assessmentId: objectId });
+export type TestStatsJob = z.infer<typeof TestStatsJob>;
+
 // `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;

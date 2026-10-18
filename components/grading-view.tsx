@@ -10,6 +10,7 @@ import {
   CodeIcon,
   FileIcon,
   LockIcon,
+  WarningIcon,
   ShieldCheckIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
@@ -124,6 +125,27 @@ export async function GradingPage({
         </div>
       </section>
       {view.proctor && <Proctoring view={view} proctor={view.proctor} />}
+      {view.similar.length > 0 && (
+        <section className="surface border-warning/40 mb-4 grid gap-1 border p-4 text-[0.8125rem] sm:p-5">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <WarningIcon className="text-warning size-4" /> Alike answers — worth a look, not a verdict
+          </h2>
+          <ul className="grid gap-1">
+            {view.similar.map((entry) => (
+              <li key={`${entry.submissionId}-${entry.question}`}>
+                Question {entry.question} is {Math.round(entry.score * 100)}% like{' '}
+                <Link
+                  href={`${list}/${entry.submissionId}`}
+                  className="text-primary font-medium underline-offset-2 hover:underline"
+                >
+                  {entry.name}’s answer
+                </Link>
+                .
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {view.items.some((item) => item.type === 'code') && s.status !== 'in_progress' && (
         <section className="surface mb-4 flex flex-wrap items-center justify-between gap-3 p-4 text-[0.8125rem] sm:p-5">
           <span className="flex items-center gap-2">

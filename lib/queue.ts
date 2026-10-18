@@ -14,6 +14,7 @@ import type {
   MailSend,
   MediaJob,
   ProctorRetentionJob,
+  TestStatsJob,
 } from '@/lib/schemas/jobs';
 
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
@@ -25,14 +26,16 @@ type ComputeData =
   | LiveControlJob
   | AssessmentSweepJob
   | ProctorRetentionJob
-  | GradeCodeJob;
+  | GradeCodeJob
+  | TestStatsJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
   | 'liveControl'
   | 'assessmentSweep'
   | 'proctorRetention'
-  | 'gradeCode';
+  | 'gradeCode'
+  | 'testStats';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -129,6 +132,22 @@ export async function queueGradeCode(submissionId: string, again = false): Promi
   }
   if (existing && (await existing.isCompleted())) await existing.remove();
   await computeQueue().add('gradeCode', { submissionId }, { jobId });
+}
+
+// 06 §6 (TP-11): work a test's results out again. A job still waiting reads the change when it runs, so nothing is
+// added; a finished one is removed and added anew; one already running may have read too early, so another follows it.
+// The short delay gathers a burst of regrades into one run.
+export async function queueTestStats(assessmentId: string): Promise<void> {
+  const jobId = `stats-${assessmentId}`;
+  const existing = await computeQueue().getJob(jobId);
+  const state = existing ? await existing.getState() : null;
+  if (state === 'waiting' || state === 'delayed' || state === 'prioritized') return;
+  if (existing && state !== 'active') await existing.remove();
+  await computeQueue().add(
+    'testStats',
+    { assessmentId },
+    { jobId: state === 'active' ? `${jobId}-${Date.now()}` : jobId, delay: 5_000 },
+  );
 }
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.

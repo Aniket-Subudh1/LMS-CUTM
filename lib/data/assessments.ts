@@ -10,6 +10,7 @@ import { escapeRegex } from '@/lib/data/courses';
 import { db } from '@/lib/db';
 import {
   canStart,
+  countedAttempt,
   countedScore,
   sectionDeadline,
   sectionOpen,
@@ -18,6 +19,9 @@ import {
   type WindowState,
 } from '@/lib/domain/attempts';
 import { distinctPapers } from '@/lib/domain/papers';
+import { bandOf, breakdown, difficultyLabel, discriminationLabel } from '@/lib/domain/results';
+import { plainText } from '@/lib/domain/rich-text';
+import { roundHalfUp } from '@/lib/domain/round';
 import { GAP_MS, proctorPenalty } from '@/lib/domain/proctoring';
 import { seededShuffle } from '@/lib/domain/shuffle';
 import { assessmentPath } from '@/lib/domain/test-links';
@@ -28,6 +32,7 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Submission, type SubmissionDoc } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
+import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
 import {
   ASSESSMENT_LIMITS,
@@ -38,6 +43,7 @@ import {
   type Difficulty,
   type ItemType,
   type ProctorEvent,
+  type ReleaseRule,
   type RunStatus,
 } from '@/lib/schemas/assessment';
 import { pageSize, RichTextDoc } from '@/lib/schemas/common';
@@ -349,6 +355,23 @@ const proctoringOf = ({ proctoring: p }: Pick<AssessmentDoc, 'proctoring'>): Pro
       }
     : null;
 
+// TP-11: when a test's results go out and what they show (an assessment saved before M04b has none: the defaults).
+export type ResultRules = {
+  release: ReleaseRule;
+  showAnswers: boolean;
+  showExplanations: boolean;
+  leaderboard: boolean;
+  bands: { label: string; minPct: number }[];
+};
+
+const rulesOf = ({ results: r }: Pick<AssessmentDoc, 'results'>): ResultRules => ({
+  release: r?.release ?? 'manual',
+  showAnswers: r?.showAnswers ?? false,
+  showExplanations: r?.showExplanations ?? false,
+  leaderboard: r?.leaderboard ?? false,
+  bands: (r?.bands ?? []).map((band) => ({ label: band.label, minPct: band.minPct })),
+});
+
 async function readAssessment(assessmentId: string) {
   if (!Types.ObjectId.isValid(assessmentId)) notFound();
   const doc = await Assessment.findById(assessmentId).lean();
@@ -584,6 +607,8 @@ export type Builder = {
   proctoring: Proctoring;
   // TP-09: the languages a code question may offer (the codeRunner setting).
   languages: { key: string; label: string }[];
+  // TP-11
+  results: ResultRules;
   // What publishing still needs (T4): question numbers without a CO on a credit course.
   missingCos: number[];
   counts: { handedIn: number; toGrade: number; inProgress: number };
@@ -673,6 +698,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     }),
     proctoring: proctoringOf(doc),
     languages: runner.languages.map(({ key, label }) => ({ key, label })),
+    results: rulesOf(doc),
     missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
     counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
   };
@@ -730,15 +756,89 @@ async function readSubmission(filter: QueryFilter<SubmissionDoc>) {
 
 export type MyResult = {
   total: number;
+  maxMarks: number;
+  pct: number;
+  // TP-11: the recommendation band the percentage reaches ("Recommended"), if the test has bands.
+  band: string | null;
+  // Once the results are published and worked out: the place among everyone who took it.
+  standing: { rank: number; of: number; percentile: number } | null;
   // TP-08: serious warnings on the counted attempt, and the marks they cost (0 when none or waived).
   warnings: number;
   penalty: number;
+  // TP-11: marks per section and per course outcome (an outcome by its code and statement).
+  sections: { title: string; marks: number; maxMarks: number }[];
+  outcomes: { code: string; statement: string; marks: number; maxMarks: number }[];
+  // When the test shows one and its results are out: the first places, and whether each is this person.
+  leaderboard: { rank: number; name: string; total: number; you: boolean }[] | null;
   items: (StudentItem & {
     marks: number | null;
     comment: string | null;
     criteria: { criterion: string; marks: number | null; maxMarks: number }[] | null;
+    // What this person answered, in words; the right answer and the explanation only when the rules show them.
+    given: string | null;
+    correct: string | null;
+    explanation: RichTextDoc | null;
   })[];
 };
+
+// An answer in words, for the results page (TP-11). Written and uploaded answers say what they are.
+function givenText(item: PaperItem, answer: StoredAnswer | undefined): string | null {
+  const option = (id: Types.ObjectId) => item.options?.find((o) => o._id.equals(id))?.text ?? '?';
+  switch (item.type) {
+    case 'mcq':
+      return answer?.optionId ? option(answer.optionId) : null;
+    case 'msq':
+      return answer?.optionIds?.length ? answer.optionIds.map(option).join(', ') : null;
+    case 'ordering':
+      return answer?.optionIds?.length ? answer.optionIds.map(option).join(' → ') : null;
+    case 'true_false':
+      return typeof answer?.truth === 'boolean' ? (answer.truth ? 'True' : 'False') : null;
+    case 'numeric':
+      return typeof answer?.value === 'number' ? String(answer.value) : null;
+    case 'fill_blank':
+      return answer?.texts?.some((text) => text.trim()) ? answer.texts.join(' · ') : null;
+    case 'matching': {
+      const right = new Map((item.pairs ?? []).map((pair) => [String(pair.rightId), pair.right]));
+      const left = new Map((item.pairs ?? []).map((pair) => [String(pair._id), pair.left]));
+      return answer?.matches?.length
+        ? answer.matches.map((m) => `${left.get(String(m.left))} → ${right.get(String(m.right))}`).join('; ')
+        : null;
+    }
+    case 'text': {
+      const text = plainText(docOf(answer?.text)).trim();
+      return text ? (text.length > 200 ? `${text.slice(0, 199)}…` : text) : null;
+    }
+    case 'code':
+      return answer?.code?.source.trim() ? 'Your code' : null;
+    case 'file':
+      return answer?.files?.length ? `${answer.files.length} file${answer.files.length === 1 ? '' : 's'}` : null;
+  }
+}
+
+function correctText(item: PaperItem): string | null {
+  const key = item.answer;
+  const option = (id: Types.ObjectId) => item.options?.find((o) => o._id.equals(id))?.text ?? '?';
+  switch (item.type) {
+    case 'mcq':
+      return key?.optionId ? option(key.optionId) : null;
+    case 'msq':
+      return key?.optionIds ? key.optionIds.map(option).join(', ') : null;
+    case 'ordering':
+      return key?.optionIds ? key.optionIds.map(option).join(' → ') : null;
+    case 'true_false':
+      return typeof key?.truth === 'boolean' ? (key.truth ? 'True' : 'False') : null;
+    case 'numeric':
+      return typeof key?.value === 'number' ? `${key.value}${key.tolerance ? ` ± ${key.tolerance}` : ''}` : null;
+    case 'fill_blank':
+      return item.blanks ? item.blanks.map((blank) => blank.accepted[0] ?? '').join(' · ') : null;
+    case 'matching':
+      return item.pairs ? item.pairs.map((pair) => `${pair.left} → ${pair.right}`).join('; ') : null;
+    case 'text':
+    case 'code':
+    case 'file':
+      return null;
+  }
+}
 
 export type AssessmentPage =
   | { view: 'staff'; canTeach: boolean; path: string }
@@ -790,21 +890,62 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
     inProgress: running,
   });
   const assessment = toStudentAssessment(doc);
+  // TP-11: the counted attempt's marks once the results are published — or, with the "at once" rule, as soon as it is
+  // marked; the place among the others waits for the published results.
+  const rules = rulesOf(doc);
   let result: MyResult | null = null;
-  if (assessment.resultsPublished) {
-    const graded = mine.filter((s) => s.status === 'graded' && s.total !== null);
-    const best = Math.max(...graded.map((s) => s.total ?? 0));
-    const counted = doc.attemptPolicy === 'best' ? graded.find((s) => s.total === best) : graded[graded.length - 1];
-    const paper = counted ? await readSubmission({ _id: counted._id }) : null;
+  const counted = countedAttempt(mine, doc.attemptPolicy);
+  if (counted && (assessment.resultsPublished || rules.release === 'instant')) {
+    const [paper, stats, course] = await Promise.all([
+      readSubmission({ _id: counted._id }),
+      assessment.resultsPublished ? TestStats.findById(doc._id, { takers: 1, leaderboard: 1 }).lean() : null,
+      offeringId
+        ? Offering.findById(offeringId, { courseId: 1 })
+            .lean()
+            .then((o) => (o ? Course.findById(o.courseId, { cos: 1 }).lean() : null))
+        : null,
+    ]);
     if (paper) {
+      const pct = doc.maxMarks > 0 ? roundHalfUp((100 * counted.total) / doc.maxMarks, 2) : 0;
+      const sectionTitle = new Map(doc.sections.map((section) => [String(section._id), section.title]));
+      const marksOf = (item: PaperItem) => paper.scores?.[String(item._id)]?.marks ?? null;
+      const bySection = breakdown(
+        paper.paper.flatMap((item) =>
+          item.sectionId ? [{ groups: [String(item.sectionId)], maxMarks: item.maxMarks, marks: marksOf(item) }] : [],
+        ),
+      );
+      const byCo = breakdown(
+        paper.paper.map((item) => ({ groups: item.coIds.map(String), maxMarks: item.maxMarks, marks: marksOf(item) })),
+      );
       result = {
-        total: countedScore(mine, doc.attemptPolicy),
+        total: counted.total,
+        maxMarks: doc.maxMarks,
+        pct,
+        band: bandOf(pct, rules.bands),
+        standing:
+          assessment.resultsPublished && stats && paper.rank !== null && paper.rank !== undefined
+            ? { rank: paper.rank, of: stats.takers, percentile: paper.percentile ?? 0 }
+            : null,
         warnings: paper.proctor?.hard ?? 0,
         penalty: proctorPenalty(
           paper.proctor?.hard ?? 0,
           doc.proctoring?.penaltyEach ?? 0,
           paper.proctor?.waived ?? false,
         ),
+        sections: [...bySection].map(([id, sum]) => ({ title: sectionTitle.get(id) ?? 'Section', ...sum })),
+        outcomes: (course?.cos ?? []).flatMap((co) => {
+          const sum = byCo.get(String(co._id));
+          return sum ? [{ code: co.code, statement: co.statement, ...sum }] : [];
+        }),
+        leaderboard:
+          rules.leaderboard && stats
+            ? stats.leaderboard.map((row) => ({
+                rank: row.rank,
+                name: row.name,
+                total: row.total,
+                you: String(row.studentId) === viewerId,
+              }))
+            : null,
         items: paper.paper.map((raw) => {
           const item = toStudentItem(raw, String(paper._id), true);
           const score = paper.scores?.[item.id];
@@ -819,6 +960,9 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
                   marks: score?.criteria?.find((c) => String(c.criterionId) === r.id)?.marks ?? null,
                 }))
               : null,
+            given: givenText(raw, paper.answers?.[item.id]),
+            correct: rules.showAnswers ? correctText(raw) : null,
+            explanation: rules.showExplanations ? docOf(raw.explanation) : null,
           };
         }),
       };
@@ -953,6 +1097,8 @@ export type HandIns = {
     endedBy: 'warnings' | 'teacher' | null;
     // TP-08: serious warnings.
     warnings: number;
+    // TP-11: an answer alike another hand-in's.
+    similar: boolean;
     total: number | null;
   }[];
   total: number;
@@ -999,6 +1145,7 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
       autoSubmitted: 1,
       endedBy: 1,
       total: 1,
+      similar: 1,
     })
       .sort({ submittedAt: 1, _id: 1 })
       .skip((page - 1) * pageSize)
@@ -1046,6 +1193,7 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
         autoSubmitted: d.autoSubmitted,
         endedBy: d.endedBy ?? null,
         warnings: warningsOf.get(String(d._id)) ?? 0,
+        similar: d.similar.length > 0,
         total: d.total ?? null,
       };
     }),
@@ -1093,6 +1241,8 @@ export type GradingView = {
     codeGradedAt: Date | null;
   };
   languages: { key: string; label: string }[];
+  // TP-11: questions whose answer is alike another hand-in's — whose, and how alike (0–1). A flag to look at.
+  similar: { submissionId: string; name: string; question: number; score: number }[];
   // TP-08: null when the test was not proctored.
   proctor: {
     rules: NonNullable<Proctoring>;
@@ -1150,6 +1300,17 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
   });
   const next = nextAfter ?? firstToGrade;
   const rules = proctoringOf(doc);
+  const others = await Submission.find(
+    { _id: { $in: attempt.similar.map((entry) => entry.submissionId) } },
+    { studentId: 1 },
+  ).lean();
+  const otherNames = new Map(
+    (await User.find({ _id: { $in: others.map((o) => o.studentId) } }, { name: 1 }).lean()).map((u) => [
+      String(u._id),
+      u.name,
+    ]),
+  );
+  const studentOf = new Map(others.map((o) => [String(o._id), String(o.studentId)]));
   const held = attempt.proctor;
   return {
     path: assessmentPath(offeringId, assessmentId),
@@ -1199,6 +1360,12 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       codeGradedAt: attempt.codeGradedAt ?? null,
     },
     languages: (await getSettings('codeRunner')).languages.map(({ key, label }) => ({ key, label })),
+    similar: attempt.similar.map((entry) => ({
+      submissionId: String(entry.submissionId),
+      name: otherNames.get(studentOf.get(String(entry.submissionId)) ?? '') ?? 'Someone',
+      question: attempt.paper.findIndex((item) => item._id.equals(entry.itemId)) + 1,
+      score: entry.score,
+    })),
     proctor: rules
       ? {
           rules,
@@ -1218,6 +1385,99 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       : null,
     previousId: previous ? String(previous._id) : null,
     nextToGradeId: next ? String(next._id) : null,
+  };
+}
+
+export type TestResults = {
+  path: string;
+  canManage: boolean;
+  assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status']; state: DisplayState };
+  rules: ResultRules;
+  // Null until the testStats job has run once.
+  stats: {
+    computedAt: Date;
+    takers: number;
+    averagePct: number | null;
+    highestPct: number | null;
+    histogram: number[];
+    flagged: number;
+    // The questions to look at first: very hard or very easy, or weak at telling stronger takers from weaker ones.
+    items: {
+      key: string;
+      title: string;
+      type: ItemType;
+      sectionTitle: string | null;
+      cos: string[];
+      n: number;
+      correctPct: number;
+      difficulty: string | null;
+      discrimination: number | null;
+      discriminationLabel: string | null;
+      wrongPick: { text: string; pct: number } | null;
+      lookAt: boolean;
+    }[];
+  } | null;
+};
+
+// TP-11 (mock-up C6): how a test went, from the testStats job's last run — takers, average, highest, the score
+// histogram, similar answers and each question's analysis. Whoever manages or oversees the test reads it.
+export async function getTestResults(assessmentId: string): Promise<TestResults> {
+  const { access, offeringId } = await testAccess(assessmentId);
+  if (access === 'take') notFound();
+  await db();
+  const doc = await readAssessment(assessmentId);
+  const [stats, course] = await Promise.all([
+    TestStats.findById(doc._id).lean(),
+    offeringId
+      ? Offering.findById(offeringId, { courseId: 1 })
+          .lean()
+          .then((o) => (o ? Course.findById(o.courseId, { 'cos._id': 1, 'cos.code': 1 }).lean() : null))
+      : null,
+  ]);
+  const coCode = new Map((course?.cos ?? []).map((co) => [String(co._id), co.code]));
+  const items = (stats?.items ?? []).map((item) => {
+    const difficulty = difficultyLabel(item.correctPct);
+    const discrimination = item.discrimination ?? null;
+    const weak = discriminationLabel(discrimination);
+    return {
+      key: String(item.key),
+      title: item.title,
+      type: item.type,
+      sectionTitle: item.sectionTitle ?? null,
+      cos: item.coIds.flatMap((id) => coCode.get(String(id)) ?? []),
+      n: item.n,
+      correctPct: item.correctPct,
+      difficulty,
+      discrimination,
+      discriminationLabel: weak,
+      wrongPick: item.wrongPick?.text ? { text: item.wrongPick.text, pct: item.wrongPick.pct ?? 0 } : null,
+      lookAt: difficulty === 'very hard' || difficulty === 'very easy' || weak === 'weak',
+    };
+  });
+  return {
+    path: assessmentPath(offeringId, assessmentId),
+    canManage: access === 'manage',
+    assessment: {
+      id: assessmentId,
+      title: doc.title,
+      maxMarks: doc.maxMarks,
+      status: doc.status,
+      state: stateOf(doc, new Date()),
+    },
+    rules: rulesOf(doc),
+    stats: stats
+      ? {
+          computedAt: stats.computedAt,
+          takers: stats.takers,
+          averagePct: stats.averagePct ?? null,
+          highestPct: stats.highestPct ?? null,
+          histogram: stats.histogram,
+          flagged: stats.flagged,
+          items: items.sort(
+            (a, b) => Number(b.lookAt) - Number(a.lookAt) || (a.discrimination ?? 1) - (b.discrimination ?? 1),
+          ),
+        }
+      : null,
   };
 }
 

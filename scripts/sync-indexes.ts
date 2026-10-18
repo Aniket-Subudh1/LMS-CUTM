@@ -24,6 +24,7 @@ import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
 import { TestGrant } from '@/lib/models/test-grant';
 import { TestLink } from '@/lib/models/test-link';
+import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
 
 // Creates collections and declared indexes; never drops anything (no syncIndexes()).
@@ -47,6 +48,7 @@ const models = [
   BankItem,
   TestLink,
   TestGrant,
+  TestStats,
   Otp,
   EngagementDaily,
   Notification,

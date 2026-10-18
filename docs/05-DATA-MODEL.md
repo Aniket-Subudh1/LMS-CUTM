@@ -245,6 +245,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | extraTime | `[{ userId: Id, minutes: N }]` | M04b (TP-07), ≤ 200 people, 1–600 minutes; lengthens that person's time limit and the end of hand-ins (07 §14); audited (`assessment.extra_time`) |
 | proctoring | `{ fullscreen: B, camera: B, snapshotEverySec: N, blockCopy: B, hardLimit: N, penaltyEach: N }?` | M04b (TP-08, from M05); null = not proctored. Snapshots every 30–600 s; `hardLimit` 0–20 (0 records only; the N-th serious warning hands the attempt in, 07 §15); `penaltyEach` 0–1000 marks off per serious warning, two decimals. Fixed once anyone has started, like the other settings |
 | snapshotsDeletedAt | D? | M04b: when `proctorRetention` deleted the test's camera snapshots (§8) |
+| results | `{ release: S, showAnswers: B, showExplanations: B, leaderboard: B, bands: [{ label: S, minPct: N }], setBy: Id? }` | M04b (TP-11, 07 §19): `release` `manual` (by hand once closed and marked, M04) · `on_close` (the hourly sweep publishes once closed, nobody writing and everything marked; the audit names `setBy`) · `instant` (each person sees their counted attempt once marked; ranks wait for the published results). Bands ≤ 5, labels ≤ 40, highest first. Changes no mark, so it may change at any time |
 | status | S | `draft` · `published` · `results_published`. Open/closed is **derived** from `opensAt`, `closesAt`, `lateUntil` and now |
 | publishedAt, resultsPublishedAt | D? | |
 | dueNotifiedAt | D? | set when the 24-hour reminder was sent (M04 sweep) |
@@ -274,7 +275,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 
 **Section** (embedded, M04b): `title` S ≤ 80 · `durationMin` N? (1–600; its own clock from when an attempt first opens it) · `locked` B ("no going back": closes when left; later sections open only after it) · `passage` RichText? (shown beside each of its questions) · `draw` `{ count: 1–100, easy, medium, hard: % (0 or adding to 100), coIds: [Id], topics: [S], marksEach: N, negativeEach: N }?` — questions drawn from the bank for each attempt (only automatically marked types, A-M04b-10), each worth `marksEach`.
 
-Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b) · `{ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 }` (the daily snapshot clean-up, M04b).
+Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b) · `{ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 }` (the daily snapshot clean-up, M04b) · `{ 'results.release': 1, status: 1, closesAt: 1 }` (the sweep's automatic releases, M04b).
 Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
 
 ### 5.2 `submissions` (one document per attempt)
@@ -299,6 +300,8 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | runs | `[{ itemId, at: D, passed: N, total: N }]` | each run of a code question's visible tests (LAB-03, `runCode`); counted against its `runLimit`; max 200 (`$slice: -200`; 5 × 30 runs fit) |
 | results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | every test of every answered code question as the `gradeCode` job ran it, hidden ones too; `status` one of `RUN_STATUSES` (`wrong_answer` is our comparison, 07 §14) |
 | codeGradedAt | D? | when the `gradeCode` job last marked the code questions (M04b) |
+| rank, percentile | N? | M04b (TP-11, 07 §19): set by the `testStats` job on each taker's counted attempt only (null elsewhere) |
+| similar | `[{ submissionId: Id, itemId: Id, score: N }]` | M04b: other hand-ins whose written or code answer is alike (07 §19), ≤ 10, most alike first; a flag for a teacher, never a verdict |
 | scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000; marks may be negative (negative marking, 07 §14) |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |
@@ -311,6 +314,10 @@ Invariants: only one `in_progress` attempt per (assessment, student). Every scor
 `courseId` Id? · `ownerId` Id? (exactly one: a catalogue course's bank, shared by every offering of the course in any term; or one member of staff's own, for their standalone tests) · the Item fields above (no `sectionId`) · `usedCount` N (papers that drew it) · `createdBy` Id · timestamps. Collection name `questionBank`.
 Indexes: `{ courseId: 1, createdAt: -1 }` and `{ ownerId: 1, createdAt: -1 }` (partial, the bank page) · `{ courseId: 1, type: 1, difficulty: 1 }` · `{ ownerId: 1, type: 1, difficulty: 1 }` (a draw's candidates).
 Invariants: at most 5,000 per bank (`BANK_LIMITS.perBank`), so a draw's candidates are one bounded read. A course bank's COs are its course's. Deleting a bank question changes no paper (each keeps its own copy).
+
+### 5.2e `testStats` (M04b, TP-11)
+
+One per assessment (`_id` = the assessment's), rebuilt whole by the `testStats` job (06 §6) over each taker's counted attempt; nothing else writes it. `computedAt` D · `takers` N · `averagePct`, `highestPct` N? · `histogram` [N] (10 bins of 10 points) · `items` `[{ key: Id (the assessment's question, or a drawn question's bank id), type: S, title: S (≤ 120, plain text), sectionTitle: S?, coIds: [Id], n: N, correctPct: N, discrimination: N?, wrongPick: { text: S, pct: N }? }]` (≤ 300) · `flagged` N (hand-ins with an alike answer) · `leaderboard` `[{ studentId, name, total, rank }]` (≤ 10). No index beyond `_id`.
 
 ### 5.2a `testLinks` (M04b, TP-01)
 | Field | Type | Rules |

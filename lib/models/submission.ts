@@ -200,6 +200,21 @@ const submissionSchema = new Schema(
     },
     // When the gradeCode job last ran the code questions.
     codeGradedAt: { type: Date, default: null },
+    // TP-11 (07 §19), set by the testStats job on each taker's counted attempt only.
+    rank: { type: Number, default: null },
+    percentile: { type: Number, default: null },
+    // Other hand-ins whose written or code answer to a question is alike (a flag, never a verdict).
+    similar: {
+      type: [
+        {
+          _id: false,
+          submissionId: { type: Schema.Types.ObjectId, required: true },
+          itemId: { type: Schema.Types.ObjectId, required: true },
+          score: { type: Number, required: true, min: 0, max: 1 },
+        },
+      ],
+      default: [],
+    },
     // Null until every question is scored.
     total: { type: Number, default: null },
     gradedAt: { type: Date },

@@ -3,6 +3,7 @@ import Form from 'next/form';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeftIcon,
+  ChartBarIcon,
   CheckCircleIcon,
   CheckSquareIcon,
   ClockIcon,
@@ -39,6 +40,7 @@ import {
   saveInstructions,
   saveItem,
   saveProctoring,
+  saveResultRules,
   saveSection,
   setExtraTime,
   updateAssessmentSettings,
@@ -68,7 +70,13 @@ import { listLinks, type ShareLink } from '@/lib/data/test-links';
 import { PAPERS_CAP } from '@/lib/domain/papers';
 import { plainText } from '@/lib/domain/rich-text';
 import { formatDateTime, formatDuration, ITEM_LABEL, ordinal, statusTone } from '@/lib/format';
-import { ASSESSMENT_LIMITS, MODE_ITEM_TYPES, PROCTOR_LIMITS } from '@/lib/schemas/assessment';
+import {
+  ASSESSMENT_LIMITS,
+  MODE_ITEM_TYPES,
+  PROCTOR_LIMITS,
+  RELEASE_RULES,
+  RESULT_LIMITS,
+} from '@/lib/schemas/assessment';
 import type { RichTextDoc } from '@/lib/schemas/common';
 import { TEST_LIMITS } from '@/lib/schemas/tests';
 
@@ -180,6 +188,13 @@ export async function AssessmentBuilder({
                   {b.counts.inProgress > 0 && (
                     <span className="text-success tabular-nums">· {b.counts.inProgress} writing</span>
                   )}
+                </Link>
+              </Button>
+            )}
+            {a.status !== 'draft' && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`${b.path}/results`}>
+                  <ChartBarIcon /> Results
                 </Link>
               </Button>
             )}
@@ -333,6 +348,7 @@ export async function AssessmentBuilder({
             </dl>
           </Section>
           <Proctoring b={b} here={here} />
+          <ResultRules b={b} here={here} />
           {b.canEdit && (
             <ShareLinks links={links} qr={qr} here={here} aid={aid} draft={a.status === 'draft'} course={course} />
           )}
@@ -362,6 +378,7 @@ export async function AssessmentBuilder({
 
       {b.canEdit && open === 'settings' && <SettingsDialog key={open} b={b} />}
       {editQuestions && open === 'proctoring' && <ProctoringDialog key={open} b={b} />}
+      {b.canEdit && open === 'results' && <ResultRulesDialog key={open} b={b} />}
       {b.canEdit && open === 'instructions' && (
         <FormDialog
           key={open}
@@ -588,6 +605,143 @@ function SettingsDialog({ b }: { b: Builder }) {
             Shuffle the options of each question
           </label>
         </div>
+      </fieldset>
+    </FormDialog>
+  );
+}
+
+const RELEASE: Record<Builder['results']['release'], { label: string; hint: string }> = {
+  manual: { label: 'By hand', hint: 'You publish them once it closes and every hand-in is marked.' },
+  on_close: {
+    label: 'By themselves once it closes',
+    hint: 'Published within the hour after it closes, once nobody is writing and every hand-in is marked.',
+  },
+  instant: {
+    label: 'Each person’s at once',
+    hint: 'Each person sees their marks as soon as their attempt is marked; ranks wait for the published results.',
+  },
+};
+
+// TP-11: when the results go out and what they show. They change no mark, so they can change at any time.
+function ResultRules({ b, here }: { b: Builder; here: (name: string) => string }) {
+  const r = b.results;
+  const rows: [string, string][] = [
+    ['Released', RELEASE[r.release].label],
+    [
+      'Shows',
+      r.showAnswers && r.showExplanations
+        ? 'Marks, answers and explanations'
+        : r.showAnswers
+          ? 'Marks and the right answers'
+          : r.showExplanations
+            ? 'Marks and explanations'
+            : 'Marks only',
+    ],
+    ['Leaderboard', r.leaderboard ? `The first ${RESULT_LIMITS.leaderboard}` : 'Off'],
+    ['Bands', r.bands.length > 0 ? r.bands.map((band) => `${band.label} ${band.minPct} %+`).join(' · ') : 'None'],
+  ];
+  return (
+    <Section
+      icon={<ChartBarIcon />}
+      title="Results"
+      description="When they go out and what people see."
+      action={
+        b.canEdit && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={here('results')} scroll={false}>
+              <PencilSimpleIcon /> Edit
+            </Link>
+          </Button>
+        )
+      }
+    >
+      <dl className="grid gap-2 text-[0.8125rem]">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="border-border/70 flex justify-between gap-3 border-b pb-2 last:border-0 last:pb-0"
+          >
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="text-right font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Section>
+  );
+}
+
+function ResultRulesDialog({ b }: { b: Builder }) {
+  const r = b.results;
+  const check = (name: string, label: string, on: boolean) => (
+    <label className="flex items-center gap-2.5 text-[0.8125rem]">
+      <input type="checkbox" name={name} value="true" defaultChecked={on} className="accent-foreground size-4" />
+      {label}
+    </label>
+  );
+  return (
+    <FormDialog
+      openParam="results"
+      size="wide"
+      icon={<ChartBarIcon weight="duotone" />}
+      title="Results"
+      description="None of this changes a mark. Ranks and the leaderboard appear once the results are published."
+      action={saveResultRules}
+      submitLabel="Save"
+      successMessage="Results settings saved."
+    >
+      <input type="hidden" name="assessmentId" value={b.assessment.id} />
+      <fieldset className="grid gap-2">
+        <legend className="mb-1 text-sm font-medium">Released</legend>
+        {RELEASE_RULES.map((rule) => (
+          <label key={rule} className="flex items-start gap-2.5 text-[0.8125rem]">
+            <input
+              type="radio"
+              name="release"
+              value={rule}
+              defaultChecked={r.release === rule}
+              className="accent-foreground mt-0.5 size-4 shrink-0"
+            />
+            <span className="grid gap-0.5">
+              <b className="font-medium">{RELEASE[rule].label}</b>
+              <span className="text-muted-foreground text-xs">{RELEASE[rule].hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="grid gap-2 border-t pt-4">
+        <legend className="mb-1 text-sm font-medium">With the marks, show</legend>
+        {check('showAnswers', 'The right answers', r.showAnswers)}
+        {check('showExplanations', 'The explanations', r.showExplanations)}
+        {check('leaderboard', `A leaderboard of the first ${RESULT_LIMITS.leaderboard}, by name`, r.leaderboard)}
+      </fieldset>
+      <fieldset className="grid gap-2 border-t pt-4">
+        <legend className="mb-1 text-sm font-medium">Bands (optional)</legend>
+        <p className="text-muted-foreground text-xs">
+          A name for each score from a percentage up, such as Recommended from 75 % and Waitlist from 60 %. Each person
+          sees the highest band they reach.
+        </p>
+        {Array.from({ length: RESULT_LIMITS.bands }, (_, row) => (
+          <div key={row} className="grid grid-cols-[1fr_7rem] gap-3">
+            <Input
+              name="bandLabel[]"
+              defaultValue={r.bands[row]?.label ?? ''}
+              maxLength={RESULT_LIMITS.bandLabel}
+              placeholder={row === 0 ? 'Recommended' : `Band ${row + 1}`}
+              aria-label={`Band ${row + 1} name`}
+            />
+            <Input
+              name="bandMin[]"
+              type="number"
+              min={0}
+              max={100}
+              step="any"
+              defaultValue={r.bands[row]?.minPct ?? ''}
+              placeholder="From %"
+              aria-label={`Band ${row + 1} from percent`}
+            />
+          </div>
+        ))}
+        <FieldErrors name="bandLabel[]" />
       </fieldset>
     </FormDialog>
   );

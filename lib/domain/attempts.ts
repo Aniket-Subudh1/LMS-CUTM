@@ -96,16 +96,30 @@ export function isLate(submittedAt: Date, closesAt: Date): boolean {
   return submittedAt > closesAt;
 }
 
-// 07 §14: only graded attempts count; best or last of them; none graded → 0 (a missed assessment counts as zero).
+// 07 §14: only graded attempts count; the best of them (the first of equals) or the last. Null when none is graded.
+export function countedAttempt<T extends { attemptNo: number; status: string; total?: number | null }>(
+  attempts: readonly T[],
+  policy: AttemptPolicy,
+): (T & { total: number }) | null {
+  const graded = attempts.filter(
+    (a): a is T & { total: number } => a.status === 'graded' && typeof a.total === 'number',
+  );
+  if (graded.length === 0) return null;
+  return graded.reduce((kept, a) =>
+    policy === 'best'
+      ? a.total > kept.total || (a.total === kept.total && a.attemptNo < kept.attemptNo)
+        ? a
+        : kept
+      : a.attemptNo > kept.attemptNo
+        ? a
+        : kept,
+  );
+}
+
+// 07 §14: the counted attempt's total; none graded → 0 (a missed assessment counts as zero).
 export function countedScore(
   attempts: readonly { attemptNo: number; status: string; total?: number | null }[],
   policy: AttemptPolicy,
 ): number {
-  const graded = attempts.filter(
-    (a): a is { attemptNo: number; status: string; total: number } =>
-      a.status === 'graded' && typeof a.total === 'number',
-  );
-  if (graded.length === 0) return 0;
-  if (policy === 'best') return Math.max(...graded.map((a) => a.total));
-  return graded.reduce((latest, a) => (a.attemptNo > latest.attemptNo ? a : latest)).total;
+  return countedAttempt(attempts, policy)?.total ?? 0;
 }

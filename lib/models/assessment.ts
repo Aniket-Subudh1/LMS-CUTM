@@ -7,6 +7,8 @@ import {
   DIFFICULTIES,
   ITEM_TYPES,
   PROCTOR_LIMITS,
+  RELEASE_RULES,
+  RESULT_LIMITS,
 } from '@/lib/schemas/assessment';
 import { BLOOM_LEVELS } from '@/lib/schemas/structure';
 
@@ -185,6 +187,32 @@ const assessmentSchema = new Schema(
       ),
       default: null,
     },
+    // TP-11 (07 §19): when results go out and what they show. `setBy` chose the rule, and is the actor the audit log
+    // names when the rule publishes them.
+    results: {
+      type: new Schema(
+        {
+          release: { type: String, enum: RELEASE_RULES, required: true, default: 'manual' },
+          showAnswers: { type: Boolean, required: true, default: false },
+          showExplanations: { type: Boolean, required: true, default: false },
+          leaderboard: { type: Boolean, required: true, default: false },
+          // Highest first; the first a percentage reaches is its band ("Recommended").
+          bands: {
+            type: [
+              {
+                _id: false,
+                label: { type: String, required: true, maxlength: RESULT_LIMITS.bandLabel },
+                minPct: { type: Number, required: true, min: 0, max: 100 },
+              },
+            ],
+            default: [],
+          },
+          setBy: { type: Schema.Types.ObjectId, default: null },
+        },
+        { _id: false },
+      ),
+      default: () => ({}),
+    },
     // When the daily proctorRetention job deleted this test's camera snapshots (05 §8).
     snapshotsDeletedAt: { type: Date, default: null },
     // Open or closed is derived from the dates and now (windowState, lib/domain/attempts.ts).
@@ -206,6 +234,8 @@ assessmentSchema.index({ 'items.coIds': 1 });
 // The Tests page: a member of staff's standalone tests, the latest closing first (M04b). An admin's list of every
 // standalone test uses { offeringId, status, closesAt } with offeringId null.
 assessmentSchema.index({ ownerIds: 1, closesAt: -1, _id: -1 });
+// The hourly sweep's tests whose results go out by themselves once closed (TP-11).
+assessmentSchema.index({ 'results.release': 1, status: 1, closesAt: 1 });
 // The daily proctorRetention job: tests with camera snapshots whose results went out long enough ago (05 §8).
 assessmentSchema.index({ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 });
 

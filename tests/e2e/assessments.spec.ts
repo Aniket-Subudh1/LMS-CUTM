@@ -148,8 +148,10 @@ test('a teacher builds and publishes a quiz; a student takes it; the teacher gra
 
   // The student reads marks, the rubric's criteria and the comment, and no answer key.
   await student.reload();
-  await expect(student.getByText('Your counted marks')).toBeVisible();
+  await expect(student.getByRole('heading', { name: 'Your answers' })).toBeVisible();
   await expect(student.getByText('Name the loop counter.')).toBeVisible();
   await expect(student.getByText('Correct loop')).toBeVisible();
-  await expect(student.getByText(/^9\s*\/\s*10$/)).toBeVisible();
+  await expect(student.getByText(/^9\s*\/\s*10 marks$/)).toBeVisible();
+  // M04b (TP-11): by default the results show no right answer.
+  await expect(student.getByText('Right answer:')).toHaveCount(0);
 });

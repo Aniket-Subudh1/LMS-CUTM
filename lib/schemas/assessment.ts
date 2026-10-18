@@ -689,6 +689,54 @@ export const MessageTakers = z.object({
 });
 export const WaivePenalty = z.object({ ...SubmissionRef.shape, waived: z.stringbool() });
 
+// --- Results (M04b, TP-11; the rules are 07 §19) ---
+
+// manual: published by hand once it closes and all is marked (M04) · on_close: published by itself then · instant:
+// each person sees their marks once their attempt is marked; ranks wait for the published results.
+export const RELEASE_RULES = ['manual', 'on_close', 'instant'] as const;
+export type ReleaseRule = (typeof RELEASE_RULES)[number];
+export const RESULT_LIMITS = { bands: 5, bandLabel: 40, leaderboard: 10, similar: 10, statsItems: 300 } as const;
+
+export const SaveResultRules = z
+  .object({
+    ...AssessmentRef.shape,
+    release: z.enum(RELEASE_RULES, 'Choose when results go out.').default('manual'),
+    showAnswers: z.stringbool().default(false),
+    showExplanations: z.stringbool().default(false),
+    leaderboard: z.stringbool().default(false),
+    'bandLabel[]': list(
+      z.string().trim().max(RESULT_LIMITS.bandLabel, `Use at most ${RESULT_LIMITS.bandLabel} characters.`),
+      RESULT_LIMITS.bands,
+    ),
+    'bandMin[]': list(z.string().trim().max(6), RESULT_LIMITS.bands),
+  })
+  .transform((input, ctx) => {
+    const bands: { label: string; minPct: number }[] = [];
+    for (const [row, label] of input['bandLabel[]'].entries()) {
+      const raw = input['bandMin[]'][row] ?? '';
+      if (label === '' && raw === '') continue;
+      const minPct = Number(raw);
+      if (label === '' || raw === '' || !Number.isFinite(minPct) || minPct < 0 || minPct > 100) {
+        ctx.addIssue({ code: 'custom', path: ['bandLabel[]'], message: `Band ${row + 1}: give a name and a 0–100 %.` });
+        return z.NEVER;
+      }
+      bands.push({ label, minPct });
+    }
+    if (new Set(bands.map((band) => band.minPct)).size !== bands.length) {
+      ctx.addIssue({ code: 'custom', path: ['bandLabel[]'], message: 'Give each band its own percentage.' });
+      return z.NEVER;
+    }
+    const { assessmentId, release, showAnswers, showExplanations, leaderboard } = input;
+    return {
+      assessmentId,
+      release,
+      showAnswers,
+      showExplanations,
+      leaderboard,
+      bands: bands.sort((a, b) => b.minPct - a.minPct),
+    };
+  });
+
 // --- Grading (T6). One row per question in order; a rubric question posts its criteria instead of marks. ---
 
 export const GradeSubmission = z
