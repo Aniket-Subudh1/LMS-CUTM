@@ -5,6 +5,7 @@ import { assessmentAccess, offeringAccess, type AssessmentAccess } from '@/lib/a
 import { requireViewer } from '@/lib/auth/session';
 import { SAVE_GRACE_MS } from '@/lib/data/attempts';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
+import { getSettings } from '@/lib/data/settings';
 import { escapeRegex } from '@/lib/data/courses';
 import { db } from '@/lib/db';
 import {
@@ -37,6 +38,7 @@ import {
   type Difficulty,
   type ItemType,
   type ProctorEvent,
+  type RunStatus,
 } from '@/lib/schemas/assessment';
 import { pageSize, RichTextDoc } from '@/lib/schemas/common';
 import { MAX_ENROLLMENTS, type BLOOM_LEVELS } from '@/lib/schemas/structure';
@@ -378,10 +380,21 @@ export type StudentItem = {
   pairs: { lefts: { id: string; text: string }[]; rights: { id: string; text: string }[] } | null;
   // Shown with the marks once results are published, so the student reads how each criterion went.
   rubric: { id: string; criterion: string; maxMarks: number }[] | null;
+  // TP-09: a code question's language keys (the codeRunner setting names them), a starter for each, its limits and
+  // only its visible tests; how many more are hidden.
+  code: {
+    languages: string[];
+    starter: { language: string; source: string }[];
+    timeLimitSec: number;
+    memoryKb: number;
+    runLimit: number;
+    samples: { id: string; input: string; expected: string }[];
+    hidden: number;
+  } | null;
 };
 
 // 09 §10: the only way a question reaches whoever takes it. No key, no accepted answers for a blank, nothing that pairs
-// a matching question's sides, no CO tags, and no rubric until results are published.
+// a matching question's sides, no hidden test of a code question, no CO tags, and no rubric until results are published.
 export function toStudentItem(item: AnyItem, seed: string, resultsPublished: boolean): StudentItem {
   return {
     id: String(item._id),
@@ -406,6 +419,19 @@ export function toStudentItem(item: AnyItem, seed: string, resultsPublished: boo
       resultsPublished && item.rubric
         ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
         : null,
+    code: item.code
+      ? {
+          languages: item.code.languages,
+          starter: item.code.starter.map((s) => ({ language: s.language, source: s.source })),
+          timeLimitSec: item.code.timeLimitSec,
+          memoryKb: item.code.memoryKb,
+          runLimit: item.code.runLimit,
+          samples: item.code.testCases
+            .filter((test) => !test.hidden)
+            .map((test) => ({ id: String(test._id), input: test.input, expected: test.expected })),
+          hidden: item.code.testCases.filter((test) => test.hidden).length,
+        }
+      : null,
   };
 }
 
@@ -472,6 +498,8 @@ export type TeacherItem = Omit<StudentItem, 'pairs' | 'rubric'> & {
   pairs: { id: string; rightId: string; left: string; right: string }[] | null;
   // A question a paper drew from the bank (M04b).
   drawn: boolean;
+  // TP-09: every test of a code question, hidden ones included.
+  tests: { id: string; input: string; expected: string; hidden: boolean; weight: number }[] | null;
 };
 
 export function teacherItemOf(item: AnyItem): TeacherItem {
@@ -506,6 +534,15 @@ export function teacherItemOf(item: AnyItem): TeacherItem {
         }))
       : null,
     drawn: 'bankItemId' in item && Boolean(item.bankItemId),
+    tests: item.code
+      ? item.code.testCases.map((test) => ({
+          id: String(test._id),
+          input: test.input,
+          expected: test.expected,
+          hidden: test.hidden,
+          weight: test.weight,
+        }))
+      : null,
   };
 }
 
@@ -545,6 +582,8 @@ export type Builder = {
   extraTime: { userId: string; name: string; email: string; minutes: number }[];
   // TP-08
   proctoring: Proctoring;
+  // TP-09: the languages a code question may offer (the codeRunner setting).
+  languages: { key: string; label: string }[];
   // What publishing still needs (T4): question numbers without a CO on a credit course.
   missingCos: number[];
   counts: { handedIn: number; toGrade: number; inProgress: number };
@@ -559,7 +598,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     readAssessment(assessmentId),
     offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean() : null,
   ]);
-  const [course, statuses, pools, people] = await Promise.all([
+  const [course, statuses, pools, people, runner] = await Promise.all([
     offering ? Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean() : null,
     Submission.aggregate<{ _id: string; n: number }>([
       { $match: { assessmentId: doc._id } },
@@ -567,6 +606,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     ]),
     sectionPools(doc),
     User.find({ _id: { $in: doc.extraTime.map((e) => e.userId) } }, { name: 1, email: 1 }).lean(),
+    getSettings('codeRunner'),
   ]);
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
   const credit = offering?.category === 'ugc';
@@ -632,6 +672,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
       };
     }),
     proctoring: proctoringOf(doc),
+    languages: runner.languages.map(({ key, label }) => ({ key, label })),
     missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
     counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
   };
@@ -646,7 +687,8 @@ export type AnswerValue =
   | { type: 'matching'; matches: { left: string; right: string }[] }
   | { type: 'ordering'; optionIds: string[] }
   | { type: 'text'; text: RichTextDoc | null }
-  | { type: 'file'; files: UploadedFile[] };
+  | { type: 'file'; files: UploadedFile[] }
+  | { type: 'code'; language: string | null; source: string };
 
 type StoredAnswer = NonNullable<SubmissionDoc['answers']>[string];
 
@@ -667,6 +709,8 @@ function answerOf(type: ItemType, stored: StoredAnswer | undefined): AnswerValue
       return { type, matches: (stored?.matches ?? []).map((m) => ({ left: String(m.left), right: String(m.right) })) };
     case 'text':
       return { type, text: docOf(stored?.text) };
+    case 'code':
+      return { type, language: stored?.code?.language ?? null, source: stored?.code?.source ?? '' };
     case 'file':
       return {
         type,
@@ -827,8 +871,11 @@ export type AttemptDTO = {
   sections: AttemptSection[];
   currentSectionId: string | null;
   flags: string[];
+  // TP-09: the languages code questions may use, the wait between runs, and per question the runs made so far.
+  languages: { key: string; label: string }[];
+  runCooldownSec: number;
   // `saved` is what the student has saved so far, never a key.
-  items: (StudentItem & { saved: AnswerValue })[];
+  items: (StudentItem & { saved: AnswerValue; runs: number })[];
 };
 
 // T5: the runner's attempt, owner only: the questions of its own paper (M04b) in its order, with the answers saved so
@@ -838,17 +885,22 @@ export async function getAttemptForStudent(assessmentId: string): Promise<Attemp
   if (access !== 'take') notFound();
   await db();
   const doc = await readAssessment(assessmentId);
-  const [attempt, offering, viewer] = await Promise.all([
+  const [attempt, offering, viewer, runner] = await Promise.all([
     readSubmission({ assessmentId: doc._id, studentId: viewerId, status: 'in_progress' }),
     offeringId ? Offering.findById(offeringId, { title: 1 }).lean() : null,
     requireViewer(),
+    getSettings('codeRunner'),
   ]);
   if (!attempt) return null;
   const now = new Date();
   const seed = String(attempt._id);
   const items = attempt.paper.map((raw) => {
     const item = toStudentItem(raw, seed, false);
-    return { ...item, saved: answerOf(item.type, attempt.answers?.[item.id]) };
+    return {
+      ...item,
+      saved: answerOf(item.type, attempt.answers?.[item.id]),
+      runs: attempt.runs.filter((run) => String(run.itemId) === item.id).length,
+    };
   });
   const rules = doc.sections.map((s) => ({ id: String(s._id), durationMin: s.durationMin ?? null, locked: s.locked }));
   const sections = sectionSummaries(doc).map((summary, i): AttemptSection => {
@@ -878,6 +930,8 @@ export async function getAttemptForStudent(assessmentId: string): Promise<Attemp
     sections,
     currentSectionId: attempt.currentSectionId ? String(attempt.currentSectionId) : null,
     flags: attempt.flags.map(String),
+    languages: runner.languages.map(({ key, label }) => ({ key, label })),
+    runCooldownSec: runner.runCooldownSec,
     items,
   };
 }
@@ -1031,7 +1085,14 @@ export type GradingView = {
     endedBy: 'warnings' | 'teacher' | null;
     // Minutes the live monitor added (TP-08).
     addedMin: number;
+    // TP-09 (LAB-03): per code question, its runs of the visible tests and every test as graded; when they were run.
+    runs: Partial<Record<string, { at: Date; passed: number; total: number }[]>>;
+    results: Partial<
+      Record<string, { testCaseId: string; status: RunStatus; timeMs: number | null; memoryKb: number | null }[]>
+    >;
+    codeGradedAt: Date | null;
   };
+  languages: { key: string; label: string }[];
   // TP-08: null when the test was not proctored.
   proctor: {
     rules: NonNullable<Proctoring>;
@@ -1121,7 +1182,23 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       flags: attempt.flags.map(String),
       endedBy: attempt.endedBy ?? null,
       addedMin: held?.addedMin ?? 0,
+      runs: Object.groupBy(
+        attempt.runs.map((run) => ({ itemId: String(run.itemId), at: run.at, passed: run.passed, total: run.total })),
+        (run) => run.itemId,
+      ),
+      results: Object.groupBy(
+        attempt.results.map((r) => ({
+          itemId: String(r.itemId),
+          testCaseId: String(r.testCaseId),
+          status: r.status,
+          timeMs: r.timeMs ?? null,
+          memoryKb: r.memoryKb ?? null,
+        })),
+        (r) => r.itemId,
+      ),
+      codeGradedAt: attempt.codeGradedAt ?? null,
     },
+    languages: (await getSettings('codeRunner')).languages.map(({ key, label }) => ({ key, label })),
     proctor: rules
       ? {
           rules,

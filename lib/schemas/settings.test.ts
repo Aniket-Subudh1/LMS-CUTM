@@ -44,6 +44,36 @@ describe('evaluation policy (07 §2)', () => {
   });
 });
 
+describe('code questions (06 §7, TP-09)', () => {
+  const schema = SETTINGS.codeRunner.schema;
+  it('defaults to C, C++ and Java with Judge0 CE ids, and a 3 s wait', () => {
+    expect(schema.parse({})).toEqual({
+      languages: [
+        { key: 'c', label: 'C (GCC 9.2.0)', runnerId: 50 },
+        { key: 'cpp', label: 'C++ (GCC 9.2.0)', runnerId: 54 },
+        { key: 'java', label: 'Java (OpenJDK 13.0.1)', runnerId: 62 },
+      ],
+      runCooldownSec: 3,
+    });
+  });
+  it('reads the form’s lines, and a stored list again', () => {
+    const parsed = schema.parse({ languages: 'python | Python (3.8.1) | 71\r\n\r\nc | C | 50', runCooldownSec: '5' });
+    expect(parsed.languages).toEqual([
+      { key: 'python', label: 'Python (3.8.1)', runnerId: 71 },
+      { key: 'c', label: 'C', runnerId: 50 },
+    ]);
+    expect(schema.parse(parsed)).toEqual(parsed);
+  });
+  it.each([
+    ['a key used twice', 'c | C | 50\nc | C again | 49'],
+    ['a key with capitals', 'Cpp | C++ | 54'],
+    ['a runner id that is not a number', 'c | C | gcc'],
+    ['no language', ''],
+  ])('refuses %s', (_, languages) => {
+    expect(schema.safeParse({ languages }).success).toBe(false);
+  });
+});
+
 describe('live-class attendance (07 §10)', () => {
   const attendance = SETTINGS.attendance.schema;
   it('defaults to 75 % of the class and takes a percentage', () => {

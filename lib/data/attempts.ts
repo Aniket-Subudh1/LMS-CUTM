@@ -6,6 +6,7 @@ import { attemptTotal, autoGrade, type GivenAnswer, type GradableItem } from '@/
 import { proctorPenalty, withPenalty } from '@/lib/domain/proctoring';
 import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
 import { Submission, type SubmissionDoc } from '@/lib/models/submission';
+import { queueGradeCode } from '@/lib/queue';
 import type { ENDED_BY } from '@/lib/schemas/assessment';
 
 // A save sent just before 0:00 may arrive a moment after the deadline (M04 T5).
@@ -68,7 +69,8 @@ export function totalOf(
 // The one way an attempt is handed in (M04 T5, T8): the student's Submit, a save after time ran out, resuming an
 // expired attempt, publishResults and the hourly sweep — and, since M04b, the serious-warning limit and the live
 // monitor's "End attempt" (`endedBy`). Objective questions are marked at once from the attempt's own paper (07 §14);
-// when every question is marked the attempt is graded. An attempt handed in at or after its deadline is the timer's:
+// when every question is marked the attempt is graded. Code questions are run and marked by the gradeCode job, queued
+// once the hand-in is written (TP-09). An attempt handed in at or after its deadline is the timer's:
 // its time is the deadline, so a sweep that comes later does not make it late (A-M04-3). Late means after the closing
 // time plus the person's extra time and the minutes the monitor added. The change is written only while the attempt
 // is still in progress, together with its engagement counters, so a second run changes nothing. The worker calls this
@@ -137,7 +139,9 @@ export async function handInAttempts(
       );
       return true;
     });
-    if (changed) handedIn++;
+    if (!changed) continue;
+    handedIn++;
+    if (attempt.paper.some((item) => item.type === 'code')) await queueGradeCode(String(attempt._id));
   }
   return handedIn;
 }

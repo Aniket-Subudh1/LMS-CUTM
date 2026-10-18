@@ -1,11 +1,14 @@
 import {
   BookOpenIcon,
+  CodeIcon,
   ExamIcon,
   FlaskIcon,
   InfoIcon,
   ListChecksIcon,
   NotebookIcon,
   PlusIcon,
+  TestTubeIcon,
+  TrophyIcon,
 } from '@phosphor-icons/react/ssr';
 import type { Icon } from '@phosphor-icons/react';
 import { createAssessment } from '@/app/(app)/courses/[offeringId]/assessments/actions';
@@ -23,6 +26,9 @@ export const MODE_ICON: Record<AssessmentMode, Icon> = {
   assignment: NotebookIcon,
   learning_record: BookOpenIcon,
   lab_record: FlaskIcon,
+  coding_test: CodeIcon,
+  lab_test: TestTubeIcon,
+  coding_competition: TrophyIcon,
 };
 
 const MODE_HINT: Record<AssessmentMode, string> = {
@@ -31,6 +37,9 @@ const MODE_HINT: Record<AssessmentMode, string> = {
   assignment: 'Untimed. Students type or upload by a deadline.',
   learning_record: 'A theory course’s record, for a period or the whole year.',
   lab_record: 'One per experiment in a practice course.',
+  coding_test: 'Timed. Programs run on your tests, with other questions beside them.',
+  lab_test: 'A practical exam: programs, questions and uploads, timed.',
+  coding_competition: 'Programs only, ranked by the tests they pass.',
 };
 
 // What datetime-local shows for a time: its IST wall clock (06 §2).

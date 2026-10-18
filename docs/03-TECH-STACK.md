@@ -61,9 +61,9 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@livekit/components-react` | 2.9.24 | M03 | `LiveKitRoom`, `VideoConference` | `components/live-room.tsx` | — |
 | `@livekit/components-styles` | 1.2.0 | M03 | Styles for the above | `components/live-room.tsx` | — |
 | `qrcode` | 1.5.4 | M04b | The QR code of a test's share link (TP-01), drawn as an SVG string on the server. Writing a QR encoder (Reed–Solomon, masking) is not "reasonable code" | `components/assessment-builder.tsx` | `import QRCode from 'qrcode'`; `await QRCode.toString(text, { type: 'svg', margin: 1 })`. Server only: the browser bundle never loads it. Its `yargs` dependency is for the CLI and is never imported |
-| `@uiw/react-codemirror` | 4.25.12 | M05 | Code editor | `components/code-editor.tsx` | — |
-| `@codemirror/lang-cpp` | 6.0.3 | M05 | C/C++ highlighting | `components/code-editor.tsx` | — |
-| `@codemirror/lang-java` | 6.0.2 | M05 | Java highlighting | `components/code-editor.tsx` | — |
+| `@uiw/react-codemirror` | 4.25.12 | M04b (from M05) | Code editor (its peers `codemirror`, `@codemirror/state`, `@codemirror/view` and `@codemirror/theme-one-dark` come with it) | `components/code-editor.tsx` | — |
+| `@codemirror/lang-cpp` | 6.0.3 | M04b (from M05) | C/C++ highlighting | `components/code-editor.tsx` | — |
+| `@codemirror/lang-java` | 6.0.2 | M04b (from M05) | Java highlighting | `components/code-editor.tsx` | — |
 | `octokit` | 5.0.5 | M07 | GitHub App, OAuth, webhooks | `lib/integrations/github.ts` | `new App({ appId, privateKey, oauth, webhooks })`; `app.getInstallationOctokit(id)`; `app.webhooks.verifyAndReceive(...)` |
 | `@anthropic-ai/sdk` | 0.133.0 | M09 | CO/Bloom suggestions, CO-PO suggestions, engagement explanation | `lib/integrations/ai.ts` | Use `client.beta.messages.parse` + `betaZodOutputFormat` from `@anthropic-ai/sdk/helpers/beta/zod` (type-checked; pattern in 06 §4.7) |
 

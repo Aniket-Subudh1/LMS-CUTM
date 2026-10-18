@@ -26,8 +26,8 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; phases A (access), B (build) and C (integrity) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
-| M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
+| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity) and D (code) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
@@ -65,7 +65,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-22 | Does CUTM have a GitHub organization for student repos; private repos allowed? | @client | GitHub App installed on a CUTM org; private repos supported | M07 setup | Open |
 | Q-23 | Are excused absences (medical leave) from assessments needed? | @client | No; missed = 0 (A-14) | — | Open |
 | Q-24 | Retention period for proctoring snapshots | @client | 90 days after results (A-13) | — | Open |
-| Q-25 | (a) Live engine — **decided by dev 12 Oct 2026: self-hosted LiveKit** (ADR-18); confirm with the client that this satisfies LIV-02 "reuse the previous solution". (b) The recruitment platform's compiler service: technology and repository access | @dev (Aniket) | (a) LiveKit; (b) Judge0 CE reference adapter | M05 adapter choice | (a) Decided · (b) Open |
+| Q-25 | (a) Live engine — **decided by dev 12 Oct 2026: self-hosted LiveKit** (ADR-18); confirm with the client that this satisfies LIV-02 "reuse the previous solution". (b) The recruitment platform's compiler service: technology and repository access | @dev (Aniket) | (a) LiveKit; (b) Judge0 CE reference adapter | M05 adapter choice | (a) Decided · (b) Answered for now 18 Oct 2026 (Aniket): Judge0, on its free public server until the university's own (Q-55) |
 | Q-26 | What must "AI" in engagement tracking mean? Is a deterministic score plus an AI-written explanation acceptable? | @client | Yes (ADR-16) | — | Open |
 | Q-27 | Who edits CO-PO-PSO matrices: admin only, or faculty with HoD approval? | @client | Admin only | — | Answered 15 Oct 2026 (Aniket, M01b): the course coordinator and admins (CRS-07) |
 | Q-28 | Login identifier: email or roll number? University email domain? | @client | Email | — | Open |
@@ -93,6 +93,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
 | Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
 | Q-53 | The syllabus PDF opens for admins and for whoever teaches, oversees or studies an offering of the course (`reach` in `/api/files`), so a coordinator who teaches none of its offerings cannot open the PDF they uploaded. Should every staff member who can open the catalogue course open its PDF? | @dev | As built in M01b (offerings only) | — | Answered 17 Oct 2026 (@dev, at Aniket's request): yes — admins, HoDs and faculty open it; a student only for a course they study (`/api/files`) |
+| Q-55 | Code questions run on Judge0's free public server (ce.judge0.com) until the university has its own: students' code goes to a third party, and its rate limits are not ours. Before going public, which Judge0 server and token (or a paid key) should be used? | @client | The free public server (Aniket, 18 Oct 2026) | Going public | Open |
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
@@ -235,6 +236,13 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-25 | Monitor messages reach running attempts only; each keeps the newest 20, and the runner shows the newest unread one until the taker presses OK (remembered on that device) | M04b | — |
 | A-M04b-26 | With full screen required, a browser that cannot go full screen (Safari on iPhone) cannot take the test; the lobby's device check and the runner say so | M04b | — |
 | A-M04b-27 | The snapshot retention setting accepts 7–365 days | M04b | Q-24 |
+| A-M04b-28 | Code questions belong to the coding modes: a coding test (objective, written and code), a lab test (also uploads) and a coding competition (code only). Quizzes and written tests keep their types, as code is marked after hand-in | M04b | — |
+| A-M04b-29 | Until the university runs its own Judge0, code runs on Judge0's free public server (Aniket's choice, 18 Oct 2026); the e2e run uses a stand-in so CI never depends on it | M04b | Q-55 |
+| A-M04b-30 | The default languages are C, C++ and Java (LAB-02); Python and others are added in the codeRunner setting (LAB-06 is a "Could") | M04b | — |
+| A-M04b-31 | A question's run limit counts runs of its visible tests in one attempt (1–30, 10 by default), on top of the 3 s wait and 200 runs an hour; untouched starter code is not an answer | M04b | — |
+| A-M04b-32 | A hand-in with code questions shows "To grade" until the gradeCode job marks them, in seconds. A grader's own mark on a code question stays when the tests run again, and an empty mark box keeps the tests' mark | M04b | — |
+| A-M04b-33 | "Run sample tests" waits for the runner in the request (a few seconds), as M05 planned; the full marking runs in the worker | M04b | — |
+| A-M04b-34 | Tests are stored with \n line ends; memory is asked in MB and stored as MB × 1000 KB, as Judge0 takes it | M04b | — |
 
 ## 5. Log
 
@@ -1722,4 +1730,62 @@ Phase C of `docs/milestones/M04b-test-platform.md` (TP-08), on branch `m04-asses
   - student01: the lobby with the camera allowed, the full-screen gate, the runner, "You left full screen", the teacher's message.
   - No error page, and no page wider than the screen.
   - The monitor and the gate match mock-ups C4 and B4.
+
+### 2026-10-18 · M04b/D Test platform: code — code questions on Judge0 · Claude Code, at Aniket's request
+
+Phase D of `docs/milestones/M04b-test-platform.md` (TP-09; CE-03's coding modes and LAB-02, LAB-03 and LAB-05 from M05), on branch `m04-assessments`, committed locally and not pushed. Aniket chose Judge0's free public server for now and a key of the university's own when it goes public.
+
+**Created**
+- **The runner adapter (06 §4.4).**
+  - `lib/integrations/code-runner.ts`: `runBatch` (batches of 20, base64, polling every 500 ms up to 20 s, the status mapping, outputs cut at 64 KB, no expected output sent) and `listLanguages`.
+  - `CODE_RUNNER_URL` defaults to `https://ce.judge0.com`; `CODE_RUNNER_TOKEN` is optional (`lib/env.ts`, `.env.example`).
+- **The rules (07 §14).** `lib/domain/code.ts`: `normalizeOutput`, `outputsMatch`, `testStatus`, `codeItemMarks`, with vectors.
+- **Modes and questions (05 §5.1).**
+  - The modes Coding test, Lab test and Coding competition.
+  - The `code` question type: languages, starters, time, memory, a run limit and up to 15 tests with weights and Hidden; at most 5 in a test.
+  - In the question dialog and the bank, checked against the setting (`requireOfferedLanguages`).
+- **The setting (06 §7).** `codeRunner` (languages as `key | label | runner id` lines and the wait between runs), with its admin form beside the runner's own language list (`getRunnerLanguages`).
+- **Running code (LAB-02).**
+  - `runCode` saves the code and runs it on the visible tests only (`runSamples`, `lib/data/code.ts`), within the question's run limit, one run every 3 s and 200 an hour.
+  - Each run is kept for the grader and counted in the course's engagement (`codeRuns`).
+  - `saveAnswer` takes code.
+- **The runner (mock-up B3).** A split view: the question; then the language, runs left, Reset and "Run sample tests" over the editor; then the visible tests with what each run printed or the compiler's message. `components/code-editor.tsx` (CodeMirror) is loaded only when a code question shows.
+- **Marking (LAB-05).**
+  - Handing in queues `compute/gradeCode` (`code-<id>`), which runs every test, hidden ones too, and marks by weight.
+  - A grader's own mark stays, and an empty mark box keeps the tests' mark.
+  - "Run the tests again" (`rerunCode`, audited) for a grader.
+- **Grading (LAB-03).** The code, its runs (count and best), and every test with its weight, Hidden and result.
+- **Packages.** `@uiw/react-codemirror` 4.25.12, `@codemirror/lang-cpp` 6.0.3 and `@codemirror/lang-java` 6.0.2, pinned in 03 since M05; installed now.
+- **Tests.**
+  - Unit: 17 code vectors; the code question's form rules; the codeRunner setting.
+  - Integration, with the runner mocked: `tests/integration/code.test.ts`, 9 cases. It covers the builder's limits and languages, copying from the bank, hidden tests never sent, runs within the limit and the wait, only the taker running, marking by weight once through the real queue, a grader's mark kept on a re-run, failures scoring 0, and access.
+  - `tests/integration/code-runner.test.ts`, 4 cases: the adapter against a stand-in `fetch`.
+  - E2E: `tests/e2e/code.spec.ts` on `tests/e2e/fake-runner.ts`, which Playwright now starts and points the app and the worker at.
+- **Docs.** 01 (CE-03, LAB-02–05), 02 (integrations), 03, 05 §5.1–5.2, 06 §4.4, §6, §6.2, §7, 07 §14, 08 (routes; `AssessmentRunner`, `CodeEditor`, `QuestionDialog`, `NewAssessmentDialog`, `HandInsView`/`GradingPage`; settings), 09 §4, §6, §10, 11 §2, the milestone's open question.
+
+**Not done**
+- The hand-ins list's runs and best-pass columns (M05 T6). The grading page shows them for one hand-in.
+- A coding competition's ranking (phase E's leaderboard).
+- Python highlighting: Python runs once an admin adds it to the setting, in a plain editor.
+- No real class used the free server; how it behaves with 50 students pressing Run at once is unknown (M05's validation checklist).
+- Nothing was checked on a real phone; typing code there was not tried.
+
+**Assumptions** — A-M04b-28 to A-M04b-34 (§4).
+
+**Open questions** — Q-55 (the code runner before going public); Q-25 (b) answered for now.
+
+**Bugs found and fixed while verifying**
+- A code question's tests lost their ids. Mongoose gives an inline array subschema its parent's `_id: false`, so grading could not name a test. Found by the integration tests; the tests now have their own schema.
+
+**Verification**
+- On the free server, through the adapter: C, C++, Java and Python programs adding two numbers printed 3345; an endless loop stopped at the 2 s limit (`time_limit`); a syntax error returned the compiler's message (`compile_error`). All six took 3.6 s.
+- `npm run check` → exit 0; `Test Files 30 passed (30)`, `Tests 470 passed (470)`.
+- `npm run test:integration` (mongodb-memory-server, local Redis) → exit 0; `Test Files 21 passed (21)`, `Tests 270 passed (270)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "118 files scanned … clean".
+- `npx playwright test tests/e2e/tests.spec.ts tests/e2e/assessments.spec.ts tests/e2e/auth.spec.ts tests/e2e/proctoring.spec.ts tests/e2e/code.spec.ts` → exit 0, `9 passed`. The other specs were not run in this phase.
+- A scripted walk on a coding test seeded into the e2e database, with the app and the worker on the free server:
+  - faculty1, at 1440 px: the builder, the code question dialog, the New assessment dialog, the graded hand-in (10 of 10, every test passed).
+  - admin, at 1440 px: the Code questions setting with the runner's 71 languages.
+  - student05 at 1440 px and student06 at 390 px: the runner, a compile error, "2 of 2 passed", handing in.
+  - No error page, and no page wider than the screen. The runner matches mock-up B3.
 

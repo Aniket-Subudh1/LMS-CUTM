@@ -122,7 +122,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 |---|---|---|---|---|
 | CE-01 | Evaluation is continuous across the semester | Must | M04, M06 | Build |
 | CE-02 | After a submission, faculty choose the evaluation mode | Must | M04 | Build |
-| CE-03 | Modes: quiz, written test, coding test, lab test, coding competition, assignment, learning/lab records, project reviews — "all modes that are possible" | Must | M04, M05, M07 | Build |
+| CE-03 | Modes: quiz, written test, coding test, lab test, coding competition, assignment, learning/lab records, project reviews — "all modes that are possible" | Must | M04, M04b (the coding modes, from M05), M07 | Build |
 | CE-04 | Quizzes configurable (questions, timing, attempts) and may be proctored | Must | M04, M05 | Build |
 | CE-05 | Faculty define the evaluation rubric | Must | M04 | Build |
 | CE-06 | Component scores mapped to the internal maximum (e.g. out of 50) | Must | M06 | Build |
@@ -137,10 +137,10 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | ID | Requirement | Priority | Milestone | Decision |
 |---|---|---|---|---|
 | LAB-01 | Practicals completely based on a virtual lab, done online | Must | M05 | Build |
-| LAB-02 | In-browser compilers for at least C, C++, Java, "just like the recruitment platform" | Must | M05 | Build |
-| LAB-03 | Lab activity tracked (time, attempts, submissions, test-case results) | Must | M05 | Build |
-| LAB-04 | Lab tests and quizzes proctored | Must | M05 | Build (feature set **Q-09**; default set in M05) |
-| LAB-05 | Coding tests auto-graded against test cases; results flow into CE | Should | M05 | Build |
+| LAB-02 | In-browser compilers for at least C, C++, Java, "just like the recruitment platform" | Must | M04b (from M05) | Build |
+| LAB-03 | Lab activity tracked (time, attempts, submissions, test-case results) | Must | M04b (from M05) | Build |
+| LAB-04 | Lab tests and quizzes proctored | Must | M04b (from M05) | Build (feature set **Q-09**; default set in M04b phase C) |
+| LAB-05 | Coding tests auto-graded against test cases; results flow into CE | Should | M04b (from M05); CE in M06 | Build |
 | LAB-06 | More languages (Python, SQL) and non-programming labs | Could | — | Backlog (languages are configuration; not enabled by default) |
 
 ### 7.7 Projects

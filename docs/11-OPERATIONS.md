@@ -34,7 +34,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `LIVEKIT_URL` | M03 | `wss://live.cutm.ac.in` | Passed to the browser as a prop, not `NEXT_PUBLIC_` |
 | `LIVEKIT_API_URL` | M03 | `http://livekit:7880` | Server-side Room Service URL |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | M03 | | Must match the server's `keys` and `webhook.api_key` |
-| `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | M05 | `http://judge0:2358`, token | Judge0 `AUTHN_TOKEN` |
+| `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | M04b | `http://judge0:2358`, token | Judge0 `AUTHN_TOKEN`. Unset, the URL is Judge0's free public server (`https://ce.judge0.com`, no token): fine for development and the pilot, but students' code goes to a third party and its rate limits are not ours — set the university's own server before going public (Q-55). The e2e run uses `tests/e2e/fake-runner.ts` on port 2358 |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` | M07 | | PEM with `\n` escapes |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET` | M07 | | The App's OAuth credentials and webhook secret |
 | `ANTHROPIC_API_KEY` | M09 | | |

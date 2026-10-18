@@ -281,6 +281,7 @@ export async function QuestionBank({
           cos={offeringId ? bank.cos : null}
           credit={false}
           sections={[]}
+          languages={bank.languages}
         />
       )}
       {bank.canEdit && open === 'import' && (

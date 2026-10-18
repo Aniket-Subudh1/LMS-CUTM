@@ -4,7 +4,7 @@ import { refresh } from 'next/cache';
 import { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { requireBankEditor, requireManage, type BankAccess } from '@/lib/auth/access';
-import { csvItem, questionOf, storedItem } from '@/lib/data/questions';
+import { csvItem, questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
 import { formatCsvErrors, parseBankCsv } from '@/lib/domain/csv';
 import { AppError, csvRejected } from '@/lib/errors';
@@ -37,6 +37,7 @@ export const saveBankItem = action({ input: SaveBankItem, roles: STAFF }, async 
     const message = bank.courseId ? 'Pick outcomes of this course only.' : 'Your own bank has no course outcomes.';
     throw new AppError('VALIDATION', message, { 'cos[]': [message] });
   }
+  await requireOfferedLanguages([input]);
   const item = storedItem(input);
   if (input.bankItemId) {
     const written = await BankItem.updateOne({ _id: input.bankItemId, ...bank.filter }, { $set: item });

@@ -6,7 +6,14 @@ import { EngagementDaily } from '@/lib/models/engagement-daily';
 const KEEP_MS = 400 * 86_400_000;
 
 type Counter =
-  'videoSec' | 'liveSec' | 'focusedSec' | 'lessonsCompleted' | 'quizAttempts' | 'submissions' | 'onTimeSubmissions';
+  | 'videoSec'
+  | 'liveSec'
+  | 'focusedSec'
+  | 'lessonsCompleted'
+  | 'quizAttempts'
+  | 'codeRuns'
+  | 'submissions'
+  | 'onTimeSubmissions';
 export type EngagementRow = { offeringId: string; studentId: string; at: Date; inc: Partial<Record<Counter, number>> };
 
 // 05 §7.1: per-day counters (IST day of `at`), only ever `$inc` upserts (04 §3 S9). The live-class finalize job and the

@@ -111,6 +111,56 @@ describe('SaveItem, the M04b types (TP-06)', () => {
   });
 });
 
+describe('SaveItem, code (TP-09)', () => {
+  const code = {
+    ...base,
+    type: 'code',
+    'language[]': ['c', 'cpp'],
+    'starterLanguage[]': ['c', 'cpp', 'java'],
+    'starter[]': ['int main() {\r\n}\r\n', '', 'class Main {}'],
+    'caseInput[]': ['2 3\r\n', '', '10 20'],
+    'caseExpected[]': ['5', '', '30'],
+    'caseWeight[]': ['', '1', '2'],
+    'caseHidden[]': ['2'],
+  };
+
+  it('keeps the tests that are filled in, with \\n line ends, weights and the hidden one', () => {
+    expect(SaveItem.parse(code)).toMatchObject({
+      negativeMarks: 0,
+      code: {
+        languages: ['c', 'cpp'],
+        starter: [{ language: 'c', source: 'int main() {\n}\n' }],
+        timeLimitSec: 2,
+        memoryKb: 128_000,
+        runLimit: 10,
+        testCases: [
+          { input: '2 3\n', expected: '5', hidden: false, weight: 1 },
+          { input: '10 20', expected: '30', hidden: true, weight: 2 },
+        ],
+      },
+    });
+  });
+
+  it.each([
+    ['no language', { 'language[]': [] }, 'language[]: Tick at least one language.'],
+    ['no test', { 'caseInput[]': [''], 'caseExpected[]': [''] }, 'caseExpected[]: Write at least one test.'],
+    [
+      'every test hidden',
+      { 'caseHidden[]': ['0', '2'] },
+      'caseExpected[]: Leave at least one test visible, so students can try their code on it.',
+    ],
+    [
+      'an input without its output',
+      { 'caseExpected[]': ['', '', '30'] },
+      'caseExpected[]: Test 1: write the expected output.',
+    ],
+    ['a weight of 11', { 'caseWeight[]': ['11', '', ''] }, 'caseWeight[]: Test 1: weigh it from 1 to 10.'],
+    ['a limit of 31 runs', { runLimit: '31' }, 'runLimit: Allow at most 30 runs.'],
+  ])('refuses %s', (_, change, message) => {
+    expect(issues(SaveItem.safeParse({ ...code, ...change }))).toEqual([message]);
+  });
+});
+
 describe('assessment windows', () => {
   const create = {
     offeringId: id(1),

@@ -10,7 +10,7 @@ import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
-import { questionOf, storedItem } from '@/lib/data/questions';
+import { questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
 import { deadlineAt, windowState } from '@/lib/domain/attempts';
 import { rubricTotal } from '@/lib/domain/grading';
@@ -28,6 +28,7 @@ import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
+import { queueGradeCode } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
@@ -115,6 +116,21 @@ const recountMarks = (assessmentId: string) =>
     ],
     { updatePipeline: true },
   );
+
+// TP-09: at most ASSESSMENT_LIMITS.codeItems code questions a test, in languages the codeRunner setting offers.
+async function requireCode(
+  items: readonly { _id: Types.ObjectId; type: string }[],
+  adding: readonly { type: string; code?: { languages: readonly string[] } | null }[],
+  replacing?: string,
+) {
+  const added = adding.filter((item) => item.type === 'code');
+  if (added.length === 0) return;
+  const kept = items.filter((item) => item.type === 'code' && String(item._id) !== replacing).length;
+  if (kept + added.length > ASSESSMENT_LIMITS.codeItems) {
+    throw new AppError('CONFLICT', `A test holds at most ${ASSESSMENT_LIMITS.codeItems} code questions.`);
+  }
+  await requireOfferedLanguages(added);
+}
 
 // CPP-05/06: the outcomes must be the course's own; a standalone test has none (M04b).
 async function requireCourseCos(
@@ -215,6 +231,7 @@ export const saveItem = action({ input: SaveItem, roles: TEACH }, async (input, 
     });
   }
   await requireCourseCos(assessment.offeringId, input.coIds, 'cos[]');
+  await requireCode(assessment.items, [input], input.itemId);
   // M04b: a question belongs to a section once the test has any; a new one without a choice goes to the first.
   const sectionIds = assessment.sections.map((section) => String(section._id));
   if (input.sectionId && !sectionIds.includes(input.sectionId)) {
@@ -297,6 +314,7 @@ export const addFromBank = action({ input: AddFromBank, roles: TEACH }, async (i
   if (assessment.items.length + docs.length > ASSESSMENT_LIMITS.items) {
     throw new AppError('CONFLICT', `An assessment holds at most ${ASSESSMENT_LIMITS.items} questions.`);
   }
+  await requireCode(assessment.items, docs);
   const written = await Assessment.updateOne(
     { _id: assessment._id, items: { $size: assessment.items.length } },
     { $push: { items: { $each: docs.map((doc) => ({ ...questionOf(doc), sectionId })) } } },
@@ -729,11 +747,17 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
       marks = readMarks(input['marks[]'][row], item.maxMarks, `marks-${itemId}`, -item.negativeMarks);
     }
     if (marks === undefined) return;
+    const previous = before[itemId];
+    // TP-09: a code question's mark left empty keeps the one its tests gave (they may have finished after the page
+    // was opened).
+    if (marks === null && item.type === 'code' && previous) {
+      scores[itemId] = { marks: previous.marks, by: previous.by, ...(comment ? { comment } : {}) };
+      return;
+    }
     if (marks === null) {
       if (comment) errors[`marks-${itemId}`] = ['Give marks to go with the comment.'];
       return;
     }
-    const previous = before[itemId];
     const same = previous && previous.marks === marks && (previous.comment ?? '') === comment;
     scores[itemId] = {
       marks,
@@ -797,6 +821,30 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     const list = `${assessmentPath(offeringId, String(attempt.assessmentId))}/grade`;
     redirect(next ? `${list}/${next._id}` : list);
   }
+  refresh();
+});
+
+// TP-09: a grader's "Run the tests again" — the code questions of a handed-in attempt are run on every test and
+// marked anew by the gradeCode job (marks a grader gave stay). Audited, as marks may change; refused while marks are
+// locked.
+export const rerunCode = action({ input: SubmissionRef, roles: TEACH }, async (input, viewer) => {
+  await db();
+  const attempt = await Submission.findById(input.submissionId, { assessmentId: 1, status: 1, paper: 1 }).lean();
+  if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
+  const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
+  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
+  if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
+  if (!attempt.paper.some((item) => item.type === 'code')) {
+    throw new AppError('VALIDATION', 'This attempt has no code questions.');
+  }
+  await queueGradeCode(input.submissionId, true);
+  await writeAudit({
+    actorId: viewer.id,
+    action: 'submission.code_rerun',
+    entity: 'submission',
+    entityId: input.submissionId,
+    offeringId: offeringId ?? undefined,
+  });
   refresh();
 });
 

@@ -90,7 +90,7 @@ Each phase runs database → server → screens → tests, and ends in a commit 
 
 | ID | Question | Default until answered |
 |---|---|---|
-| Judge0 | Which Judge0 server and token should coding questions use (the recruitment portal's)? | Built against the adapter with tests; live runs wait for the server |
+| Judge0 | Which Judge0 server and token should coding questions use (the recruitment portal's)? | Answered 18 Oct 2026 (Aniket): Judge0's free public server for now; the university's own server and key before going public (Q-55) |
 | AI key | An Anthropic API key for the AI helpers? | The helpers say "AI suggestions are not set up" |
 | Certificates | The certificate's design, signatory and wording? | A clean design with the university lockup and the test owner's name |
 | Guests | How long are guest accounts and their attempts kept? | Kept, like any submission (05 §8) |

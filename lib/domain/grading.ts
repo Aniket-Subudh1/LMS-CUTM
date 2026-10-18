@@ -41,6 +41,8 @@ function judge(item: GradableItem, given: GivenAnswer | null): { right: number; 
   switch (item.type) {
     case 'text':
     case 'file':
+    // Code is run and marked after hand-in by the gradeCode job (codeItemMarks, lib/domain/code.ts).
+    case 'code':
       return null;
     case 'mcq': {
       if (!key) return null;

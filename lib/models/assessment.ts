@@ -44,6 +44,38 @@ const pairSchema = new Schema({
   right: { type: String, required: true, trim: true, maxlength: ASSESSMENT_LIMITS.pairText },
 });
 
+const testCaseSchema = new Schema({
+  input: { type: String, maxlength: ASSESSMENT_LIMITS.caseText, default: '' },
+  expected: { type: String, required: true, maxlength: ASSESSMENT_LIMITS.caseText },
+  hidden: { type: Boolean, required: true },
+  weight: { type: Number, required: true, min: 1, max: 10 },
+});
+
+// TP-09 (05 §5.1): a code question's languages, a starter for each, its limits and its tests. Hidden tests never reach
+// a student (toStudentItem); every test is run when the attempt is graded.
+const codeSchema = new Schema(
+  {
+    languages: { type: [{ type: String, maxlength: 20 }], required: true },
+    starter: {
+      type: [
+        {
+          _id: false,
+          language: { type: String, required: true, maxlength: 20 },
+          source: { type: String, required: true, maxlength: ASSESSMENT_LIMITS.starter },
+        },
+      ],
+      default: [],
+    },
+    timeLimitSec: { type: Number, required: true, min: 1, max: 10 },
+    memoryKb: { type: Number, required: true, min: 64_000, max: 512_000 },
+    // Runs of the visible tests a student may make on this question in one attempt.
+    runLimit: { type: Number, required: true, min: 1, max: ASSESSMENT_LIMITS.runLimit },
+    // Its own schema: an inline one would take the parent's `_id: false`, and results name each test by its id.
+    testCases: { type: [testCaseSchema], required: true },
+  },
+  { _id: false },
+);
+
 // One question, as an assessment holds it, as the bank holds it (lib/models/bank-item.ts) and as an attempt's paper
 // keeps a copy of it (lib/models/submission.ts).
 export const itemDefinition = {
@@ -67,6 +99,7 @@ export const itemDefinition = {
   blanks: { type: [blankSchema], default: undefined },
   // matching: each pair is a left side and its right side; the runner shuffles the right sides.
   pairs: { type: [pairSchema], default: undefined },
+  code: { type: codeSchema, default: undefined },
 };
 
 const itemSchema = new Schema({

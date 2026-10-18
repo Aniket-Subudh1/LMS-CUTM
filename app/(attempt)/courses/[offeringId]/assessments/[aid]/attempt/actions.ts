@@ -7,7 +7,9 @@ import { assessmentAccess } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, SAVE_GRACE_MS } from '@/lib/data/attempts';
 import { addEngagement } from '@/lib/data/engagement';
+import { runSamples } from '@/lib/data/code';
 import { buildPaper } from '@/lib/data/papers';
+import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { canStart, deadlineAt, planSectionMove, sectionOpen, type SectionRule } from '@/lib/domain/attempts';
 import { isPermutation } from '@/lib/domain/order';
@@ -27,6 +29,7 @@ import {
   FlagItem,
   PROCTOR_LIMITS,
   ProctorBeat,
+  RunCode,
   SaveAnswer,
   SubmissionRef,
   type ProctorEvent,
@@ -142,7 +145,7 @@ async function runningAttempt(viewer: Viewer, submissionId: string) {
   await db();
   const attempt = await Submission.findOne(
     { _id: submissionId, studentId: viewer.id },
-    { assessmentId: 1, status: 1, deadlineAt: 1, paper: 1, visits: 1, currentSectionId: 1 },
+    { assessmentId: 1, offeringId: 1, status: 1, deadlineAt: 1, paper: 1, visits: 1, currentSectionId: 1, runs: 1 },
   ).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Attempt not found.');
   await requireTake(viewer, String(attempt.assessmentId));
@@ -163,25 +166,28 @@ async function runningAttempt(viewer: Viewer, submissionId: string) {
     startedAt: visit.startedAt,
     closedAt: visit.closedAt ?? null,
   }));
-  return { attempt, now, rules, visits };
+  // A section that closed (left for good, or out of time) takes no more answers (TP-06).
+  const requireOpen = (item: { sectionId?: Types.ObjectId | null }) => {
+    if (!item.sectionId) return;
+    const rule = rules.find((r) => r.id === String(item.sectionId));
+    const visit = visits.find((v) => v.sectionId === String(item.sectionId));
+    if (!rule || !sectionOpen(rule, visit, now, attempt.deadlineAt)) {
+      throw new AppError('CLOSED', 'This section is closed; its answers can no longer change.');
+    }
+  };
+  return { attempt, now, rules, visits, requireOpen };
 }
 
 // T5: one question's answer, an atomic $set on its key (05 §5.2), checked against the question on this attempt's
 // paper. M04b: a section that closed (left for good, or out of time) takes no more answers; the seconds spent on the
 // question add up (TP-07). 60 saves a minute (09 §4).
 export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (input, viewer) => {
-  const { attempt, now, rules, visits } = await runningAttempt(viewer, input.submissionId);
+  const { attempt, now, requireOpen } = await runningAttempt(viewer, input.submissionId);
   await limit('autosave', viewer.id, 60, 60_000);
   const item = attempt.paper.find((i) => String(i._id) === input.itemId);
   const { answer } = input;
   if (!item || item.type !== answer.type) throw new AppError('VALIDATION', RELOAD);
-  if (item.sectionId) {
-    const rule = rules.find((r) => r.id === String(item.sectionId));
-    const visit = visits.find((v) => v.sectionId === String(item.sectionId));
-    if (!rule || !sectionOpen(rule, visit, now, attempt.deadlineAt)) {
-      throw new AppError('CLOSED', 'This section is closed; its answers can no longer change.');
-    }
-  }
+  requireOpen(item);
   const options = (item.options ?? []).map((o) => String(o._id));
   let value: Record<string, unknown> | null = null;
   switch (answer.type) {
@@ -223,6 +229,10 @@ export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (in
     case 'text':
       if (answer.text) value = { text: answer.text };
       break;
+    case 'code':
+      if (!item.code?.languages.includes(answer.language)) throw new AppError('VALIDATION', RELOAD);
+      if (answer.source.trim() !== '') value = { code: { language: answer.language, source: answer.source } };
+      break;
     case 'file': {
       // 09 §5: only this student's uploads for this assessment.
       const files = answer.files.map((file) => {
@@ -254,6 +264,60 @@ export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (in
   );
   if (written.matchedCount === 0) throw new AppError('CLOSED', 'These answers were already handed in.');
   return { savedAt: now };
+});
+
+// TP-09 (LAB-02, LAB-03): "Run sample tests". The code as it stands is saved as the answer, then run on the
+// question's visible tests only, so the reply names no hidden test (09 §10). A question allows `runLimit` runs an
+// attempt; a person one run every `runCooldownSec` and 200 an hour (09 §4). Each run is kept for the grader (`runs`)
+// and counted in the course's engagement (ENG-01).
+export const runCode = action({ input: RunCode, roles: TAKERS }, async (input, viewer) => {
+  const { attempt, now, requireOpen } = await runningAttempt(viewer, input.submissionId);
+  const item = attempt.paper.find((i) => String(i._id) === input.itemId);
+  if (!item || item.type !== 'code' || !item.code) throw new AppError('VALIDATION', RELOAD);
+  requireOpen(item);
+  const code = item.code;
+  const { languages, runCooldownSec } = await getSettings('codeRunner');
+  const language = code.languages.includes(input.language)
+    ? languages.find((l) => l.key === input.language)
+    : undefined;
+  if (!language) throw new AppError('VALIDATION', 'Pick one of the languages this question offers.');
+  const used = attempt.runs.filter((run) => run.itemId.equals(item._id)).length;
+  if (used >= code.runLimit) {
+    throw new AppError(
+      'CONFLICT',
+      `You have used all ${code.runLimit} runs of this question. Your code is saved and is tested in full when you hand in.`,
+    );
+  }
+  await limit('code-run-wait', viewer.id, 1, runCooldownSec * 1000);
+  await limit('code-run', viewer.id, 200, 60 * 60_000);
+  const path = `answers.${input.itemId}`;
+  await Submission.updateOne(
+    { _id: attempt._id, status: 'in_progress' },
+    input.source.trim() === ''
+      ? { $unset: { [path]: 1 } }
+      : { $set: { [path]: { code: { language: input.language, source: input.source } } } },
+  );
+  const samples = code.testCases.filter((test) => !test.hidden);
+  const results = await runSamples(
+    samples,
+    { runnerLanguageId: language.runnerId, timeLimitSec: code.timeLimitSec, memoryKb: code.memoryKb },
+    input.source,
+  );
+  const passed = results.filter((result) => result.status === 'accepted').length;
+  await mongoose.connection.transaction(async (session) => {
+    await Submission.updateOne(
+      { _id: attempt._id },
+      { $push: { runs: { $each: [{ itemId: item._id, at: now, passed, total: samples.length }], $slice: -200 } } },
+      { session },
+    );
+    if (attempt.offeringId) {
+      await addEngagement(
+        [{ offeringId: String(attempt.offeringId), studentId: viewer.id, at: now, inc: { codeRuns: 1 } }],
+        session,
+      );
+    }
+  });
+  return { results, runsLeft: code.runLimit - used - 1 };
 });
 
 // TP-07: "Flag for review", kept with the attempt so it survives a reload.

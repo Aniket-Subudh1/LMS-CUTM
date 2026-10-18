@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,6 +20,7 @@ import {
   ArrowUpIcon,
   CameraSlashIcon,
   ChatCircleTextIcon,
+  ArrowCounterClockwiseIcon,
   CheckCircleIcon,
   CircleIcon,
   CircleNotchIcon,
@@ -30,10 +32,12 @@ import {
   FlagIcon,
   LockSimpleIcon,
   PaperPlaneTiltIcon,
+  PlayIcon,
   ShieldCheckIcon,
   TextAaIcon,
   TimerIcon,
   WarningIcon,
+  XCircleIcon,
 } from '@phosphor-icons/react';
 import { createUpload } from '@/app/(app)/actions';
 import {
@@ -41,6 +45,7 @@ import {
   enterSection,
   flagItem,
   proctorBeat,
+  runCode,
   saveAnswer,
   submitAttempt,
 } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
@@ -72,9 +77,10 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { cn } from '@/lib/cn';
 import type { AnswerValue, AttemptDTO } from '@/lib/data/assessments';
+import type { SampleRun } from '@/lib/data/code';
 import { BEAT_MS } from '@/lib/domain/proctoring';
 import { formatClock, formatTime, ITEM_LABEL, ordinal } from '@/lib/format';
-import { PROCTOR_LIMITS, type ReportedEvent } from '@/lib/schemas/assessment';
+import { PROCTOR_LIMITS, type ReportedEvent, type RunStatus } from '@/lib/schemas/assessment';
 
 type Payload = Extract<Parameters<typeof saveAnswer>[0], { answer: unknown }>['answer'];
 type Item = AttemptDTO['items'][number];
@@ -93,9 +99,23 @@ const SIZES = [
 const LETTERS = 'ABCDEFGHIJ';
 const BLANK = /_{3,}/;
 
+// TP-09: CodeMirror is loaded only when a code question shows (bundle size on slow connections, 03 §5).
+const CodeEditor = dynamic(() => import('@/components/code-editor').then((m) => m.CodeEditor), {
+  ssr: false,
+  loading: () => <p className="text-muted-foreground p-4 text-sm">Loading the editor…</p>,
+});
+
+// TP-09: a code question starts in its first language, with that language's starter.
+const starterOf = (item: Item, language: string) =>
+  item.code?.starter.find((starter) => starter.language === language)?.source ?? '';
+
 // What the person has saved, as the runner sends it back (a written answer is the editor's JSON string).
-function payloadOf(saved: AnswerValue): Payload {
-  return saved.type === 'text' ? { type: 'text', text: saved.text ? JSON.stringify(saved.text) : '' } : saved;
+function payloadOf(item: Item, saved: AnswerValue): Payload {
+  if (saved.type === 'text') return { type: 'text', text: saved.text ? JSON.stringify(saved.text) : '' };
+  if (saved.type === 'code') {
+    return saved.language ? { type: 'code', language: saved.language, source: saved.source } : emptyOf(item);
+  }
+  return saved;
 }
 
 function emptyOf(item: Item): Payload {
@@ -117,10 +137,15 @@ function emptyOf(item: Item): Payload {
       return { type: 'text', text: '' };
     case 'file':
       return { type: 'file', files: [] };
+    case 'code': {
+      const language = item.code?.languages[0] ?? '';
+      return { type: 'code', language, source: starterOf(item, language) };
+    }
   }
 }
 
-function answered(p: Payload): boolean {
+// A code question's untouched starter is not an answer.
+function answered(p: Payload, item: Item): boolean {
   switch (p.type) {
     case 'mcq':
       return p.optionId !== null;
@@ -139,6 +164,8 @@ function answered(p: Payload): boolean {
       return (p.text ?? '') !== '';
     case 'file':
       return p.files.length > 0;
+    case 'code':
+      return p.source.trim() !== '' && p.source !== starterOf(item, p.language);
   }
 }
 
@@ -501,7 +528,7 @@ export function AssessmentRunner({
   const sections = attempt.sections;
   const backupKey = `lms-attempt-${attempt.submissionId}`;
   const [answers, setAnswers] = useState<Record<string, Payload>>(() =>
-    Object.fromEntries(attempt.items.map((item) => [item.id, payloadOf(item.saved)])),
+    Object.fromEntries(attempt.items.map((item) => [item.id, payloadOf(item, item.saved)])),
   );
   const [saving, setSaving] = useState<Record<string, SaveState>>({});
   const [flags, setFlags] = useState(() => new Set(attempt.flags));
@@ -760,7 +787,7 @@ export function AssessmentRunner({
       : states.includes('saving')
         ? { icon: <CircleNotchIcon className="size-4 animate-spin" />, text: 'Saving…', tone: 'text-muted-foreground' }
         : { icon: <CloudCheckIcon className="size-4" />, text: 'Saved', tone: 'text-success' };
-  const isDone = (i: Item) => answered(answers[i.id]);
+  const isDone = (i: Item) => answered(answers[i.id], i);
   const done = attempt.items.filter(isDone).length;
   const flagged = attempt.items.filter((i) => flags.has(i.id)).length;
   const warn = attempt.timed && remaining !== null && remaining > 0 && remaining <= WARN_MS;
@@ -1032,11 +1059,13 @@ export function AssessmentRunner({
       ) : item ? (
         <div
           className={cn(
-            'mx-auto grid items-start gap-6 p-3 sm:p-6 lg:grid-cols-[minmax(0,1fr)_20rem]',
-            section && passages[section.id] ? 'max-w-7xl' : 'max-w-6xl',
+            'mx-auto grid items-start gap-6 p-3 sm:p-6',
+            item.code
+              ? 'max-w-[100rem]'
+              : cn('lg:grid-cols-[minmax(0,1fr)_20rem]', section && passages[section.id] ? 'max-w-7xl' : 'max-w-6xl'),
           )}
         >
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
+          <div className={cn('flex gap-2 overflow-x-auto pb-1', !item.code && 'lg:hidden')}>
             {visible.map((i, n) => (
               <MapButton
                 key={i.id}
@@ -1051,7 +1080,7 @@ export function AssessmentRunner({
           <div
             className={cn(
               'grid min-w-0 items-start gap-4',
-              section && passages[section.id] && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]',
+              ((section && passages[section.id]) || item.code) && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]',
             )}
             style={{ zoom: SIZES[prefs.size]?.zoom ?? 1 }}
           >
@@ -1069,6 +1098,9 @@ export function AssessmentRunner({
                   · {ITEM_LABEL[item.type]} · {item.maxMarks} mark{item.maxMarks === 1 ? '' : 's'}
                   {item.negativeMarks > 0 && ` · −${item.negativeMarks} if wrong`}
                   {item.partialCredit && ' · part marks'}
+                  {item.code &&
+                    item.code.hidden > 0 &&
+                    ` · ${item.code.hidden} hidden test${item.code.hidden === 1 ? '' : 's'}`}
                 </p>
                 <Button
                   variant={flags.has(item.id) ? 'secondary' : 'outline'}
@@ -1083,13 +1115,15 @@ export function AssessmentRunner({
               <div id={`q-${item.id}-title`} className="text-[0.9375rem] leading-relaxed font-medium">
                 {prompts[item.id]}
               </div>
-              <Answer
-                key={item.id}
-                item={item}
-                answer={answers[item.id]}
-                assessmentId={attempt.assessmentId}
-                onChange={(payload) => change(item.id, payload)}
-              />
+              {!item.code && (
+                <Answer
+                  key={item.id}
+                  item={item}
+                  answer={answers[item.id]}
+                  assessmentId={attempt.assessmentId}
+                  onChange={(payload) => change(item.id, payload)}
+                />
+              )}
               {saving[item.id] === 'error' && (
                 <p className="text-warning flex items-center gap-1.5 text-xs font-medium">
                   <WarningIcon className="size-3.5" /> Not saved — retrying.
@@ -1115,7 +1149,7 @@ export function AssessmentRunner({
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!answered(answers[item.id])}
+                    disabled={!answered(answers[item.id], item)}
                     onClick={() => change(item.id, emptyOf(item))}
                   >
                     Clear answer
@@ -1135,8 +1169,20 @@ export function AssessmentRunner({
                 </div>
               </footer>
             </article>
+            {item.code && (
+              <CodePanel
+                key={item.id}
+                item={item}
+                n={at + 1}
+                answer={answers[item.id]}
+                submissionId={attempt.submissionId}
+                languages={attempt.languages}
+                cooldownSec={attempt.runCooldownSec}
+                onChange={(payload) => change(item.id, payload)}
+              />
+            )}
           </div>
-          <aside className="surface sticky top-22 hidden gap-4 p-4 lg:grid">
+          <aside className={cn('surface sticky top-22 hidden gap-4 p-4', !item.code && 'lg:grid')}>
             <div className="grid gap-1">
               <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {section?.title ?? 'Questions'}
@@ -1309,6 +1355,216 @@ export function AssessmentRunner({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+const RUN_LABEL: Record<RunStatus, string> = {
+  accepted: 'Passed',
+  wrong_answer: 'Wrong output',
+  time_limit: 'Took too long',
+  compile_error: 'Did not compile',
+  runtime_error: 'Stopped with an error',
+  internal_error: 'Could not run',
+};
+
+// The first line of a test's text, with … when there is more.
+const firstLine = (text: string) => {
+  const [line = '', ...more] = text.split('\n');
+  return more.some((rest) => rest.trim() !== '') ? `${line} …` : line;
+};
+
+// TP-09 (mock-up B3): a code question's language, runs left, Reset and "Run sample tests" over the editor, and below
+// it the visible tests with what the last run printed. The code saves like any answer; a run saves it as well, and
+// runs only the visible tests — the hidden ones are run after hand-in.
+function CodePanel({
+  item,
+  n,
+  answer,
+  submissionId,
+  languages,
+  cooldownSec,
+  onChange,
+}: {
+  item: Item;
+  n: number;
+  answer: Payload;
+  submissionId: string;
+  languages: AttemptDTO['languages'];
+  cooldownSec: number;
+  onChange: (payload: Payload) => void;
+}) {
+  const [runsLeft, setRunsLeft] = useState(item.code ? item.code.runLimit - item.runs : 0);
+  const [running, setRunning] = useState(false);
+  const [cooling, setCooling] = useState(false);
+  const [outcome, setOutcome] = useState<{ results: SampleRun[] } | { error: string } | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const code = item.code;
+  if (!code || answer.type !== 'code') return null;
+  const { language, source } = answer;
+
+  // Untouched code follows the language picked; written code stays as it is.
+  function pick(next: string) {
+    const untouched = source.trim() === '' || source === starterOf(item, language);
+    onChange({ type: 'code', language: next, source: untouched ? starterOf(item, next) : source });
+  }
+
+  async function run() {
+    setRunning(true);
+    setOutcome(null);
+    const response = await runCode({ submissionId, itemId: item.id, language, source }).then(
+      (answered) => answered,
+      () => null,
+    );
+    setRunning(false);
+    setCooling(true);
+    window.setTimeout(() => setCooling(false), cooldownSec * 1000);
+    if (!response) setOutcome({ error: 'Not sent. Check your connection, then run again.' });
+    else if (!response.ok) setOutcome({ error: response.message });
+    else {
+      setOutcome({ results: response.data.results });
+      setRunsLeft(response.data.runsLeft);
+    }
+  }
+
+  const results = outcome && 'results' in outcome ? outcome.results : null;
+  const passed = results?.filter((result) => result.status === 'accepted').length ?? 0;
+  const compileError = results?.find((result) => result.status === 'compile_error');
+  return (
+    <section className="surface grid min-w-0 overflow-hidden" aria-label={`Your code for question ${n}`}>
+      <div className="flex flex-wrap items-center gap-2 border-b p-2 sm:gap-3 sm:p-3">
+        <NativeSelect
+          aria-label="Language"
+          value={language}
+          onChange={(event) => pick(event.target.value)}
+          className="w-auto"
+        >
+          {code.languages.map((key) => (
+            <NativeSelectOption key={key} value={key}>
+              {languages.find((l) => l.key === key)?.label ?? key}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <span className="text-muted-foreground text-[0.8125rem]">
+          Runs left:{' '}
+          <b className="text-foreground tabular-nums">
+            {runsLeft} of {code.runLimit}
+          </b>
+        </span>
+        <span className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setResetting(true)}>
+            <ArrowCounterClockwiseIcon /> Reset
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void run()}
+            disabled={running || cooling || runsLeft <= 0 || source.trim() === ''}
+          >
+            {running ? <CircleNotchIcon className="animate-spin" /> : <PlayIcon />}
+            {running ? 'Running…' : 'Run sample tests'}
+          </Button>
+        </span>
+      </div>
+      <div className="h-[55dvh] min-h-80 bg-[#282c34]">
+        <CodeEditor
+          value={source}
+          language={language}
+          label={`Code for question ${n}`}
+          onChange={(next) => onChange({ type: 'code', language, source: next })}
+        />
+      </div>
+      <div className="grid gap-2 border-t p-3 sm:p-4" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-[0.875rem] font-semibold">
+            Sample tests
+            {results && (
+              <span className={cn('text-xs font-medium', passed === results.length ? 'text-success' : 'text-warning')}>
+                · {passed} of {results.length} passed
+              </span>
+            )}
+          </h3>
+          {results && (
+            <span className="text-muted-foreground text-xs tabular-nums">
+              {(Math.max(0, ...results.map((r) => r.timeMs ?? 0)) / 1000).toFixed(2)} s ·{' '}
+              {(Math.max(0, ...results.map((r) => r.memoryKb ?? 0)) / 1024).toFixed(1)} MB
+            </span>
+          )}
+        </div>
+        {outcome && 'error' in outcome && <p className="text-destructive text-[0.8125rem]">{outcome.error}</p>}
+        {compileError && (
+          <pre className="bg-muted max-h-48 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">
+            {compileError.error || 'Your code did not compile.'}
+          </pre>
+        )}
+        <ul className="grid gap-2">
+          {code.samples.map((sample, i) => {
+            const result = results?.find((r) => r.id === sample.id);
+            const ok = result?.status === 'accepted';
+            return (
+              <li
+                key={sample.id}
+                className="ring-border/70 grid gap-1 rounded-md px-3 py-2 text-[0.8125rem] ring-1 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-3"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {!result ? (
+                    <CircleIcon className="text-muted-foreground size-4 shrink-0" />
+                  ) : ok ? (
+                    <CheckCircleIcon weight="fill" className="text-success size-4 shrink-0" />
+                  ) : (
+                    <XCircleIcon weight="fill" className="text-destructive size-4 shrink-0" />
+                  )}
+                  <span className="truncate font-mono" title={sample.input}>
+                    Test {i + 1} · {firstLine(sample.input) || '(no input)'}
+                  </span>
+                </span>
+                <span className="truncate" title={sample.expected}>
+                  Expected <b className="font-mono">{firstLine(sample.expected)}</b>
+                </span>
+                <span className="truncate">
+                  {!result ? (
+                    <span className="text-muted-foreground">Not run yet</span>
+                  ) : ok || result.status === 'wrong_answer' ? (
+                    <span title={result.stdout}>
+                      Yours{' '}
+                      <b className={cn('font-mono', !ok && 'text-destructive')}>
+                        {firstLine(result.stdout) || '(nothing)'}
+                      </b>
+                    </span>
+                  ) : (
+                    <b className="text-destructive font-medium">{RUN_LABEL[result.status]}</b>
+                  )}
+                </span>
+                {result?.status === 'runtime_error' && result.error && (
+                  <pre className="bg-muted max-h-32 overflow-auto rounded-sm p-2 text-xs whitespace-pre-wrap sm:col-span-3">
+                    {result.error}
+                  </pre>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-muted-foreground text-xs">
+          Your code saves as you type. When you hand in it is also tested on{' '}
+          {code.hidden === 0 ? 'these tests only' : `${code.hidden} hidden test${code.hidden === 1 ? '' : 's'}`}.
+        </p>
+      </div>
+      <AlertDialog open={resetting} onOpenChange={setResetting}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start again from the starter code?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your code for this question is replaced and cannot be brought back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep my code</AlertDialogCancel>
+            <AlertDialogAction onClick={() => onChange({ type: 'code', language, source: starterOf(item, language) })}>
+              Reset
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
   );
 }
 

@@ -1,12 +1,14 @@
 import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
-import mongoose from 'mongoose';
-import { handInAttempts } from '@/lib/data/attempts';
+import mongoose, { type Types } from 'mongoose';
+import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
 import { deriveAttendance } from '@/lib/domain/attendance';
+import { codeItemMarks, testStatus } from '@/lib/domain/code';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
+import { runBatch, type RunJob } from '@/lib/integrations/code-runner';
 import { deleteObjects } from '@/lib/integrations/storage';
 import { formatDateTime } from '@/lib/format';
 import { log } from '@/lib/log';
@@ -19,9 +21,11 @@ import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
 import { queueLiveFinalize } from '@/lib/queue';
+import type { RunStatus } from '@/lib/schemas/assessment';
 import {
   AssessmentSweepJob,
   FinalizeLiveJob,
+  GradeCodeJob,
   LiveControlJob,
   LiveSweepJob,
   ProctorRetentionJob,
@@ -29,8 +33,20 @@ import {
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
 
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep' | 'proctorRetention';
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob | ProctorRetentionJob;
+type ComputeName =
+  | 'finalizeLiveSession'
+  | 'liveSweep'
+  | 'liveControl'
+  | 'assessmentSweep'
+  | 'proctorRetention'
+  | 'gradeCode';
+type ComputeData =
+  | FinalizeLiveJob
+  | LiveSweepJob
+  | LiveControlJob
+  | AssessmentSweepJob
+  | ProctorRetentionJob
+  | GradeCodeJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -243,6 +259,109 @@ async function proctorRetention(now: Date): Promise<void> {
   log.info('proctor retention', { tests: tests.length, deleted });
 }
 
+// `compute/gradeCode` (06 §6, TP-09, LAB-05): each answered code question of a handed-in attempt is run on all its
+// tests, hidden ones too, and marked by the weight of the tests it passed (07 §14); an unanswered one scores 0, and one
+// in a language the setting no longer has fails every test. A mark a grader gave stays. Results and marks replace the
+// last run's, so a repeat changes nothing; the write is guarded by the attempt's `updatedAt`, so a grader saving at the
+// same moment makes this read again. A runner failure throws, and BullMQ retries.
+async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
+  const stored = await Setting.findById('codeRunner', { value: 1 }).lean();
+  const { languages } = SETTINGS.codeRunner.schema.parse(stored?.value ?? {});
+  const attempt = await Submission.findById(submissionId, { status: 1, paper: 1, answers: 1 }).lean();
+  if (!attempt || attempt.status === 'in_progress') return;
+  const jobs: RunJob[] = [];
+  const tests: { itemId: Types.ObjectId; testCaseId: Types.ObjectId; expected: string; run: number | null }[] = [];
+  for (const item of attempt.paper) {
+    if (item.type !== 'code' || !item.code) continue;
+    const answer = attempt.answers?.[String(item._id)]?.code;
+    if (!answer || answer.source.trim() === '') continue;
+    const language = item.code.languages.includes(answer.language)
+      ? languages.find((l) => l.key === answer.language)
+      : undefined;
+    for (const test of item.code.testCases) {
+      tests.push({ itemId: item._id, testCaseId: test._id, expected: test.expected, run: language ? jobs.length : null });
+      if (language) {
+        jobs.push({
+          runnerLanguageId: language.runnerId,
+          source: answer.source,
+          stdin: test.input,
+          timeLimitSec: item.code.timeLimitSec,
+          memoryKb: item.code.memoryKb,
+        });
+      }
+    }
+  }
+  const runs = await runBatch(jobs);
+  const results = tests.map((test) => {
+    const run = test.run === null ? undefined : runs[test.run];
+    const status: RunStatus = run ? testStatus(run.status, run.stdout, test.expected) : 'internal_error';
+    return {
+      itemId: test.itemId,
+      testCaseId: test.testCaseId,
+      status,
+      timeMs: run?.timeMs ?? null,
+      memoryKb: run?.memoryKb ?? null,
+    };
+  });
+  const codeMarks = new Map(
+    attempt.paper.flatMap((item) =>
+      item.type === 'code' && item.code
+        ? [
+            [
+              String(item._id),
+              codeItemMarks(
+                item.maxMarks,
+                item.code.testCases.map((test) => ({
+                  weight: test.weight,
+                  passed: results.some(
+                    (r) => r.itemId.equals(item._id) && r.testCaseId.equals(test._id) && r.status === 'accepted',
+                  ),
+                })),
+              ),
+            ] as const,
+          ]
+        : [],
+    ),
+  );
+  for (let round = 0; round < 3; round++) {
+    const current = await Submission.findById(submissionId, {
+      assessmentId: 1,
+      status: 1,
+      paper: 1,
+      scores: 1,
+      proctor: 1,
+      updatedAt: 1,
+    }).lean();
+    if (!current || current.status === 'in_progress') return;
+    const scores = { ...current.scores };
+    for (const [itemId, marks] of codeMarks) {
+      const kept = scores[itemId];
+      if (!kept || kept.by === 'auto') scores[itemId] = { marks, by: 'auto' };
+    }
+    const rules = await Assessment.findById(current.assessmentId, { proctoring: 1 }).lean();
+    const total = totalOf(current.paper, scores, rules?.proctoring, current.proctor);
+    const now = new Date();
+    const written = await Submission.updateOne(
+      { _id: submissionId, status: { $ne: 'in_progress' }, updatedAt: current.updatedAt },
+      {
+        $set: {
+          results,
+          scores,
+          total,
+          status: total === null ? 'submitted' : 'graded',
+          codeGradedAt: now,
+          ...(total === null ? {} : { gradedAt: now }),
+        },
+      },
+    );
+    if (written.matchedCount > 0) {
+      log.info('code graded', { submissionId, runs: jobs.length });
+      return;
+    }
+  }
+  throw new Error('The attempt kept changing while its code was marked; the job will try again.');
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
@@ -250,6 +369,7 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
     AssessmentSweepJob.parse(job.data);
     return assessmentSweep(new Date());
   }
+  if (job.name === 'gradeCode') return gradeCode(GradeCodeJob.parse(job.data));
   if (job.name === 'proctorRetention') {
     ProctorRetentionJob.parse(job.data);
     return proctorRetention(new Date());

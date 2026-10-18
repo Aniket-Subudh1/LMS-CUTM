@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { getSettings } from '@/lib/data/settings';
 import { rubricTotal } from '@/lib/domain/grading';
 import { roundHalfUp } from '@/lib/domain/round';
 import { AppError } from '@/lib/errors';
@@ -6,7 +7,7 @@ import type { ItemInput } from '@/lib/schemas/assessment';
 import type { BankCsvRow } from '@/lib/schemas/bank';
 import type { RichTextDoc } from '@/lib/schemas/common';
 
-// One question as stored (05 §5.1), from its dialog or a CSV row: options, criteria, blanks and pairs get new ids
+// One question as stored (05 §5.1), from its dialog or a CSV row: options, criteria, blanks, pairs and tests get new ids
 // (A-M04-7), the key names options by id, and marks are rounded once. Shared by an assessment's questions and the
 // bank (M04b). A rubric must add up to the question's marks.
 export function storedItem(input: ItemInput) {
@@ -56,9 +57,24 @@ export function storedItem(input: ItemInput) {
     template: input.template ?? undefined,
     blanks: input.blanks?.map((blank) => ({ _id: new Types.ObjectId(), accepted: blank.accepted })),
     pairs: input.pairs?.map((pair) => ({ _id: new Types.ObjectId(), rightId: new Types.ObjectId(), ...pair })),
+    code: input.code
+      ? { ...input.code, testCases: input.code.testCases.map((test) => ({ _id: new Types.ObjectId(), ...test })) }
+      : undefined,
   };
 }
 export type StoredItem = ReturnType<typeof storedItem>;
+
+// TP-09: a code question offers only languages the codeRunner setting has now (a test's or a bank's).
+export async function requireOfferedLanguages(items: readonly { code?: { languages: readonly string[] } | null }[]) {
+  const asked = items.flatMap((item) => item.code?.languages ?? []);
+  if (asked.length === 0) return;
+  const offered = new Set((await getSettings('codeRunner')).languages.map((language) => language.key));
+  if (asked.some((key) => !offered.has(key))) {
+    throw new AppError('VALIDATION', 'Pick languages that are offered now.', {
+      'language[]': ['Pick languages that are offered now.'],
+    });
+  }
+}
 
 // The question itself, without where it is kept: for copying between a test and a bank (TP-05). Its options keep their
 // ids, so its key still names them.
@@ -76,6 +92,7 @@ export function questionOf<
     template?: string | null;
     blanks?: unknown;
     pairs?: unknown;
+    code?: unknown;
   },
 >(doc: T) {
   return {
@@ -95,6 +112,7 @@ export function questionOf<
     template: doc.template,
     blanks: doc.blanks,
     pairs: doc.pairs,
+    code: doc.code,
   };
 }
 
@@ -128,5 +146,6 @@ export function csvItem(row: BankCsvRow, coIds: string[]): ItemInput {
     template: null,
     blanks: null,
     pairs: null,
+    code: null,
   };
 }

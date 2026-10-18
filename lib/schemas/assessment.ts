@@ -3,12 +3,21 @@ import { istDateTime, objectId, richText } from '@/lib/schemas/common';
 import { BLOOM_LEVELS } from '@/lib/schemas/structure';
 import { UploadedFile } from '@/lib/schemas/uploads';
 
-// The M04 modes; M05 adds coding_test, lab_test and coding_competition, M07 project_review (05 §5.1).
-export const ASSESSMENT_MODES = ['quiz', 'written_test', 'assignment', 'learning_record', 'lab_record'] as const;
+// The M04 modes, and M04b's coding modes (TP-09, from M05); M07 adds project_review (05 §5.1).
+export const ASSESSMENT_MODES = [
+  'quiz',
+  'written_test',
+  'assignment',
+  'learning_record',
+  'lab_record',
+  'coding_test',
+  'lab_test',
+  'coding_competition',
+] as const;
 export type AssessmentMode = (typeof ASSESSMENT_MODES)[number];
 export const RECORD_MODES = ['learning_record', 'lab_record'] as const satisfies readonly AssessmentMode[];
 
-// M04b (TP-06) adds true or false, fill in the blanks, matching and ordering.
+// M04b adds true or false, fill in the blanks, matching and ordering (TP-06), and code (TP-09).
 export const ITEM_TYPES = [
   'mcq',
   'msq',
@@ -19,6 +28,7 @@ export const ITEM_TYPES = [
   'ordering',
   'text',
   'file',
+  'code',
 ] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const OBJECTIVE_TYPES = [
@@ -41,6 +51,9 @@ export const MODE_ITEM_TYPES: Record<AssessmentMode, readonly ItemType[]> = {
   assignment: ['text', 'file'],
   learning_record: ['text', 'file'],
   lab_record: ['text', 'file'],
+  coding_test: [...OBJECTIVE, 'text', 'code'],
+  lab_test: [...OBJECTIVE, 'text', 'file', 'code'],
+  coding_competition: ['code'],
 };
 
 export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
@@ -57,6 +70,9 @@ export const MODE_DEFAULTS: Record<
   assignment: { durationMin: null, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
   learning_record: { durationMin: null, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
   lab_record: { durationMin: null, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
+  coding_test: { durationMin: 90, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
+  lab_test: { durationMin: 120, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
+  coding_competition: { durationMin: 120, attemptsAllowed: 1, shuffleItems: false, shuffleOptions: false },
 };
 
 export const ASSESSMENT_STATUSES = ['draft', 'published', 'results_published'] as const;
@@ -87,7 +103,26 @@ export const ASSESSMENT_LIMITS = {
   template: 2000,
   extraTime: 200,
   spentSec: 600,
+  // TP-09 (05 §5.1): code questions; inputs and expected outputs 8 KB, a student's code 64 KB.
+  codeItems: 5,
+  languages: 10,
+  testCases: 15,
+  caseText: 8_000,
+  starter: 16_000,
+  source: 64_000,
+  runLimit: 30,
 } as const;
+
+// What happened to one run of a test (06 §4.4); "wrong_answer" is ours, from comparing outputs (07 §14).
+export const RUN_STATUSES = [
+  'accepted',
+  'wrong_answer',
+  'time_limit',
+  'compile_error',
+  'runtime_error',
+  'internal_error',
+] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
 
 const title = z.string().trim().min(3, 'Use at least 3 characters.').max(160, 'Use at most 160 characters.');
 const blankIsMissing = <T extends z.ZodType>(schema: T) =>
@@ -169,6 +204,13 @@ const pairRows = list(
   ASSESSMENT_LIMITS.pairs,
 );
 
+// A textarea posts \r\n; a program reads \n.
+const lf = (text: string) => text.replace(/\r\n/g, '\n');
+const caseText = z
+  .string()
+  .max(ASSESSMENT_LIMITS.caseText, `Keep each test's input and output under ${ASSESSMENT_LIMITS.caseText} characters.`);
+const languageKey = z.string().trim().min(1).max(20);
+
 const itemBase = {
   prompt: richText.refine((doc) => doc !== null, 'Write the question.'),
   maxMarks: z.coerce.number({ error: 'Enter the marks.' }).gt(0, 'Give it more than 0 marks.').max(1000),
@@ -222,6 +264,37 @@ const ItemFields = z.discriminatedUnion(
     z.object({ ...itemBase, type: z.literal('ordering'), 'option[]': optionRows }),
     z.object({ ...itemBase, type: z.literal('text'), ...rubricRows }),
     z.object({ ...itemBase, type: z.literal('file'), ...rubricRows }),
+    // TP-09: the languages offered (from the codeRunner setting) and a starter for each; the limits; up to 15 tests,
+    // each an input and its expected output, hidden or not, weighed 1–10. Blank test rows are skipped.
+    z.object({
+      ...itemBase,
+      type: z.literal('code'),
+      'language[]': list(languageKey, ASSESSMENT_LIMITS.languages),
+      'starterLanguage[]': list(languageKey, ASSESSMENT_LIMITS.languages),
+      'starter[]': list(
+        z.string().max(ASSESSMENT_LIMITS.starter, `Keep each starter under ${ASSESSMENT_LIMITS.starter} characters.`),
+        ASSESSMENT_LIMITS.languages,
+      ),
+      timeLimitSec: z.coerce.number().int('Use whole seconds.').min(1, 'At least 1 second.').max(10).default(2),
+      memoryMb: z.coerce.number().int('Use whole MB.').min(64, 'At least 64 MB.').max(512, 'At most 512 MB.').default(128),
+      runLimit: z.coerce
+        .number()
+        .int('Use a whole number.')
+        .min(1, 'Allow at least 1 run.')
+        .max(ASSESSMENT_LIMITS.runLimit, `Allow at most ${ASSESSMENT_LIMITS.runLimit} runs.`)
+        .default(10),
+      'caseInput[]': list(caseText, ASSESSMENT_LIMITS.testCases),
+      'caseExpected[]': list(caseText, ASSESSMENT_LIMITS.testCases),
+      'caseWeight[]': list(z.string().trim().max(3), ASSESSMENT_LIMITS.testCases),
+      'caseHidden[]': list(
+        z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(ASSESSMENT_LIMITS.testCases - 1),
+        ASSESSMENT_LIMITS.testCases,
+      ),
+    }),
   ],
   { error: 'Choose a question type.' },
 );
@@ -229,6 +302,16 @@ const ItemFields = z.discriminatedUnion(
 // mcq/msq: the right options by their place among the filled rows; ordering: the rows as written are the right order.
 export type ItemKey =
   { correct: number[] } | { value: number; tolerance: number } | { truth: boolean } | { ordered: true };
+
+// A code question's settings and tests (TP-09); `memoryKb` as the runner takes it.
+export type CodeParts = {
+  languages: string[];
+  starter: { language: string; source: string }[];
+  timeLimitSec: number;
+  memoryKb: number;
+  runLimit: number;
+  testCases: { input: string; expected: string; hidden: boolean; weight: number }[];
+};
 
 // What only some types have; each type's branch fills in its own.
 type ItemParts = {
@@ -238,8 +321,17 @@ type ItemParts = {
   template: string | null;
   blanks: { accepted: string[] }[] | null;
   pairs: { left: string; right: string }[] | null;
+  code: CodeParts | null;
 };
-const NO_PARTS: ItemParts = { options: null, key: null, rubric: null, template: null, blanks: null, pairs: null };
+const NO_PARTS: ItemParts = {
+  options: null,
+  key: null,
+  rubric: null,
+  template: null,
+  blanks: null,
+  pairs: null,
+  code: null,
+};
 
 // A blank in a fill-in-the-blanks sentence: three or more underscores.
 export const BLANK = /_{3,}/g;
@@ -331,6 +423,43 @@ export const ItemInput = ItemFields.transform((input, ctx) => {
       }
       return { ...base, rubric: rubric.length > 0 ? rubric : null };
     }
+    case 'code': {
+      const languages = [...new Set(input['language[]'])];
+      if (languages.length === 0) return fail('language[]', 'Tick at least one language.');
+      const starter = input['starterLanguage[]'].flatMap((language, row) => {
+        const source = lf(input['starter[]'][row] ?? '');
+        return languages.includes(language) && source.trim() !== '' ? [{ language, source }] : [];
+      });
+      const hidden = new Set(input['caseHidden[]']);
+      const testCases: CodeParts['testCases'] = [];
+      for (const [row, raw] of input['caseInput[]'].entries()) {
+        const stdin = lf(raw);
+        const expected = lf(input['caseExpected[]'][row] ?? '');
+        if (stdin === '' && expected === '') continue;
+        if (expected.trim() === '') return fail('caseExpected[]', `Test ${row + 1}: write the expected output.`);
+        const given = input['caseWeight[]'][row] ?? '';
+        const weight = given === '' ? 1 : Number(given);
+        if (!Number.isInteger(weight) || weight < 1 || weight > 10) {
+          return fail('caseWeight[]', `Test ${row + 1}: weigh it from 1 to 10.`);
+        }
+        testCases.push({ input: stdin, expected, hidden: hidden.has(row), weight });
+      }
+      if (testCases.length === 0) return fail('caseExpected[]', 'Write at least one test.');
+      if (testCases.every((test) => test.hidden)) {
+        return fail('caseExpected[]', 'Leave at least one test visible, so students can try their code on it.');
+      }
+      return {
+        ...base,
+        code: {
+          languages,
+          starter,
+          timeLimitSec: input.timeLimitSec,
+          memoryKb: input.memoryMb * 1000,
+          runLimit: input.runLimit,
+          testCases,
+        },
+      };
+    }
   }
 });
 export type ItemInput = z.output<typeof ItemInput>;
@@ -361,6 +490,11 @@ export const Answer = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ordering'), optionIds: z.array(objectId).max(ASSESSMENT_LIMITS.options) }),
   z.object({ type: z.literal('text'), text: richText }),
   z.object({
+    type: z.literal('code'),
+    language: languageKey,
+    source: z.string().max(ASSESSMENT_LIMITS.source, 'Your code is longer than 64 KB.'),
+  }),
+  z.object({
     type: z.literal('file'),
     files: z.array(UploadedFile).max(ASSESSMENT_LIMITS.files, `Upload at most ${ASSESSMENT_LIMITS.files} files.`),
   }),
@@ -375,6 +509,13 @@ export const SaveAnswer = z.object({
   spentSec: z.number().int().min(0).max(ASSESSMENT_LIMITS.spentSec).default(0),
 });
 export const SubmissionRef = z.object({ submissionId: objectId });
+// TP-09: "Run sample tests" — the code as it stands is saved and run on the question's visible tests.
+export const RunCode = z.object({
+  ...SubmissionRef.shape,
+  itemId: objectId,
+  language: languageKey,
+  source: z.string().max(ASSESSMENT_LIMITS.source, 'Your code is longer than 64 KB.'),
+});
 // TP-07: "Flag for review".
 export const FlagItem = z.object({ ...SubmissionRef.shape, itemId: objectId, flagged: z.boolean() });
 // TP-06: opening a section (the runner's tabs and its move to the next one).

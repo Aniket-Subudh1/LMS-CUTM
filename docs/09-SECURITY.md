@@ -95,7 +95,7 @@ Rules:
 | Guest registration and sign-in codes | email | 5 / 15 min |
 | Guest code check | IP | 30 / 15 min; and 5 tries per code, counted before the check |
 | Test invitations (M04b) | owner | 20 sends / day, ≤ 500 addresses each |
-| Code run | student | 1 per `runCooldownSec` (3 s), 200 / hour |
+| Code run (`runCode`, M04b) | user | 1 per `runCooldownSec` (3 s), 200 / hour; and each question's `runLimit` (1–30) an attempt |
 | `createUpload` | user | 60 / hour |
 | Answer autosave | user | 60 / min |
 | Proctoring beat (M04b) | user | 30 / min (one every 15 s, plus one per event) |
@@ -142,6 +142,7 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `live.removed`, `live.allowed_back` (M03c) | the student removed from a running class or let back; a removed student gets no join token, a join with a token they kept is removed again by the webhook and not counted, and tokens live 10 minutes |
 | `assessment.published`, `assessment.results_published` | status |
 | `submission.graded` | per-item marks before/after |
+| `submission.code_rerun` (M04b) | who asked the code to be tested again (the marks follow from the `gradeCode` job) |
 | `assessment.time_added` (M04b, the live monitor) | minutes and the number of attempts given them; entity the attempt, or the test for everyone |
 | `submission.ended` (M04b) | status before, `endedBy: teacher` after |
 | `submission.penalty_waived`, `submission.penalty_restored` (M04b) | `waived` and `total` before/after |
@@ -190,6 +191,7 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Since M04b an attempt's questions are its own paper (05 §5.2): grading, the grader's view and the results read only the paper, so a bank or assessment edited afterwards changes no attempt. Section rules are enforced on the server: a closed section (left when "no going back", or out of time) refuses saves (CLOSED).
 - Auto-grading runs on the server against the stored keys; the browser never receives a score before results are published.
 - Attempt timing is server-side: `deadlineAt` is computed when the attempt starts; a save more than 5 s after `deadlineAt` (the grace for one sent just before 0:00, `SAVE_GRACE_MS`) is rejected and the attempt is auto-submitted with the answers saved until then. The runner's countdown runs on the server's clock (M04), and a closed tab is handed in by the hourly sweep.
+- Code questions (M04b, TP-09): a hidden test reaches nobody but the test's staff — `toStudentItem()` sends only the visible tests and a count, and `runCode` runs and answers with the visible tests only; the hidden ones run in the worker after hand-in. Code is run by the code runner at `CODE_RUNNER_URL`, a third party while that is Judge0's free public server (Q-55).
 - Integration test (M04/M05): serialize the student DTO of an assessment with answers and hidden cases and assert neither appears.
 
 ## 11. Proctoring privacy (M04b phase C, from M05)

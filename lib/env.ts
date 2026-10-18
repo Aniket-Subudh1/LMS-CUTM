@@ -25,6 +25,10 @@ const Env = z.object({
   LIVEKIT_API_URL: z.url(),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(32),
+  // M04b (TP-09, 06 §4.4): a Judge0 CE server. Until the university runs its own (11 §2), Judge0's free public server,
+  // which needs no token; students' code is sent to it (Q-55).
+  CODE_RUNNER_URL: z.url().default('https://ce.judge0.com'),
+  CODE_RUNNER_TOKEN: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

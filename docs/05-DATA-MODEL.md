@@ -224,7 +224,7 @@ Invariants: a manual mark overrides a derived one and is audited (`attendance.ma
 ## 5. Assessment and marks
 
 ### 5.1 `assessments`
-Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`. M04 builds the first five (`ASSESSMENT_MODES`, with the question types each may hold in `MODE_ITEM_TYPES`, `lib/schemas/assessment.ts`); M04b adds `proctoring` (TP-08); M05 the coding modes and the `code` items, M07 `project_review` and `observation` items. Sizes are `ASSESSMENT_LIMITS` there.
+Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`. M04 builds the first five (`ASSESSMENT_MODES`, with the question types each may hold in `MODE_ITEM_TYPES`, `lib/schemas/assessment.ts`); M04b adds `proctoring` (TP-08), the coding modes and the `code` items (TP-09), M07 `project_review` and `observation` items. Sizes are `ASSESSMENT_LIMITS` there.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -268,7 +268,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | template, blanks | S?, `[{ _id, accepted: [S] }]?` | fill_blank: the sentence with `___` per blank (≤ 10 blanks); what each blank accepts (≤ 10 answers). **`accepted` never sent to students** |
 | pairs | `[{ _id, rightId: Id, left: S, right: S }]?` | matching, 2–10: `_id` names the left side and `rightId` the right one, so a page can list both without saying which go together |
 | rubric | `[{ _id: Id, criterion: S, maxMarks: N }]?` | text/file/observation; max 10; Σ maxMarks = item.maxMarks |
-| code | `{ languages: [S], starter: { [lang]: S }, timeLimitSec: N, memoryKb: N, testCases: [{ _id: Id, input: S, expected: S, hidden: B, weight: N }] }?` | code only; ≤ 5 code items per assessment; 1–15 test cases; input/expected ≤ 8 KB; hidden cases **never sent to students** |
+| code | `{ languages: [S], starter: [{ language: S, source: S }], timeLimitSec: N, memoryKb: N, runLimit: N, testCases: [{ _id: Id, input: S, expected: S, hidden: B, weight: N }] }?` | code only (M04b, TP-09); ≤ 5 code items per assessment (`saveItem`, `addFromBank`); languages are keys of the `codeRunner` setting (06 §7); starters ≤ 16 KB; time 1–10 s; memory 64,000–512,000 KB; `runLimit` 1–30 runs of the visible tests an attempt; 1–15 test cases with their own ids (results name them), at least one visible, weights 1–10; input/expected ≤ 8 KB, `\n` line ends; hidden cases **never sent to students** |
 
 `observation` items have no student answer — faculty score them (project reviews, viva). `text`/`file` items are what records and written assignments are made of.
 
@@ -296,8 +296,9 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | visits | `[{ sectionId, startedAt: D, closedAt: D? }]` | M04b (TP-06): when each section was first opened and closed for good; written whole (≤ 10) |
 | currentSectionId | Id? | M04b: the section the runner shows |
 | answers | Map `<itemId>` → `{ optionId?, optionIds?, value?, truth?, texts?: [S], matches?: [{ left: Id, right: Id }], text?: RichText, files?: [{ key: S, fileName: S, contentType: S, size: N }], code?: { language: S, source: S } }` | Map keyed by item id so each save is one atomic `$set: { 'answers.<itemId>': … }`; files max 10, each a `submission` upload of this student for this assessment with its sanitized name (M04: the name is shown to the grader, so the answer keeps more than the key); source ≤ 64 KB (M05) |
-| runs | `[{ itemId, at: D, passed: N, total: N }]` | code runs (LAB-03); max 200 (`$slice: -200`) |
-| results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | final graded code results |
+| runs | `[{ itemId, at: D, passed: N, total: N }]` | each run of a code question's visible tests (LAB-03, `runCode`); counted against its `runLimit`; max 200 (`$slice: -200`; 5 × 30 runs fit) |
+| results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | every test of every answered code question as the `gradeCode` job ran it, hidden ones too; `status` one of `RUN_STATUSES` (`wrong_answer` is our comparison, 07 §14) |
+| codeGradedAt | D? | when the `gradeCode` job last marked the code questions (M04b) |
 | scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000; marks may be negative (negative marking, 07 §14) |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |

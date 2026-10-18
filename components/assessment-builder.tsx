@@ -397,6 +397,7 @@ export async function AssessmentBuilder({
           cos={course ? b.cos : null}
           credit={b.credit}
           sections={b.sections}
+          languages={b.languages}
         />
       )}
       {editQuestions && (open === 'section' || editingSection) && (

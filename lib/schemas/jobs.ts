@@ -55,6 +55,10 @@ export type LiveControlJob = z.infer<typeof LiveControlJob>;
 export const AssessmentSweepJob = z.object({});
 export type AssessmentSweepJob = z.infer<typeof AssessmentSweepJob>;
 
+// `compute/gradeCode` (06 §6, M04b TP-09): run an attempt's code questions on every test and mark them.
+export const GradeCodeJob = z.object({ submissionId: objectId });
+export type GradeCodeJob = z.infer<typeof GradeCodeJob>;
+
 // `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;

@@ -327,6 +327,17 @@ Per assignee: `assigned`; `done`; `doneOnTime` (`doneAt ≤ dueAt`); `overdue` (
 | `"1 2 \n3\r\n"` | `"1 2\n3"` | yes |
 | `"5"` | `"6"` | no |
 | `"a b"` | `"a  b"` | no (inner whitespace is significant) |
+| `"YES\n\n\n"` | `"YES"` | yes |
+| `"\nYES"` | `"YES"` | no (a blank line before counts) |
+
+**A test's status and a code question's marks (M04b, TP-09, `lib/domain/code.ts`).** `testStatus(run, stdout, expected)`: a run the runner accepted passes when the outputs match (`outputsMatch`) and is `wrong_answer` otherwise; any other status (`time_limit`, `compile_error`, `runtime_error`, `internal_error`) stays as it is. `codeItemMarks(maxMarks, tests)` is the `code` row above, and 0 for a question without tests. The `gradeCode` job runs every test (06 §6); an unanswered question scores 0.
+
+| Marks | Weights | Passing | Result |
+|---|---|---|---|
+| 10 | 1, 1, 2 | the first and third | 7.5 |
+| 10 | 1, 1, 2 | none | 0 |
+| 10 | 1, 1, 2 | all | 10 |
+| 5 | 1, 1, 1 | the first | 1.67 |
 
 **Partial credit and negative marks (M04b, TP-06)** — per question, set by its author.
 - With `partialCredit` (msq, fill_blank, matching, ordering), a partly right answer earns `roundHalfUp(maxMarks × right, 2)`, where `right` is: msq `max(0, (chosen correct − chosen wrong) / correct)`; fill_blank the share of blanks right; matching the share of pairs right; ordering the share of steps in their place.

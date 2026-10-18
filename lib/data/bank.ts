@@ -5,6 +5,7 @@ import { bankAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { teacherItemOf, type TeacherItem } from '@/lib/data/assessments';
 import { escapeRegex } from '@/lib/data/courses';
+import { getSettings } from '@/lib/data/settings';
 import { db } from '@/lib/db';
 import { plainText } from '@/lib/domain/rich-text';
 import { BankItem, type BankItemDoc } from '@/lib/models/bank-item';
@@ -36,6 +37,8 @@ export type BankPage = {
   stats: { total: number; easy: number; medium: number; hard: number; untagged: number };
   rows: BankRow[];
   total: number;
+  // TP-09: the languages a code question may offer.
+  languages: { key: string; label: string }[];
 };
 
 const detailOf = (doc: Pick<BankItemDoc, 'type' | 'options' | 'rubric' | 'blanks' | 'pairs'>): string | null => {
@@ -92,7 +95,7 @@ export async function getBank(offeringId: string | undefined, filter: BankFilter
     ...(filter.topic ? { topic: filter.topic } : {}),
     ...(q ? { 'prompt.content.content.text': { $regex: escapeRegex(q), $options: 'i' } } : {}),
   };
-  const [docs, total, levels, untagged, topics, course] = await Promise.all([
+  const [docs, total, levels, untagged, topics, course, runner] = await Promise.all([
     BankItem.find(query, {
       type: 1,
       prompt: 1,
@@ -120,6 +123,7 @@ export async function getBank(offeringId: string | undefined, filter: BankFilter
     bank.courseId
       ? Course.findById(bank.courseId, { title: 1, 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean()
       : null,
+    getSettings('codeRunner'),
   ]);
   const cos = (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement }));
   const codeOf = new Map(cos.map((co) => [co.id, co.code]));
@@ -127,6 +131,7 @@ export async function getBank(offeringId: string | undefined, filter: BankFilter
   return {
     canEdit: bank.canEdit,
     courseTitle: course?.title ?? null,
+    languages: runner.languages.map(({ key, label }) => ({ key, label })),
     cos,
     topics: topics
       .filter((t): t is string => typeof t === 'string')

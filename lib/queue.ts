@@ -7,6 +7,7 @@ import type {
   CoursewareListJob,
   CoursewarePageJob,
   FinalizeLiveJob,
+  GradeCodeJob,
   LiveControlJob,
   LiveSweepJob,
   MailJob,
@@ -18,8 +19,20 @@ import type {
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
 type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
 type SyncQueue = Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob | ProctorRetentionJob;
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep' | 'proctorRetention';
+type ComputeData =
+  | FinalizeLiveJob
+  | LiveSweepJob
+  | LiveControlJob
+  | AssessmentSweepJob
+  | ProctorRetentionJob
+  | GradeCodeJob;
+type ComputeName =
+  | 'finalizeLiveSession'
+  | 'liveSweep'
+  | 'liveControl'
+  | 'assessmentSweep'
+  | 'proctorRetention'
+  | 'gradeCode';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -102,6 +115,20 @@ export async function queueLiveFinalize(sessionId: string): Promise<void> {
     return;
   }
   await computeQueue().add('finalizeLiveSession', { sessionId }, { jobId });
+}
+
+// 06 §6 (TP-09): mark an attempt's code questions once it is handed in. The id makes a second hand-in path add
+// nothing; asked `again` (a grader's "Run the tests again"), a finished job is removed and added anew and a failed one
+// retried.
+export async function queueGradeCode(submissionId: string, again = false): Promise<void> {
+  const jobId = `code-${submissionId}`;
+  const existing = again ? await computeQueue().getJob(jobId) : undefined;
+  if (existing && (await existing.isFailed())) {
+    await existing.retry('failed');
+    return;
+  }
+  if (existing && (await existing.isCompleted())) await existing.remove();
+  await computeQueue().add('gradeCode', { submissionId }, { jobId });
 }
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.

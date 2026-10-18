@@ -16,6 +16,25 @@ const percent = (fallback: number) =>
     .max(100, 'Use a percentage from 1 to 100.')
     .default(fallback);
 
+// 06 §7, TP-09: Judge0 CE's ids for its GCC 9.2.0 and OpenJDK 13.0.1 (the free public server has the same ids). A
+// form posts the languages as lines of `key | label | runner id`; a stored value is the parsed list.
+const LANGUAGES = [
+  { key: 'c', label: 'C (GCC 9.2.0)', runnerId: 50 },
+  { key: 'cpp', label: 'C++ (GCC 9.2.0)', runnerId: 54 },
+  { key: 'java', label: 'Java (OpenJDK 13.0.1)', runnerId: 62 },
+];
+const languageLines = (value: unknown) =>
+  typeof value !== 'string'
+    ? value
+    : value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [key = '', label = '', runnerId = ''] = line.split('|').map((part) => part.trim());
+          return { key, label, runnerId };
+        });
+
 // The settings registry (06 §7). Each later milestone adds its key here and its form on /admin/settings/[key].
 // A missing document means the defaults; `getSettings(key)` returns `schema.parse(stored ?? {})`.
 export const SETTINGS = {
@@ -125,6 +144,45 @@ export const SETTINGS = {
         'A student is present when they were in the class for at least this share of the time from its start to its end. Time in two tabs at once counts once. A teacher can still change any student by hand.',
     },
   },
+  codeRunner: {
+    schema: z.object({
+      languages: z
+        .preprocess(
+          languageLines,
+          z
+            .array(
+              z.object({
+                key: z
+                  .string()
+                  .regex(/^[a-z][a-z0-9_]{0,19}$/, 'Each key is lower-case letters and digits, like cpp.'),
+                label: z.string().min(1, 'Give each language a name.').max(60),
+                runnerId: z.coerce
+                  .number({ error: 'Each runner id is a number.' })
+                  .int('Each runner id is a whole number.')
+                  .positive('Each runner id is a number.'),
+              }),
+            )
+            .min(1, 'Keep at least one language.')
+            .max(10, 'Use at most 10 languages.')
+            .refine((list) => new Set(list.map((l) => l.key)).size === list.length, 'Use each key once.'),
+        )
+        .default(LANGUAGES),
+      runCooldownSec: z.coerce
+        .number({ error: 'Enter a number of seconds.' })
+        .int('Use whole seconds.')
+        .min(1, 'Use 1 to 60 seconds.')
+        .max(60, 'Use 1 to 60 seconds.')
+        .default(3),
+    }),
+    label: 'Code questions',
+    description: 'The languages code questions can use, and how often a student may run their code.',
+    fieldHelp: {
+      languages:
+        'One language a line: a short key, the name students see, and the code runner’s id for it, separated by |. A question keeps the keys it was written with, so remove a language only when no running test uses it.',
+      runCooldownSec:
+        'The wait between two runs by the same student. Each question also has its own limit on runs; there are at most 200 runs an hour.',
+    },
+  },
   proctoring: {
     // Q-24: 90 days is the proposed period until the client confirms it (05 §8).
     schema: z.object({
@@ -144,6 +202,6 @@ export const SETTINGS = {
   },
 } as const;
 
-export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'proctoring']);
+export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'codeRunner', 'proctoring']);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

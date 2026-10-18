@@ -188,6 +188,9 @@ export const MODE_LABEL: Record<AssessmentMode, string> = {
   assignment: 'Assignment',
   learning_record: 'Learning record',
   lab_record: 'Lab record',
+  coding_test: 'Coding test',
+  lab_test: 'Lab test',
+  coding_competition: 'Coding competition',
 };
 
 // The question types in a teacher's words (M04 mock-ups).
@@ -201,6 +204,7 @@ export const ITEM_LABEL: Record<ItemType, string> = {
   ordering: 'Ordering',
   text: 'Written answer',
   file: 'Upload',
+  code: 'Code',
 };
 
 // What proctoring noticed, in plain words (TP-08): the grader's log, the monitor and the runner.

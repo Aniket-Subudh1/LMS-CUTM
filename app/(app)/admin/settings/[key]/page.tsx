@@ -11,7 +11,8 @@ import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { getSettingsPage, type SettingsPage } from '@/lib/data/settings';
+import { Textarea } from '@/components/ui/textarea';
+import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
 import { coursePercentage } from '@/lib/domain/evaluation';
 import { formatDateTime, formatPct } from '@/lib/format';
 import { settingsKey } from '@/lib/schemas/settings';
@@ -27,7 +28,7 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
 }
 
 // Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
-// `proctoring`.
+// `codeRunner` and `proctoring`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -38,6 +39,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <Evaluation page={await getSettingsPage('evaluation')} />;
     case 'attendance':
       return <Attendance page={await getSettingsPage('attendance')} />;
+    case 'codeRunner':
+      return <CodeRunner page={await getSettingsPage('codeRunner')} runner={await getRunnerLanguages()} />;
     case 'proctoring':
       return <Proctoring page={await getSettingsPage('proctoring')} />;
   }
@@ -122,6 +125,80 @@ function Lessons({ page }: { page: SettingsPage<'lessons'> }) {
               when the student marks them done.
             </li>
           </ul>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M04b (TP-09): the languages code questions can use and the wait between runs; beside them, the runner's own list
+// so the ids can be checked.
+function CodeRunner({
+  page,
+  runner,
+}: {
+  page: SettingsPage<'codeRunner'>;
+  runner: { id: number; name: string }[] | null;
+}) {
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="evaluation" />} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Section
+          icon={<PageIcon name="evaluation" className="size-8" />}
+          title="Languages and runs"
+          description={changed(page)}
+        >
+          <ActionForm action={saveSettings} submitLabel="Save" successMessage="Saved. New runs follow this.">
+            <input type="hidden" name="key" value={page.key} />
+            <Field name="languages" label="Languages" hint={page.fieldHelp.languages}>
+              <Textarea
+                name="languages"
+                required
+                rows={6}
+                className="font-mono text-[0.8125rem]"
+                defaultValue={page.value.languages.map((l) => `${l.key} | ${l.label} | ${l.runnerId}`).join('\n')}
+              />
+            </Field>
+            <Field
+              name="runCooldownSec"
+              label="Wait between runs"
+              hint={`${page.fieldHelp.runCooldownSec} Recommended: ${page.defaults.runCooldownSec} seconds.`}
+            >
+              <span className="relative block w-40">
+                <Input
+                  name="runCooldownSec"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={60}
+                  step={1}
+                  required
+                  defaultValue={page.value.runCooldownSec}
+                  className="pr-12 tabular-nums"
+                />
+                <span className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm">
+                  s
+                </span>
+              </span>
+            </Field>
+          </ActionForm>
+        </Section>
+        <Section
+          icon={<PageIcon name="evaluation" className="size-8" />}
+          title="The code runner’s languages"
+          description={runner ? `${runner.length} languages, with the id to use.` : 'The code runner did not answer.'}
+        >
+          {runner && (
+            <ul className="grid max-h-96 gap-1 overflow-y-auto text-[0.8125rem]">
+              {runner.map((language) => (
+                <li key={language.id} className="flex justify-between gap-3">
+                  <span>{language.name}</span>
+                  <b className="tabular-nums">{language.id}</b>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
       </div>
     </>

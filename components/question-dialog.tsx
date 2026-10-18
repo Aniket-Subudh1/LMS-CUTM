@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import {
   ArrowsLeftRightIcon,
   CheckSquareIcon,
+  CodeIcon,
   FileArrowUpIcon,
   HashIcon,
   ListNumbersIcon,
@@ -38,6 +39,7 @@ export const TYPE_ICON: Record<ItemType, Icon> = {
   ordering: ListNumbersIcon,
   text: TextAaIcon,
   file: FileArrowUpIcon,
+  code: CodeIcon,
 };
 
 const TYPE_HINT: Record<ItemType, string> = {
@@ -50,13 +52,14 @@ const TYPE_HINT: Record<ItemType, string> = {
   ordering: 'Steps to put in order; they are shuffled. Marked automatically.',
   text: 'A typed answer you mark, by a rubric if you give one.',
   file: 'Photos or a PDF of written work, marked by you.',
+  code: 'A program run on your tests: students see the visible ones, every one counts after hand-in.',
 };
 
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 // TP-05, TP-06: one question's dialog — for an assessment (builder) and for a question bank. `hidden` carries where
 // it is saved; `cos` is null where course outcomes do not apply (a standalone test, a personal bank); `sections` lets
-// an assessment's question move between its sections.
+// an assessment's question move between its sections; `languages` are those a code question may offer (TP-09).
 export function QuestionDialog({
   openParam,
   title,
@@ -67,6 +70,7 @@ export function QuestionDialog({
   cos,
   credit,
   sections,
+  languages,
 }: {
   openParam: string;
   title: string;
@@ -77,6 +81,7 @@ export function QuestionDialog({
   cos: { id: string; code: string; statement: string }[] | null;
   credit: boolean;
   sections: { id: string; title: string }[];
+  languages: { key: string; label: string }[];
 }) {
   const TypeIcon = TYPE_ICON[type];
   const options = item?.options ?? [];
@@ -158,6 +163,49 @@ export function QuestionDialog({
         aria-label={`Answers blank ${row + 1} accepts`}
       />
     </Field>
+  );
+  const tests = item?.tests ?? [];
+  const testRow = (row: number) => (
+    <div key={row} className="grid gap-2 sm:grid-cols-[1fr_1fr_4.5rem_5.5rem] sm:items-start">
+      <Textarea
+        name="caseInput[]"
+        rows={2}
+        defaultValue={tests[row]?.input ?? ''}
+        maxLength={ASSESSMENT_LIMITS.caseText}
+        spellCheck={false}
+        placeholder={`Input ${row + 1}`}
+        aria-label={`Test ${row + 1} input`}
+        className="min-h-0 font-mono text-xs"
+      />
+      <Textarea
+        name="caseExpected[]"
+        rows={2}
+        defaultValue={tests[row]?.expected ?? ''}
+        maxLength={ASSESSMENT_LIMITS.caseText}
+        spellCheck={false}
+        placeholder={`Expected output ${row + 1}`}
+        aria-label={`Test ${row + 1} expected output`}
+        className="min-h-0 font-mono text-xs"
+      />
+      <Input
+        name="caseWeight[]"
+        type="number"
+        min={1}
+        max={10}
+        defaultValue={tests[row]?.weight ?? 1}
+        aria-label={`Test ${row + 1} weight`}
+      />
+      <label className="flex items-center gap-2 text-[0.8125rem] sm:pt-2">
+        <input
+          type="checkbox"
+          name="caseHidden[]"
+          value={row}
+          defaultChecked={tests[row]?.hidden ?? row > 0}
+          className="accent-foreground size-4"
+        />
+        Hidden
+      </label>
+    </div>
   );
   const criterionRow = (row: number) => (
     <div key={row} className="grid grid-cols-[1fr_6rem] gap-3">
@@ -400,6 +448,89 @@ export function QuestionDialog({
           </p>
           <FieldErrors name="criterion[]" />
         </fieldset>
+      )}
+
+      {type === 'code' && (
+        <>
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Languages students may use</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {languages.map((language) => (
+                <label key={language.key} className="flex items-center gap-2 text-[0.8125rem]">
+                  <input
+                    type="checkbox"
+                    name="language[]"
+                    value={language.key}
+                    defaultChecked={item?.code ? item.code.languages.includes(language.key) : true}
+                    className="accent-foreground size-4"
+                  />
+                  {language.label}
+                </label>
+              ))}
+            </div>
+            <FieldErrors name="language[]" />
+          </fieldset>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">Starter code (optional)</summary>
+            <div className="mt-2 grid gap-3">
+              {languages.map((language) => (
+                <Field key={language.key} name={`starter-${language.key}`} label={language.label}>
+                  <input type="hidden" name="starterLanguage[]" value={language.key} />
+                  <Textarea
+                    name="starter[]"
+                    rows={5}
+                    defaultValue={item?.code?.starter.find((s) => s.language === language.key)?.source ?? ''}
+                    maxLength={ASSESSMENT_LIMITS.starter}
+                    spellCheck={false}
+                    className="font-mono text-xs"
+                  />
+                </Field>
+              ))}
+              <p className="text-muted-foreground text-xs">What the editor starts with in each language.</p>
+            </div>
+          </details>
+          <div className="grid gap-5 sm:grid-cols-3">
+            <Field name="timeLimitSec" label="Time for each test (seconds)">
+              <Input name="timeLimitSec" type="number" min={1} max={10} defaultValue={item?.code?.timeLimitSec ?? 2} />
+            </Field>
+            <Field name="memoryMb" label="Memory (MB)">
+              <Input
+                name="memoryMb"
+                type="number"
+                min={64}
+                max={512}
+                defaultValue={item?.code ? Math.round(item.code.memoryKb / 1000) : 128}
+              />
+            </Field>
+            <Field name="runLimit" label="Runs a student may make" hint="Of the visible tests, in one attempt.">
+              <Input
+                name="runLimit"
+                type="number"
+                min={1}
+                max={ASSESSMENT_LIMITS.runLimit}
+                defaultValue={item?.code?.runLimit ?? 10}
+              />
+            </Field>
+          </div>
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Tests</legend>
+            <div className="text-muted-foreground hidden gap-2 text-[0.6875rem] font-medium tracking-wide uppercase sm:grid sm:grid-cols-[1fr_1fr_4.5rem_5.5rem]">
+              <span>Input</span>
+              <span>Expected output</span>
+              <span>Weight</span>
+              <span />
+            </div>
+            {Array.from({ length: Math.max(3, tests.length) }, (_, row) => testRow(row))}
+            {more(Math.max(3, tests.length), ASSESSMENT_LIMITS.testCases, 'tests', testRow)}
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Students see the visible tests and can run their code on them. Every test counts when they hand in: the
+              marks follow the weight of the tests passed. Spaces at the end of lines and blank lines at the end are
+              ignored.
+            </p>
+            <FieldErrors name="caseExpected[]" />
+            <FieldErrors name="caseWeight[]" />
+          </fieldset>
+        </>
       )}
 
       {objective && (

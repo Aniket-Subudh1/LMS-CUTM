@@ -5,6 +5,7 @@ import {
   ENDED_BY,
   PROCTOR_EVENTS,
   PROCTOR_LIMITS,
+  RUN_STATUSES,
   SUBMISSION_STATUSES,
 } from '@/lib/schemas/assessment';
 
@@ -38,6 +39,17 @@ const answerSchema = new Schema(
           right: { type: Schema.Types.ObjectId, required: true },
         },
       ],
+      default: undefined,
+    },
+    // TP-09: a code question's language key and source.
+    code: {
+      type: new Schema(
+        {
+          language: { type: String, required: true, maxlength: 20 },
+          source: { type: String, maxlength: ASSESSMENT_LIMITS.source, default: '' },
+        },
+        { _id: false },
+      ),
       default: undefined,
     },
   },
@@ -158,6 +170,36 @@ const submissionSchema = new Schema(
     currentSectionId: { type: Schema.Types.ObjectId, default: null },
     proctor: { type: proctorSchema, default: () => ({}) },
     scores: { type: Map, of: scoreSchema, default: {} },
+    // TP-09 (LAB-03): each run of a code question's visible tests, the newest 200; a question's runs are counted
+    // against its run limit (at most ASSESSMENT_LIMITS.codeItems × runLimit = 150, so none is lost to the slice).
+    runs: {
+      type: [
+        {
+          _id: false,
+          itemId: { type: Schema.Types.ObjectId, required: true },
+          at: { type: Date, required: true },
+          passed: { type: Number, required: true, min: 0 },
+          total: { type: Number, required: true, min: 0 },
+        },
+      ],
+      default: [],
+    },
+    // TP-09 (LAB-05): every test of every code question, hidden ones included, as the gradeCode job ran them.
+    results: {
+      type: [
+        {
+          _id: false,
+          itemId: { type: Schema.Types.ObjectId, required: true },
+          testCaseId: { type: Schema.Types.ObjectId, required: true },
+          status: { type: String, enum: RUN_STATUSES, required: true },
+          timeMs: { type: Number, default: null },
+          memoryKb: { type: Number, default: null },
+        },
+      ],
+      default: [],
+    },
+    // When the gradeCode job last ran the code questions.
+    codeGradedAt: { type: Date, default: null },
     // Null until every question is scored.
     total: { type: Number, default: null },
     gradedAt: { type: Date },

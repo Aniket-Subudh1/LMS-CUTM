@@ -2,6 +2,7 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { listLanguages } from '@/lib/integrations/code-runner';
 import { Setting } from '@/lib/models/setting';
 import { User } from '@/lib/models/user';
 import { SETTINGS, settingsKey, type SettingsKey, type SettingsValue } from '@/lib/schemas/settings';
@@ -21,6 +22,7 @@ const PARSE: { [K in SettingsKey]: (stored: unknown) => SettingsValue<K> } = {
   lessons: (stored) => SETTINGS.lessons.schema.parse(stored ?? {}),
   evaluation: (stored) => SETTINGS.evaluation.schema.parse(stored ?? {}),
   attendance: (stored) => SETTINGS.attendance.schema.parse(stored ?? {}),
+  codeRunner: (stored) => SETTINGS.codeRunner.schema.parse(stored ?? {}),
   proctoring: (stored) => SETTINGS.proctoring.schema.parse(stored ?? {}),
 };
 
@@ -41,6 +43,16 @@ export async function listSettings(): Promise<SettingsCard[]> {
     description: SETTINGS[key].description,
     updatedAt: updated.get(key) ?? null,
   }));
+}
+
+// TP-09: the code runner's own languages, to check the ids in the codeRunner setting; null when it does not answer
+// (the adapter logs why).
+export async function getRunnerLanguages(): Promise<{ id: number; name: string }[] | null> {
+  await requireViewer(['admin']);
+  return listLanguages().then(
+    (languages) => languages,
+    () => null,
+  );
 }
 
 export type SettingsPage<K extends SettingsKey> = {

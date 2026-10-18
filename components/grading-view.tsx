@@ -7,12 +7,13 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CheckIcon,
+  CodeIcon,
   FileIcon,
   LockIcon,
   ShieldCheckIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
-import { gradeSubmission, waivePenalty } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import { gradeSubmission, rerunCode, waivePenalty } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { RichTextView } from '@/components/rich-text-view';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -32,7 +33,7 @@ import {
   PROCTOR_EVENT_LABEL,
   statusTone,
 } from '@/lib/format';
-import { OBJECTIVE_TYPES } from '@/lib/schemas/assessment';
+import { OBJECTIVE_TYPES, type RunStatus } from '@/lib/schemas/assessment';
 
 // T6: one hand-in. Each answer sits beside the key and its marks (automatic marks can be changed), a rubric question's
 // criteria, and a comment; "Save and open the next" goes to the next hand-in waiting for marks (M04 decision 5).
@@ -123,6 +124,27 @@ export async function GradingPage({
         </div>
       </section>
       {view.proctor && <Proctoring view={view} proctor={view.proctor} />}
+      {view.items.some((item) => item.type === 'code') && s.status !== 'in_progress' && (
+        <section className="surface mb-4 flex flex-wrap items-center justify-between gap-3 p-4 text-[0.8125rem] sm:p-5">
+          <span className="flex items-center gap-2">
+            <CodeIcon className="text-muted-foreground size-5" />
+            {s.codeGradedAt
+              ? `Code tested on every test, hidden ones too, at ${formatDateTime(s.codeGradedAt)}.`
+              : 'The code is being tested on every test. Reload in a minute.'}
+          </span>
+          {view.canGrade && (
+            <ActionForm
+              action={rerunCode}
+              submitLabel="Run the tests again"
+              submitVariant="outline"
+              submitSize="sm"
+              successMessage="Testing again. Reload in a minute."
+            >
+              <input type="hidden" name="submissionId" value={s.id} />
+            </ActionForm>
+          )}
+        </section>
+      )}
       {view.locked && (
         <p className="text-muted-foreground bg-muted/60 mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
           <LockIcon className="size-4 shrink-0" /> Marks for this course are locked, so nothing here can change.
@@ -243,7 +265,7 @@ function Proctoring({ view, proctor: p }: { view: GradingView; proctor: NonNulla
 function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: GradingView }) {
   const answer = view.submission.answers[item.id];
   const score = view.submission.scores[item.id];
-  const auto = OBJECTIVE_TYPES.some((type) => type === item.type);
+  const auto = OBJECTIVE_TYPES.some((type) => type === item.type) || item.type === 'code';
   const spent = view.submission.spent[item.id] ?? 0;
   return (
     <article className="surface grid gap-3 p-4 sm:p-5">
@@ -290,7 +312,7 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
         )}
       </header>
       <div className="grid gap-3 sm:pl-9">
-        <AnswerView item={item} answer={answer} />
+        <AnswerView item={item} answer={answer} view={view} />
         {item.rubric?.map((criterion) => (
           <div key={criterion.id} className="grid gap-1">
             <label className="flex items-center justify-between gap-3 text-[0.8125rem]">
@@ -329,10 +351,63 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
   );
 }
 
-function AnswerView({ item, answer }: { item: TeacherItem; answer: AnswerValue | undefined }) {
+const RUN_LABEL: Record<RunStatus, string> = {
+  accepted: 'Passed',
+  wrong_answer: 'Wrong output',
+  time_limit: 'Took too long',
+  compile_error: 'Did not compile',
+  runtime_error: 'Stopped with an error',
+  internal_error: 'Could not run',
+};
+
+function AnswerView({ item, answer, view }: { item: TeacherItem; answer: AnswerValue | undefined; view: GradingView }) {
   const options = new Map((item.options ?? []).map((o) => [o.id, o.text]));
   const key = item.key;
   if (!answer) return <p className="text-muted-foreground text-[0.8125rem]">No answer.</p>;
+  if (answer.type === 'code') {
+    // TP-09 (LAB-03): the code handed in, every test as graded (hidden ones too), and the runs of the visible ones.
+    const results = view.submission.results[item.id] ?? [];
+    const runs = view.submission.runs[item.id] ?? [];
+    const best = runs.reduce((top, run) => Math.max(top, run.passed), 0);
+    return (
+      <div className="grid gap-2 text-[0.8125rem]">
+        {answer.source.trim() === '' ? (
+          <p className="text-muted-foreground">No code.</p>
+        ) : (
+          <pre className="max-h-96 overflow-auto rounded-md bg-[#282c34] p-3 font-mono text-xs leading-relaxed text-[#abb2bf]">
+            {answer.source}
+          </pre>
+        )}
+        <p className="text-muted-foreground text-xs">
+          {view.languages.find((l) => l.key === answer.language)?.label ?? answer.language ?? 'No language'} ·{' '}
+          {runs.length === 0
+            ? 'never ran the sample tests'
+            : `ran the sample tests ${runs.length} time${runs.length === 1 ? '' : 's'}, best ${best} of ${runs[0].total} passed`}
+        </p>
+        <ol className="grid gap-1">
+          {(item.tests ?? []).map((test, i) => {
+            const result = results.find((r) => r.testCaseId === test.id);
+            return (
+              <li key={test.id} className="flex flex-wrap items-center gap-2">
+                {result ? <Mark ok={result.status === 'accepted'} /> : <span className="size-4" />}
+                <span className="font-medium">Test {i + 1}</span>
+                {test.hidden && <Badge variant="secondary">Hidden</Badge>}
+                <span className="text-muted-foreground text-xs">
+                  weight {test.weight} · {result ? RUN_LABEL[result.status] : 'not run'}
+                  {result?.timeMs !== null &&
+                    result?.timeMs !== undefined &&
+                    ` · ${(result.timeMs / 1000).toFixed(2)} s`}
+                </span>
+                <span className="text-muted-foreground min-w-0 truncate font-mono text-xs" title={test.input}>
+                  {test.input.split('\n')[0] || '(no input)'} → {test.expected.split('\n')[0]}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    );
+  }
   if (answer.type === 'mcq' || answer.type === 'msq') {
     const chosen = answer.type === 'mcq' ? (answer.optionId ? [answer.optionId] : []) : answer.optionIds;
     const correct = key && 'optionIds' in key ? key.optionIds : [];
