@@ -2006,8 +2006,12 @@ Aniket asked for ChatGPT rather than Anthropic, because of the cost.
 - The local dev server on port 3000 runs from the main folder, still at `9648e6a`, from before M04, so it has no Tests or Assessments until that folder is pulled.
 - An admin finds Tests in the sidebar's Menu group (not under Administration), and a course's Assessments tab under My courses.
 
-**Not done**
-- Still no live call to the AI: no key on this machine. Typecheck passes against SDK 7.27.0, and the format helper was run once on a Zod 4 schema shaped like `AiDrafts` (a strict JSON schema came out).
+**Deployed and checked on the test server (18 Oct 2026, at Aniket's request)**
+- `OPENAI_API_KEY`, `OPENAI_MODEL` (`gpt-5.4-mini`) and `CODE_RUNNER_URL` copied from Aniket's local `.env` into `/etc/cutm-lms/app.env`, after a backup (`app.env.bak-20261018`).
+- `cutm-lms-worker` and `cutm-lms-web` restarted; both processes carry the three settings, and `/api/health` answers ok.
+- The running release is `8765058`, and it has `public/brand/logo-print.png`, `pdfkit`, `write-excel-file`, `openai` and `qrcode`.
+- The key is a restricted project key: it may not list models (401 on `/v1/models`), but `/v1/responses` answers 200.
+- The real adapter was run once on the server (`draftQuestions`, 2 easy one-answer questions, nothing saved): OpenAI returned 2 well-formed drafts with 4 options and a right answer each. This is the first live AI call.
 
 **Verification**
 - `npm run check` → exit 0; `npm run test:integration` → exit 0 (the AI drafts tests stub the adapter, which is unchanged in shape); `npm run build` → exit 0; `npm run check:bundle` → clean.
