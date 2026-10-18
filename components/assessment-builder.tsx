@@ -639,6 +639,7 @@ function ResultRules({ b, here }: { b: Builder; here: (name: string) => string }
     ],
     ['Leaderboard', r.leaderboard ? `The first ${RESULT_LIMITS.leaderboard}` : 'Off'],
     ['Bands', r.bands.length > 0 ? r.bands.map((band) => `${band.label} ${band.minPct} %+`).join(' · ') : 'None'],
+    ['Certificates', r.certificateFromPct === null ? 'None' : `From ${r.certificateFromPct} %`],
   ];
   return (
     <Section
@@ -742,6 +743,25 @@ function ResultRulesDialog({ b }: { b: Builder }) {
           </div>
         ))}
         <FieldErrors name="bandLabel[]" />
+      </fieldset>
+      <fieldset className="grid gap-2 border-t pt-4">
+        <legend className="mb-1 text-sm font-medium">Certificates (optional)</legend>
+        <p className="text-muted-foreground text-xs">
+          Everyone whose result reaches this percentage can download a certificate, with a code anyone can check on the
+          LMS. Leave it empty for no certificates.
+        </p>
+        <Input
+          name="certificateFrom"
+          type="number"
+          min={0}
+          max={100}
+          step="any"
+          defaultValue={r.certificateFromPct ?? ''}
+          placeholder="From %"
+          aria-label="Certificates from percent"
+          className="w-28"
+        />
+        <FieldErrors name="certificateFrom" />
       </fieldset>
     </FormDialog>
   );

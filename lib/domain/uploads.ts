@@ -2,6 +2,7 @@ import { uploadPurpose, type UploadPurpose } from '@/lib/schemas/uploads';
 
 const EXTENSIONS: Record<string, string> = {
   'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'image/heic': 'heic',
   'image/jpeg': 'jpg',
   'image/png': 'png',

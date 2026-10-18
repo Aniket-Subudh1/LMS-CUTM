@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import {
   ArrowLeftIcon,
+  CertificateIcon,
   CheckIcon,
   TrophyIcon,
   XIcon,
@@ -10,6 +11,7 @@ import {
   CheckSquareIcon,
   CloudCheckIcon,
   CopyIcon,
+  DownloadSimpleIcon,
   InfoIcon,
   ClockCountdownIcon,
   ListNumbersIcon,
@@ -27,6 +29,7 @@ import { ActionForm } from '@/components/action-form';
 import { RichTextView } from '@/components/rich-text-view';
 import { Fact, Section } from '@/components/section';
 import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
+import { TestFileButton } from '@/components/test-file-button';
 import { Countdown, DeviceCheck } from '@/components/test-lobby';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -366,6 +369,25 @@ function Results({ page }: { page: StudentPage }) {
                 {result.penalty > 0 ? `${result.penalty} marks taken off` : 'no deduction'}
               </p>
             )}
+          </div>
+          {/* TP-12 (mock-up C5): the certificate when the result earns one, and the scorecard. */}
+          <div className="flex flex-wrap gap-2 sm:grid">
+            {result.files.certificate && (
+              <TestFileButton
+                assessmentId={a.id}
+                kind="certificate"
+                label="Certificate"
+                icon={<CertificateIcon />}
+                file={result.files.certificate}
+              />
+            )}
+            <TestFileButton
+              assessmentId={a.id}
+              kind="scorecard"
+              label="Scorecard"
+              icon={<DownloadSimpleIcon />}
+              file={result.files.scorecard}
+            />
           </div>
         </section>
 

@@ -1,14 +1,22 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { inflateRawSync, inflateSync } from 'node:zlib';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { Types } from 'mongoose';
-import { gradeSubmission, publishResults, saveResultRules } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import {
+  gradeSubmission,
+  publishResults,
+  requestTestFile,
+  saveResultRules,
+} from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import {
   saveAnswer,
   startAttempt,
   submitAttempt,
 } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
+import { GET as download } from '@/app/api/files/[...key]/route';
 import { getAssessmentPage, getTestResults } from '@/lib/data/assessments';
+import { getCertificate } from '@/lib/data/results';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
@@ -18,10 +26,25 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
+import { TestFile } from '@/lib/models/test-file';
 import { TestStats } from '@/lib/models/test-stats';
+import type { TestFileKind } from '@/lib/schemas/assessment';
 import { computeQueue, mailQueue, redis } from '@/lib/queue';
 import { startComputeWorker } from '@/worker/jobs/compute';
 import { enroll, form, makeAssessment, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
+
+// TP-12: the worker's files land here instead of storage.
+const { objects, deleted } = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), deleted: [] as string[] }));
+vi.mock('@/lib/integrations/storage', () => ({
+  uploadFromFile: async (key: string, path: string) => {
+    const { readFile } = await import('node:fs/promises');
+    objects.set(key, await readFile(path));
+  },
+  deleteObjects: async (keys: string[]) => {
+    deleted.push(...keys);
+  },
+  presignDownload: async (key: string) => `https://storage.test/get/${key}`,
+}));
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
 const MIN = 60_000;
@@ -35,10 +58,12 @@ let queueEvents: QueueEvents;
 beforeAll(async () => {
   await db();
   await Promise.all(
-    [Assessment, AuditLog, Course, Enrollment, Notification, Offering, Submission, TestStats].map(async (m) => {
-      await m.createCollection();
-      await m.createIndexes();
-    }),
+    [Assessment, AuditLog, Course, Enrollment, Notification, Offering, Submission, TestStats, TestFile].map(
+      async (m) => {
+        await m.createCollection();
+        await m.createIndexes();
+      },
+    ),
   );
   worker = startComputeWorker(env().REDIS_URL);
   queueEvents = new QueueEvents('compute', { connection: new Redis(env().REDIS_URL, { maxRetriesPerRequest: null }) });
@@ -309,4 +334,189 @@ describe('published results (TP-11, 07 §19)', () => {
     });
     expect(await Notification.exists({ kind: 'results.published', userId: w.students[0]._id })).toBeTruthy();
   });
+});
+
+// The text a PDF prints: pdfkit writes it as hex strings inside its compressed content streams.
+function pdfText(pdf: Buffer): string {
+  const parts: string[] = [];
+  for (let at = pdf.indexOf('stream\n'); at !== -1; at = pdf.indexOf('stream\n', at + 1)) {
+    if (pdf.subarray(at - 3, at).toString() === 'end') continue;
+    const body = inflateSync(pdf.subarray(at + 7, pdf.indexOf('\nendstream', at))).toString('latin1');
+    for (const match of body.matchAll(/<([\da-f]+)>/g)) parts.push(Buffer.from(match[1], 'hex').toString('latin1'));
+  }
+  return parts.join('');
+}
+
+// Every file in an .xlsx (a zip), read through its central directory.
+function unzip(zip: Buffer): string {
+  const end = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const texts: string[] = [];
+  for (let at = zip.readUInt32LE(end + 16), n = zip.readUInt16LE(end + 10); n > 0; n--) {
+    const method = zip.readUInt16LE(at + 10);
+    const size = zip.readUInt32LE(at + 20);
+    const local = zip.readUInt32LE(at + 42);
+    const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+    const data = zip.subarray(start, start + size);
+    texts.push((method === 8 ? inflateRawSync(data) : data).toString('utf8'));
+    at += 46 + zip.readUInt16LE(at + 28) + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32);
+  }
+  return texts.join('\n');
+}
+
+const get = (key: string) =>
+  download(new Request(`http://localhost:3000/api/files/${key}`), { params: Promise.resolve({ key: key.split('/') }) });
+
+async function madeFile(
+  filter: { assessmentId: string; kind: TestFileKind; submissionId: string | null },
+  after?: Date,
+) {
+  await expect
+    .poll(
+      async () => {
+        const file = await TestFile.findOne(filter).lean();
+        return file?.status === 'ready' && (!after || (file.madeAt?.getTime() ?? 0) > after.getTime());
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  const file = await TestFile.findOne(filter).lean();
+  const bytes = objects.get(file?.key ?? '');
+  if (!file?.key || !bytes) throw new Error('The file was not stored.');
+  return { file, key: file.key, bytes };
+}
+
+describe('files made from the results (TP-12)', () => {
+  it('give a taker a scorecard and, above the threshold, a certificate anyone can check', async () => {
+    const w = await world();
+    await signInAs(w.faculty);
+    await saveResultRules(rules(w, { certificateFrom: '75' }));
+    const [a, b] = w.students;
+    const sid = await take(w, a, { q1: w.o.right1, q2: w.o.right2, text: ESSAY }, 2);
+    await take(w, b, { q1: w.o.wrong1, q2: w.o.right2, text: 'A tree.' }, 1);
+    await Assessment.updateOne({ _id: w.aid }, { $set: { closesAt: new Date(Date.now() - MIN) } });
+    await signInAs(w.faculty);
+    await publishResults({ assessmentId: w.aid });
+    await statsFor(w.aid);
+    const certificate = { assessmentId: w.aid, kind: 'certificate' } as const;
+    const scorecard = { assessmentId: w.aid, kind: 'scorecard' } as const;
+
+    // Staff export, but scorecards and certificates are for the people who took it; 50 % earns none.
+    expect(await requestTestFile(form(certificate))).toMatchObject({ code: 'FORBIDDEN' });
+    await signInAs(b);
+    const low = await getAssessmentPage(w.aid);
+    expect(low.view === 'student' && low.result?.files).toEqual({
+      scorecard: { state: 'ask', failed: false },
+      certificate: null,
+    });
+    expect(await requestTestFile(form(certificate))).toMatchObject({ code: 'FORBIDDEN' });
+    expect(await requestTestFile(form({ assessmentId: w.aid, kind: 'results_xlsx' }))).toMatchObject({
+      code: 'FORBIDDEN',
+    });
+
+    await signInAs(a);
+    expect(await requestTestFile(form(certificate))).toMatchObject({ ok: true });
+    expect(await requestTestFile(form(scorecard))).toMatchObject({ ok: true });
+    const cert = await madeFile({ ...certificate, submissionId: sid });
+    const card = await madeFile({ ...scorecard, submissionId: sid });
+    expect(cert.key).toMatch(new RegExp(`^test-file/${w.aid}/${a._id}/[\\w-]+\\.pdf$`));
+    const code = (await Submission.findById(sid).lean())?.certificateCode ?? '';
+    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
+    expect(cert.bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    const printed = pdfText(cert.bytes);
+    expect(printed).toContain('CERTIFICATE OF ACHIEVEMENT');
+    expect(printed).toContain(a.name);
+    expect(printed).toContain('and scored 100%, ranking 1st of 2 students, with the rating');
+    expect(printed).toContain('Recommended.');
+    expect(printed).toContain(`/v/${code}`);
+    const scored = pdfText(card.bytes);
+    expect(scored).toContain('Scorecard');
+    expect(scored).toContain('6 / 6');
+    expect(scored).toContain('Which traversal sorts a BST?');
+    // The rules hide the right answers, so the scorecard does too.
+    expect(scored).not.toContain('Right answer');
+
+    const page = await getAssessmentPage(w.aid);
+    expect(page.view === 'student' && page.result?.files).toEqual({
+      scorecard: { state: 'ready', href: `/api/files/${card.key}`, madeAt: card.file.madeAt },
+      certificate: { state: 'ready', href: `/api/files/${cert.key}`, madeAt: cert.file.madeAt },
+    });
+    expect(await getCertificate(code)).toMatchObject({
+      name: a.name,
+      pct: 100,
+      band: 'Recommended',
+      standing: { rank: 1, of: 2 },
+      valid: true,
+    });
+
+    // The person and the test's staff download it; another taker does not.
+    expect((await get(cert.key)).headers.get('location')).toBe(`https://storage.test/get/${cert.key}`);
+    await signInAs(w.faculty);
+    expect((await get(cert.key)).status).toBe(302);
+    await signInAs(b);
+    expect((await get(cert.key)).status).toBe(404);
+
+    // A regrade to 4 / 6 (67 %) leaves the scorecard out of date and the certificate no longer earned.
+    await signInAs(w.faculty);
+    await gradeSubmission({
+      submissionId: sid,
+      'item[]': [w.q.q1, w.q.q2, w.q.q3],
+      'marks[]': ['2', '2', '0'],
+      'comment[]': ['', '', ''],
+      'criterion[]': [],
+      'criterionMarks[]': [],
+    });
+    await signInAs(a);
+    const after = await getAssessmentPage(w.aid);
+    expect(after.view === 'student' && after.result?.files).toEqual({
+      scorecard: { state: 'ask', failed: false },
+      certificate: null,
+    });
+    expect(await requestTestFile(form(certificate))).toMatchObject({ code: 'FORBIDDEN' });
+    expect(await getCertificate(code)).toMatchObject({ pct: 66.67, valid: false });
+    expect(await getCertificate('AAAAA-AAAAA')).toBeNull();
+  }, 60_000);
+
+  it('give the staff every result in Excel and every hand-in in one PDF, made anew on request', async () => {
+    const w = await world();
+    const [a, b] = w.students;
+    await take(w, a, { q1: w.o.right1, q2: w.o.right2, text: ESSAY }, 2);
+    await take(w, b, { q1: w.o.wrong1, q2: w.o.right2, text: 'A tree.' }, 1);
+    const xlsx = { assessmentId: w.aid, kind: 'results_xlsx' } as const;
+    const reports = { assessmentId: w.aid, kind: 'reports_pdf' } as const;
+
+    await signInAs(w.hod);
+    expect(await requestTestFile(form(reports))).toMatchObject({ ok: true });
+    await signInAs(w.faculty);
+    expect(await requestTestFile(form(xlsx))).toMatchObject({ ok: true });
+    const sheet = await madeFile({ ...xlsx, submissionId: null });
+    const pdf = await madeFile({ ...reports, submissionId: null });
+
+    expect(sheet.bytes.subarray(0, 2).toString()).toBe('PK');
+    const cells = unzip(sheet.bytes);
+    for (const text of ['Rank', 'Percentage', a.name, b.name, a.email, 'Marked']) expect(cells).toContain(text);
+    // The questions sheet waits for the analysis, which has not run.
+    expect(cells).not.toContain('name="Questions"');
+    const printed = pdfText(pdf.bytes);
+    for (const text of ['Attempt reports', a.name, b.name, 'Which traversal sorts a BST?']) {
+      expect(printed).toContain(text);
+    }
+    expect(pdf.bytes.toString('latin1').match(/\/Type \/Page\b/g)).toHaveLength(3);
+
+    const view = await getTestResults(w.aid);
+    expect(view.files?.results_xlsx).toEqual({
+      state: 'ready',
+      href: `/api/files/${sheet.key}`,
+      madeAt: sheet.file.madeAt,
+    });
+    await signInAs(a);
+    expect((await get(sheet.key)).status).toBe(404);
+
+    // Made again, the new file replaces the old one, which is deleted.
+    await signInAs(w.faculty);
+    await requestTestFile(form(xlsx));
+    const again = await madeFile({ ...xlsx, submissionId: null }, sheet.file.madeAt ?? undefined);
+    expect(again.key).not.toBe(sheet.key);
+    expect(deleted).toContain(sheet.key);
+    expect((await get(sheet.key)).status).toBe(404);
+  }, 60_000);
 });

@@ -1,13 +1,26 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
-// M04b phase E1 (TP-11). faculty1 (from `npm run db:seed:e2e`) sets a quiz on CUTM1602 to show each person's marks at
-// once, with the right answers, explanations, a leaderboard and a band; student07 hands in and reads the result at
-// once; the results page works out the analysis. Each run makes its own quiz, so runs never collide.
+// M04b phase E (TP-11, TP-12). faculty1 (from `npm run db:seed:e2e`) sets a quiz on CUTM1602 to show each person's
+// marks at once, with the right answers, explanations, a leaderboard, a band and certificates from 60 %; student07
+// hands in, reads the result at once and downloads a certificate that anyone can then check; the results page works out
+// the analysis and exports it to Excel. The files are made by the worker and stored in the e2e bucket (RustFS). Each run
+// makes its own quiz, so runs never collide.
 const password = process.env.E2E_PASSWORD ?? '';
 const COURSE = 'CUTM1602 · Programming in C · 2026-ODD · A';
 const run = String(Date.now()).slice(-6);
 const QUIZ = `Results quiz ${run}`;
 const ist = (minutes: number) => new Date(Date.now() + (minutes + 330) * 60_000).toISOString().slice(0, 16);
+
+// A made file's link answers with a redirect to storage; the file itself comes from there.
+async function download(page: Page, name: string): Promise<Buffer> {
+  const link = page.getByRole('link', { name, exact: true });
+  await expect(link).toBeVisible({ timeout: 60_000 });
+  const href = (await link.getAttribute('href')) ?? '';
+  expect(href).toMatch(/^\/api\/files\/test-file\//);
+  const redirect = await page.request.get(href, { maxRedirects: 0 });
+  expect(redirect.status()).toBe(302);
+  return (await page.request.get(redirect.headers()['location'] ?? '')).body();
+}
 
 async function signedIn(browser: Browser, email: string): Promise<Page> {
   const page = await (await browser.newContext()).newPage();
@@ -64,9 +77,11 @@ test('a quiz shows each person their marks at once, with answers and a band; the
   await rules.getByRole('checkbox', { name: /A leaderboard/ }).check();
   await rules.getByLabel('Band 1 name').fill('Recommended');
   await rules.getByLabel('Band 1 from percent').fill('75');
+  await rules.getByLabel('Certificates from percent').fill('60');
   await rules.getByRole('button', { name: 'Save' }).click();
   await expect(rules).toBeHidden();
   await expect(faculty.getByText('Recommended 75 %+')).toBeVisible();
+  await expect(faculty.getByText('From 60 %')).toBeVisible();
   await faculty.getByRole('button', { name: 'Publish' }).click();
   await faculty.getByRole('alertdialog').getByRole('button', { name: 'Publish' }).click();
   await expect(faculty.getByRole('link', { name: /Hand-ins/ })).toBeVisible();
@@ -90,6 +105,20 @@ test('a quiz shows each person their marks at once, with answers and a band; the
   await expect(student.getByText('Right answer:')).toBeVisible();
   await expect(student.getByText('Inorder visits left, root, right.')).toBeVisible();
 
+  // TP-12: the certificate, made by the worker while the page waits, with a code anyone can check signed out.
+  await student.getByRole('button', { name: 'Certificate', exact: true }).click();
+  const certificate = await download(student, 'Certificate');
+  expect(certificate.subarray(0, 5).toString()).toBe('%PDF-');
+  const code = /\/v\/([A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5})/.exec(certificate.toString('latin1'))?.[1] ?? '';
+  expect(code).not.toBe('');
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(`/v/${code}`);
+  await expect(visitor.getByText('Issued by Centurion LMS')).toBeVisible();
+  await expect(visitor.getByRole('heading', { name: 'Student 07' })).toBeVisible();
+  await expect(visitor.getByText(QUIZ)).toBeVisible();
+  await visitor.goto('/v/AAAAA-AAAAA');
+  await expect(visitor.getByRole('heading', { name: 'No certificate has this code' })).toBeVisible();
+
   // The results page works out the analysis on request.
   await faculty.goto(builder);
   await faculty.getByRole('link', { name: 'Results', exact: true }).click();
@@ -101,4 +130,12 @@ test('a quiz shows each person their marks at once, with answers and a band; the
   }).toPass({ timeout: 60_000 });
   await expect(faculty.getByText('Score distribution')).toBeVisible();
   await expect(faculty.getByRole('row', { name: /Which traversal/ })).toContainText('100%');
+  // Working the ranks out changes no mark, so the certificate made before stays current.
+  await student.reload();
+  await expect(student.getByRole('link', { name: 'Certificate', exact: true })).toBeVisible();
+
+  // TP-12: every result in Excel.
+  await faculty.getByRole('button', { name: 'Export to Excel', exact: true }).click();
+  const sheet = await download(faculty, 'Export to Excel');
+  expect(sheet.subarray(0, 2).toString()).toBe('PK');
 });

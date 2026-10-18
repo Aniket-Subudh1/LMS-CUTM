@@ -70,6 +70,8 @@ Every exported DAL function and every action applies these filters; integration 
 | Question banks (M04b) | — | a course's bank through an offering they teach (edit); their own bank | a course's bank of an offering in their department (read) | all |
 | Share links (M04b) | — (a link's page shows only the test's title, owner, window and counts) | of tests they manage | — | all |
 | Results analytics and similarity flags (M04b) | their own result; the right answers and explanations only when the test's rules show them; a leaderboard (others' names and totals) only when the test shows one | of tests they manage | of their department's offerings: read | all |
+| Files made from the results (M04b, TP-12) | their own scorecard, and their certificate when the result earns one | of tests they manage: the Excel export and reports PDF | of their department's offerings: the same two | all |
+| Certificate check `/v/<code>` (M04b) | anyone, signed out: the name, the test, the date, the percentage and, when printed, the rank and rating — what the certificate itself states — and whether it is still earned | | | |
 | Live monitor and proctoring records (M04b) | their own warnings count and the monitor's messages to them; never their snapshots | of tests they manage: act (time, messages, end, waive) | of their department's offerings: watch and read | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
@@ -102,6 +104,7 @@ Rules:
 | Proctoring beat (M04b) | user | 30 / min (one every 15 s, plus one per event) |
 | Camera snapshot upload (`createUpload`, `proctor-snapshot`; not counted in the 60 / hour) | user | 4 / min |
 | Monitor messages (M04b) | staff | 30 / min |
+| Files from the results (`requestTestFile`, M04b) | user | 10 / hour |
 | Beacon | user | 120 / 10 min |
 | AI suggestion | user | 30 / hour |
 
@@ -116,6 +119,7 @@ The client IP is the first entry of `X-Forwarded-For`, which the production load
 - `/api/files/<key>` re-runs the download rule from 06 §5 on every request. Its redirect may be reused by the browser for 300 s (`Cache-Control: private`), never longer than the 600 s presigned GET it points at (M03b).
 - **Pictures (M03b):** thumbnails and covers are JPEG, PNG or WebP only, never SVG, which can carry script. The browser re-encodes them as JPEG before the upload; the server still accepts only the picture content types.
 - Downloads set `Content-Disposition: inline; filename="<sanitized>"`; never serve user uploads from the app's own origin.
+- **Files made from results (M04b, TP-12):** only the worker writes `test-file/…` objects; `/api/files` serves one only while it is its `testFiles` record's current key, and a made-again file's old object is deleted. A certificate's code is 10 characters from 32 (50 bits), so codes cannot be guessed; `/v/<code>` shows only what the certificate prints.
 - **Imported courseware pages (M01b):** their HTML is never rendered or stored; the adapter turns it into plain lines and tables with scripts off, and the catalogue stores only plain text. Email addresses and phone numbers on those pages are removed before anything else sees them, so contact details are never stored (A-60). The importer only fetches pages on the `COURSEWARE_URL` host.
 
 ## 6. Audit log

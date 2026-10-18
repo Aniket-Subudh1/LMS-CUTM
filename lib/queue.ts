@@ -11,6 +11,7 @@ import type {
   LiveControlJob,
   LiveSweepJob,
   MailJob,
+  MakeTestFileJob,
   MailSend,
   MediaJob,
   ProctorRetentionJob,
@@ -27,7 +28,8 @@ type ComputeData =
   | AssessmentSweepJob
   | ProctorRetentionJob
   | GradeCodeJob
-  | TestStatsJob;
+  | TestStatsJob
+  | MakeTestFileJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -35,7 +37,8 @@ type ComputeName =
   | 'assessmentSweep'
   | 'proctorRetention'
   | 'gradeCode'
-  | 'testStats';
+  | 'testStats'
+  | 'makeTestFile';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -147,6 +150,16 @@ export async function queueTestStats(assessmentId: string): Promise<void> {
     'testStats',
     { assessmentId },
     { jobId: state === 'active' ? `${jobId}-${Date.now()}` : jobId, delay: 5_000 },
+  );
+}
+
+// 06 §6 (TP-12): make one file asked for from a test's results. Each request is its own job; asking again while one
+// is being made adds the newer request, which is the one that finishes the file. Someone is waiting, so it retries soon.
+export async function queueTestFile(fileId: string, requestedAt: Date): Promise<void> {
+  await computeQueue().add(
+    'makeTestFile',
+    { fileId },
+    { jobId: `file-${fileId}-${requestedAt.getTime()}`, attempts: 3, backoff: { type: 'fixed', delay: 10_000 } },
   );
 }
 

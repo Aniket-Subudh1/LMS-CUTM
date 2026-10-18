@@ -9,6 +9,7 @@ export const uploadPurpose = z.enum([
   'syllabus',
   'submission',
   'proctor-snapshot',
+  'test-file',
 ]);
 export type UploadPurpose = z.infer<typeof uploadPurpose>;
 
@@ -38,6 +39,12 @@ export const UPLOAD_PURPOSES = {
     accepts: 'PDF or photo (JPEG, PNG, HEIC)',
   },
   'proctor-snapshot': { contentTypes: ['image/jpeg'], maxBytes: 300_000, accepts: 'JPEG' },
+  // M04b (TP-12): made by the worker from a test's results, never uploaded by a browser.
+  'test-file': {
+    contentTypes: ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    maxBytes: 200_000_000,
+    accepts: 'PDF or Excel',
+  },
 } as const satisfies Record<
   UploadPurpose,
   { contentTypes: readonly string[]; maxBytes: number; accepts: string; image?: { width: number; height: number } }

@@ -200,6 +200,8 @@ const submissionSchema = new Schema(
     },
     // When the gradeCode job last ran the code questions.
     codeGradedAt: { type: Date, default: null },
+    // TP-12: the certificate's verification code, given the first time one is made for this attempt (/v/<code>).
+    certificateCode: { type: String, default: null },
     // TP-11 (07 §19), set by the testStats job on each taker's counted attempt only.
     rank: { type: Number, default: null },
     percentile: { type: Number, default: null },
@@ -230,6 +232,11 @@ submissionSchema.index({ offeringId: 1, studentId: 1 });
 submissionSchema.index({ assessmentId: 1, status: 1, submittedAt: 1 });
 // The hourly sweep's expired attempts.
 submissionSchema.index({ status: 1, deadlineAt: 1 });
+// The public certificate check (/v/<code>, M04b).
+submissionSchema.index(
+  { certificateCode: 1 },
+  { unique: true, partialFilterExpression: { certificateCode: { $type: 'string' } } },
+);
 
 // Every read is lean, which returns `answers`, `spent` and `scores` as plain objects keyed by item id, not Maps.
 export type SubmissionDoc = FlattenMaps<InferSchemaType<typeof submissionSchema>>;

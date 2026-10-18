@@ -503,3 +503,13 @@ Everything is worked out over each taker's **counted attempt** (`countedAttempt`
 
 **Alike answers** (`similarPairs`). For the test's own written and code questions (at most 600 answers each): tokens are words and numbers after dropping `//`, `#` and `/* */` comments and case; answers under 20 tokens are skipped; two answers are alike when the Jaccard similarity of their three-token shingles is at least 0.85. A copy with its spacing, case and comments changed scores 1; a different program solving the same task stays below. It is a flag for a teacher (Q-09), never a mark.
 
+## 20. Files from the results — `lib/domain/test-files.ts` (M04b, TP-12)
+
+**Certificate** (`earnsCertificate`): a counted attempt earns one when its percentage (§19) is at or above the test's `certificateFromPct`; a test without one gives none (78 with 60 → yes; 60 with 60 → yes; 59.99 with 60 → no; 100 with none → no; 0 with 0 → yes). The figures on a scorecard and a certificate are the result page's (`figuresOf`, `lib/data/results.ts`): the same percentage, band and, once published and worked out, rank of takers.
+
+**Verification code** (`codeFromBytes`): 10 random bytes; each byte's low 5 bits pick from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no I, O, 0 or 1), written as two groups of five — 50 bits. Bytes 0–9 → `ABCDE-FGHJK`; 31, 30 … 22 → `98765-432ZY`; 32, 255, 224, 63, 64, 96, 128, 160, 192, 33 → `A9A9A-AAAAB` (only the low 5 bits count). Given once per attempt and kept.
+
+**Printable text** (`pdfSafe`): the PDFs use the built-in Helvetica and Times, which print Windows-1252 only. `→ ← − ≤ ≥ ≠` become `-> <- - <= >= !=`, a no-break space and a tab become a space, control characters other than a line break are dropped, and any other character outside Windows-1252 becomes `?` (`José Müller · 78%` stays; `ପ୍ରିୟା` → `??????`; an emoji → `?`).
+
+**Current or out of date**: a taker's file is current while its `requestedAt` is at or after the attempt's `updatedAt`, the test's `updatedAt` and, once published, the ranks' `computedAt`; otherwise the page offers to make it again. The staff's files stay downloadable with the time they were made.
+

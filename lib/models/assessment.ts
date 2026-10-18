@@ -196,6 +196,8 @@ const assessmentSchema = new Schema(
           showAnswers: { type: Boolean, required: true, default: false },
           showExplanations: { type: Boolean, required: true, default: false },
           leaderboard: { type: Boolean, required: true, default: false },
+          // TP-12: certificates for counted attempts at or above this percentage; null gives none.
+          certificateFromPct: { type: Number, min: 0, max: 100, default: null },
           // Highest first; the first a percentage reaches is its band ("Recommended").
           bands: {
             type: [

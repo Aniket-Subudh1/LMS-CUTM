@@ -5,18 +5,19 @@ import { redirect } from 'next/navigation';
 import mongoose, { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { requireManage, requireTeach } from '@/lib/auth/access';
+import { assessmentAccess, requireManage, requireTeach } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
-import { releaseResults } from '@/lib/data/results';
+import { releaseResults, rulesOf } from '@/lib/data/results';
 import { db } from '@/lib/db';
-import { deadlineAt, windowState } from '@/lib/domain/attempts';
+import { countedAttempt, deadlineAt, windowState } from '@/lib/domain/attempts';
 import { rubricTotal } from '@/lib/domain/grading';
 import { isPermutation } from '@/lib/domain/order';
 import { roundHalfUp } from '@/lib/domain/round';
+import { earnsCertificate } from '@/lib/domain/test-files';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
@@ -27,9 +28,10 @@ import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
+import { TestFile } from '@/lib/models/test-file';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
-import { queueGradeCode, queueTestStats } from '@/lib/queue';
+import { queueGradeCode, queueTestFile, queueTestStats } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
@@ -44,6 +46,7 @@ import {
   PROCTOR_LIMITS,
   ReorderItems,
   ReorderSections,
+  RequestTestFile,
   SaveInstructions,
   SaveItem,
   SaveProctoring,
@@ -56,7 +59,7 @@ import {
   WaivePenalty,
 } from '@/lib/schemas/assessment';
 import { AddFromBank } from '@/lib/schemas/bank';
-import { marks as marksInput } from '@/lib/schemas/common';
+import { marks as marksInput, ROLES } from '@/lib/schemas/common';
 
 const TEACH = ['admin', 'faculty'] as const;
 
@@ -834,11 +837,9 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
 // the one the audit log names when it publishes the results.
 export const saveResultRules = action({ input: SaveResultRules, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
-  const { release, showAnswers, showExplanations, leaderboard, bands } = input;
-  await Assessment.updateOne(
-    { _id: assessment._id },
-    { $set: { results: { release, showAnswers, showExplanations, leaderboard, bands, setBy: viewer.id } } },
-  );
+  const { release, showAnswers, showExplanations, leaderboard, certificateFromPct, bands } = input;
+  const results = { release, showAnswers, showExplanations, leaderboard, certificateFromPct, bands, setBy: viewer.id };
+  await Assessment.updateOne({ _id: assessment._id }, { $set: { results } });
   refresh();
 });
 
@@ -846,6 +847,54 @@ export const saveResultRules = action({ input: SaveResultRules, roles: TEACH }, 
 export const refreshResults = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
   await queueTestStats(String(assessment._id));
+});
+
+// TP-12: ask the worker to make a file from a test's results. The staff's Excel export and reports PDF (a head of
+// department's too: they read the results) once anyone has handed in; a taker's scorecard once their result shows, and
+// their certificate when it reaches the test's threshold. Asking again makes it anew.
+export const requestTestFile = action({ input: RequestTestFile, roles: ROLES }, async (input, viewer) => {
+  const { access } = await assessmentAccess(viewer, input.assessmentId);
+  await db();
+  const test = await Assessment.findById(input.assessmentId, {
+    status: 1,
+    attemptPolicy: 1,
+    maxMarks: 1,
+    results: 1,
+  }).lean();
+  if (!test) throw new AppError('NOT_FOUND', 'Assessment not found.');
+  let submissionId: Types.ObjectId | null = null;
+  if (input.kind === 'results_xlsx' || input.kind === 'reports_pdf') {
+    if (access === 'take') throw new AppError('FORBIDDEN', 'Only the test’s teachers export its results.');
+    if (!(await Submission.exists({ assessmentId: test._id, status: { $in: ['submitted', 'graded'] } }))) {
+      throw new AppError('CONFLICT', 'Nobody has handed in yet.');
+    }
+  } else {
+    if (access !== 'take') throw new AppError('FORBIDDEN', 'Scorecards and certificates are for the people taking it.');
+    const rules = rulesOf(test);
+    const mine = await Submission.find(
+      { assessmentId: test._id, studentId: viewer.id },
+      { attemptNo: 1, status: 1, total: 1 },
+    ).lean();
+    const counted = countedAttempt(mine, test.attemptPolicy);
+    if (!counted || (test.status !== 'results_published' && rules.release !== 'instant')) {
+      throw new AppError('CONFLICT', 'Your result is not out yet.');
+    }
+    const pct = test.maxMarks > 0 ? roundHalfUp((100 * counted.total) / test.maxMarks, 2) : 0;
+    if (input.kind === 'certificate' && !earnsCertificate(pct, rules.certificateFromPct)) {
+      throw new AppError('FORBIDDEN', 'This result does not earn a certificate.');
+    }
+    submissionId = counted._id;
+  }
+  await limit('test-file', viewer.id, 10, 60 * 60_000);
+  const requestedAt = new Date();
+  const file = await TestFile.findOneAndUpdate(
+    { assessmentId: test._id, kind: input.kind, submissionId },
+    { $set: { status: 'making', requestedAt, requestedBy: viewer.id } },
+    { upsert: true, returnDocument: 'after', projection: { _id: 1 } },
+  ).lean();
+  if (!file) throw new Error('The file request was not saved.');
+  await queueTestFile(String(file._id), requestedAt);
+  refresh();
 });
 
 // TP-09: a grader's "Run the tests again" — the code questions of a handed-in attempt are run on every test and

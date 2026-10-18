@@ -22,6 +22,7 @@ import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
+import { TestFile } from '@/lib/models/test-file';
 import { TestGrant } from '@/lib/models/test-grant';
 import { TestLink } from '@/lib/models/test-link';
 import { TestStats } from '@/lib/models/test-stats';
@@ -49,6 +50,7 @@ const models = [
   TestLink,
   TestGrant,
   TestStats,
+  TestFile,
   Otp,
   EngagementDaily,
   Notification,

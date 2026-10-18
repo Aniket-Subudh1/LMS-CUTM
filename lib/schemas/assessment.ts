@@ -276,7 +276,12 @@ const ItemFields = z.discriminatedUnion(
         ASSESSMENT_LIMITS.languages,
       ),
       timeLimitSec: z.coerce.number().int('Use whole seconds.').min(1, 'At least 1 second.').max(10).default(2),
-      memoryMb: z.coerce.number().int('Use whole MB.').min(64, 'At least 64 MB.').max(512, 'At most 512 MB.').default(128),
+      memoryMb: z.coerce
+        .number()
+        .int('Use whole MB.')
+        .min(64, 'At least 64 MB.')
+        .max(512, 'At most 512 MB.')
+        .default(128),
       runLimit: z.coerce
         .number()
         .int('Use a whole number.')
@@ -704,6 +709,10 @@ export const SaveResultRules = z
     showAnswers: z.stringbool().default(false),
     showExplanations: z.stringbool().default(false),
     leaderboard: z.stringbool().default(false),
+    // TP-12: certificates for those who reach this percentage; empty gives none.
+    certificateFrom: blankIsMissing(
+      z.coerce.number({ error: 'Enter a percentage.' }).min(0, 'Use 0 to 100.').max(100, 'Use 0 to 100.'),
+    ),
     'bandLabel[]': list(
       z.string().trim().max(RESULT_LIMITS.bandLabel, `Use at most ${RESULT_LIMITS.bandLabel} characters.`),
       RESULT_LIMITS.bands,
@@ -733,9 +742,22 @@ export const SaveResultRules = z
       showAnswers,
       showExplanations,
       leaderboard,
+      certificateFromPct: input.certificateFrom ?? null,
       bands: bands.sort((a, b) => b.minPct - a.minPct),
     };
   });
+
+// --- Files made from the results (M04b, TP-12) ---
+
+// The staff's: every result in Excel, every hand-in's report in one PDF. A taker's: their scorecard and certificate.
+export const TEST_FILE_KINDS = ['results_xlsx', 'reports_pdf', 'scorecard', 'certificate'] as const;
+export type TestFileKind = (typeof TEST_FILE_KINDS)[number];
+export const STAFF_FILE_KINDS = ['results_xlsx', 'reports_pdf'] as const satisfies readonly TestFileKind[];
+export const TEST_FILE_STATUSES = ['making', 'ready', 'failed'] as const;
+export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+export const RequestTestFile = z.object({ ...AssessmentRef.shape, kind: z.enum(TEST_FILE_KINDS) });
+// A certificate's verification code, as printed and in its link: two groups of five.
+export const certificateCode = z.string().regex(/^[A-HJ-NP-Z2-9]{5}-[A-HJ-NP-Z2-9]{5}$/);
 
 // --- Grading (T6). One row per question in order; a rubric question posts its criteria instead of marks. ---
 

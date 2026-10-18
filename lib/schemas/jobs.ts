@@ -59,6 +59,10 @@ export type AssessmentSweepJob = z.infer<typeof AssessmentSweepJob>;
 export const GradeCodeJob = z.object({ submissionId: objectId });
 export type GradeCodeJob = z.infer<typeof GradeCodeJob>;
 
+// `compute/makeTestFile` (06 §6, M04b TP-12): one PDF or Excel file made from a test's results.
+export const MakeTestFileJob = z.object({ fileId: objectId });
+export type MakeTestFileJob = z.infer<typeof MakeTestFileJob>;
+
 // `compute/testStats` (06 §6, M04b TP-11): a test's ranks, item analysis, histogram, similarity flags and leaderboard.
 export const TestStatsJob = z.object({ assessmentId: objectId });
 export type TestStatsJob = z.infer<typeof TestStatsJob>;

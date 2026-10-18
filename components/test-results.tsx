@@ -4,6 +4,8 @@ import {
   ArrowClockwiseIcon,
   ArrowLeftIcon,
   ChartBarIcon,
+  FilePdfIcon,
+  FileXlsIcon,
   PercentIcon,
   SealCheckIcon,
   UsersThreeIcon,
@@ -15,6 +17,7 @@ import { refreshResults } from '@/app/(app)/courses/[offeringId]/assessments/act
 import { ActionForm } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { Section } from '@/components/section';
+import { TestFileButton } from '@/components/test-file-button';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
 import { getTestResults, type TestResults } from '@/lib/data/assessments';
@@ -83,18 +86,41 @@ export async function TestResultsView({
             : 'Not worked out yet. It happens when the results are published, or now if you ask.'
         }
         action={
-          view.canManage && (
-            <ActionForm
-              action={refreshResults}
-              submitLabel="Work them out again"
-              submitVariant="outline"
-              submitSize="sm"
-              submitIcon={<ArrowClockwiseIcon />}
-              successMessage="Working them out. Reload in a minute."
-            >
-              <input type="hidden" name="assessmentId" value={aid} />
-            </ActionForm>
-          )
+          <>
+            {/* TP-12 (mock-up C6): every result in Excel; every hand-in's report in one PDF. */}
+            {view.files && (
+              <>
+                <TestFileButton
+                  assessmentId={aid}
+                  kind="results_xlsx"
+                  label="Export to Excel"
+                  icon={<FileXlsIcon />}
+                  file={view.files.results_xlsx}
+                  again
+                />
+                <TestFileButton
+                  assessmentId={aid}
+                  kind="reports_pdf"
+                  label="PDF reports"
+                  icon={<FilePdfIcon />}
+                  file={view.files.reports_pdf}
+                  again
+                />
+              </>
+            )}
+            {view.canManage && (
+              <ActionForm
+                action={refreshResults}
+                submitLabel="Work them out again"
+                submitVariant="outline"
+                submitSize="sm"
+                submitIcon={<ArrowClockwiseIcon />}
+                successMessage="Working them out. Reload in a minute."
+              >
+                <input type="hidden" name="assessmentId" value={aid} />
+              </ActionForm>
+            )}
+          </>
         }
       >
         {view.assessment.status !== 'results_published' && (

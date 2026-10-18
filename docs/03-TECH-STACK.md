@@ -60,7 +60,9 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `livekit-client` | 2.22.4 | M03 | Browser SDK (peer of components) | `components/live-room.tsx` | — |
 | `@livekit/components-react` | 2.9.24 | M03 | `LiveKitRoom`, `VideoConference` | `components/live-room.tsx` | — |
 | `@livekit/components-styles` | 1.2.0 | M03 | Styles for the above | `components/live-room.tsx` | — |
-| `qrcode` | 1.5.4 | M04b | The QR code of a test's share link (TP-01), drawn as an SVG string on the server. Writing a QR encoder (Reed–Solomon, masking) is not "reasonable code" | `components/assessment-builder.tsx` | `import QRCode from 'qrcode'`; `await QRCode.toString(text, { type: 'svg', margin: 1 })`. Server only: the browser bundle never loads it. Its `yargs` dependency is for the CLI and is never imported |
+| `qrcode` | 1.5.4 | M04b | The QR code of a test's share link (TP-01), drawn as an SVG string on the server. Writing a QR encoder (Reed–Solomon, masking) is not "reasonable code" | `components/assessment-builder.tsx`; `worker/jobs/test-files.ts` (a certificate's verification QR, drawn as vector squares from `QRCode.create(url).modules`, TP-12) | `import QRCode from 'qrcode'`; `await QRCode.toString(text, { type: 'svg', margin: 1 })`. Server only: the browser bundle never loads it. Its `yargs` dependency is for the CLI and is never imported |
+| `pdfkit` | 0.17.2 | M04b | Scorecards, certificates and attempt reports as PDFs, made by the worker (TP-12). Laying out PDF pages by hand means writing a PDF serializer with font metrics, which is not "reasonable code"; a headless browser to print HTML would be a far heavier dependency in the worker | `worker/jobs/test-files.ts` | `new PDFDocument({ size: 'A4', layout?, margin })` piped to a file stream; `doc.table({ data, columnStyles, defaultStyle })` (breaks across pages itself); `doc.image(path, x, y, { height })`; `doc.link(...)`. Only the built-in Helvetica and Times are used, which print Windows-1252 — every string goes through `pdfSafe` (07 §20). Centred text cannot change font mid-line (it overlaps), so the certificate sets its sentence itself (`centred`) |
+| `write-excel-file` | 4.1.1 | M04b | The Excel export of a test's results (TP-12). An .xlsx is zipped XML parts; writing them is not "reasonable code". Small (its one dependency is `fflate`) and write-only | `worker/jobs/test-files.ts` | `import writeXlsxFile from 'write-excel-file/node'`; `await writeXlsxFile([{ sheet, data: Row[], columns: [{ width }], stickyRowsCount }]).toFile(path)`; a cell is a value or `{ value, fontWeight: 'bold' }`. Dates are written as IST text, since Excel dates carry no time zone |
 | `@uiw/react-codemirror` | 4.25.12 | M04b (from M05) | Code editor (its peers `codemirror`, `@codemirror/state`, `@codemirror/view` and `@codemirror/theme-one-dark` come with it) | `components/code-editor.tsx` | — |
 | `@codemirror/lang-cpp` | 6.0.3 | M04b (from M05) | C/C++ highlighting | `components/code-editor.tsx` | — |
 | `@codemirror/lang-java` | 6.0.2 | M04b (from M05) | Java highlighting | `components/code-editor.tsx` | — |
@@ -81,6 +83,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@types/nodemailer` | 8.0.2 | M00 | Types |
 | `@types/papaparse` | 5.5.2 | M01 | Types |
 | `@types/qrcode` | 1.5.6 | M04b | Types |
+| `@types/pdfkit` | 0.17.6 | M04b | Types |
 
 ## 4. `next.config.ts` additions
 

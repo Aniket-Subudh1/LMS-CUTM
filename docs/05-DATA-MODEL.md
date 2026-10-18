@@ -245,7 +245,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | extraTime | `[{ userId: Id, minutes: N }]` | M04b (TP-07), ≤ 200 people, 1–600 minutes; lengthens that person's time limit and the end of hand-ins (07 §14); audited (`assessment.extra_time`) |
 | proctoring | `{ fullscreen: B, camera: B, snapshotEverySec: N, blockCopy: B, hardLimit: N, penaltyEach: N }?` | M04b (TP-08, from M05); null = not proctored. Snapshots every 30–600 s; `hardLimit` 0–20 (0 records only; the N-th serious warning hands the attempt in, 07 §15); `penaltyEach` 0–1000 marks off per serious warning, two decimals. Fixed once anyone has started, like the other settings |
 | snapshotsDeletedAt | D? | M04b: when `proctorRetention` deleted the test's camera snapshots (§8) |
-| results | `{ release: S, showAnswers: B, showExplanations: B, leaderboard: B, bands: [{ label: S, minPct: N }], setBy: Id? }` | M04b (TP-11, 07 §19): `release` `manual` (by hand once closed and marked, M04) · `on_close` (the hourly sweep publishes once closed, nobody writing and everything marked; the audit names `setBy`) · `instant` (each person sees their counted attempt once marked; ranks wait for the published results). Bands ≤ 5, labels ≤ 40, highest first. Changes no mark, so it may change at any time |
+| results | `{ release: S, showAnswers: B, showExplanations: B, leaderboard: B, certificateFromPct: N?, bands: [{ label: S, minPct: N }], setBy: Id? }` | M04b (TP-11, 07 §19): `release` `manual` (by hand once closed and marked, M04) · `on_close` (the hourly sweep publishes once closed, nobody writing and everything marked; the audit names `setBy`) · `instant` (each person sees their counted attempt once marked; ranks wait for the published results). Bands ≤ 5, labels ≤ 40, highest first. `certificateFromPct` (0–100; null: no certificates, TP-12): a counted result at or above it earns a certificate (07 §20). Changes no mark, so it may change at any time |
 | status | S | `draft` · `published` · `results_published`. Open/closed is **derived** from `opensAt`, `closesAt`, `lateUntil` and now |
 | publishedAt, resultsPublishedAt | D? | |
 | dueNotifiedAt | D? | set when the 24-hour reminder was sent (M04 sweep) |
@@ -301,14 +301,15 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | every test of every answered code question as the `gradeCode` job ran it, hidden ones too; `status` one of `RUN_STATUSES` (`wrong_answer` is our comparison, 07 §14) |
 | codeGradedAt | D? | when the `gradeCode` job last marked the code questions (M04b) |
 | rank, percentile | N? | M04b (TP-11, 07 §19): set by the `testStats` job on each taker's counted attempt only (null elsewhere) |
+| certificateCode | S? | M04b (TP-12, 07 §20): the certificate's verification code (`/v/<code>`), given the first time a certificate is made for this attempt; never changes |
 | similar | `[{ submissionId: Id, itemId: Id, score: N }]` | M04b: other hand-ins whose written or code answer is alike (07 §19), ≤ 10, most alike first; a flag for a teacher, never a verdict |
 | scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000; marks may be negative (negative marking, 07 §14) |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |
 | proctor | `{ hard: N, soft: N, lastHardAt: D?, events: [{ type: S, at: D, counted: B, detail: S? }], snapshots: [{ key: S, at: D }], sessionId: S?, lastBeatAt: D?, addedMin: N, messages: [{ _id, text: S, at: D }], waived: B }` | M04b (TP-08), on every attempt — the monitor's last seen, added time and messages work unproctored too. `events` the newest 300 (`$slice`); `snapshots` at most 240 (no more are taken); `messages` the newest 20, each ≤ 300 characters; `waived` is a grader's waiver of the penalty (audited). The beat writes under a guard on the tally it read (07 §15) |
 
-Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04).
-Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
+Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04) · `{ certificateCode: 1 }` unique, partial on a string (the public certificate check, M04b).
+Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments. The `testStats` job's writes (`rank`, `percentile`, `similar`) and the certificate code leave `updatedAt` alone, so it moves only when the attempt itself does (TP-12 uses it to tell a made scorecard is out of date).
 
 ### 5.2d `questionBank` (M04b, TP-05)
 `courseId` Id? · `ownerId` Id? (exactly one: a catalogue course's bank, shared by every offering of the course in any term; or one member of staff's own, for their standalone tests) · the Item fields above (no `sectionId`) · `usedCount` N (papers that drew it) · `createdBy` Id · timestamps. Collection name `questionBank`.
@@ -318,6 +319,12 @@ Invariants: at most 5,000 per bank (`BANK_LIMITS.perBank`), so a draw's candidat
 ### 5.2e `testStats` (M04b, TP-11)
 
 One per assessment (`_id` = the assessment's), rebuilt whole by the `testStats` job (06 §6) over each taker's counted attempt; nothing else writes it. `computedAt` D · `takers` N · `averagePct`, `highestPct` N? · `histogram` [N] (10 bins of 10 points) · `items` `[{ key: Id (the assessment's question, or a drawn question's bank id), type: S, title: S (≤ 120, plain text), sectionTitle: S?, coIds: [Id], n: N, correctPct: N, discrimination: N?, wrongPick: { text: S, pct: N }? }]` (≤ 300) · `flagged` N (hand-ins with an alike answer) · `leaderboard` `[{ studentId, name, total, rank }]` (≤ 10). No index beyond `_id`.
+
+### 5.2f `testFiles` (M04b, TP-12)
+
+A PDF or Excel file the worker made from a test's results: the staff's Excel export and reports PDF (one of each per test, `submissionId` null), or a taker's scorecard and certificate (one of each per counted attempt). `assessmentId` Id · `kind` S (`results_xlsx` · `reports_pdf` · `scorecard` · `certificate`) · `submissionId` Id? · `requestedBy` Id · `requestedAt` D (the job reads the results after it) · `status` S (`making` · `ready` · `failed`) · `key` S? (`test-file/<assessmentId>/<owner>/<uuid>.<pdf|xlsx>`; the owner is the taker for theirs, the requester for the staff's) · `fileName` S? · `madeAt` D?.
+Indexes: `{ assessmentId: 1, kind: 1, submissionId: 1 }` unique · `{ key: 1 }` partial on a string (`/api/files`).
+Invariants: asking again sets `making` and a new `requestedAt`; only the job for that request may set `ready`, and the object the record pointed at before is deleted then. A taker's file is current while `requestedAt` is after the attempt's, the test's and the ranks' last change; the staff's stay downloadable until they make them again.
 
 ### 5.2a `testLinks` (M04b, TP-01)
 | Field | Type | Rules |

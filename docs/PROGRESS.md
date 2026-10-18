@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity), D (code) and E1 (results) built and committed locally; E2 (PDFs, certificates, Excel) and E3 (AI helpers) left; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity), D (code), E1 (results) and E2 (PDFs, certificates, Excel) built and committed locally; E3 (AI helpers) left; on branch `m04-assessments` |
 | M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -93,6 +93,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
 | Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
 | Q-53 | The syllabus PDF opens for admins and for whoever teaches, oversees or studies an offering of the course (`reach` in `/api/files`), so a coordinator who teaches none of its offerings cannot open the PDF they uploaded. Should every staff member who can open the catalogue course open its PDF? | @dev | As built in M01b (offerings only) | — | Answered 17 Oct 2026 (@dev, at Aniket's request): yes — admins, HoDs and faculty open it; a student only for a course they study (`/api/files`) |
+| Q-57 | Mock-up C7, as picked, prints two signature lines on a test's certificate: the test's owner (with their department) and "Controller of Examinations, Centurion University". Should the Controller of Examinations appear on certificates for every test (including course quizzes and recruitment tests), or only the owner? There are no signature images either way | @client | Both, as in the mock-up | TP-12's certificate wording | Open |
 | Q-56 | TP-10 asks the AI to "suggest a mark band for written and code answers", which means sending students' answers (without names, roll numbers or emails) to the AI; 09 §12 says answers are never sent. Should anonymous answer text be sent for these suggestions? | @client | Not built: the AI only drafts questions (no student data) | TP-10's mark-band suggestion | Open |
 | Q-55 | Code questions run on Judge0's free public server (ce.judge0.com) until the university has its own: students' code goes to a third party, and its rate limits are not ours. Before going public, which Judge0 server and token (or a paid key) should be used? | @client | The free public server (Aniket, 18 Oct 2026) | Going public | Open |
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
@@ -250,6 +251,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-38 | Alike answers: the test's own written and code questions only, at most 600 answers each, 20 tokens or more, three-token shingles with Jaccard ≥ 0.85; a flag for a teacher, never a mark (Q-09) | M04b | Q-09 |
 | A-M04b-39 | The leaderboard is off by default; on, it names the first 10 to everyone who took the test | M04b | — |
 | A-M04b-40 | Ranks and analysis are worked out when results go out, again after a regrade, waived penalty or code re-run, and on request — not live while people write | M04b | — |
+| A-M04b-41 | Certificates are opt-in per test, from a percentage the teacher sets in the Results dialog; one is earned by a counted attempt at or above it and states that attempt's percentage, the rating band and, once results are published, the rank | M04b | Q-57 |
+| A-M04b-42 | The PDFs use the built-in Helvetica and Times, so text outside Windows-1252 prints as "?" (a name in Odia or Devanagari script would); student records hold names in Latin script. Printing other scripts needs an embedded Unicode font | M04b | — |
+| A-M04b-43 | A taker's scorecard or certificate is current while it was asked for after the attempt, the test and (once published) the ranks last changed; otherwise the page offers to make it again. The staff's files stay downloadable with the time they were made, and the staff make them again by hand | M04b | — |
+| A-M04b-44 | TP-12 says "emailed or downloaded": the files are downloaded from the page; nothing is emailed (the mail adapter sends no attachments) | M04b | — |
+| A-M04b-45 | The Excel export has one row per taker — their counted attempt, or their latest unmarked one when none is marked — ranked as 07 §19, with section totals and a column per question of the test's own (drawn bank questions count only in section totals); times are IST text. Its Questions sheet appears once the analysis has been worked out | M04b | — |
+| A-M04b-46 | The reports PDF has a report for every hand-in (every attempt), by name, with no size cap (the worker streams it); heads of department may make both staff files, as they read the results | M04b | — |
+| A-M04b-47 | A person may ask for 10 files an hour; a file still being made after 10 minutes may be asked for again | M04b | — |
+| A-M04b-48 | The certificate check `/v/<code>` shows the record as it is now, and says "No longer valid" when a later regrade took the result below the threshold | M04b | — |
 
 ## 5. Log
 
@@ -1844,4 +1853,82 @@ Phase E's first part (TP-11) of `docs/milestones/M04b-test-platform.md`, on bran
   - student01's result at 1440 px and 390 px.
   - faculty1's results page, builder, Results dialog and hand-ins.
   - No error page, and no page wider than the screen after the fix. They match mock-ups C5 and C6; the two copied essays were flagged.
+
+### 2026-10-18 · M04b/E2 Test platform: scorecards, certificates, attempt reports and Excel exports · Claude Code, at Aniket's request
+
+Phase E's second part (TP-12) of `docs/milestones/M04b-test-platform.md`, on branch `m04-assessments`, committed locally and not pushed. E3 (the AI helpers, TP-10) follows.
+
+**Created**
+- **The rules (07 §20).** `lib/domain/test-files.ts`: `earnsCertificate`, `codeFromBytes` (the verification code) and `pdfSafe` (text the PDF fonts can print), with vectors in `lib/domain/test-files.test.ts`.
+- **One set of figures.** `figuresOf`, `rulesOf`, `givenText` and `correctText` moved to the worker-safe `lib/data/results.ts`, so the result page, the scorecard and the certificate show the same numbers. `docOf` moved to `lib/domain/rich-text.ts`.
+- **Data.**
+  - New `testFiles` collection (`lib/models/test-file.ts`, 05 §5.2f).
+  - `submissions.certificateCode`, with a unique partial index.
+  - `assessments.results.certificateFromPct`, saved by `saveResultRules` (`certificateFrom`).
+  - Upload purpose `test-file`, which only the worker writes; `createUpload` refuses it.
+- **The worker job** `compute/makeTestFile` (`worker/jobs/test-files.ts`, `queueTestFile`):
+  - the certificate (mock-up C7: A4 landscape, the lockup, a QR code and link to `/v/<code>`, the owner and the Controller of Examinations);
+  - the scorecard (A4: the person, the figures, by section and outcome, each question with the answer and, if the rules allow, the right answer);
+  - the reports PDF (a cover, then a report per hand-in by name);
+  - the Excel export (Results and Questions sheets).
+  - Built on disk, uploaded under a new key; only the newest request finishes a file, and the object it replaces is deleted.
+  - The logo prints from `public/brand/logo-print.png` (420 px tall), so a PDF is about 150 KB rather than 1.4 MB.
+- **Asking and downloading.**
+  - `requestTestFile` (limit 10 an hour): the staff's files for manage or oversee once anyone has handed in; a taker's scorecard once their result shows, and a certificate when it is earned.
+  - `/api/files` serves a `test-file` by its record's current key only: the staff's files to the test's staff; a scorecard or certificate to its person and the staff.
+- **Screens.**
+  - `TestFileButton` (`components/test-file-button.tsx`, 08 §5.2): ask, then "being made" (the page refreshes itself), then a download link.
+  - It sits on the student's result as Certificate and Scorecard (mock-up C5), and on the results page as Export to Excel and PDF reports with "Make it again" (mock-up C6).
+  - A Certificates field in the builder's Results dialog and card.
+  - The public check page `/v/<code>` in the sign-in layout, exempt from `proxy.ts`.
+- **Tests.**
+  - Unit: 18 vectors.
+  - Integration (`tests/integration/results.test.ts`, 2 new cases, through the real queue and worker with storage captured):
+    - who may ask for what;
+    - the certificate's text and code read back out of the PDF;
+    - the check page's answer;
+    - downloads by the person and the staff but not another taker;
+    - a regrade making the scorecard out of date and the certificate no longer earned;
+    - the Excel cells and the reports' pages;
+    - a made-again file replacing and deleting the old one.
+  - E2E (`tests/e2e/results.spec.ts`): student07 downloads a certificate from the e2e bucket and a signed-out visitor checks it; it stays current after "Work them out again"; faculty1 downloads the Excel export.
+- **Docs.** 02 §8; 03 (`pdfkit`, `write-excel-file`, `@types/pdfkit`, and `qrcode`'s new use); 05 §5.1, §5.2, §5.2f; 06 §5, §6, §6.2; 07 §20 (new); 08 (routes, `TestFileButton`, `Section`); 09 §3, §4, §5.
+
+**Changed beyond TP-12 (found while verifying)**
+- `components/section.tsx`: below 640 px a section's actions now wrap onto more lines. Before, the results page's four buttons made it 83 px wider than a 390 px screen.
+- `worker/jobs/compute.ts`: the `testStats` job's writes to attempts (ranks, alike answers) no longer touch `updatedAt`. Before, they made a just-made certificate look out of date.
+- `app/(auth)/t/[token]/page.tsx` (phase A) and the new `/v/[code]` page call `connection()`. Both logged Next's "`new Date()` while prerendering" error on each visit; the share-link page had done so since phase A.
+
+**Not done**
+- E3 (the AI helpers, TP-10). The mark-band suggestion waits on Q-56.
+- Nothing is emailed (A-M04b-44).
+- Names in a non-Latin script print as "?" (A-M04b-42).
+- A long table carries on to the next page without repeating its header, and pages are not numbered.
+- **Four e2e tests outside M04b fail on this branch.** None touches code this phase changed:
+  - `admin-structure.spec.ts` (2): it waits for a workspace heading in the old "CUTM1602 · … · A" form and a "Change enrolment" button, which no longer exist.
+  - `content.spec.ts`, the course plan: publishing works ("Version 7 was published"), but the publish bar now replaces the form with that line, so the success text it waits for never appears.
+  - The heading, the button and the publish bar all changed in the 17 Oct "fix" commits, so these specs need updating.
+  - `live.spec.ts`: no LiveKit server runs on this machine ("fetch failed" on `closeRoom`), so the student never gets into the room.
+
+**Assumptions** — A-M04b-41 to A-M04b-48 (§4).
+
+**Open questions** — Q-57.
+
+**Bugs found and fixed while verifying**
+- The certificate's sentence printed its regular and bold parts on top of each other (pdfkit cannot centre a line whose font changes); it is now laid out word by word. Found by rendering the PDF.
+- "Recommended" broke mid-word in the scorecard's figures; each figure is now at least as wide as its value.
+- The PDFs were 1.4 MB from the full-size logo (now about 150 KB).
+- The stats job, the 390 px results page and the two prerender errors (above).
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 33 passed (33)`, `Tests 515 passed (515)`.
+- `npm run test:integration` → exit 0; `Test Files 22 passed (22)`, `Tests 277 passed (277)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "119 files scanned … clean".
+- `npx playwright test` (all 19) → `15 passed`, `4 failed` (the four above), before the `/t/[token]` change. After it, `npx playwright test tests/e2e/tests.spec.ts tests/e2e/results.spec.ts` → `2 passed`, with no prerender error in the server log.
+- The certificate and scorecard rendered to images (macOS `sips`) and checked against mock-up C7: one made by the integration test, one made by the e2e worker into RustFS and downloaded through `/api/files`.
+- A scripted walk at 1440 px and 390 px, on the e2e data after the spec ran:
+  - student07's result with Certificate and Scorecard;
+  - `/v/<code>` signed out, and an unknown code;
+  - faculty1's results page and the builder's Results dialog;
+  - no error page, and no page wider than the screen after the `Section` fix.
 

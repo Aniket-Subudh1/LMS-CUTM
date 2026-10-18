@@ -9,6 +9,7 @@ import { Lesson } from '@/lib/models/lesson';
 import { Assessment } from '@/lib/models/assessment';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
+import { TestFile } from '@/lib/models/test-file';
 
 const missing = () => new Response(null, { status: 404 });
 
@@ -112,6 +113,19 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
     ).lean();
     if (!attempt || !(await assessmentStaff(viewer, attempt.assessmentId))) return missing();
     return redirect(await presignDownload(key, 'snapshot.jpg'));
+  }
+
+  if (owner.purpose === 'test-file') {
+    // M04b (TP-12): a file made from a test's results, by its current key only. The Excel export and reports go to the
+    // test's staff; a scorecard or certificate to the person it is about (whose id the worker put in its key) as well.
+    const file = await TestFile.findOne(
+      { key, assessmentId: owner.contextId },
+      { submissionId: 1, fileName: 1 },
+    ).lean();
+    if (!file) return missing();
+    const staff = await assessmentStaff(viewer, owner.contextId);
+    if (!staff && !(file.submissionId && owner.userId === viewer.id)) return missing();
+    return redirect(await presignDownload(key, file.fileName ?? 'results'));
   }
 
   return missing();

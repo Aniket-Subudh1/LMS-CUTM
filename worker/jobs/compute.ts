@@ -38,11 +38,13 @@ import {
   GradeCodeJob,
   LiveControlJob,
   LiveSweepJob,
+  MakeTestFileJob,
   ProctorRetentionJob,
   TestStatsJob,
 } from '@/lib/schemas/jobs';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
+import { makeTestFile } from '@/worker/jobs/test-files';
 
 type ComputeName =
   | 'finalizeLiveSession'
@@ -51,7 +53,8 @@ type ComputeName =
   | 'assessmentSweep'
   | 'proctorRetention'
   | 'gradeCode'
-  | 'testStats';
+  | 'testStats'
+  | 'makeTestFile';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -59,7 +62,8 @@ type ComputeData =
   | AssessmentSweepJob
   | ProctorRetentionJob
   | GradeCodeJob
-  | TestStatsJob;
+  | TestStatsJob
+  | MakeTestFileJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -446,15 +450,20 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
   const pctOf = (total: number) => (test.maxMarks > 0 ? roundHalfUp((100 * total) / test.maxMarks, 2) : 0);
 
   const ranks = rankAll(counted.map((attempt) => ({ id: String(attempt._id), total: attempt.total })));
+  // What this job writes on attempts is worked out from them, so it leaves their `updatedAt` alone: a scorecard made
+  // since stays current until the marks change (TP-12), and `computedAt` dates the ranks.
+  const derived = { timestamps: false };
   await Submission.updateMany(
     { assessmentId: test._id, rank: { $ne: null } },
     { $set: { rank: null, percentile: null } },
+    derived,
   );
   if (counted.length > 0) {
     await Submission.bulkWrite(
       counted.map((attempt) => ({
         updateOne: { filter: { _id: attempt._id }, update: { $set: { ...ranks.get(String(attempt._id)) } } },
       })),
+      derived,
     );
   }
 
@@ -578,7 +587,11 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
       }
     }
   }
-  await Submission.updateMany({ assessmentId: test._id, 'similar.0': { $exists: true } }, { $set: { similar: [] } });
+  await Submission.updateMany(
+    { assessmentId: test._id, 'similar.0': { $exists: true } },
+    { $set: { similar: [] } },
+    derived,
+  );
   if (alike.size > 0) {
     await Submission.bulkWrite(
       [...alike].map(([id, list]) => ({
@@ -587,6 +600,7 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
           update: { $set: { similar: list.sort((a, b) => b.score - a.score).slice(0, RESULT_LIMITS.similar) } },
         },
       })),
+      derived,
     );
   }
 
@@ -644,6 +658,9 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   }
   if (job.name === 'gradeCode') return gradeCode(GradeCodeJob.parse(job.data));
   if (job.name === 'testStats') return testStats(TestStatsJob.parse(job.data));
+  if (job.name === 'makeTestFile') {
+    return makeTestFile(MakeTestFileJob.parse(job.data), job.attemptsMade + 1 >= (job.opts.attempts ?? 1));
+  }
   if (job.name === 'proctorRetention') {
     ProctorRetentionJob.parse(job.data);
     return proctorRetention(new Date());

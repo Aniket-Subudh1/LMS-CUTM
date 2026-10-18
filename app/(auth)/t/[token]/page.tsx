@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { connection } from 'next/server';
 import {
   EnvelopeSimpleIcon,
   GlobeIcon,
@@ -52,6 +53,8 @@ async function Landing({
   searchParams: PageProps<'/t/[token]'>['searchParams'];
 }) {
   const { token } = await params;
+  // The link's state depends on the clock (open, closed, expired), so it is read at request time.
+  await connection();
   if (!linkToken.safeParse(token).success) notFound();
   const { otp } = Search.parse(await searchParams);
   const landing = await getLinkLanding(token, otp);
