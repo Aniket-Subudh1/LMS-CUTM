@@ -7,13 +7,13 @@ import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { requireManage, requireTeach } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
-import { handInAttempts } from '@/lib/data/attempts';
+import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { questionOf, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
 import { deadlineAt, windowState } from '@/lib/domain/attempts';
-import { attemptTotal, rubricTotal } from '@/lib/domain/grading';
+import { rubricTotal } from '@/lib/domain/grading';
 import { isPermutation } from '@/lib/domain/order';
 import { roundHalfUp } from '@/lib/domain/round';
 import { assessmentPath } from '@/lib/domain/test-links';
@@ -28,22 +28,29 @@ import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
+import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
   AssessmentRef,
   CreateAssessment,
+  ExtendAttempts,
   GradeSubmission,
+  MessageTakers,
   MODE_DEFAULTS,
   MODE_ITEM_TYPES,
   ItemRef,
+  PROCTOR_LIMITS,
   ReorderItems,
   ReorderSections,
   SaveInstructions,
   SaveItem,
+  SaveProctoring,
   SaveSection,
   SectionRef,
   SetExtraTime,
+  SubmissionRef,
   UpdateAssessmentSettings,
+  WaivePenalty,
 } from '@/lib/schemas/assessment';
 import { AddFromBank } from '@/lib/schemas/bank';
 import { marks as marksInput } from '@/lib/schemas/common';
@@ -444,6 +451,153 @@ export const setExtraTime = action({ input: SetExtraTime, roles: TEACH }, async 
   refresh();
 });
 
+// TP-08: proctoring is set while nobody has started, like the other settings, so every attempt runs under the same
+// rules (07 §15). Unticking "Proctor this test" turns it off.
+export const saveProctoring = action({ input: SaveProctoring, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (await Submission.exists({ assessmentId: assessment._id })) {
+    throw new AppError('CONFLICT', 'Proctoring cannot change after anyone has started.');
+  }
+  const { fullscreen, camera, snapshotEverySec, blockCopy, hardLimit, penaltyEach } = input;
+  await Assessment.updateOne(
+    { _id: assessment._id },
+    {
+      $set: {
+        proctoring: input.enabled ? { fullscreen, camera, snapshotEverySec, blockCopy, hardLimit, penaltyEach } : null,
+      },
+    },
+  );
+  refresh();
+});
+
+// --- The live monitor (TP-08). Each acts on one running attempt when a submission is posted, else on all of them. ---
+
+const running = (assessmentId: Types.ObjectId, submissionId: string | undefined, now: Date) => ({
+  assessmentId,
+  status: 'in_progress' as const,
+  deadlineAt: { $gt: now },
+  ...(submissionId ? { _id: new Types.ObjectId(submissionId) } : {}),
+});
+const nobodyRunning = (submissionId: string | undefined) =>
+  new AppError(
+    'CONFLICT',
+    submissionId ? 'That attempt has already been handed in.' : 'Nobody is writing this test now.',
+  );
+
+// Minutes added to running attempts reach each runner at its next beat. Audited, as the time a person had bears on
+// their marks.
+export const extendAttempts = action({ input: ExtendAttempts, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  const now = new Date();
+  await mongoose.connection.transaction(async (session) => {
+    const written = await Submission.updateMany(
+      running(assessment._id, input.submissionId, now),
+      [
+        {
+          $set: {
+            deadlineAt: { $add: ['$deadlineAt', input.minutes * 60_000] },
+            'proctor.addedMin': { $add: [{ $ifNull: ['$proctor.addedMin', 0] }, input.minutes] },
+          },
+        },
+      ],
+      { session, updatePipeline: true },
+    );
+    if (written.matchedCount === 0) throw nobodyRunning(input.submissionId);
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: 'assessment.time_added',
+        entity: input.submissionId ? 'submission' : 'assessment',
+        entityId: input.submissionId ?? String(assessment._id),
+        offeringId: assessment.offeringId ? String(assessment.offeringId) : undefined,
+        after: { minutes: input.minutes, attempts: written.modifiedCount },
+      },
+      session,
+    );
+  });
+  refresh();
+});
+
+// Shown by each runner at its next beat; a runner keeps the newest PROCTOR_LIMITS.messages.
+export const messageTakers = action({ input: MessageTakers, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  await limit('monitor-message', viewer.id, 30, 60_000);
+  const written = await Submission.updateMany(running(assessment._id, input.submissionId, new Date()), {
+    $push: {
+      'proctor.messages': { $each: [{ text: input.text, at: new Date() }], $slice: -PROCTOR_LIMITS.messages },
+    },
+  });
+  if (written.matchedCount === 0) throw nobodyRunning(input.submissionId);
+});
+
+// "End attempt": the answers saved so far are handed in now. Audited.
+export const endAttempt = action({ input: SubmissionRef, roles: TEACH }, async (input, viewer) => {
+  await db();
+  const attempt = await Submission.findById(input.submissionId, { assessmentId: 1 }).lean();
+  if (!attempt) throw new AppError('NOT_FOUND', 'Attempt not found.');
+  const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
+  if ((await handInAttempts([input.submissionId], new Date(), 'teacher')) === 0) {
+    throw nobodyRunning(input.submissionId);
+  }
+  await writeAudit({
+    actorId: viewer.id,
+    action: 'submission.ended',
+    entity: 'submission',
+    entityId: input.submissionId,
+    offeringId: offeringId ?? undefined,
+    before: { status: 'in_progress' },
+    after: { endedBy: 'teacher' },
+  });
+  refresh();
+});
+
+// 07 §15: a grader waives the penalty for serious warnings, or puts it back, and the total follows. Audited and refused
+// while marks are locked, like grading.
+export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async (input, viewer) => {
+  await db();
+  const attempt = await Submission.findById(input.submissionId, {
+    assessmentId: 1,
+    status: 1,
+    scores: 1,
+    paper: 1,
+    proctor: 1,
+    total: 1,
+  }).lean();
+  if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
+  const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
+  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
+  if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
+  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1 }).lean();
+  const hard = attempt.proctor?.hard ?? 0;
+  if (!rules?.proctoring?.penaltyEach || hard === 0) {
+    throw new AppError('VALIDATION', 'This attempt has no penalty for warnings.');
+  }
+  const waived = attempt.proctor?.waived ?? false;
+  if (waived === input.waived) return refresh();
+  const total = totalOf(attempt.paper, attempt.scores ?? {}, rules.proctoring, { hard, waived: input.waived });
+  await mongoose.connection.transaction(async (session) => {
+    const written = await Submission.updateOne(
+      { _id: attempt._id, status: { $ne: 'in_progress' }, 'proctor.waived': waived ? true : { $ne: true } },
+      { $set: { 'proctor.waived': input.waived, total } },
+      { session },
+    );
+    if (written.matchedCount === 0) throw new AppError('CONFLICT', 'This changed meanwhile. Reload the page.');
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: input.waived ? 'submission.penalty_waived' : 'submission.penalty_restored',
+        entity: 'submission',
+        entityId: String(attempt._id),
+        offeringId: offeringId ?? undefined,
+        before: { waived, total: attempt.total ?? null },
+        after: { waived: input.waived, total },
+      },
+      session,
+    );
+  });
+  refresh();
+});
+
 // T4: AC-M04-01, a credit course's assessment is published only when every question names a CO.
 export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
@@ -519,11 +673,13 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     status: 1,
     scores: 1,
     paper: 1,
+    proctor: 1,
   }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
   await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
+  const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1 }).lean();
   // M04b: the questions this attempt was given.
   const paper = attempt.paper;
   const posted = input['item[]'];
@@ -599,7 +755,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     );
   });
   if (changed.length > 0) {
-    const total = attemptTotal(itemIds, scores);
+    const total = totalOf(paper, scores, rules?.proctoring, attempt.proctor);
     const now = new Date();
     await mongoose.connection.transaction(async (session) => {
       const written = await Submission.updateOne(

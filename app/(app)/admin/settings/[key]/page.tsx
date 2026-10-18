@@ -26,7 +26,8 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
   );
 }
 
-// Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`.
+// Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
+// `proctoring`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -37,6 +38,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <Evaluation page={await getSettingsPage('evaluation')} />;
     case 'attendance':
       return <Attendance page={await getSettingsPage('attendance')} />;
+    case 'proctoring':
+      return <Proctoring page={await getSettingsPage('proctoring')} />;
   }
 }
 
@@ -119,6 +122,52 @@ function Lessons({ page }: { page: SettingsPage<'lessons'> }) {
               when the student marks them done.
             </li>
           </ul>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M04b (TP-08): how long proctoring's camera snapshots are kept (05 §8).
+function Proctoring({ page }: { page: SettingsPage<'proctoring'> }) {
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="devices" />} />
+      <div className="max-w-3xl">
+        <Section
+          icon={<PageIcon name="devices" className="size-8" />}
+          title="How long are camera snapshots kept?"
+          description={changed(page)}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. The nightly clean-up follows this from now on."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            <Field
+              name="snapshotRetentionDays"
+              label="Days after results are published"
+              hint={`${page.fieldHelp.snapshotRetentionDays} Recommended: ${page.defaults.snapshotRetentionDays} days.`}
+            >
+              <span className="relative block w-40">
+                <Input
+                  name="snapshotRetentionDays"
+                  type="number"
+                  inputMode="numeric"
+                  min={7}
+                  max={365}
+                  step={1}
+                  required
+                  defaultValue={page.value.snapshotRetentionDays}
+                  className="pr-12 tabular-nums"
+                />
+                <span className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm">
+                  days
+                </span>
+              </span>
+            </Field>
+          </ActionForm>
         </Section>
       </div>
     </>

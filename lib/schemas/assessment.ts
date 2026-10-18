@@ -452,6 +452,102 @@ export const SetExtraTime = z.object({
   minutes: z.coerce.number().int('Use whole minutes.').min(0).max(600, 'Give at most 600 minutes.'),
 });
 
+// --- Proctoring and the live monitor (M04b, TP-08; the rules are 07 §15) ---
+
+// Serious warnings count towards the limit that hands an attempt in, and towards the penalty; the others are recorded.
+export const HARD_EVENTS = ['fullscreen_exit', 'left_page', 'second_device'] as const;
+export const SOFT_EVENTS = [
+  'copy',
+  'paste',
+  'right_click',
+  'print',
+  'devtools',
+  'connection_gap',
+  'camera_off',
+] as const;
+export const PROCTOR_EVENTS = [...HARD_EVENTS, ...SOFT_EVENTS] as const;
+export type ProctorEvent = (typeof PROCTOR_EVENTS)[number];
+// What a runner reports; the server notices lost connections and second devices itself.
+const REPORTED_EVENTS = [
+  'fullscreen_exit',
+  'left_page',
+  'copy',
+  'paste',
+  'right_click',
+  'print',
+  'devtools',
+  'camera_off',
+] as const satisfies readonly ProctorEvent[];
+export type ReportedEvent = (typeof REPORTED_EVENTS)[number];
+export const ENDED_BY = ['warnings', 'teacher'] as const;
+
+export const PROCTOR_LIMITS = {
+  events: 300,
+  snapshots: 240,
+  messages: 20,
+  message: 300,
+  perBeat: 10,
+  hardLimit: 20,
+  addMinutes: 120,
+} as const;
+
+// Saved with "Proctor this test" unticked, the rest is not read and the test is not proctored.
+export const SaveProctoring = z
+  .object({
+    ...AssessmentRef.shape,
+    enabled: z.stringbool().default(false),
+    fullscreen: z.stringbool().default(false),
+    camera: z.stringbool().default(false),
+    snapshotEverySec: z.coerce
+      .number()
+      .int('Use whole seconds.')
+      .min(30, 'Take one every 30 seconds at most.')
+      .max(600, 'Take one at least every 600 seconds.')
+      .default(60),
+    blockCopy: z.stringbool().default(false),
+    hardLimit: z.coerce
+      .number()
+      .int('Use a whole number.')
+      .min(0, 'Use 0 or more.')
+      .max(PROCTOR_LIMITS.hardLimit, `Use at most ${PROCTOR_LIMITS.hardLimit}.`)
+      .default(3),
+    penaltyEach: z.coerce.number().min(0, 'Use 0 or more.').max(1000).default(0),
+  })
+  .refine((input) => Number.isInteger(input.penaltyEach * 100), {
+    path: ['penaltyEach'],
+    message: 'Use at most two decimal places.',
+  });
+
+// The runner's beat every BEAT_MS, and at once with what it noticed. `sessionId` names this tab (kept in
+// sessionStorage, so a reload keeps it); a second tab or device has another.
+export const ProctorBeat = z.object({
+  ...SubmissionRef.shape,
+  sessionId: z.uuid(),
+  events: z.array(z.enum(REPORTED_EVENTS)).max(PROCTOR_LIMITS.perBeat).default([]),
+});
+export const AddSnapshot = z.object({ ...SubmissionRef.shape, key: z.string().trim().min(1).max(500) });
+
+// The monitor's actions: one running attempt when `submissionId` is posted, else every running attempt of the test.
+export const ExtendAttempts = z.object({
+  ...AssessmentRef.shape,
+  submissionId: blankIsMissing(objectId),
+  minutes: z.coerce
+    .number()
+    .int('Use whole minutes.')
+    .min(1, 'Add at least 1 minute.')
+    .max(PROCTOR_LIMITS.addMinutes, `Add at most ${PROCTOR_LIMITS.addMinutes} minutes at a time.`),
+});
+export const MessageTakers = z.object({
+  ...AssessmentRef.shape,
+  submissionId: blankIsMissing(objectId),
+  text: z
+    .string()
+    .trim()
+    .min(1, 'Write the message.')
+    .max(PROCTOR_LIMITS.message, `Use at most ${PROCTOR_LIMITS.message} characters.`),
+});
+export const WaivePenalty = z.object({ ...SubmissionRef.shape, waived: z.stringbool() });
+
 // --- Grading (T6). One row per question in order; a rubric question posts its criteria instead of marks. ---
 
 export const GradeSubmission = z

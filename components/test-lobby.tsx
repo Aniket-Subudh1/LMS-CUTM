@@ -1,18 +1,22 @@
 'use client';
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BrowserIcon,
+  CameraIcon,
   CheckCircleIcon,
   CircleNotchIcon,
+  CornersOutIcon,
   WarningCircleIcon,
   WarningIcon,
   WifiHighIcon,
   type Icon,
 } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
+import { formatClock } from '@/lib/format';
 
 const tick = (notify: () => void) => {
   const timer = window.setInterval(notify, 1000);
@@ -33,14 +37,6 @@ export function useServerSeconds(serverNow: number): number {
   );
 }
 
-export const clock = (ms: number) => {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-};
-
 // TP-04: the time until the test opens. At zero the page is fetched again, and Start appears.
 export function Countdown({ opensAt, serverNow, caption }: { opensAt: string; serverNow: number; caption: string }) {
   const router = useRouter();
@@ -57,7 +53,7 @@ export function Countdown({ opensAt, serverNow, caption }: { opensAt: string; se
     <div className="bg-muted/60 grid gap-1 rounded-md p-4 text-center" role="timer" aria-live="off">
       <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Opens in</span>
       <b className="text-3xl font-semibold tabular-nums">
-        {left === null ? '—' : days > 0 ? `${days} day${days === 1 ? '' : 's'}` : clock(left)}
+        {left === null ? '—' : days > 0 ? `${days} day${days === 1 ? '' : 's'}` : formatClock(left)}
       </b>
       <span className="text-muted-foreground text-xs">{caption}</span>
     </div>
@@ -108,8 +104,18 @@ const CHIP: Record<Check['state'], string> = {
   fail: 'bg-destructive/10 text-destructive',
 };
 
-// TP-04 ("Lobby B"): what this device needs to take the test. The camera and microphone rows come with proctoring.
-export function DeviceCheck() {
+// The camera for proctoring's snapshots (TP-08): a still picture is taken from it now and then; never sound.
+export const openCamera = (): Promise<MediaStream | null> =>
+  navigator.mediaDevices
+    ? navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false }).then(
+        (stream) => stream,
+        () => null,
+      )
+    : Promise.resolve(null);
+
+// TP-04 ("Lobby B"): what this device needs to take the test. A proctored test adds full screen and, when it takes
+// snapshots, the camera with a preview (TP-08).
+export function DeviceCheck({ fullscreen = false, camera = false }: { fullscreen?: boolean; camera?: boolean }) {
   const cookies = useSyncExternalStore(
     never,
     () => navigator.cookieEnabled,
@@ -120,7 +126,29 @@ export function DeviceCheck() {
     () => navigator.onLine,
     () => true,
   );
+  const canFill = useSyncExternalStore(
+    never,
+    () => document.fullscreenEnabled,
+    () => null,
+  );
   const [connection, setConnection] = useState<Check>({ state: 'checking', detail: 'Measuring…' });
+  const [cameraCheck, setCameraCheck] = useState<Check>({ state: 'warn', detail: 'Allow it before you start.' });
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const preview = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (preview.current) preview.current.srcObject = stream;
+    return () => stream?.getTracks().forEach((track) => track.stop());
+  }, [stream]);
+  async function allowCamera() {
+    setCameraCheck({ state: 'checking', detail: 'Waiting for you to allow it…' });
+    const opened = await openCamera();
+    setStream(opened);
+    setCameraCheck(
+      opened
+        ? { state: 'ok', detail: 'Working · still pictures only, no video or sound' }
+        : { state: 'fail', detail: 'Blocked or missing. Allow it in the address bar, then try again.' },
+    );
+  }
   useEffect(() => {
     if (!online) return;
     let current = true;
@@ -131,7 +159,7 @@ export function DeviceCheck() {
       current = false;
     };
   }, [online]);
-  const rows: { icon: Icon; title: string; check: Check }[] = [
+  const rows: { icon: Icon; title: string; check: Check; action?: ReactNode }[] = [
     {
       icon: BrowserIcon,
       title: 'Browser',
@@ -147,6 +175,34 @@ export function DeviceCheck() {
       title: 'Connection',
       check: online ? connection : { state: 'fail', detail: 'You are offline. Reconnect to start.' },
     },
+    ...(fullscreen
+      ? [
+          {
+            icon: CornersOutIcon,
+            title: 'Full screen',
+            check:
+              canFill === null
+                ? { state: 'checking' as const, detail: 'Checking…' }
+                : canFill
+                  ? { state: 'ok' as const, detail: 'Ready · the test opens in full screen' }
+                  : { state: 'fail' as const, detail: 'This browser cannot go full screen. Use a computer.' },
+          },
+        ]
+      : []),
+    ...(camera
+      ? [
+          {
+            icon: CameraIcon,
+            title: 'Camera',
+            check: cameraCheck,
+            action: cameraCheck.state !== 'ok' && cameraCheck.state !== 'checking' && (
+              <Button type="button" size="sm" variant="outline" onClick={() => void allowCamera()}>
+                {cameraCheck.state === 'fail' ? 'Try again' : 'Allow camera'}
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ];
   const ready = rows.filter((row) => row.check.state === 'ok' || row.check.state === 'warn').length;
   const done = rows.every((row) => row.check.state !== 'checking');
@@ -159,7 +215,7 @@ export function DeviceCheck() {
         </Badge>
       </div>
       <ul className="divide-y" aria-live="polite">
-        {rows.map(({ icon: RowIcon, title, check }) => {
+        {rows.map(({ icon: RowIcon, title, check, action }) => {
           const Mark = MARK[check.state].icon;
           return (
             <li key={title} className="flex items-center gap-3 py-2.5">
@@ -170,11 +226,21 @@ export function DeviceCheck() {
                 <b className="text-[0.8125rem] font-medium">{title}</b>
                 <span className="text-muted-foreground text-xs">{check.detail}</span>
               </span>
-              <Mark weight="fill" className={cn('size-5 shrink-0', MARK[check.state].className)} />
+              {action || <Mark weight="fill" className={cn('size-5 shrink-0', MARK[check.state].className)} />}
             </li>
           );
         })}
       </ul>
+      {stream && (
+        <video
+          ref={preview}
+          autoPlay
+          muted
+          playsInline
+          aria-label="Your camera"
+          className="bg-muted aspect-4/3 w-40 rounded-md object-cover"
+        />
+      )}
     </section>
   );
 }

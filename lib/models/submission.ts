@@ -1,6 +1,12 @@
 import mongoose, { Schema, type FlattenMaps, type InferSchemaType, type Model } from 'mongoose';
 import { itemDefinition } from '@/lib/models/assessment';
-import { ASSESSMENT_LIMITS, SUBMISSION_STATUSES } from '@/lib/schemas/assessment';
+import {
+  ASSESSMENT_LIMITS,
+  ENDED_BY,
+  PROCTOR_EVENTS,
+  PROCTOR_LIMITS,
+  SUBMISSION_STATUSES,
+} from '@/lib/schemas/assessment';
 
 // A file a student handed in (a `submission` upload, 06 §5); the name is the sanitized one they chose.
 const fileSchema = new Schema(
@@ -68,6 +74,53 @@ const paperItemSchema = new Schema({
   bankItemId: { type: Schema.Types.ObjectId, default: null },
 });
 
+// M04b (TP-08): the runner's beats and what proctoring noticed, kept for every attempt — the live monitor shows when
+// each was last heard from and passes on extra time and messages to proctored and unproctored tests alike. Counts and
+// the merge of close serious warnings follow 07 §15.
+const proctorSchema = new Schema(
+  {
+    hard: { type: Number, required: true, min: 0, default: 0 },
+    soft: { type: Number, required: true, min: 0, default: 0 },
+    lastHardAt: { type: Date, default: null },
+    // The newest PROCTOR_LIMITS.events; `counted` is false for a serious warning merged with the one before it.
+    events: {
+      type: [
+        {
+          _id: false,
+          type: { type: String, enum: PROCTOR_EVENTS, required: true },
+          at: { type: Date, required: true },
+          counted: { type: Boolean, required: true },
+          detail: { type: String, maxlength: 40 },
+        },
+      ],
+      default: [],
+    },
+    // `proctor-snapshot` uploads (06 §5); no more are taken once PROCTOR_LIMITS.snapshots are kept.
+    snapshots: {
+      type: [{ _id: false, key: { type: String, required: true }, at: { type: Date, required: true } }],
+      default: [],
+    },
+    // The tab or device the attempt is open on, and when it was last heard from.
+    sessionId: { type: String, default: null },
+    lastBeatAt: { type: Date, default: null },
+    // Minutes the monitor added to this attempt (its deadline already includes them).
+    addedMin: { type: Number, required: true, min: 0, default: 0 },
+    // The newest PROCTOR_LIMITS.messages from the monitor.
+    messages: {
+      type: [
+        {
+          text: { type: String, required: true, maxlength: PROCTOR_LIMITS.message },
+          at: { type: Date, required: true },
+        },
+      ],
+      default: [],
+    },
+    // A grader waived the penalty for serious warnings.
+    waived: { type: Boolean, required: true, default: false },
+  },
+  { _id: false },
+);
+
 // One document per attempt (05 §5.2). Answers and scores are maps keyed by item id, so each save is one $set.
 const submissionSchema = new Schema(
   {
@@ -82,6 +135,8 @@ const submissionSchema = new Schema(
     submittedAt: { type: Date, default: null },
     late: { type: Boolean, required: true, default: false },
     autoSubmitted: { type: Boolean, required: true, default: false },
+    // TP-08: handed in at the serious-warning limit, or by the teacher from the live monitor.
+    endedBy: { type: String, enum: ENDED_BY, default: null },
     paper: { type: [paperItemSchema], default: [] },
     answers: { type: Map, of: answerSchema, default: {} },
     // TP-07: questions flagged for review, and seconds spent on each (time per question).
@@ -101,6 +156,7 @@ const submissionSchema = new Schema(
     },
     // The section the runner shows; leaving a "no going back" one closes it (planSectionMove).
     currentSectionId: { type: Schema.Types.ObjectId, default: null },
+    proctor: { type: proctorSchema, default: () => ({}) },
     scores: { type: Map, of: scoreSchema, default: {} },
     // Null until every question is scored.
     total: { type: Number, default: null },

@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -16,28 +17,36 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpIcon,
+  CameraSlashIcon,
+  ChatCircleTextIcon,
   CheckCircleIcon,
   CircleIcon,
   CircleNotchIcon,
   ClockCountdownIcon,
   CloudCheckIcon,
   CloudSlashIcon,
+  CornersOutIcon,
+  DevicesIcon,
   FlagIcon,
   LockSimpleIcon,
   PaperPlaneTiltIcon,
+  ShieldCheckIcon,
   TextAaIcon,
   TimerIcon,
   WarningIcon,
 } from '@phosphor-icons/react';
+import { createUpload } from '@/app/(app)/actions';
 import {
+  addSnapshot,
   enterSection,
   flagItem,
+  proctorBeat,
   saveAnswer,
   submitAttempt,
 } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
 import { FileUpload } from '@/components/file-upload';
 import { RichTextEditor } from '@/components/rich-text-editor';
-import { clock, useServerSeconds } from '@/components/test-lobby';
+import { openCamera, useServerSeconds } from '@/components/test-lobby';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,7 +72,9 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { cn } from '@/lib/cn';
 import type { AnswerValue, AttemptDTO } from '@/lib/data/assessments';
-import { ITEM_LABEL } from '@/lib/format';
+import { BEAT_MS } from '@/lib/domain/proctoring';
+import { formatClock, formatTime, ITEM_LABEL, ordinal } from '@/lib/format';
+import { PROCTOR_LIMITS, type ReportedEvent } from '@/lib/schemas/assessment';
 
 type Payload = Extract<Parameters<typeof saveAnswer>[0], { answer: unknown }>['answer'];
 type Item = AttemptDTO['items'][number];
@@ -172,6 +183,302 @@ const onlineEvents = (notify: () => void) => {
   };
 };
 
+const never = () => () => {};
+const fullscreenEvents = (notify: () => void) => {
+  document.addEventListener('fullscreenchange', notify);
+  return () => document.removeEventListener('fullscreenchange', notify);
+};
+
+// TP-08: this tab's name in the beat. sessionStorage keeps it through a reload; another tab or device has its own. A
+// browser that refuses storage (some private windows) gets a new name on each load, so a reload there waits out the
+// old name's 45 s.
+function tabSession(submissionId: string): string {
+  const key = `lms-tab-${submissionId}`;
+  let storage: Storage | null = null;
+  try {
+    storage = window.sessionStorage;
+  } catch {
+    storage = null;
+  }
+  const known = storage?.getItem(key);
+  if (known) return known;
+  const id = crypto.randomUUID();
+  storage?.setItem(key, id);
+  return id;
+}
+
+const ENDED = {
+  warnings: 'Your answers were handed in: you reached the limit of serious warnings.',
+  teacher: 'Your teacher ended your attempt; the answers you had saved were handed in.',
+  time: 'Time is up — your answers were submitted.',
+};
+
+// The keys that open developer tools or print; on a proctored test they do nothing and are recorded.
+function blockedKey(event: KeyboardEvent): ReportedEvent | null {
+  const mod = event.ctrlKey || event.metaKey;
+  if (event.key === 'F12' || (mod && (event.shiftKey || event.altKey) && ['KeyI', 'KeyJ', 'KeyC'].includes(event.code)))
+    return 'devtools';
+  if (mod && event.code === 'KeyU') return 'devtools';
+  if (mod && event.code === 'KeyP') return 'print';
+  return null;
+}
+
+// TP-08 (07 §15). Every attempt beats every BEAT_MS: the beat keeps a proctored attempt to one tab or device, brings
+// the monitor's extra time and messages, and learns when the attempt was ended. A proctored test also watches full
+// screen, leaving the page, copy, paste and right-click, printing and developer tools, and takes camera snapshots.
+// Each event goes at once; the server counts them, merges close ones and decides the end.
+function useProctor(
+  attempt: AttemptDTO,
+  video: RefObject<HTMLVideoElement | null>,
+  onEnded: (message: string) => void,
+) {
+  const p = attempt.proctoring;
+  const [deadline, setDeadline] = useState(attempt.deadlineAt);
+  const [warnings, setWarnings] = useState(attempt.warnings);
+  const [blocked, setBlocked] = useState(false);
+  const [messages, setMessages] = useState<{ id: string; text: string; at: Date }[]>([]);
+  const [cameraOn, setCameraOn] = useState<boolean | null>(null);
+  const [entered, setEntered] = useState(false);
+  const [refused, setRefused] = useState(false);
+  const full = useSyncExternalStore(
+    fullscreenEvents,
+    () => document.fullscreenElement !== null,
+    () => false,
+  );
+  const canFill = useSyncExternalStore(
+    never,
+    () => document.fullscreenEnabled,
+    () => true,
+  );
+  const pending = useRef<ReportedEvent[]>([]);
+  const sending = useRef(false);
+  const again = useRef(false);
+  const stopped = useRef(false);
+  const tab = useRef<string | null>(null);
+  const picking = useRef(false);
+  const stream = useRef<MediaStream | null>(null);
+
+  function stop() {
+    stopped.current = true;
+    stream.current?.getTracks().forEach((track) => track.stop());
+    if (document.fullscreenElement) void document.exitFullscreen();
+  }
+
+  async function beat() {
+    if (stopped.current) return;
+    if (sending.current) {
+      again.current = true;
+      return;
+    }
+    sending.current = true;
+    tab.current ??= tabSession(attempt.submissionId);
+    const events = pending.current.splice(0, PROCTOR_LIMITS.perBeat);
+    const result = await proctorBeat({ submissionId: attempt.submissionId, sessionId: tab.current, events }).then(
+      (answer) => answer,
+      () => null,
+    );
+    sending.current = false;
+    // Not heard (offline, or too many at once): the events go again with the next beat.
+    if (!result?.ok) pending.current.unshift(...events);
+    else if (result.data.state === 'ended') {
+      stop();
+      onEnded(ENDED[result.data.endedBy ?? 'time']);
+      return;
+    } else {
+      setWarnings(result.data.hard);
+      setBlocked(result.data.state === 'blocked');
+      setDeadline(result.data.deadlineAt);
+      setMessages(result.data.messages);
+    }
+    if (again.current) {
+      again.current = false;
+      void beat();
+    }
+  }
+
+  function report(type: ReportedEvent) {
+    if (!p || stopped.current) return;
+    pending.current.push(type);
+    void beat();
+  }
+
+  async function snap() {
+    const view = video.current;
+    if (stopped.current || !view) return;
+    if (!stream.current) {
+      const opened = await openCamera();
+      if (!opened) {
+        if (cameraOn !== false) {
+          setCameraOn(false);
+          report('camera_off');
+        }
+        return;
+      }
+      stream.current = opened;
+      opened.getVideoTracks()[0]?.addEventListener('ended', () => {
+        stream.current = null;
+        setCameraOn(false);
+        report('camera_off');
+      });
+      view.srcObject = opened;
+      setCameraOn(true);
+      await new Promise((done) => window.setTimeout(done, 2_000));
+    }
+    if (view.videoWidth === 0) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    canvas.getContext('2d')?.drawImage(view, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, 'image/jpeg', 0.7));
+    if (!blob) return;
+    // A snapshot that does not reach the server is simply missing; the next one is taken on time.
+    const ticket = await createUpload({
+      purpose: 'proctor-snapshot',
+      contextId: attempt.submissionId,
+      fileName: 'snapshot.jpg',
+      contentType: 'image/jpeg',
+      size: blob.size,
+    }).then(
+      (answer) => answer,
+      () => null,
+    );
+    if (!ticket?.ok) return;
+    const stored = await fetch(ticket.data.url, {
+      method: 'PUT',
+      body: blob,
+      headers: { 'Content-Type': 'image/jpeg' },
+    }).then(
+      (response) => response.ok,
+      () => false,
+    );
+    if (stored) await addSnapshot({ submissionId: attempt.submissionId, key: ticket.data.key });
+  }
+
+  function enterFullscreen() {
+    setRefused(false);
+    document.documentElement.requestFullscreen().then(
+      () => setEntered(true),
+      () => setRefused(true),
+    );
+  }
+
+  const onBeat = useEffectEvent(() => void beat());
+  useEffect(() => {
+    const first = window.setTimeout(onBeat, 0);
+    const timer = window.setInterval(onBeat, BEAT_MS);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const onWatch = useEffectEvent((type: ReportedEvent) => report(type));
+  const onFullscreen = useEffectEvent(() => {
+    if (document.fullscreenElement) setEntered(true);
+    else if (entered) report('fullscreen_exit');
+  });
+  useEffect(() => {
+    if (!p) return;
+    // Blocked in the capture phase and stopped there, so a rich-text editor never sees the paste either.
+    const guard = (type: ReportedEvent) => (event: Event) => {
+      if (p.blockCopy) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      onWatch(type);
+    };
+    const listeners: [EventTarget, string, (event: Event) => void][] = [
+      [
+        document,
+        'visibilitychange',
+        () => {
+          if (document.visibilityState === 'hidden') onWatch('left_page');
+        },
+      ],
+      // The window's own focus only: listening in the capture phase, every field and button losing focus arrives here
+      // too. A file chooser takes the focus away; that is not leaving the test.
+      [
+        window,
+        'blur',
+        (event) => {
+          if (event.target === window && !picking.current) onWatch('left_page');
+        },
+      ],
+      [
+        window,
+        'focus',
+        (event) => {
+          if (event.target === window) picking.current = false;
+        },
+      ],
+      [
+        window,
+        'click',
+        (event) => {
+          if (event.target instanceof HTMLInputElement && event.target.type === 'file') picking.current = true;
+        },
+      ],
+      [document, 'fullscreenchange', () => onFullscreen()],
+      [window, 'copy', guard('copy')],
+      [window, 'cut', guard('copy')],
+      [window, 'paste', guard('paste')],
+      [
+        window,
+        'contextmenu',
+        (event) => {
+          if (!p.blockCopy) return;
+          event.preventDefault();
+          onWatch('right_click');
+        },
+      ],
+      [window, 'beforeprint', () => onWatch('print')],
+      [
+        window,
+        'keydown',
+        (event) => {
+          const blockedType = event instanceof KeyboardEvent ? blockedKey(event) : null;
+          if (!blockedType) return;
+          event.preventDefault();
+          onWatch(blockedType);
+        },
+      ],
+    ];
+    for (const [target, type, listener] of listeners) target.addEventListener(type, listener, true);
+    return () => {
+      for (const [target, type, listener] of listeners) target.removeEventListener(type, listener, true);
+    };
+  }, [p]);
+
+  const onSnap = useEffectEvent(() => void snap());
+  useEffect(() => {
+    if (!p?.camera) return;
+    const first = window.setTimeout(onSnap, 0);
+    const timer = window.setInterval(onSnap, p.snapshotEverySec * 1000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+      stream.current?.getTracks().forEach((track) => track.stop());
+      stream.current = null;
+    };
+  }, [p]);
+
+  return {
+    deadline,
+    warnings,
+    blocked,
+    messages,
+    cameraOn,
+    // Full screen is required and not on: the gate covers the test.
+    gate: Boolean(p?.fullscreen) && !full,
+    canFill,
+    entered,
+    refused,
+    enterFullscreen,
+    retry: () => void beat(),
+    stop,
+  };
+}
+
 // TP-07 ("Runner A", M04b decision 5): one question at a time on a page of its own. Sections are tabs (a "no going
 // back" one closes when left, a timed one at its time — the server decides both); the question map flags questions
 // for review; a review page comes before handing in. Each answer saves 2 s after its last change and retries until
@@ -205,6 +512,14 @@ export function AssessmentRunner({
   const [notice, setNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'hand-in' } | { kind: 'leave'; to: string } | null>(null);
   const [handingIn, setHandingIn] = useState(false);
+  // TP-08: the camera's picture, shown to the taker and drawn into each snapshot.
+  const cameraView = useRef<HTMLVideoElement>(null);
+  const proctor = useProctor(attempt, cameraView, setClosed);
+  const p = attempt.proctoring;
+  const readKey = `lms-attempt-${attempt.submissionId}-read`;
+  const read: string[] = JSON.parse(useStored(readKey) ?? '[]');
+  const message = proctor.messages.findLast((m) => !read.includes(m.id)) ?? null;
+  const [seenWarnings, setSeenWarnings] = useState(attempt.warnings);
   const timers = useRef(new Map<string, number>());
   const latest = useRef(new Map<string, Payload>());
   const spent = useRef(new Map<string, number>());
@@ -220,7 +535,7 @@ export function AssessmentRunner({
   const backup = useStored(backupKey);
 
   const now = useServerSeconds(serverNow);
-  const remaining = now === 0 ? null : new Date(attempt.deadlineAt).getTime() - now * 1000;
+  const remaining = now === 0 ? null : new Date(proctor.deadline).getTime() - now * 1000;
   const section = sections.find((s) => s.id === sectionId) ?? null;
   const sectionLeft = now === 0 || !section?.closesAt ? null : new Date(section.closesAt).getTime() - now * 1000;
   const visible = section ? attempt.items.filter((item) => item.sectionId === section.id) : attempt.items;
@@ -355,6 +670,7 @@ export function AssessmentRunner({
     handing.current = true;
     noteTime();
     await flush();
+    proctor.stop();
     setHandingIn(true);
     startTransition(async () => {
       await submitAttempt({ submissionId: attempt.submissionId });
@@ -476,15 +792,24 @@ export function AssessmentRunner({
       )}
     >
       <TimerIcon className="size-4" />
-      {remaining === null ? '—' : clock(remaining)}
+      {remaining === null ? '—' : formatClock(remaining)}
       <span className="sr-only">left</span>
     </span>
   );
+
+  // TP-08: the taker's email and the time across the page, so a photo of the screen says whose it was.
+  const watermark = p
+    ? `url("data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns='http://www.w3.org/2000/svg' width='340' height='180'><text x='20' y='100' transform='rotate(-20 170 90)' font-family='sans-serif' font-size='13' fill='rgba(128,128,128,0.16)'>${escapeXml(attempt.takerEmail)} · ${now === 0 ? '' : formatTime(new Date(Math.floor(now / 60) * 60_000))}</text></svg>`,
+      )}")`
+    : null;
+  const limit = p?.hardLimit ?? 0;
 
   return (
     <div
       className={cn(
         'bg-background min-h-dvh',
+        p && 'print:hidden',
         prefs.contrast &&
           'bg-white text-black [&_.ring-border]:ring-black/60 [&_.surface]:ring-black/60 [&_.text-muted-foreground]:text-black',
       )}
@@ -499,6 +824,25 @@ export function AssessmentRunner({
           <b className="truncate text-[0.875rem] font-semibold">{attempt.title}</b>
           <span className="text-muted-foreground truncate text-xs">{attempt.takerName}</span>
         </div>
+        {p && (
+          <span
+            className={cn(
+              'hidden items-center gap-1.5 text-xs font-medium lg:inline-flex',
+              proctor.warnings > 0 || proctor.cameraOn === false ? 'text-warning' : 'text-success',
+            )}
+          >
+            {proctor.cameraOn === false ? (
+              <CameraSlashIcon className="size-4" />
+            ) : (
+              <ShieldCheckIcon className="size-4" />
+            )}
+            Proctored ·{' '}
+            {proctor.warnings === 0
+              ? 'no warnings'
+              : `${proctor.warnings}${limit > 0 ? ` of ${limit}` : ''} warning${proctor.warnings === 1 && limit === 0 ? '' : 's'}`}
+            {proctor.cameraOn === false && ' · camera off'}
+          </span>
+        )}
         <span
           className={cn('hidden items-center gap-1.5 text-xs font-medium md:inline-flex', status.tone)}
           aria-live="polite"
@@ -536,7 +880,7 @@ export function AssessmentRunner({
         {sectionLeft !== null && (
           <span className="ring-border hidden h-9 items-center gap-2 rounded-md px-3 text-sm ring-1 sm:inline-flex">
             <span className="text-muted-foreground">Section</span>
-            <b className="font-semibold tabular-nums">{clock(sectionLeft)}</b>
+            <b className="font-semibold tabular-nums">{formatClock(sectionLeft)}</b>
           </span>
         )}
         {attempt.timed && timer}
@@ -582,8 +926,36 @@ export function AssessmentRunner({
           role="status"
         >
           <ClockCountdownIcon className="size-4 shrink-0" />
-          {clock(remaining)} left. Your answers are saved; it is handed in by itself at 0:00.
+          {formatClock(remaining)} left. Your answers are saved; it is handed in by itself at 0:00.
         </p>
+      )}
+      {message && (
+        <div className="bg-primary/10 flex items-center justify-center gap-3 px-4 py-2 text-[0.8125rem]" role="alert">
+          <ChatCircleTextIcon className="text-primary size-4 shrink-0" />
+          <span>
+            <b className="font-semibold">Message from your teacher:</b> {message.text}
+          </span>
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => writeStore(readKey, JSON.stringify([...read, message.id]))}
+          >
+            OK
+          </Button>
+        </div>
+      )}
+      {proctor.warnings > seenWarnings && (
+        <div
+          className="bg-warning/10 text-warning flex items-center justify-center gap-3 px-4 py-2 text-[0.8125rem] font-medium"
+          role="alert"
+        >
+          <WarningIcon className="size-4 shrink-0" />
+          Serious warning {proctor.warnings}
+          {limit > 0 && ` of ${limit}`} recorded. Stay on this page until you hand in.
+          <Button size="xs" variant="outline" onClick={() => setSeenWarnings(proctor.warnings)}>
+            OK
+          </Button>
+        </div>
       )}
       {notice && (
         <p className="bg-muted flex items-center justify-center gap-2 px-4 py-2 text-[0.8125rem]" role="status">
@@ -613,7 +985,7 @@ export function AssessmentRunner({
                 { icon: CircleIcon, value: String(attempt.items.length - done), label: 'Not answered', tone: '' },
                 {
                   icon: TimerIcon,
-                  value: attempt.timed && remaining !== null ? clock(remaining) : '—',
+                  value: attempt.timed && remaining !== null ? formatClock(remaining) : '—',
                   label: 'Time left',
                   tone: '',
                 },
@@ -809,6 +1181,100 @@ export function AssessmentRunner({
         <p className="text-muted-foreground p-6 text-center text-sm">This section has no questions.</p>
       )}
 
+      {watermark && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-30 select-none"
+          style={{ backgroundImage: watermark }}
+        />
+      )}
+      {p?.camera && (
+        <figure className="bg-card fixed bottom-3 left-3 z-30 grid gap-1 rounded-md p-1.5 shadow-sm ring-1 ring-black/10">
+          <video
+            ref={cameraView}
+            autoPlay
+            muted
+            playsInline
+            className="bg-muted aspect-4/3 w-24 rounded-sm object-cover"
+          />
+          <figcaption className="text-muted-foreground px-0.5 text-[0.6875rem]">
+            {proctor.cameraOn === false ? 'Camera off' : 'Your camera'}
+          </figcaption>
+        </figure>
+      )}
+      {(proctor.gate || proctor.blocked) && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/60 p-4">
+          <div className="bg-card grid w-full max-w-md justify-items-center gap-3 rounded-lg p-6 text-center shadow-lg">
+            <span className="bg-warning/15 text-warning grid size-12 place-items-center rounded-full">
+              {proctor.blocked ? <DevicesIcon className="size-6" /> : <WarningIcon className="size-6" />}
+            </span>
+            {proctor.blocked ? (
+              <>
+                <h2 className="text-lg font-semibold">This test is open somewhere else</h2>
+                <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+                  It is open in another tab or on another device. Close it there; this tab can take over a minute after
+                  the other one stops. Opening it twice is recorded as a serious warning.
+                </p>
+                <Button className="w-full" onClick={proctor.retry}>
+                  Try again
+                </Button>
+              </>
+            ) : !proctor.canFill ? (
+              <>
+                <h2 className="text-lg font-semibold">This test needs full screen</h2>
+                <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+                  This browser cannot go full screen. Open the test on a computer; your saved answers are kept.
+                </p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={summary}>Back to the test</Link>
+                </Button>
+              </>
+            ) : proctor.entered ? (
+              <>
+                <h2 className="text-lg font-semibold">You left full screen</h2>
+                <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+                  This is recorded as warning{' '}
+                  <b className="text-foreground">
+                    {proctor.warnings}
+                    {limit > 0 && ` of ${limit}`}
+                  </b>
+                  .{limit > 0 && ` At the ${ordinal(limit)}, your answers are handed in for you.`} Your teacher sees
+                  each warning with its time.
+                </p>
+                {limit > 0 && limit <= 10 && (
+                  <span className="flex gap-1.5" aria-hidden>
+                    {Array.from({ length: limit }, (_, i) => (
+                      <span
+                        key={i}
+                        className={cn('h-1.5 w-12 rounded-full', i < proctor.warnings ? 'bg-warning' : 'bg-muted')}
+                      />
+                    ))}
+                  </span>
+                )}
+                <Button className="w-full" onClick={proctor.enterFullscreen}>
+                  <CornersOutIcon /> Return to full screen
+                </Button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold">This test runs in full screen</h2>
+                <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+                  Your time is running. Leaving full screen or this page while you write is a serious warning.
+                </p>
+                <Button className="w-full" onClick={proctor.enterFullscreen}>
+                  <CornersOutIcon /> Enter full screen
+                </Button>
+              </>
+            )}
+            {proctor.refused && (
+              <p className="text-destructive text-xs">
+                The browser refused. Press F11, or allow full screen, then try again.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>
           {confirm?.kind === 'leave' ? (
@@ -845,6 +1311,9 @@ export function AssessmentRunner({
     </div>
   );
 }
+
+const escapeXml = (text: string) =>
+  text.replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&apos;', '"': '&quot;' })[c] ?? c);
 
 const CHOICE =
   'ring-border has-checked:ring-foreground has-checked:bg-muted/50 has-focus-visible:ring-ring flex cursor-pointer items-center gap-3 rounded-md px-3.5 py-3 text-[0.875rem] ring-1 has-checked:ring-2';

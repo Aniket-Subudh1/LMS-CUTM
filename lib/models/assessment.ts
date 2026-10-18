@@ -6,6 +6,7 @@ import {
   ATTEMPT_POLICIES,
   DIFFICULTIES,
   ITEM_TYPES,
+  PROCTOR_LIMITS,
 } from '@/lib/schemas/assessment';
 import { BLOOM_LEVELS } from '@/lib/schemas/structure';
 
@@ -133,6 +134,26 @@ const assessmentSchema = new Schema(
       ],
       default: [],
     },
+    // TP-08: null when the test is not proctored. Fixed once anyone has started, like the other settings (07 §15).
+    proctoring: {
+      type: new Schema(
+        {
+          fullscreen: { type: Boolean, required: true, default: false },
+          // Camera snapshots every `snapshotEverySec`, at most PROCTOR_LIMITS.snapshots an attempt.
+          camera: { type: Boolean, required: true, default: false },
+          snapshotEverySec: { type: Number, required: true, min: 30, max: 600, default: 60 },
+          blockCopy: { type: Boolean, required: true, default: false },
+          // The serious warning that hands an attempt in; 0 records them only.
+          hardLimit: { type: Number, required: true, min: 0, max: PROCTOR_LIMITS.hardLimit, default: 3 },
+          // Marks taken off the total for each serious warning (0: none); a grader may waive it.
+          penaltyEach: { type: Number, required: true, min: 0, max: 1000, default: 0 },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    // When the daily proctorRetention job deleted this test's camera snapshots (05 §8).
+    snapshotsDeletedAt: { type: Date, default: null },
     // Open or closed is derived from the dates and now (windowState, lib/domain/attempts.ts).
     status: { type: String, enum: ASSESSMENT_STATUSES, required: true, default: 'draft' },
     publishedAt: { type: Date },
@@ -152,6 +173,8 @@ assessmentSchema.index({ 'items.coIds': 1 });
 // The Tests page: a member of staff's standalone tests, the latest closing first (M04b). An admin's list of every
 // standalone test uses { offeringId, status, closesAt } with offeringId null.
 assessmentSchema.index({ ownerIds: 1, closesAt: -1, _id: -1 });
+// The daily proctorRetention job: tests with camera snapshots whose results went out long enough ago (05 §8).
+assessmentSchema.index({ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 });
 
 export type AssessmentDoc = InferSchemaType<typeof assessmentSchema>;
 export const Assessment: Model<AssessmentDoc> =

@@ -2,15 +2,21 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import {
   ArrowLeftIcon,
+  CameraIcon,
   ChatTextIcon,
   CheckSquareIcon,
   CloudCheckIcon,
+  CopyIcon,
   InfoIcon,
   ClockCountdownIcon,
   ListNumbersIcon,
   LockSimpleIcon,
+  MinusCircleIcon,
   PaperPlaneTiltIcon,
+  ShieldCheckIcon,
   TimerIcon,
+  WarningIcon,
+  WifiSlashIcon,
 } from '@phosphor-icons/react/ssr';
 import type { Icon } from '@phosphor-icons/react';
 import { startAttempt } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
@@ -24,7 +30,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
 import { getAssessmentPage, type AssessmentPage } from '@/lib/data/assessments';
 import { assessmentPath } from '@/lib/domain/test-links';
-import { formatDateTime, formatDue, formatDuration, MODE_LABEL, statusTone } from '@/lib/format';
+import { formatDateTime, formatDue, formatDuration, MODE_LABEL, ordinal, statusTone } from '@/lib/format';
 
 type StudentPage = Extract<AssessmentPage, { view: 'student' }>;
 
@@ -76,7 +82,7 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
       ) : lobby ? (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <div className="grid gap-4">
-            <DeviceCheck />
+            <DeviceCheck fullscreen={a.proctoring?.fullscreen} camera={a.proctoring?.camera} />
             {a.instructions && (
               <Section icon={<InfoIcon />} title="Instructions" description="Read these before you start.">
                 <RichTextView doc={a.instructions} />
@@ -132,6 +138,14 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
                 ? 'Your answers are handed in. You will see your marks here once they are published.'
                 : `It closed on ${formatDateTime(end)}.`}
             </p>
+            {attempts[attempts.length - 1]?.endedBy && (
+              <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
+                <WarningIcon className="size-4 shrink-0" />
+                {attempts[attempts.length - 1]?.endedBy === 'warnings'
+                  ? 'Your last attempt reached the limit of serious warnings, so the answers you had saved were handed in.'
+                  : 'Your teacher ended your last attempt; the answers you had saved were handed in.'}
+              </p>
+            )}
             {attempts[attempts.length - 1]?.autoSubmitted && (
               <p className="bg-muted flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
                 <CheckSquareIcon className="size-4 shrink-0" />
@@ -148,6 +162,7 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
 
 function BeforeYouStart({ page }: { page: StudentPage }) {
   const { assessment: a, attempts } = page;
+  const p = a.proctoring;
   const end = a.lateUntil ?? a.closesAt;
   const facts = [
     ['Time limit', a.durationMin ? formatDuration(a.durationMin * 60) : 'None'],
@@ -191,6 +206,38 @@ function BeforeYouStart({ page }: { page: StudentPage }) {
       : []),
     ...(page.extraMin > 0
       ? [{ icon: TimerIcon, text: `You have ${page.extraMin} extra minutes, added to your time.` }]
+      : []),
+    // TP-08 (09 §11): exactly what is watched, before anyone starts.
+    ...(p
+      ? [
+          {
+            icon: ShieldCheckIcon,
+            text: `This test is proctored. ${p.fullscreen ? 'It runs in full screen. Leaving full screen or the test’s page' : 'Leaving the test’s page'}, or opening it in a second tab or on another device, is a serious warning${p.hardLimit > 0 ? `; at the ${ordinal(p.hardLimit)} your saved answers are handed in for you` : ''}.`,
+          },
+          ...(p.penaltyEach > 0
+            ? [
+                {
+                  icon: MinusCircleIcon,
+                  text: `Each serious warning takes ${p.penaltyEach} mark${p.penaltyEach === 1 ? '' : 's'} off your total. Your teacher can waive it.`,
+                },
+              ]
+            : []),
+          {
+            icon: CopyIcon,
+            text: p.blockCopy
+              ? 'Copy, paste and right-click are blocked. Trying them, printing or opening developer tools is recorded.'
+              : 'Copying, pasting, printing and opening developer tools are recorded.',
+          },
+          ...(p.camera
+            ? [
+                {
+                  icon: CameraIcon,
+                  text: `Your camera takes a still picture every ${p.snapshotEverySec} seconds: no video, no sound. Only the test’s staff see them.`,
+                },
+              ]
+            : []),
+          { icon: WifiSlashIcon, text: 'A lost connection is recorded with how long it lasted.' },
+        ]
       : []),
   ];
   return (
@@ -281,6 +328,15 @@ function Results({ page }: { page: StudentPage }) {
           );
         })}
       </ol>
+      {result.penalty > 0 && (
+        <p className="bg-muted flex items-center justify-between gap-3 rounded-md px-3 py-2 text-[0.8125rem]">
+          <span className="flex items-center gap-2">
+            <MinusCircleIcon className="size-4 shrink-0" />
+            Taken off for {result.warnings} serious warning{result.warnings === 1 ? '' : 's'}
+          </span>
+          <b className="tabular-nums">−{result.penalty}</b>
+        </p>
+      )}
     </Section>
   );
 }

@@ -16,6 +16,7 @@ const ICON: Record<SettingsKey, PageIconName> = {
   lessons: 'video',
   evaluation: 'evaluation',
   attendance: 'attendance',
+  proctoring: 'devices',
 };
 
 export default function SettingsPage() {

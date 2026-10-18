@@ -7,9 +7,11 @@ import { buildKey } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
 import { formatBytes } from '@/lib/format';
 import { presignUpload } from '@/lib/integrations/storage';
+import { Assessment } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { Submission } from '@/lib/models/submission';
 import { limit } from '@/lib/rate-limit';
+import { PROCTOR_LIMITS } from '@/lib/schemas/assessment';
 import { ROLES } from '@/lib/schemas/common';
 import { CreateUpload, UPLOAD_PURPOSES } from '@/lib/schemas/uploads';
 
@@ -22,7 +24,7 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
   if (input.size > rule.maxBytes) {
     throw new AppError('VALIDATION', `This file is larger than ${formatBytes(rule.maxBytes)}.`);
   }
-  // 06 §5 "who may upload"; proctoring snapshots are authorized when M05 arrives.
+  // 06 §5 "who may upload".
   switch (input.purpose) {
     case 'lesson-video':
     case 'lesson-doc':
@@ -43,10 +45,28 @@ export const createUpload = action({ input: CreateUpload, roles: ROLES }, async 
         throw new AppError('FORBIDDEN', 'Start the assessment before uploading your answer.');
       }
       break;
+    case 'proctor-snapshot': {
+      // M04b (TP-08): the context is the attempt — this person's, running, on a test that takes snapshots, with room
+      // for more. One every 30 s at most, so these have their own limit.
+      await db();
+      const attempt = await Submission.findOne(
+        {
+          _id: input.contextId,
+          studentId: viewer.id,
+          status: 'in_progress',
+          [`proctor.snapshots.${PROCTOR_LIMITS.snapshots - 1}`]: { $exists: false },
+        },
+        { assessmentId: 1 },
+      ).lean();
+      const test = attempt && (await Assessment.findById(attempt.assessmentId, { proctoring: 1 }).lean());
+      if (!test?.proctoring?.camera) throw new AppError('FORBIDDEN', 'This attempt takes no camera snapshots.');
+      await limit('snapshot', viewer.id, 4, 60_000);
+      break;
+    }
     default:
       throw new AppError('FORBIDDEN', 'You do not have access to this action.');
   }
-  await limit('upload', viewer.id, 60, 60 * 60_000);
+  if (input.purpose !== 'proctor-snapshot') await limit('upload', viewer.id, 60, 60 * 60_000);
   const key = buildKey(input.purpose, input.contextId, viewer.id, crypto.randomUUID(), input.contentType);
   return { key, url: await presignUpload(key, input.contentType, input.size) };
 });

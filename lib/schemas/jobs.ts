@@ -54,3 +54,7 @@ export type LiveControlJob = z.infer<typeof LiveControlJob>;
 // `compute/assessmentSweep` (06 §6, M04): the hourly 24-hour reminders and the hand-in of expired attempts.
 export const AssessmentSweepJob = z.object({});
 export type AssessmentSweepJob = z.infer<typeof AssessmentSweepJob>;
+
+// `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
+export const ProctorRetentionJob = z.object({});
+export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;

@@ -9,7 +9,7 @@
 | Student personal data and submissions | Other students; the public; third parties (AI, vendors) | Scoped DAL queries; private object storage; presigned URLs; AI receives no PII |
 | Accounts | Credential stuffing, session theft | argon2id; rate limits; httpOnly sealed cookie; session versioning |
 | Secrets | Leaking into the browser bundle or logs | Env only; no `NEXT_PUBLIC_`; bundle scan in CI; log redaction |
-| Assessments integrity | Cheating in online tests | Proctoring (M05), time limits, server-side timing, server-side grading |
+| Assessments integrity | Cheating in online tests | Proctoring (M04b phase C, TP-08), time limits, server-side timing, server-side grading |
 
 ## 2. Permission matrix
 
@@ -69,6 +69,7 @@ Every exported DAL function and every action applies these filters; integration 
 | Standalone tests (M04b) | anyone with a `testGrants` row (made by a share link), `status ≠ draft`; their own submissions | their own (`ownerIds ∋ me`): manage | — | all: manage |
 | Question banks (M04b) | — | a course's bank through an offering they teach (edit); their own bank | a course's bank of an offering in their department (read) | all |
 | Share links (M04b) | — (a link's page shows only the test's title, owner, window and counts) | of tests they manage | — | all |
+| Live monitor and proctoring records (M04b) | their own warnings count and the monitor's messages to them; never their snapshots | of tests they manage: act (time, messages, end, waive) | of their department's offerings: watch and read | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
 | Projects & tasks | `memberIds ∋ me` | offering's | offering's | all |
@@ -97,6 +98,9 @@ Rules:
 | Code run | student | 1 per `runCooldownSec` (3 s), 200 / hour |
 | `createUpload` | user | 60 / hour |
 | Answer autosave | user | 60 / min |
+| Proctoring beat (M04b) | user | 30 / min (one every 15 s, plus one per event) |
+| Camera snapshot upload (`createUpload`, `proctor-snapshot`; not counted in the 60 / hour) | user | 4 / min |
+| Monitor messages (M04b) | staff | 30 / min |
 | Beacon | user | 120 / 10 min |
 | AI suggestion | user | 30 / hour |
 
@@ -138,6 +142,9 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `live.removed`, `live.allowed_back` (M03c) | the student removed from a running class or let back; a removed student gets no join token, a join with a token they kept is removed again by the webhook and not counted, and tokens live 10 minutes |
 | `assessment.published`, `assessment.results_published` | status |
 | `submission.graded` | per-item marks before/after |
+| `assessment.time_added` (M04b, the live monitor) | minutes and the number of attempts given them; entity the attempt, or the test for everyone |
+| `submission.ended` (M04b) | status before, `endedBy: teacher` after |
+| `submission.penalty_waived`, `submission.penalty_restored` (M04b) | `waived` and `total` before/after |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |
 | `endsem.imported` | rows applied, syncRunId |
 | `ce.exported` | offerings, syncRunId |
@@ -185,11 +192,12 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Attempt timing is server-side: `deadlineAt` is computed when the attempt starts; a save more than 5 s after `deadlineAt` (the grace for one sent just before 0:00, `SAVE_GRACE_MS`) is rejected and the attempt is auto-submitted with the answers saved until then. The runner's countdown runs on the server's clock (M04), and a closed tab is handed in by the hourly sweep.
 - Integration test (M04/M05): serialize the student DTO of an assessment with answers and hidden cases and assert neither appears.
 
-## 11. Proctoring privacy (M05)
+## 11. Proctoring privacy (M04b phase C, from M05)
 
-- Before a proctored attempt starts, the student sees exactly what is monitored (full-screen exits, tab switches, paste attempts, and — only if enabled — webcam snapshots every N seconds) and must confirm.
-- No audio, no screen recording, no continuous video, no face recognition or automated "cheating" verdicts (pending Q-09). Violations are facts for a teacher to judge.
-- Snapshots are private objects readable only by `teach`/`oversee`; deleted after `snapshotRetentionDays` (05 §8).
+- Before a proctored attempt starts, the lobby lists exactly what is watched — full screen, leaving the page, a second tab or device, copy, paste, right-click, printing and developer tools, lost connections, and only if enabled camera stills every N seconds — with the limit and the penalty, and the taker ticks that they read the rules.
+- No audio, no screen recording, no continuous video, no face recognition or automated "cheating" verdicts (Q-09). Warnings are facts with their times for a teacher to judge; a grader can waive the penalty, audited. The taker sees their own count and a banner for each serious one, and their own camera in the corner while snapshots are taken.
+- Snapshots are private objects (`proctor-snapshot/<submissionId>/…`) readable only by the test's staff (teach, oversee; a standalone test's owners and admins) — never by the person in them; deleted `snapshotRetentionDays` after results (05 §8). Uploads are refused unless the attempt is the viewer's own, running, on a test that takes snapshots, with room left.
+- The watermark (the taker's email and the time) and hiding the page when printed deter photos and copies; blocking copy, paste, right-click and the developer-tools keys is a deterrent the server cannot enforce, so every try is recorded.
 
 ## 12. AI data policy (M09, M10)
 

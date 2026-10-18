@@ -18,6 +18,8 @@ import {
   PencilSimpleIcon,
   PlusIcon,
   PowerIcon,
+  PulseIcon,
+  ShieldCheckIcon,
   StackIcon,
   TimerIcon,
   TrashIcon,
@@ -36,6 +38,7 @@ import {
   reorderSections,
   saveInstructions,
   saveItem,
+  saveProctoring,
   saveSection,
   setExtraTime,
   updateAssessmentSettings,
@@ -64,8 +67,8 @@ import { pickFromBank, type BankRow } from '@/lib/data/bank';
 import { listLinks, type ShareLink } from '@/lib/data/test-links';
 import { PAPERS_CAP } from '@/lib/domain/papers';
 import { plainText } from '@/lib/domain/rich-text';
-import { formatDateTime, formatDuration, ITEM_LABEL, statusTone } from '@/lib/format';
-import { ASSESSMENT_LIMITS, MODE_ITEM_TYPES } from '@/lib/schemas/assessment';
+import { formatDateTime, formatDuration, ITEM_LABEL, ordinal, statusTone } from '@/lib/format';
+import { ASSESSMENT_LIMITS, MODE_ITEM_TYPES, PROCTOR_LIMITS } from '@/lib/schemas/assessment';
 import type { RichTextDoc } from '@/lib/schemas/common';
 import { TEST_LIMITS } from '@/lib/schemas/tests';
 
@@ -170,6 +173,16 @@ export async function AssessmentBuilder({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Badge variant={statusTone(a.state)}>{STATE_LABEL[a.state]}</Badge>
+            {a.status !== 'draft' && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`${b.path}/monitor`}>
+                  <PulseIcon /> Live monitor
+                  {b.counts.inProgress > 0 && (
+                    <span className="text-success tabular-nums">· {b.counts.inProgress} writing</span>
+                  )}
+                </Link>
+              </Button>
+            )}
             {a.status !== 'draft' && (
               <Button asChild variant="outline" size="sm">
                 <Link href={`${b.path}/grade`}>
@@ -319,6 +332,7 @@ export async function AssessmentBuilder({
               ))}
             </dl>
           </Section>
+          <Proctoring b={b} here={here} />
           {b.canEdit && (
             <ShareLinks links={links} qr={qr} here={here} aid={aid} draft={a.status === 'draft'} course={course} />
           )}
@@ -347,6 +361,7 @@ export async function AssessmentBuilder({
       </div>
 
       {b.canEdit && open === 'settings' && <SettingsDialog key={open} b={b} />}
+      {editQuestions && open === 'proctoring' && <ProctoringDialog key={open} b={b} />}
       {b.canEdit && open === 'instructions' && (
         <FormDialog
           key={open}
@@ -573,6 +588,145 @@ function SettingsDialog({ b }: { b: Builder }) {
           </label>
         </div>
       </fieldset>
+    </FormDialog>
+  );
+}
+
+// TP-08: how the test is proctored. Like the other settings it is fixed once anyone has started.
+function Proctoring({ b, here }: { b: Builder; here: (name: string) => string }) {
+  const p = b.proctoring;
+  const rows: [string, string][] = p
+    ? [
+        ['Full screen', p.fullscreen ? 'Required' : 'Not required'],
+        ['Camera snapshots', p.camera ? `Every ${p.snapshotEverySec} s` : 'Off'],
+        ['Copy, paste, right-click', p.blockCopy ? 'Blocked' : 'Allowed, and recorded'],
+        ['Serious warnings', p.hardLimit > 0 ? `Handed in at the ${ordinal(p.hardLimit)}` : 'Recorded only'],
+        ['Penalty', p.penaltyEach > 0 ? `${p.penaltyEach} mark${p.penaltyEach === 1 ? '' : 's'} each` : 'None'],
+      ]
+    : [];
+  return (
+    <Section
+      icon={<ShieldCheckIcon />}
+      title="Proctoring"
+      description={
+        p
+          ? 'Leaving the page, a second tab or device and lost connections are recorded.'
+          : 'Off: nothing is watched while people write.'
+      }
+      action={
+        b.canEdit &&
+        !b.locked && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={here('proctoring')} scroll={false}>
+              <PencilSimpleIcon /> {p ? 'Edit' : 'Turn on'}
+            </Link>
+          </Button>
+        )
+      }
+    >
+      {p && (
+        <dl className="grid gap-2 text-[0.8125rem]">
+          {rows.map(([label, value]) => (
+            <div
+              key={label}
+              className="border-border/70 flex justify-between gap-3 border-b pb-2 last:border-0 last:pb-0"
+            >
+              <dt className="text-muted-foreground">{label}</dt>
+              <dd className="text-right font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </Section>
+  );
+}
+
+function ProctoringDialog({ b }: { b: Builder }) {
+  const p = b.proctoring;
+  const check = (name: string, label: string, hint: string, on: boolean) => (
+    <label className="flex items-start gap-2.5 text-[0.8125rem]">
+      <input type="checkbox" name={name} defaultChecked={on} className="accent-foreground mt-0.5 size-4 shrink-0" />
+      <span className="grid gap-0.5">
+        <b className="font-medium">{label}</b>
+        <span className="text-muted-foreground text-xs">{hint}</span>
+      </span>
+    </label>
+  );
+  return (
+    <FormDialog
+      openParam="proctoring"
+      size="wide"
+      icon={<ShieldCheckIcon weight="duotone" />}
+      title="Proctoring"
+      description="Everyone sees exactly what is watched before they start. Nothing here can change once someone has started."
+      action={saveProctoring}
+      submitLabel="Save"
+      successMessage="Proctoring saved."
+    >
+      <input type="hidden" name="assessmentId" value={b.assessment.id} />
+      {check(
+        'enabled',
+        'Proctor this test',
+        'Records leaving the page, opening it in a second tab or on another device, and lost connections.',
+        p !== null,
+      )}
+      <div className="grid gap-4 border-t pt-4">
+        {check(
+          'fullscreen',
+          'Require full screen',
+          'The test waits in full screen; leaving it is a serious warning. Phones that cannot go full screen cannot take it.',
+          p?.fullscreen ?? true,
+        )}
+        {check(
+          'blockCopy',
+          'Block copy, paste and right-click',
+          'Tries are recorded as minor warnings, as are printing and opening developer tools.',
+          p?.blockCopy ?? true,
+        )}
+        {check(
+          'camera',
+          'Take camera snapshots',
+          'A still picture now and then, no video or sound. Only the test’s staff see them; they are deleted some time after results.',
+          p?.camera ?? false,
+        )}
+        <div className="grid gap-5 sm:grid-cols-3">
+          <Field name="snapshotEverySec" label="One snapshot every (seconds)">
+            <Input
+              name="snapshotEverySec"
+              type="number"
+              min={30}
+              max={600}
+              required
+              defaultValue={p?.snapshotEverySec ?? 60}
+            />
+          </Field>
+          <Field
+            name="hardLimit"
+            label="Hand in at serious warning"
+            hint="0 only records them. Serious: leaving full screen or the page, a second tab or device."
+          >
+            <Input
+              name="hardLimit"
+              type="number"
+              min={0}
+              max={PROCTOR_LIMITS.hardLimit}
+              required
+              defaultValue={p?.hardLimit ?? 3}
+            />
+          </Field>
+          <Field name="penaltyEach" label="Marks off per serious warning" hint="0 for none. A grader can waive it.">
+            <Input
+              name="penaltyEach"
+              type="number"
+              min={0}
+              max={1000}
+              step={0.01}
+              required
+              defaultValue={p?.penaltyEach ?? 0}
+            />
+          </Field>
+        </div>
+      </div>
     </FormDialog>
   );
 }

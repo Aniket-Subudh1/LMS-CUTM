@@ -7,6 +7,7 @@ import { notify } from '@/lib/data/notify';
 import { deriveAttendance } from '@/lib/domain/attendance';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
+import { deleteObjects } from '@/lib/integrations/storage';
 import { formatDateTime } from '@/lib/format';
 import { log } from '@/lib/log';
 import { Assessment } from '@/lib/models/assessment';
@@ -18,12 +19,18 @@ import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
 import { queueLiveFinalize } from '@/lib/queue';
-import { AssessmentSweepJob, FinalizeLiveJob, LiveControlJob, LiveSweepJob } from '@/lib/schemas/jobs';
+import {
+  AssessmentSweepJob,
+  FinalizeLiveJob,
+  LiveControlJob,
+  LiveSweepJob,
+  ProctorRetentionJob,
+} from '@/lib/schemas/jobs';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
 
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep';
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob;
+type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep' | 'proctorRetention';
+type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob | ProctorRetentionJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -196,12 +203,56 @@ async function assessmentSweep(now: Date): Promise<void> {
   log.info('assessment sweep', { reminded, handedIn });
 }
 
+// The daily scheduler `proctorRetention` (05 §8, M04b TP-08): the camera snapshots of tests whose results went out
+// more than `snapshotRetentionDays` ago are deleted from storage, then from their attempts, and the test is marked
+// done. Storage goes first, so a crash between the two only repeats a deletion.
+async function proctorRetention(now: Date): Promise<void> {
+  const stored = await Setting.findById('proctoring', { value: 1 }).lean();
+  const { snapshotRetentionDays } = SETTINGS.proctoring.schema.parse(stored?.value ?? {});
+  const tests = await Assessment.find(
+    {
+      'proctoring.camera': true,
+      snapshotsDeletedAt: null,
+      resultsPublishedAt: { $lt: new Date(now.getTime() - snapshotRetentionDays * 24 * 60 * MINUTE_MS) },
+    },
+    { _id: 1 },
+  )
+    .limit(50)
+    .lean();
+  let deleted = 0;
+  for (const test of tests) {
+    // At most PROCTOR_LIMITS.snapshots keys per attempt, so a batch of 100 attempts is at most 24,000 keys.
+    for (let batch = 0; batch < 1000; batch++) {
+      const attempts = await Submission.find(
+        { assessmentId: test._id, 'proctor.snapshots.0': { $exists: true } },
+        { proctor: 1 },
+      )
+        .limit(100)
+        .lean();
+      if (attempts.length === 0) break;
+      const keys = attempts.flatMap((attempt) => attempt.proctor?.snapshots.map((snapshot) => snapshot.key) ?? []);
+      await deleteObjects(keys);
+      await Submission.updateMany(
+        { _id: { $in: attempts.map((attempt) => attempt._id) } },
+        { $set: { 'proctor.snapshots': [] } },
+      );
+      deleted += keys.length;
+    }
+    await Assessment.updateOne({ _id: test._id }, { $set: { snapshotsDeletedAt: now } });
+  }
+  log.info('proctor retention', { tests: tests.length, deleted });
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
   if (job.name === 'assessmentSweep') {
     AssessmentSweepJob.parse(job.data);
     return assessmentSweep(new Date());
+  }
+  if (job.name === 'proctorRetention') {
+    ProctorRetentionJob.parse(job.data);
+    return proctorRetention(new Date());
   }
   LiveSweepJob.parse(job.data);
   return liveSweep(new Date());

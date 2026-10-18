@@ -182,6 +182,16 @@ export async function HandInsView({
                   <span className="whitespace-nowrap">{row.submittedAt ? formatDateTime(row.submittedAt) : '—'}</span>
                   {row.late && <Badge variant="warning">Late</Badge>}
                   {row.autoSubmitted && <Badge variant="secondary">By the timer</Badge>}
+                  {row.endedBy && (
+                    <Badge variant="destructive">
+                      {row.endedBy === 'warnings' ? 'Ended at the warning limit' : 'Ended by staff'}
+                    </Badge>
+                  )}
+                  {row.warnings > 0 && (
+                    <Badge variant="warning">
+                      {row.warnings} warning{row.warnings === 1 ? '' : 's'}
+                    </Badge>
+                  )}
                 </span>
               ),
             },

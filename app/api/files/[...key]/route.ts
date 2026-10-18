@@ -32,6 +32,16 @@ function redirect(url: string) {
   return new Response(null, { status: 302, headers: { Location: url, 'Cache-Control': 'private, max-age=300' } });
 }
 
+// Whoever teaches or oversees the assessment's class — or, for a standalone test (M04b), its owners and the admins.
+// Null when the assessment does not exist.
+async function assessmentStaff(viewer: Viewer, assessmentId: Types.ObjectId | string): Promise<boolean | null> {
+  const assessment = await Assessment.findById(assessmentId, { offeringId: 1, ownerIds: 1 }).lean();
+  if (!assessment) return null;
+  return assessment.offeringId
+    ? (await reach(viewer, { _id: String(assessment.offeringId) })) === 'staff'
+    : viewer.roles.includes('admin') || assessment.ownerIds.some((id) => id.equals(viewer.id));
+}
+
 // 06 §5 "who may download", re-checked on every request; then a 10-minute presigned GET (S6: no bytes through Next).
 export async function GET(_request: Request, context: RouteContext<'/api/files/[...key]'>): Promise<Response> {
   const viewer = await getViewer();
@@ -79,16 +89,11 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
   }
 
   if (owner.purpose === 'submission') {
-    // 06 §5: the student who uploaded it, and whoever teaches or oversees the assessment's class — or, for a
-    // standalone test (M04b), its owners and the admins. The name is the one kept with the answer (a student has at
-    // most 10 attempts, so the search is bounded).
-    const assessment = await Assessment.findById(owner.contextId, { offeringId: 1, ownerIds: 1 }).lean();
-    if (!assessment) return missing();
-    const staff = assessment.offeringId
-      ? (await reach(viewer, { _id: String(assessment.offeringId) })) === 'staff'
-      : viewer.roles.includes('admin') || assessment.ownerIds.some((id) => id.equals(viewer.id));
-    if (owner.userId !== viewer.id && !staff) return missing();
-    const attempts = await Submission.find({ assessmentId: assessment._id, studentId: owner.userId }, { answers: 1 })
+    // 06 §5: the student who uploaded it and the assessment's staff. The name is the one kept with the answer (a
+    // student has at most 10 attempts, so the search is bounded).
+    const staff = await assessmentStaff(viewer, owner.contextId);
+    if (staff === null || (owner.userId !== viewer.id && !staff)) return missing();
+    const attempts = await Submission.find({ assessmentId: owner.contextId, studentId: owner.userId }, { answers: 1 })
       .limit(10)
       .lean();
     const file = attempts
@@ -97,6 +102,16 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
       .find((f) => f.key === key);
     if (!file && owner.userId !== viewer.id) return missing();
     return redirect(await presignDownload(key, file?.fileName ?? 'answer'));
+  }
+
+  if (owner.purpose === 'proctor-snapshot') {
+    // M04b (TP-08, 09 §11): the assessment's staff only, never the person in the picture; the context is the attempt.
+    const attempt = await Submission.findOne(
+      { _id: owner.contextId, studentId: owner.userId, 'proctor.snapshots.key': key },
+      { assessmentId: 1 },
+    ).lean();
+    if (!attempt || !(await assessmentStaff(viewer, attempt.assessmentId))) return missing();
+    return redirect(await presignDownload(key, 'snapshot.jpg'));
   }
 
   return missing();

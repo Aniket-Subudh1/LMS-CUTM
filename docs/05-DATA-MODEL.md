@@ -224,7 +224,7 @@ Invariants: a manual mark overrides a derived one and is audited (`attendance.ma
 ## 5. Assessment and marks
 
 ### 5.1 `assessments`
-Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`. M04 builds the first five (`ASSESSMENT_MODES`, with the question types each may hold in `MODE_ITEM_TYPES`, `lib/schemas/assessment.ts`); M05 adds the coding modes, `proctoring` and the `code` items, M07 `project_review` and `observation` items. Sizes are `ASSESSMENT_LIMITS` there.
+Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_record` · `lab_record` · `coding_test` · `lab_test` · `coding_competition` · `project_review`. M04 builds the first five (`ASSESSMENT_MODES`, with the question types each may hold in `MODE_ITEM_TYPES`, `lib/schemas/assessment.ts`); M04b adds `proctoring` (TP-08); M05 the coding modes and the `code` items, M07 `project_review` and `observation` items. Sizes are `ASSESSMENT_LIMITS` there.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -243,7 +243,8 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | attemptPolicy | S | `best` · `last` |
 | shuffleItems, shuffleOptions | B | items shuffle within their section |
 | extraTime | `[{ userId: Id, minutes: N }]` | M04b (TP-07), ≤ 200 people, 1–600 minutes; lengthens that person's time limit and the end of hand-ins (07 §14); audited (`assessment.extra_time`) |
-| proctoring | `{ enabled: B, fullscreen: B, tabSwitchLimit: N, blockPaste: B, webcamSnapshots: B, snapshotIntervalSec: N }` | M05; `tabSwitchLimit` 0 = log only; interval 30–600 |
+| proctoring | `{ fullscreen: B, camera: B, snapshotEverySec: N, blockCopy: B, hardLimit: N, penaltyEach: N }?` | M04b (TP-08, from M05); null = not proctored. Snapshots every 30–600 s; `hardLimit` 0–20 (0 records only; the N-th serious warning hands the attempt in, 07 §15); `penaltyEach` 0–1000 marks off per serious warning, two decimals. Fixed once anyone has started, like the other settings |
+| snapshotsDeletedAt | D? | M04b: when `proctorRetention` deleted the test's camera snapshots (§8) |
 | status | S | `draft` · `published` · `results_published`. Open/closed is **derived** from `opensAt`, `closesAt`, `lateUntil` and now |
 | publishedAt, resultsPublishedAt | D? | |
 | dueNotifiedAt | D? | set when the 24-hour reminder was sent (M04 sweep) |
@@ -273,7 +274,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 
 **Section** (embedded, M04b): `title` S ≤ 80 · `durationMin` N? (1–600; its own clock from when an attempt first opens it) · `locked` B ("no going back": closes when left; later sections open only after it) · `passage` RichText? (shown beside each of its questions) · `draw` `{ count: 1–100, easy, medium, hard: % (0 or adding to 100), coIds: [Id], topics: [S], marksEach: N, negativeEach: N }?` — questions drawn from the bank for each attempt (only automatically marked types, A-M04b-10), each worth `marksEach`.
 
-Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b).
+Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b) · `{ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 }` (the daily snapshot clean-up, M04b).
 Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
 
 ### 5.2 `submissions` (one document per attempt)
@@ -284,10 +285,11 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | attemptNo | N | 1…attemptsAllowed |
 | status | S | `in_progress` · `submitted` · `graded` |
 | startedAt | D | |
-| deadlineAt | D | min(startedAt + duration, lateUntil ?? closesAt) |
+| deadlineAt | D | min(startedAt + duration, lateUntil ?? closesAt), both lengthened by the person's extra time; the live monitor adds minutes to it (M04b) |
 | submittedAt | D? | |
-| late | B | submittedAt > closesAt |
-| autoSubmitted | B | time ran out or proctoring limit hit; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-M04-3) |
+| late | B | submittedAt > closesAt + the person's extra time + `proctor.addedMin` (M04b) |
+| autoSubmitted | B | time ran out; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-M04-3) |
+| endedBy | S? | M04b (TP-08): `warnings` (the serious-warning limit) · `teacher` (the live monitor's End attempt); null otherwise |
 | paper | [Item + `sectionId`, `bankItemId`?] | M04b (TP-05): the questions this attempt was given, frozen at its start — the assessment's own and those its sections drew from the bank (`bankItemId`, worth the section's marks) — in this attempt's order, options in this attempt's order (an ordering question's steps never start in the right order). Grading and results read only this; ≤ 100 items. Keys included: **never sent to students** as stored |
 | flags | [Id] | M04b (TP-07): questions flagged for review |
 | spent | Map `<itemId>` → N | M04b (TP-07): seconds on each question, added by saves (≤ 600 a save) |
@@ -299,7 +301,7 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000; marks may be negative (negative marking, 07 §14) |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |
-| proctor | `{ violations: N, events: [{ type: S, at: D, detail: S? }], snapshots: [{ key: S, at: D }] }` | events max 300, snapshots max 120 (`$slice`) |
+| proctor | `{ hard: N, soft: N, lastHardAt: D?, events: [{ type: S, at: D, counted: B, detail: S? }], snapshots: [{ key: S, at: D }], sessionId: S?, lastBeatAt: D?, addedMin: N, messages: [{ _id, text: S, at: D }], waived: B }` | M04b (TP-08), on every attempt — the monitor's last seen, added time and messages work unproctored too. `events` the newest 300 (`$slice`); `snapshots` at most 240 (no more are taken); `messages` the newest 20, each ≤ 300 characters; `waived` is a grader's waiver of the penalty (audited). The beat writes under a guard on the tally it read (07 §15) |
 
 Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04).
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
@@ -403,7 +405,7 @@ Invariants: never updated or deleted by application code. `before`/`after` hold 
 | Guest (candidate) accounts, their grants and attempts | Permanent, like any submission (M04b open question "Guests") | — |
 | Email codes (`otps`) | 10 minutes | TTL index |
 | Notifications | 90 days | TTL index |
-| Proctoring webcam snapshots | 90 days after `resultsPublishedAt` (A-13; confirm Q-24) | Daily worker job deletes objects and `$unset`s keys |
+| Proctoring webcam snapshots | `snapshotRetentionDays` (90) after `resultsPublishedAt` (A-13; confirm Q-24) | The daily `proctorRetention` job deletes the objects, empties `proctor.snapshots` and sets the test's `snapshotsDeletedAt` (M04b) |
 | Lesson videos/documents | Until the lesson is deleted | Deleted with the lesson |
 | Submission files | Permanent with the submission | — |
 | syncRuns | 2 years | Monthly worker job |

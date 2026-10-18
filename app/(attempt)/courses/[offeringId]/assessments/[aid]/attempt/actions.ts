@@ -11,6 +11,7 @@ import { buildPaper } from '@/lib/data/papers';
 import { db, isDuplicateKey } from '@/lib/db';
 import { canStart, deadlineAt, planSectionMove, sectionOpen, type SectionRule } from '@/lib/domain/attempts';
 import { isPermutation } from '@/lib/domain/order';
+import { connectionGap, recordEvent, sessionCheck } from '@/lib/domain/proctoring';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { parseKey, sanitizeFileName } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
@@ -19,7 +20,17 @@ import { Assessment } from '@/lib/models/assessment';
 import { BankItem } from '@/lib/models/bank-item';
 import { Submission } from '@/lib/models/submission';
 import { limit } from '@/lib/rate-limit';
-import { AssessmentRef, EnterSection, FlagItem, SaveAnswer, SubmissionRef } from '@/lib/schemas/assessment';
+import {
+  AddSnapshot,
+  AssessmentRef,
+  EnterSection,
+  FlagItem,
+  PROCTOR_LIMITS,
+  ProctorBeat,
+  SaveAnswer,
+  SubmissionRef,
+  type ProctorEvent,
+} from '@/lib/schemas/assessment';
 
 // A course's students, and the candidates and LMS users a share link let into a standalone test (M04b).
 const TAKERS = ['student', 'candidate', 'faculty', 'hod', 'admin', 'support'] as const;
@@ -281,6 +292,118 @@ export const enterSection = action({ input: EnterSection, roles: TAKERS }, async
     { $set: { currentSectionId: input.sectionId, visits: next } },
   );
   if (written.matchedCount === 0) throw new AppError('CONFLICT', 'Your test changed in another tab. Reload the page.');
+});
+
+// A count read as 0 matches an attempt that has none yet.
+const asRead = (count: number) => (count === 0 ? { $in: [0, null] } : count);
+
+// TP-08: the runner's beat (07 §15), every BEAT_MS and at once with what it noticed. A proctored attempt stays on one
+// tab or device: another one still beating is refused, and recorded once as a serious warning. It records the events
+// and any lost connection, hands the attempt in at the serious-warning limit, and answers with the deadline (the
+// monitor may have added time), the serious warnings so far and the monitor's messages. Unproctored attempts beat too,
+// for the monitor's "last seen", time and messages. 30 a minute (09 §4).
+export const proctorBeat = action({ input: ProctorBeat, roles: TAKERS }, async (input, viewer) => {
+  await db();
+  const found = await Submission.findOne({ _id: input.submissionId, studentId: viewer.id }, { assessmentId: 1 }).lean();
+  if (!found) throw new AppError('NOT_FOUND', 'Attempt not found.');
+  await requireTake(viewer, String(found.assessmentId));
+  await limit('proctor', viewer.id, 30, 60_000);
+  const rules = (await Assessment.findById(found.assessmentId, { proctoring: 1 }).lean())?.proctoring ?? null;
+  // A warning sent just as the clock beats arrives twice at once: each write is guarded by the tally it read, and
+  // the one that loses reads again.
+  for (let round = 0; round < 3; round++) {
+    const attempt = await Submission.findById(found._id, { status: 1, deadlineAt: 1, endedBy: 1, proctor: 1 }).lean();
+    if (!attempt) throw new AppError('NOT_FOUND', 'Attempt not found.');
+    if (attempt.status !== 'in_progress') return { state: 'ended' as const, endedBy: attempt.endedBy ?? null };
+    const now = new Date();
+    if (isExpired(attempt, now)) {
+      await handInAttempts([String(attempt._id)], now);
+      return { state: 'ended' as const, endedBy: null };
+    }
+    const held = {
+      hard: attempt.proctor?.hard ?? 0,
+      soft: attempt.proctor?.soft ?? 0,
+      lastHardAt: attempt.proctor?.lastHardAt ?? null,
+      sessionId: attempt.proctor?.sessionId ?? null,
+      lastBeatAt: attempt.proctor?.lastBeatAt ?? null,
+    };
+    const blocked = rules !== null && sessionCheck(held, input.sessionId, now) === 'clash';
+    let tally = { hard: held.hard, soft: held.soft, lastHardAt: held.lastHardAt };
+    let end = false;
+    const events: { type: ProctorEvent; at: Date; counted: boolean; detail?: string }[] = [];
+    const note = (type: ProctorEvent, detail?: string) => {
+      if (!rules) return;
+      const result = recordEvent(tally, type, now, rules.hardLimit);
+      tally = result.tally;
+      end ||= result.end;
+      events.push({ type, at: now, counted: result.counted, ...(detail ? { detail } : {}) });
+    };
+    const tab = input.sessionId.slice(0, 8);
+    if (blocked) {
+      if (!attempt.proctor?.events.some((e) => e.type === 'second_device' && e.detail === tab)) note('second_device', tab);
+    } else {
+      const gap = connectionGap(held.lastBeatAt, now);
+      if (gap !== null) note('connection_gap', `${gap} s`);
+      for (const type of input.events) note(type);
+    }
+    const written = await Submission.updateOne(
+      {
+        _id: attempt._id,
+        status: 'in_progress',
+        'proctor.hard': asRead(held.hard),
+        'proctor.soft': asRead(held.soft),
+        'proctor.lastBeatAt': held.lastBeatAt,
+      },
+      {
+        $set: {
+          ...(blocked ? {} : { 'proctor.sessionId': input.sessionId, 'proctor.lastBeatAt': now }),
+          'proctor.hard': tally.hard,
+          'proctor.soft': tally.soft,
+          'proctor.lastHardAt': tally.lastHardAt,
+        },
+        ...(events.length > 0
+          ? { $push: { 'proctor.events': { $each: events, $slice: -PROCTOR_LIMITS.events } } }
+          : {}),
+      },
+    );
+    if (written.matchedCount === 0) continue;
+    if (end) {
+      await handInAttempts([String(attempt._id)], now, 'warnings');
+      return { state: 'ended' as const, endedBy: 'warnings' as const };
+    }
+    return {
+      state: blocked ? ('blocked' as const) : ('live' as const),
+      hard: tally.hard,
+      deadlineAt: attempt.deadlineAt,
+      messages: (attempt.proctor?.messages ?? []).map((m) => ({ id: String(m._id), text: m.text, at: m.at })),
+    };
+  }
+  throw new AppError('CONFLICT', 'Your test changed in another tab. Reload the page.');
+});
+
+// TP-08: a camera snapshot the runner uploaded (createUpload checked the attempt, the test's camera rule and the
+// limit), recorded while the attempt runs. Only staff see it (09 §11).
+export const addSnapshot = action({ input: AddSnapshot, roles: TAKERS }, async (input, viewer) => {
+  const { attempt, now } = await runningAttempt(viewer, input.submissionId);
+  const owner = parseKey(input.key);
+  if (
+    !owner ||
+    owner.purpose !== 'proctor-snapshot' ||
+    owner.contextId !== input.submissionId ||
+    owner.userId !== viewer.id
+  ) {
+    throw new AppError('VALIDATION', 'That snapshot is not from this attempt.');
+  }
+  const written = await Submission.updateOne(
+    {
+      _id: attempt._id,
+      status: 'in_progress',
+      [`proctor.snapshots.${PROCTOR_LIMITS.snapshots - 1}`]: { $exists: false },
+      'proctor.snapshots.key': { $ne: input.key },
+    },
+    { $push: { 'proctor.snapshots': { key: input.key, at: now } } },
+  );
+  if (written.matchedCount === 0) throw new AppError('CONFLICT', 'No more snapshots are kept for this attempt.');
 });
 
 // T5: the student's Submit, or the runner's at 0:00 (handInAttempts marks that one as the timer's).

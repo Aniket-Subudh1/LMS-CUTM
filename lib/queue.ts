@@ -12,13 +12,14 @@ import type {
   MailJob,
   MailSend,
   MediaJob,
+  ProctorRetentionJob,
 } from '@/lib/schemas/jobs';
 
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
 type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
 type SyncQueue = Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
-type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob;
-type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep';
+type ComputeData = FinalizeLiveJob | LiveSweepJob | LiveControlJob | AssessmentSweepJob | ProctorRetentionJob;
+type ComputeName = 'finalizeLiveSession' | 'liveSweep' | 'liveControl' | 'assessmentSweep' | 'proctorRetention';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;

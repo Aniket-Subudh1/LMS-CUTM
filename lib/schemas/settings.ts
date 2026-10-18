@@ -125,8 +125,25 @@ export const SETTINGS = {
         'A student is present when they were in the class for at least this share of the time from its start to its end. Time in two tabs at once counts once. A teacher can still change any student by hand.',
     },
   },
+  proctoring: {
+    // Q-24: 90 days is the proposed period until the client confirms it (05 §8).
+    schema: z.object({
+      snapshotRetentionDays: z.coerce
+        .number({ error: 'Enter a number of days.' })
+        .int('Use whole days.')
+        .min(7, 'Keep them at least 7 days.')
+        .max(365, 'Keep them at most 365 days.')
+        .default(90),
+    }),
+    label: 'Proctoring',
+    description: 'How long the camera snapshots of proctored tests are kept.',
+    fieldHelp: {
+      snapshotRetentionDays:
+        "Snapshots are deleted this many days after a test's results are published. Until then only the test's teachers and owners see them; the person in them never does.",
+    },
+  },
 } as const;
 
-export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance']);
+export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'proctoring']);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

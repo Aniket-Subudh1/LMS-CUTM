@@ -1,4 +1,4 @@
-import type { AssessmentMode, ItemType } from '@/lib/schemas/assessment';
+import type { AssessmentMode, ItemType, ProctorEvent } from '@/lib/schemas/assessment';
 import type { Role } from '@/lib/schemas/common';
 import type { COURSE_TYPES } from '@/lib/schemas/structure';
 
@@ -66,6 +66,19 @@ const timeFormat = new Intl.DateTimeFormat('en-IN', {
 // `10:30 AM`: a live class's start and end on the day it is listed under.
 export function formatTime(date: Date): string {
   return timeFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());
+}
+
+const secondFormat = new Intl.DateTimeFormat('en-IN', {
+  timeZone: IST,
+  hour: 'numeric',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: true,
+});
+
+// `10:30:05 AM`: proctoring's log, where seconds matter (TP-08).
+export function formatTimeSeconds(date: Date): string {
+  return secondFormat.format(date).replace(/\b(am|pm)$/i, (m) => m.toUpperCase());
 }
 
 // `12 Oct 2026, 10:30 AM` (08 §7); en-IN prints the meridiem in lower case.
@@ -146,6 +159,15 @@ export function formatBytes(bytes: number): string {
   return `${sizeFormat.format(value)} ${unit}`;
 }
 
+// A countdown: `9:05`, `1:02:09`; never below 0.
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+}
+
 // Video lengths: `45 s`, `12 min`, `1 h 5 min`.
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)} s`;
@@ -180,6 +202,33 @@ export const ITEM_LABEL: Record<ItemType, string> = {
   text: 'Written answer',
   file: 'Upload',
 };
+
+// What proctoring noticed, in plain words (TP-08): the grader's log, the monitor and the runner.
+export const PROCTOR_EVENT_LABEL: Record<ProctorEvent, string> = {
+  fullscreen_exit: 'Left full screen',
+  left_page: 'Left the test’s page',
+  second_device: 'Opened in a second tab or device',
+  copy: 'Tried to copy',
+  paste: 'Tried to paste',
+  right_click: 'Right-clicked',
+  print: 'Tried to print',
+  devtools: 'Tried to open developer tools',
+  connection_gap: 'Connection lost',
+  camera_off: 'Camera off',
+};
+
+const ORDINAL = new Intl.PluralRules('en-IN', { type: 'ordinal' });
+const ORDINAL_SUFFIX: Record<Intl.LDMLPluralRule, string> = {
+  zero: 'th',
+  one: 'st',
+  two: 'nd',
+  few: 'rd',
+  many: 'th',
+  other: 'th',
+};
+
+// 1st, 2nd, 3rd, 11th, 22nd.
+export const ordinal = (n: number) => `${n}${ORDINAL_SUFFIX[ORDINAL.select(n)]}`;
 
 // "Due in 2 days" for a deadline badge (08 §7); minutes in the last hour, hours in the last two days.
 export function formatDue(due: Date, now: Date): string {

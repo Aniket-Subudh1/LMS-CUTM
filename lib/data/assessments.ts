@@ -17,6 +17,7 @@ import {
   type WindowState,
 } from '@/lib/domain/attempts';
 import { distinctPapers } from '@/lib/domain/papers';
+import { GAP_MS, proctorPenalty } from '@/lib/domain/proctoring';
 import { seededShuffle } from '@/lib/domain/shuffle';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
@@ -35,6 +36,7 @@ import {
   type AttemptPolicy,
   type Difficulty,
   type ItemType,
+  type ProctorEvent,
 } from '@/lib/schemas/assessment';
 import { pageSize, RichTextDoc } from '@/lib/schemas/common';
 import { MAX_ENROLLMENTS, type BLOOM_LEVELS } from '@/lib/schemas/structure';
@@ -323,6 +325,28 @@ export async function listTests(view: TestListView, filter: AssessmentListFilter
   return { view: 'take', canCreate, total, rows: await withMyAttempts(docs, viewer.id, now) };
 }
 
+// TP-08: how a test is proctored, or null when it is not.
+export type Proctoring = {
+  fullscreen: boolean;
+  camera: boolean;
+  snapshotEverySec: number;
+  blockCopy: boolean;
+  hardLimit: number;
+  penaltyEach: number;
+} | null;
+
+const proctoringOf = ({ proctoring: p }: Pick<AssessmentDoc, 'proctoring'>): Proctoring =>
+  p
+    ? {
+        fullscreen: p.fullscreen,
+        camera: p.camera,
+        snapshotEverySec: p.snapshotEverySec,
+        blockCopy: p.blockCopy,
+        hardLimit: p.hardLimit,
+        penaltyEach: p.penaltyEach,
+      }
+    : null;
+
 async function readAssessment(assessmentId: string) {
   if (!Types.ObjectId.isValid(assessmentId)) notFound();
   const doc = await Assessment.findById(assessmentId).lean();
@@ -407,6 +431,8 @@ export type StudentAssessment = Omit<AssessmentSummary, 'state'> & {
   instructions: RichTextDoc | null;
   resultsPublished: boolean;
   sections: SectionSummary[];
+  // TP-08 (09 §11): shown in full before anyone starts.
+  proctoring: Proctoring;
 };
 
 // What a taker reads about a test before starting (the lobby): never its questions.
@@ -428,6 +454,7 @@ function toStudentAssessment(doc: AssessmentRead): StudentAssessment {
     instructions: docOf(doc.instructions),
     resultsPublished: doc.status === 'results_published',
     sections: sectionSummaries(doc),
+    proctoring: proctoringOf(doc),
   };
 }
 
@@ -516,6 +543,8 @@ export type Builder = {
   // What the bank cannot supply for the sections' draws, and how many different papers it can make (null: no draws).
   bank: { shortfalls: string[]; papers: number | null };
   extraTime: { userId: string; name: string; email: string; minutes: number }[];
+  // TP-08
+  proctoring: Proctoring;
   // What publishing still needs (T4): question numbers without a CO on a credit course.
   missingCos: number[];
   counts: { handedIn: number; toGrade: number; inProgress: number };
@@ -602,6 +631,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
         minutes: entry.minutes,
       };
     }),
+    proctoring: proctoringOf(doc),
     missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
     counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
   };
@@ -656,6 +686,9 @@ async function readSubmission(filter: QueryFilter<SubmissionDoc>) {
 
 export type MyResult = {
   total: number;
+  // TP-08: serious warnings on the counted attempt, and the marks they cost (0 when none or waived).
+  warnings: number;
+  penalty: number;
   items: (StudentItem & {
     marks: number | null;
     comment: string | null;
@@ -679,6 +712,7 @@ export type AssessmentPage =
         submittedAt: Date | null;
         late: boolean;
         autoSubmitted: boolean;
+        endedBy: 'warnings' | 'teacher' | null;
       }[];
       // The counted attempt's marks per question of its own paper, once results are published (T5).
       result: MyResult | null;
@@ -694,7 +728,7 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
   if (doc.status === 'draft') notFound();
   const mine = await Submission.find(
     { assessmentId: doc._id, studentId: viewerId },
-    { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, deadlineAt: 1 },
+    { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, endedBy: 1, deadlineAt: 1 },
   )
     .sort({ attemptNo: 1 })
     .lean();
@@ -721,6 +755,12 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
     if (paper) {
       result = {
         total: countedScore(mine, doc.attemptPolicy),
+        warnings: paper.proctor?.hard ?? 0,
+        penalty: proctorPenalty(
+          paper.proctor?.hard ?? 0,
+          doc.proctoring?.penaltyEach ?? 0,
+          paper.proctor?.waived ?? false,
+        ),
         items: paper.paper.map((raw) => {
           const item = toStudentItem(raw, String(paper._id), true);
           const score = paper.scores?.[item.id];
@@ -753,6 +793,7 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
       submittedAt: s.submittedAt ?? null,
       late: s.late,
       autoSubmitted: s.autoSubmitted,
+      endedBy: s.endedBy ?? null,
     })),
     result,
   };
@@ -774,8 +815,12 @@ export type AttemptDTO = {
   title: string;
   // The course's title, or null for a standalone test.
   offeringTitle: string | null;
-  // Whose attempt it is, on the runner's top bar (M04b "Runner A").
+  // Whose attempt it is, on the runner's top bar (M04b "Runner A") and its watermark (TP-08).
   takerName: string;
+  takerEmail: string;
+  proctoring: Proctoring;
+  // Serious warnings so far (TP-08).
+  warnings: number;
   timed: boolean;
   deadlineAt: Date;
   // M04b: empty when the test has no sections.
@@ -825,6 +870,9 @@ export async function getAttemptForStudent(assessmentId: string): Promise<Attemp
     title: doc.title,
     offeringTitle: offering?.title ?? null,
     takerName: viewer.name,
+    takerEmail: viewer.email,
+    proctoring: proctoringOf(doc),
+    warnings: attempt.proctor?.hard ?? 0,
     timed: doc.durationMin !== null && doc.durationMin !== undefined,
     deadlineAt: attempt.deadlineAt,
     sections,
@@ -848,6 +896,9 @@ export type HandIns = {
     submittedAt: Date | null;
     late: boolean;
     autoSubmitted: boolean;
+    endedBy: 'warnings' | 'teacher' | null;
+    // TP-08: serious warnings.
+    warnings: number;
     total: number | null;
   }[];
   total: number;
@@ -892,6 +943,7 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
       submittedAt: 1,
       late: 1,
       autoSubmitted: 1,
+      endedBy: 1,
       total: 1,
     })
       .sort({ submittedAt: 1, _id: 1 })
@@ -908,11 +960,15 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
       ? Enrollment.countDocuments({ offeringId, status: 'active' })
       : TestGrant.countDocuments({ assessmentId }),
   ]);
-  const users = await User.find(
-    { _id: { $in: docs.map((d) => d.studentId) } },
-    { name: 1, email: 1, rollNo: 1 },
-  ).lean();
+  const [users, warned] = await Promise.all([
+    User.find({ _id: { $in: docs.map((d) => d.studentId) } }, { name: 1, email: 1, rollNo: 1 }).lean(),
+    Submission.aggregate<{ _id: Types.ObjectId; hard: number }>([
+      { $match: { _id: { $in: docs.map((d) => d._id) } } },
+      { $project: { hard: { $ifNull: ['$proctor.hard', 0] } } },
+    ]),
+  ]);
   const userOf = new Map(users.map((u) => [String(u._id), u]));
+  const warningsOf = new Map(warned.map((w) => [String(w._id), w.hard]));
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
   return {
     canTeach: access === 'manage',
@@ -934,6 +990,8 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
         submittedAt: d.submittedAt ?? null,
         late: d.late,
         autoSubmitted: d.autoSubmitted,
+        endedBy: d.endedBy ?? null,
+        warnings: warningsOf.get(String(d._id)) ?? 0,
         total: d.total ?? null,
       };
     }),
@@ -970,7 +1028,23 @@ export type GradingView = {
     // TP-07: seconds spent on each question.
     spent: Record<string, number>;
     flags: string[];
+    endedBy: 'warnings' | 'teacher' | null;
+    // Minutes the live monitor added (TP-08).
+    addedMin: number;
   };
+  // TP-08: null when the test was not proctored.
+  proctor: {
+    rules: NonNullable<Proctoring>;
+    hard: number;
+    soft: number;
+    waived: boolean;
+    // What the serious warnings take off, as if not waived.
+    penalty: number;
+    events: { type: ProctorEvent; at: Date; counted: boolean; detail: string | null }[];
+    snapshots: { key: string; at: Date }[];
+    // When the retention job deleted the snapshots (05 §8).
+    snapshotsDeletedAt: Date | null;
+  } | null;
   previousId: string | null;
   // M04 decision 5: the next hand-in waiting for marks, after this one in the order they came in, else the first.
   nextToGradeId: string | null;
@@ -1014,6 +1088,8 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
     return { ...item, sectionTitle: item.sectionId ? (titleOf.get(item.sectionId) ?? null) : null };
   });
   const next = nextAfter ?? firstToGrade;
+  const rules = proctoringOf(doc);
+  const held = attempt.proctor;
   return {
     path: assessmentPath(offeringId, assessmentId),
     canGrade: access === 'manage' && !locked,
@@ -1043,9 +1119,152 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       ),
       spent: attempt.spent ?? {},
       flags: attempt.flags.map(String),
+      endedBy: attempt.endedBy ?? null,
+      addedMin: held?.addedMin ?? 0,
     },
+    proctor: rules
+      ? {
+          rules,
+          hard: held?.hard ?? 0,
+          soft: held?.soft ?? 0,
+          waived: held?.waived ?? false,
+          penalty: proctorPenalty(held?.hard ?? 0, rules.penaltyEach, false),
+          events: (held?.events ?? []).map((e) => ({
+            type: e.type,
+            at: e.at,
+            counted: e.counted,
+            detail: e.detail ?? null,
+          })),
+          snapshots: (held?.snapshots ?? []).map((snapshot) => ({ key: snapshot.key, at: snapshot.at })),
+          snapshotsDeletedAt: doc.snapshotsDeletedAt ?? null,
+        }
+      : null,
     previousId: previous ? String(previous._id) : null,
     nextToGradeId: next ? String(next._id) : null,
+  };
+}
+
+export type MonitorRow = {
+  id: string;
+  student: { name: string; email: string };
+  answered: number;
+  questions: number;
+  deadlineAt: Date;
+  // Extra time for this person plus the minutes the monitor added.
+  extraMin: number;
+  hard: number;
+  soft: number;
+  // The kinds of serious warning, in the order they first happened.
+  warnings: ProctorEvent[];
+  lastSeenAt: Date | null;
+};
+
+export type Monitor = {
+  path: string;
+  canAct: boolean;
+  assessment: { id: string; title: string; proctoring: Proctoring; state: DisplayState };
+  counts: { writing: number; handedIn: number; warned: number; lost: number };
+  rows: MonitorRow[];
+  now: Date;
+};
+
+// TP-08: the live monitor — who is writing now, how far they are, their time and warnings, and when each runner was
+// last heard from (a page of the attempts running, in the order they started). Whoever manages the test acts on it; a
+// head of department watches.
+export async function getMonitor(assessmentId: string, page: number): Promise<Monitor> {
+  const { access, offeringId } = await testAccess(assessmentId);
+  if (access === 'take') notFound();
+  await db();
+  const doc = await readAssessment(assessmentId);
+  const now = new Date();
+  const running = { $eq: ['$status', 'in_progress'] };
+  const [[counts], raw] = await Promise.all([
+    Submission.aggregate<Monitor['counts']>([
+      { $match: { assessmentId: doc._id } },
+      {
+        $group: {
+          _id: null,
+          writing: { $sum: { $cond: [running, 1, 0] } },
+          handedIn: { $sum: { $cond: [running, 0, 1] } },
+          warned: { $sum: { $cond: [{ $and: [running, { $gt: [{ $ifNull: ['$proctor.hard', 0] }, 0] }] }, 1, 0] } },
+          lost: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    running,
+                    { $lt: [{ $ifNull: ['$proctor.lastBeatAt', '$startedAt'] }, new Date(now.getTime() - GAP_MS)] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+      { $project: { _id: 0 } },
+    ]),
+    Submission.aggregate<{
+      _id: Types.ObjectId;
+      studentId: Types.ObjectId;
+      deadlineAt: Date;
+      answered: number;
+      questions: number;
+      addedMin: number;
+      hard: number;
+      soft: number;
+      kinds: ProctorEvent[];
+      lastBeatAt: Date | null;
+    }>([
+      { $match: { assessmentId: doc._id, status: 'in_progress' } },
+      { $sort: { submittedAt: 1, _id: 1 } },
+      { $skip: (page - 1) * pageSize },
+      { $limit: pageSize },
+      {
+        $project: {
+          studentId: 1,
+          deadlineAt: 1,
+          answered: { $size: { $objectToArray: { $ifNull: ['$answers', {}] } } },
+          questions: { $size: { $ifNull: ['$paper', []] } },
+          addedMin: { $ifNull: ['$proctor.addedMin', 0] },
+          hard: { $ifNull: ['$proctor.hard', 0] },
+          soft: { $ifNull: ['$proctor.soft', 0] },
+          kinds: {
+            $map: {
+              input: { $filter: { input: { $ifNull: ['$proctor.events', []] }, cond: '$$this.counted' } },
+              in: '$$this.type',
+            },
+          },
+          lastBeatAt: { $ifNull: ['$proctor.lastBeatAt', null] },
+        },
+      },
+    ]),
+  ]);
+  const users = await User.find({ _id: { $in: raw.map((r) => r.studentId) } }, { name: 1, email: 1 }).lean();
+  const userOf = new Map(users.map((u) => [String(u._id), u]));
+  const extraOf = new Map(doc.extraTime.map((entry) => [String(entry.userId), entry.minutes]));
+  return {
+    path: assessmentPath(offeringId, assessmentId),
+    canAct: access === 'manage',
+    assessment: { id: assessmentId, title: doc.title, proctoring: proctoringOf(doc), state: stateOf(doc, now) },
+    counts: counts ?? { writing: 0, handedIn: 0, warned: 0, lost: 0 },
+    rows: raw.map((r) => {
+      const user = userOf.get(String(r.studentId));
+      return {
+        id: String(r._id),
+        student: { name: user?.name ?? 'Unknown', email: user?.email ?? '' },
+        answered: r.answered,
+        questions: r.questions,
+        deadlineAt: r.deadlineAt,
+        extraMin: (extraOf.get(String(r.studentId)) ?? 0) + r.addedMin,
+        hard: r.hard,
+        soft: r.soft,
+        warnings: [...new Set(r.kinds)],
+        lastSeenAt: r.lastBeatAt,
+      };
+    }),
+    now,
   };
 }
 

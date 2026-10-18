@@ -9,9 +9,10 @@ import {
   CheckIcon,
   FileIcon,
   LockIcon,
+  ShieldCheckIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
-import { gradeSubmission } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import { gradeSubmission, waivePenalty } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { RichTextView } from '@/components/rich-text-view';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -22,7 +23,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { getSubmissionForGrading, type AnswerValue, type GradingView, type TeacherItem } from '@/lib/data/assessments';
 import { normalizeBlank } from '@/lib/domain/grading';
 import { assessmentPath } from '@/lib/domain/test-links';
-import { formatDateTime, formatDuration, initials, ITEM_LABEL, statusTone } from '@/lib/format';
+import {
+  formatDateTime,
+  formatDuration,
+  formatTimeSeconds,
+  initials,
+  ITEM_LABEL,
+  PROCTOR_EVENT_LABEL,
+  statusTone,
+} from '@/lib/format';
 import { OBJECTIVE_TYPES } from '@/lib/schemas/assessment';
 
 // T6: one hand-in. Each answer sits beside the key and its marks (automatic marks can be changed), a rubric question's
@@ -94,6 +103,12 @@ export async function GradingPage({
             {s.submittedAt ? `handed in ${formatDateTime(s.submittedAt)}` : 'still writing'}
             {s.late && <Badge variant="warning">Late</Badge>}
             {s.autoSubmitted && <Badge variant="secondary">By the timer</Badge>}
+            {s.endedBy && (
+              <Badge variant="destructive">
+                {s.endedBy === 'warnings' ? 'Ended at the warning limit' : 'Ended by staff'}
+              </Badge>
+            )}
+            {s.addedMin > 0 && <Badge variant="secondary">+{s.addedMin} min added</Badge>}
           </p>
         </div>
         <div className="text-right">
@@ -107,6 +122,7 @@ export async function GradingPage({
           </p>
         </div>
       </section>
+      {view.proctor && <Proctoring view={view} proctor={view.proctor} />}
       {view.locked && (
         <p className="text-muted-foreground bg-muted/60 mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-[0.8125rem]">
           <LockIcon className="size-4 shrink-0" /> Marks for this course are locked, so nothing here can change.
@@ -135,6 +151,92 @@ export async function GradingPage({
         <fieldset disabled>{questions}</fieldset>
       )}
     </>
+  );
+}
+
+// TP-08: what proctoring recorded, the penalty for serious warnings (a grader may waive it, 07 §15) and the camera's
+// snapshots, which only staff see (09 §11).
+function Proctoring({ view, proctor: p }: { view: GradingView; proctor: NonNullable<GradingView['proctor']> }) {
+  const s = view.submission;
+  return (
+    <section className="surface mb-4 grid gap-3 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-[0.9375rem] font-semibold">
+          <ShieldCheckIcon className="text-muted-foreground size-5" /> Proctoring
+        </h2>
+        <span className="text-muted-foreground text-[0.8125rem]">
+          <b className={p.hard > 0 ? 'text-warning' : 'text-foreground'}>
+            {p.hard} serious warning{p.hard === 1 ? '' : 's'}
+          </b>{' '}
+          · {p.soft} minor
+        </span>
+      </div>
+      {p.rules.penaltyEach > 0 && p.hard > 0 && (
+        <div className="bg-muted/60 flex flex-wrap items-center justify-between gap-3 rounded-md px-3 py-2 text-[0.8125rem]">
+          <span>
+            Penalty {p.waived ? <s>−{p.penalty}</s> : <b className="tabular-nums">−{p.penalty}</b>} ({p.hard} ×{' '}
+            {p.rules.penaltyEach}){p.waived && ' · waived'}
+          </span>
+          {view.canGrade && s.status !== 'in_progress' && (
+            <ActionForm
+              action={waivePenalty}
+              submitLabel={p.waived ? 'Put the penalty back' : 'Waive the penalty'}
+              submitVariant="outline"
+              submitSize="sm"
+              successMessage={p.waived ? 'Penalty put back.' : 'Penalty waived.'}
+            >
+              <input type="hidden" name="submissionId" value={s.id} />
+              <input type="hidden" name="waived" value={p.waived ? 'false' : 'true'} />
+            </ActionForm>
+          )}
+        </div>
+      )}
+      {p.events.length > 0 && (
+        <details className="text-[0.8125rem]">
+          <summary className="cursor-pointer font-medium">Everything recorded ({p.events.length})</summary>
+          <ol className="mt-2 grid gap-1">
+            {p.events.map((event, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="text-muted-foreground w-24 shrink-0 tabular-nums">{formatTimeSeconds(event.at)}</span>
+                <span className={event.counted ? 'text-warning font-medium' : 'text-muted-foreground'}>
+                  {PROCTOR_EVENT_LABEL[event.type]}
+                  {event.type === 'connection_gap' && event.detail && ` for ${event.detail}`}
+                  {!event.counted &&
+                    ['fullscreen_exit', 'left_page', 'second_device'].includes(event.type) &&
+                    ' (counted with the one before)'}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+      {p.rules.camera &&
+        (p.snapshotsDeletedAt ? (
+          <p className="text-muted-foreground text-[0.8125rem]">
+            The camera snapshots were deleted on {formatDateTime(p.snapshotsDeletedAt)}.
+          </p>
+        ) : p.snapshots.length === 0 ? (
+          <p className="text-muted-foreground text-[0.8125rem]">No camera snapshots were taken.</p>
+        ) : (
+          <details className="text-[0.8125rem]">
+            <summary className="cursor-pointer font-medium">Camera snapshots ({p.snapshots.length})</summary>
+            <ul className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-2">
+              {p.snapshots.map((snapshot) => (
+                <li key={snapshot.key} className="grid gap-1">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a redirect to storage; next/image would proxy the bytes */}
+                  <img
+                    src={`/api/files/${snapshot.key}`}
+                    alt={`Snapshot at ${formatTimeSeconds(snapshot.at)}`}
+                    loading="lazy"
+                    className="bg-muted aspect-4/3 w-full rounded-sm object-cover"
+                  />
+                  <span className="text-muted-foreground text-xs tabular-nums">{formatTimeSeconds(snapshot.at)}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+    </section>
   );
 }
 

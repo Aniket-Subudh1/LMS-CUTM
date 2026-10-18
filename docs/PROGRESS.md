@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; phases A (access) and B (build) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M04b Test platform | In progress — T0 picked; phases A (access), B (build) and C (integrity) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -93,6 +93,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-51 | May a teacher change live-class attendance after the offering's marks are locked (05 §3.8 lists what the lock freezes; attendance is not on it, but it feeds the theory attendance part, 07 §2)? | @client / @dev | Allowed; every change is audited | M06, M08 | Open |
 | Q-52 | A presence list keeps the last 50 connections (`$slice: -50`); a student whose connection drops more than 50 times in one class loses the earliest intervals. Acceptable? | @dev | Yes | — | Open |
 | Q-53 | The syllabus PDF opens for admins and for whoever teaches, oversees or studies an offering of the course (`reach` in `/api/files`), so a coordinator who teaches none of its offerings cannot open the PDF they uploaded. Should every staff member who can open the catalogue course open its PDF? | @dev | As built in M01b (offerings only) | — | Answered 17 Oct 2026 (@dev, at Aniket's request): yes — admins, HoDs and faculty open it; a student only for a course they study (`/api/files`) |
+| Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -223,6 +224,17 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-14 | Extra time is per test and per person (by email or roll number, at most 200 people), lengthens both the time limit and the end of hand-ins, and reaches a running attempt at once | M04b | — |
 | A-M04b-15 | A matching question pairs each left side with one right side; an ordering question never moved is unanswered (0 marks); a fill-in-the-blank ignores case and extra spaces | M04b | — |
 | A-M04b-16 | Explanations are kept with questions and shown to graders now; takers see them with results once phase E's release rules allow | M04b | — |
+| A-M04b-17 | The N-th serious warning hands the attempt in (mock-up B4: "warning 2 of 3 … at the third"), not violation N + 1 as 07 §15 said for M05; 0 only records | M04b | — |
+| A-M04b-18 | Serious: leaving full screen, leaving the page (hidden, or the window losing focus — not to a file chooser), a second tab or device. Minor: copy, paste, right-click, print, developer-tools keys, a lost connection, the camera off. Two serious ones within 3 s are one act and count once | M04b | Q-09 |
+| A-M04b-19 | A second tab or device is refused while the first was heard from in the last 45 s, recorded once per refused tab, and takes over after 45 s of silence. A reload keeps its tab's id; a browser's "Duplicate tab" copies it, so a duplicated tab is not caught | M04b | — |
+| A-M04b-20 | A lost connection is more than 60 s between beats; it is minor and recorded with its length | M04b | — |
+| A-M04b-21 | The penalty is per counted serious warning and comes off the total (never below 0) when it is handed in, graded or waived; proctoring is fixed once anyone has started, so it never changes under a hand-in | M04b | — |
+| A-M04b-22 | Every attempt beats every 15 s, proctored or not, so the monitor's last seen, added time and messages work for every test. The monitor lists running attempts in the order they started, a page at a time, and refreshes every 15 s | M04b | — |
+| A-M04b-23 | Snapshots are 320 × 240 JPEG stills at the test's interval, at most 240 an attempt; the taker sees their camera in a corner; one that fails to upload is skipped, not retried | M04b | Q-24 |
+| A-M04b-24 | "Late" means after the closing time plus the person's extra time and the minutes the monitor added (phase B counted only the closing time, so a hand-in inside extra time showed as late) | M04b | — |
+| A-M04b-25 | Monitor messages reach running attempts only; each keeps the newest 20, and the runner shows the newest unread one until the taker presses OK (remembered on that device) | M04b | — |
+| A-M04b-26 | With full screen required, a browser that cannot go full screen (Safari on iPhone) cannot take the test; the lobby's device check and the runner say so | M04b | — |
+| A-M04b-27 | The snapshot retention setting accepts 7–365 days | M04b | Q-24 |
 
 ## 5. Log
 
@@ -1641,4 +1653,73 @@ Phase B of `docs/milestones/M04b-test-platform.md` (TP-05, TP-06, TP-07), on bra
   - student01: the lobby, then each section through to the review page, handing in; then faculty1's hand-ins and grading.
   - No error page, and no page wider than the screen.
   - The builder, bank and runner match mock-ups C3, C1 and B1.
+
+### 2026-10-18 · M04b/C Test platform: integrity — proctoring and the live monitor · Claude Code, at Aniket's request
+
+Phase C of `docs/milestones/M04b-test-platform.md` (TP-08), on branch `m04-assessments`, committed locally and not pushed.
+
+**Created**
+- **The rules (07 §15, rewritten).**
+  - `lib/domain/proctoring.ts`: `recordEvent` (serious and minor, the 3 s merge, the limit), `proctorPenalty`, `withPenalty`, `sessionCheck`, `connectionGap`, with unit vectors.
+  - `totalOf` in `lib/data/attempts.ts` takes the penalty off every total written.
+- **Data (05 §5.1, §5.2).**
+  - `assessments.proctoring` (null = off) and `snapshotsDeletedAt`, with the clean-up index.
+  - `submissions.proctor` (counts, events, snapshots, the tab holding the attempt, last beat, added minutes, messages, waived) and `endedBy`.
+- **Settings (TP-08).** `saveProctoring` and the builder's Proctoring card and dialog: full screen, copy/paste/right-click blocked, camera snapshots and their interval, the limit, marks off per serious warning. Fixed once anyone has started.
+- **The runner (mock-up B4).**
+  - `proctorBeat` every 15 s and at once with what the page noticed. It keeps a proctored attempt to one tab or device, records lost connections, hands in at the limit, and brings the monitor's time and messages.
+  - The page watches full screen, leaving it, copy, paste, right-click, printing and the developer-tools keys.
+  - The full-screen gate ("This test runs in full screen", "You left full screen · warning n of N"), the second-device block, a banner per serious warning, "Proctored · n of N warnings", the watermark, nothing when printed.
+  - Camera stills: `createUpload('proctor-snapshot')`, then `addSnapshot`; "Your camera" in the corner.
+- **The lobby.** It lists exactly what is watched (09 §11). The device check adds Full screen and Camera ("Allow camera", a preview).
+- **The live monitor (mock-up C4).**
+  - `/courses/<id>/assessments/<aid>/monitor` and `/tests/<aid>/monitor` (`components/live-monitor.tsx`), refreshed every 15 s: tiles, progress, time left with added minutes, warnings by kind, last seen.
+  - `extendAttempts`, `messageTakers`, `endAttempt`, for one person or all; the builder links to it.
+- **Grading and results.**
+  - The grading page's Proctoring section: counts, the penalty with "Waive the penalty" / "Put the penalty back" (`waivePenalty`, audited), everything recorded, and the snapshots.
+  - Hand-ins show "Ended at the warning limit", "Ended by staff" and the warnings.
+  - The taker's results show what the warnings took off.
+- **Snapshots, kept privately.**
+  - `/api/files` serves `proctor-snapshot` keys to the test's staff only.
+  - The daily `proctorRetention` job (03:30 IST) deletes them `snapshotRetentionDays` after results.
+  - The admin setting is "Proctoring" on `/admin/settings`.
+- **Fixed from phase B.** "Late" now allows for the person's extra time (A-M04b-24).
+- **Helpers.** `PROCTOR_EVENT_LABEL`, `ordinal` (`Intl.PluralRules`), `formatTimeSeconds` and `formatClock` (moved from `test-lobby.tsx`) in `lib/format.ts`.
+- **Tests.**
+  - Unit: 24 vectors in `lib/domain/proctoring.test.ts`.
+  - Integration: `tests/integration/proctoring.test.ts`, 13 cases. They cover the settings and who may set them; counting, merging and the limit; one tab or device; lost connections; unproctored beats; the penalty, waiving, regrading and results; the monitor's actions and access; snapshots — upload, record, who reads them, retention through the real queue; late with extra time.
+  - E2E: `tests/e2e/proctoring.spec.ts`.
+- **Docs.** 02 §8; 05 §5.1, §5.2, §8; 06 §5, §6, §6.2, §7; 07 §15; 08 (routes, §5.2 `AssessmentRunner`, `HandInsView`/`GradingPage`, `LiveMonitor`, `DeviceCheck`, `AutoRefresh`); 09 §1, §3, §4, §6, §11.
+
+**Not done**
+- Snapshots were not checked against real storage.
+  - RustFS was not running: the integration tests mock storage.
+  - The visual walk used Chromium's fake camera, and its uploads could not land.
+  - So the PUT to the bucket and the thumbnails on the grading page are unverified.
+- Nothing was checked on a real phone or in Safari or Firefox; full screen on iPhone is expected to be unavailable (A-M04b-26).
+- Developer tools opened from the browser's menu are not noticed; only the keys are stopped. A browser's "Duplicate tab" is not caught as a second tab (A-M04b-19).
+- "Proctored · n warnings" is hidden below 1024 px; phones see the banner for each serious warning instead.
+- AI "cheating" verdicts stay out (Q-09).
+
+**Assumptions** — A-M04b-17 to A-M04b-27 (§4).
+
+**Open questions** — Q-54 (snapshots of a test whose results are never published).
+
+**Bugs found and fixed while verifying**
+- The window's `blur` listener ran in the capture phase. Every field or button losing focus counted as "left the test's page", including the moment the full-screen gate closed. Found by the e2e run, whose first warning was "left the page" instead of "left full screen". It now reacts only to the window itself.
+- A hand-in inside a person's extra time was marked late (phase B). Found while writing the penalty's total; covered by a test now.
+- The camera's video ref was returned from the runner's hook, so React's compiler treated every value the hook returned as a ref; the runner now owns the ref.
+- On a phone the monitor's "7 / 10" wrapped onto two lines and two tile labels were cut off; fixed after the 390 px walk.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 29 passed (29)`, `Tests 440 passed (440)`.
+- `npm run test:integration` (mongodb-memory-server, local Redis) → exit 0; `Test Files 19 passed (19)`, `Tests 257 passed (257)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "116 files scanned … clean".
+- `npm run db:indexes:e2e`, then on the final build: `npx playwright test tests/e2e/tests.spec.ts tests/e2e/assessments.spec.ts tests/e2e/auth.spec.ts tests/e2e/proctoring.spec.ts` → exit 0, `8 passed`. The other specs were not run in this phase.
+- A scripted walk at 1440 px and 390 px on a proctored quiz seeded into the e2e database, with Chromium's fake camera:
+  - faculty1: the builder, the Proctoring dialog, the monitor and its "Add time to all", hand-ins, a graded hand-in's Proctoring section.
+  - admin: the Proctoring setting.
+  - student01: the lobby with the camera allowed, the full-screen gate, the runner, "You left full screen", the teacher's message.
+  - No error page, and no page wider than the screen.
+  - The monitor and the gate match mock-ups C4 and B4.
 

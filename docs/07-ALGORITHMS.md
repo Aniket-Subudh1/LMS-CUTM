@@ -377,16 +377,41 @@ Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never ta
 | 1/3 | 33.33 |
 | none published | null |
 
-## 15. Proctoring violations — `lib/domain/proctoring.ts`
+## 15. Proctoring — `lib/domain/proctoring.ts` (M04b, TP-08)
 
-Event types: `fullscreen_exit`, `tab_hidden`, `paste_blocked`, `webcam_unavailable`. Only `fullscreen_exit` and `tab_hidden` increment `violations`. With `tabSwitchLimit = N > 0`, the attempt auto-submits on violation `N + 1`; `N = 0` only logs.
+**Events.** Serious (they count): `fullscreen_exit`; `left_page` (the page hidden, or its window losing focus — not to a file chooser); `second_device` (another tab or device beating while this one is live). Minor (recorded only): `copy`, `paste`, `right_click`, `print`, `devtools`, `connection_gap`, `camera_off`. The runner reports what it sees at once; the server notices `connection_gap` and `second_device` itself, and every event takes the server's time.
 
-| Limit | Violations so far | New event | Result |
+**Counting**, `recordEvent(tally, type, at, hardLimit)`. A minor event adds 1 to `soft`. A serious event counts unless it comes less than `MERGE_MS` (3 s) after the last counted one — leaving full screen also hides the page: one act, one warning; a merged one is kept with `counted: false` and does not move the window. With `hardLimit = N > 0` the **N-th** counted warning hands the attempt in (`endedBy: 'warnings'`); `N = 0` only records. This replaces M05's "auto-submit on violation N + 1": the picked mock-up B4 reads "warning 2 of 3 … at the third, your answers are handed in" (M04b decision 5).
+
+| Limit | Serious so far | Last counted | New event | Result |
+|---|---|---|---|---|
+| 3 | 1 | 60 s ago | left_page | 2 → continue |
+| 3 | 2 | 60 s ago | fullscreen_exit | 3 → handed in |
+| 3 | 2 | 2 s ago | left_page | 2 (merged) → continue |
+| 3 | 2 | 3 s ago | left_page | 3 → handed in |
+| 3 | 2 | 60 s ago | paste | 2, minor +1 → continue |
+| 0 | 10 | 60 s ago | left_page | 11 → continue (recorded only) |
+| 1 | 0 | — | second_device | 1 → handed in |
+
+**Penalty.** `proctorPenalty(hard, penaltyEach, waived)` = 0 when a grader waived it, else `roundHalfUp(hard × penaltyEach, 2)`. `withPenalty(total, penalty)` = `max(0, roundHalfUp(total − penalty, 2))`, null while any question is unmarked. Every writer of `total` applies it (`totalOf`, `lib/data/attempts.ts`: handing in, grading, waiving).
+
+| Serious | Each | Waived | Penalty | | Total | Penalty | Result |
+|---|---|---|---|---|---|---|---|
+| 2 | 1.5 | no | 3 | | 8 | 3 | 5 |
+| 2 | 1.5 | yes | 0 | | 2 | 3 | 0 |
+| 0 | 5 | no | 0 | | 7.25 | 0.5 | 6.75 |
+| 3 | 0.33 | no | 0.99 | | null | 3 | null |
+
+**One tab or device.** Every runner beats every `BEAT_MS` (15 s) with its tab's id (kept in `sessionStorage`, so a reload keeps it). `sessionCheck(held, sessionId, now)`: `same` for the tab that holds the attempt; `take` when none holds it or the holder was last heard `LIVE_MS` (45 s) or more ago; otherwise `clash`. On a proctored test a clashing tab is refused (`blocked`) and one `second_device` is recorded for it; it takes over once the other has been quiet for 45 s.
+
+| Held by | Its last beat | Beat from | Result |
 |---|---|---|---|
-| 3 | 3 | tab_hidden | violations 4 → auto-submit |
-| 3 | 2 | tab_hidden | violations 3 → continue |
-| 3 | 3 | paste_blocked | violations 3 → continue (logged) |
-| 0 | 10 | tab_hidden | violations 11 → continue (logged) |
+| nobody | — | a | take |
+| a | 50 s ago | a | same |
+| b | 30 s ago | a | clash |
+| b | 45 s ago | a | take |
+
+**Lost connection.** `connectionGap(lastBeatAt, now)`: the seconds since the last beat when more than `GAP_MS` (60 s), recorded as a minor `connection_gap` ("n s"); the monitor shows "Connection lost" for a running attempt not heard from for 60 s. Vectors: no beat yet → none; 45 s → none; 60 s → none; 61 s → 61.
 
 ## 16. Rate limiting — `lib/rate-limit.ts` (not pure; integration-tested)
 
