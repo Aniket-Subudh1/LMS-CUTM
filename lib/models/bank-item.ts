@@ -8,6 +8,9 @@ const bankItemSchema = new Schema(
     courseId: { type: Schema.Types.ObjectId, default: null },
     ownerId: { type: Schema.Types.ObjectId, default: null },
     ...itemDefinition,
+    // TP-10: written by the AI and not yet reviewed. Saving it in its dialog accepts it; until then no paper draws it
+    // and "From the bank" does not offer it.
+    aiDraft: { type: Boolean, default: false },
     // How many attempts' papers drew it (the bank's "Used" column).
     usedCount: { type: Number, required: true, default: 0 },
     createdBy: { type: Schema.Types.ObjectId, required: true },

@@ -4,15 +4,19 @@ import { refresh } from 'next/cache';
 import { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { requireBankEditor, requireManage, type BankAccess } from '@/lib/auth/access';
-import { csvItem, questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
+import { requireOfferedLanguages } from '@/lib/data/code';
+import { csvItem, questionOf, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
 import { formatCsvErrors, parseBankCsv } from '@/lib/domain/csv';
 import { AppError, csvRejected } from '@/lib/errors';
+import { aiConfigured } from '@/lib/integrations/ai';
 import { Assessment } from '@/lib/models/assessment';
 import { BankItem } from '@/lib/models/bank-item';
 import { Course } from '@/lib/models/course';
 import { Offering } from '@/lib/models/offering';
-import { BANK_LIMITS, BankItemRef, CopyToBank, ImportBankCsv, SaveBankItem } from '@/lib/schemas/bank';
+import { queueDraftQuestions } from '@/lib/queue';
+import { limit } from '@/lib/rate-limit';
+import { BANK_LIMITS, BankItemRef, CopyToBank, DraftQuestions, ImportBankCsv, SaveBankItem } from '@/lib/schemas/bank';
 
 const STAFF = ['admin', 'faculty'] as const;
 
@@ -40,13 +44,44 @@ export const saveBankItem = action({ input: SaveBankItem, roles: STAFF }, async 
   await requireOfferedLanguages([input]);
   const item = storedItem(input);
   if (input.bankItemId) {
-    const written = await BankItem.updateOne({ _id: input.bankItemId, ...bank.filter }, { $set: item });
+    // Saving an AI draft in its dialog is its review: it is accepted (TP-10).
+    const written = await BankItem.updateOne(
+      { _id: input.bankItemId, ...bank.filter },
+      { $set: { ...item, aiDraft: false } },
+    );
     if (written.matchedCount === 0) throw new AppError('NOT_FOUND', 'That question was deleted. Reload the page.');
   } else {
     await requireRoom(bank, 1);
     await BankItem.create({ ...bank.filter, ...item, createdBy: viewer.id });
   }
   refresh();
+});
+
+// TP-10: the AI drafts questions into the bank, in the worker (06 §6); they wait there as AI drafts until reviewed.
+// Only the topic, the chosen outcomes' statements and the level are sent (09 §12). Limited as AI suggestions (09 §4).
+export const draftWithAi = action({ input: DraftQuestions, roles: STAFF }, async (input, viewer) => {
+  const bank = await requireBankEditor(viewer, input.offeringId);
+  if (!aiConfigured()) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
+  await db();
+  const known = await courseCos(bank);
+  if (input['coIds[]'].some((id) => !known.has(id))) {
+    throw new AppError('VALIDATION', 'Pick outcomes of this course only.', {
+      'coIds[]': ['Pick outcomes of this course only.'],
+    });
+  }
+  await requireRoom(bank, input.count);
+  await limit('ai', viewer.id, 30, 60 * 60_000);
+  await queueDraftQuestions({
+    bank:
+      'courseId' in bank.filter ? { courseId: String(bank.filter.courseId) } : { ownerId: String(bank.filter.ownerId) },
+    offeringId: input.offeringId ?? null,
+    requestedBy: viewer.id,
+    topic: input.topic,
+    count: input.count,
+    type: input.type,
+    level: input.level,
+    coIds: input['coIds[]'],
+  });
 });
 
 // Papers keep their own copies, so a deleted bank question changes no attempt (TP-05).

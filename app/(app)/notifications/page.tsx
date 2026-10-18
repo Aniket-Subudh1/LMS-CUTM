@@ -28,6 +28,7 @@ const KIND: Record<NotificationKind, { label: string; icon: PageIconName }> = {
   'assessment.published': { label: 'New assessment', icon: 'evaluation' },
   'assessment.dueSoon': { label: 'Due soon', icon: 'evaluation' },
   'results.published': { label: 'Results published', icon: 'badge' },
+  'bank.drafted': { label: 'AI drafts', icon: 'books' },
 };
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {

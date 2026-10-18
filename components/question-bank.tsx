@@ -1,8 +1,16 @@
 import Link from 'next/link';
-import { DatabaseIcon, PencilSimpleIcon, PlusIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react/ssr';
+import {
+  DatabaseIcon,
+  InfoIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  SparkleIcon,
+  TrashIcon,
+  UploadSimpleIcon,
+} from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
-import { deleteBankItem, importBankCsv, saveBankItem } from '@/app/(app)/tests/bank/actions';
-import { Field } from '@/components/action-form';
+import { deleteBankItem, draftWithAi, importBankCsv, saveBankItem } from '@/app/(app)/tests/bank/actions';
+import { Field, FieldErrors } from '@/components/action-form';
 import { BloomChip } from '@/components/bloom-chip';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
@@ -15,10 +23,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { cn } from '@/lib/cn';
 import { getBank, getBankItem, type BankRow } from '@/lib/data/bank';
 import { ITEM_LABEL } from '@/lib/format';
-import { DIFFICULTIES, ITEM_TYPES } from '@/lib/schemas/assessment';
-import { BANK_LIMITS, BankFilter } from '@/lib/schemas/bank';
+import { ASSESSMENT_LIMITS, DIFFICULTIES, ITEM_TYPES } from '@/lib/schemas/assessment';
+import { BANK_LIMITS, BankFilter, DRAFT_TYPES } from '@/lib/schemas/bank';
 import { page as pageParam, pageSize } from '@/lib/schemas/common';
 
 const Search = BankFilter.extend({
@@ -31,7 +40,8 @@ const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 // TP-05 (mock-up "Question bank"): a course's bank, shared by every offering of the course in any term, or a member of
 // staff's own for their standalone tests. Questions are tagged so papers can be drawn by outcome, level and topic;
-// they come one by one, from a CSV, or from a test ("Save to the bank"). Shared by the workspace tab and /tests/bank.
+// they come one by one, from a CSV, from a test ("Save to the bank"), or drafted by the AI (TP-10, mock-up C2: kept as AI
+// drafts until a teacher reviews each). Shared by the workspace tab and /tests/bank.
 export async function QuestionBank({
   offeringId,
   base,
@@ -63,6 +73,9 @@ export async function QuestionBank({
       label: 'Without a level',
       value: (bank.stats.total - bank.stats.easy - bank.stats.medium - bank.stats.hard).toLocaleString('en-IN'),
     },
+    ...(bank.stats.drafts > 0
+      ? [{ label: 'AI drafts to review', value: bank.stats.drafts.toLocaleString('en-IN'), draft: true }]
+      : []),
   ];
   const filtered = Object.keys(query).length > 0;
   return (
@@ -77,23 +90,32 @@ export async function QuestionBank({
         }
         action={
           bank.canEdit && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={here('import')} scroll={false}>
-                <UploadSimpleIcon /> Import CSV
-              </Link>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link href={here('import')} scroll={false}>
+                  <UploadSimpleIcon /> Import CSV
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href={here('draft')} scroll={false}>
+                  <SparkleIcon /> Draft with AI
+                </Link>
+              </Button>
+            </>
           )
         }
       >
-        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <dl className={cn('grid grid-cols-2 gap-3', tiles.length > 4 ? 'lg:grid-cols-5' : 'lg:grid-cols-4')}>
           {tiles.map((tile) => (
             <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                <DatabaseIcon className="size-4.5" />
+                {'draft' in tile ? <SparkleIcon className="size-4.5" /> : <DatabaseIcon className="size-4.5" />}
               </span>
               <div className="grid min-w-0">
-                <dd className="text-lg leading-tight font-semibold tabular-nums">{tile.value}</dd>
-                <dt className="text-muted-foreground order-first truncate text-xs">{tile.label}</dt>
+                <dd className={cn('text-lg leading-tight font-semibold tabular-nums', 'draft' in tile && 'text-gold')}>
+                  {tile.value}
+                </dd>
+                <dt className="text-muted-foreground order-first text-xs leading-snug">{tile.label}</dt>
               </div>
             </div>
           ))}
@@ -170,6 +192,11 @@ export async function QuestionBank({
                   <span className="text-muted-foreground text-xs">
                     {[row.topic && `Topic: ${row.topic}`, row.detail].filter(Boolean).join(' · ') || ' '}
                   </span>
+                  {row.aiDraft && (
+                    <span className="bg-gold/10 text-gold flex w-fit items-center gap-1 rounded-sm px-1.5 py-px text-[0.6875rem] font-medium">
+                      <SparkleIcon className="size-3" /> AI draft · review it
+                    </span>
+                  )}
                 </span>
               ),
             },
@@ -223,27 +250,36 @@ export async function QuestionBank({
                     header: '',
                     className: 'w-10',
                     cell: (row: BankRow) => (
-                      <RowMenu
-                        label={row.question}
-                        items={[
-                          { kind: 'link', label: 'Edit', href: here(`edit-${row.id}`), icon: <PencilSimpleIcon /> },
-                          { kind: 'separator' },
-                          {
-                            kind: 'action',
-                            label: 'Delete',
-                            icon: <TrashIcon />,
-                            destructive: true,
-                            action: deleteBankItem,
-                            fields: { ...(offeringId ? { offeringId } : {}), bankItemId: row.id },
-                            confirm: {
-                              title: 'Delete this question from the bank?',
-                              message: 'Papers already drawn keep their own copy; new papers cannot draw it.',
-                              confirmLabel: 'Delete',
+                      <span className="flex items-center justify-end gap-1">
+                        {row.aiDraft && (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={here(`edit-${row.id}`)} scroll={false}>
+                              Review
+                            </Link>
+                          </Button>
+                        )}
+                        <RowMenu
+                          label={row.question}
+                          items={[
+                            { kind: 'link', label: 'Edit', href: here(`edit-${row.id}`), icon: <PencilSimpleIcon /> },
+                            { kind: 'separator' },
+                            {
+                              kind: 'action',
+                              label: 'Delete',
+                              icon: <TrashIcon />,
                               destructive: true,
+                              action: deleteBankItem,
+                              fields: { ...(offeringId ? { offeringId } : {}), bankItemId: row.id },
+                              confirm: {
+                                title: 'Delete this question from the bank?',
+                                message: 'Papers already drawn keep their own copy; new papers cannot draw it.',
+                                confirmLabel: 'Delete',
+                                destructive: true,
+                              },
                             },
-                          },
-                        ]}
-                      />
+                          ]}
+                        />
+                      </span>
                     ),
                   },
                 ]
@@ -268,7 +304,11 @@ export async function QuestionBank({
         <QuestionDialog
           key={open}
           openParam={open ?? ''}
-          title={editing ? `Edit · ${ITEM_LABEL[editing.type]}` : `New question · ${ITEM_LABEL[newType ?? 'mcq']}`}
+          title={
+            editing
+              ? `${editing.aiDraft ? 'Review the AI draft' : 'Edit'} · ${ITEM_LABEL[editing.type]}`
+              : `New question · ${ITEM_LABEL[newType ?? 'mcq']}`
+          }
           type={editing?.type ?? newType ?? 'mcq'}
           item={editing}
           action={saveBankItem}
@@ -283,6 +323,85 @@ export async function QuestionBank({
           sections={[]}
           languages={bank.languages}
         />
+      )}
+      {bank.canEdit && open === 'draft' && (
+        <FormDialog
+          key={open}
+          openParam="draft"
+          size="wide"
+          icon={<SparkleIcon weight="duotone" />}
+          title="Draft questions with AI"
+          description="AI writes drafts with keys and explanations. Nothing is used until you review and accept each one."
+          action={draftWithAi}
+          submitLabel="Draft the questions"
+          successMessage="Drafting now. The drafts appear here marked “AI draft” in a minute or two, and you get a notification."
+        >
+          {scope}
+          {!bank.aiReady && (
+            <p className="bg-gold/10 rounded-md px-3 py-2 text-[0.8125rem]">
+              <b className="font-semibold">AI suggestions are not set up.</b> An administrator adds the AI key to the
+              server. Until then, write questions yourself or import a CSV.
+            </p>
+          )}
+          <Field name="topic" label="Topic">
+            <Input
+              name="topic"
+              required
+              minLength={3}
+              maxLength={ASSESSMENT_LIMITS.topic}
+              placeholder="Pointers and dynamic memory in C"
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field name="count" label="How many">
+              <Input name="count" type="number" min={1} max={BANK_LIMITS.draft} defaultValue={10} required />
+            </Field>
+            <Field name="type" label="Type">
+              <NativeSelect name="type" defaultValue="mcq">
+                {DRAFT_TYPES.map((type) => (
+                  <NativeSelectOption key={type} value={type}>
+                    {ITEM_LABEL[type]}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field name="level" label="Level">
+              <NativeSelect name="level" defaultValue="mixed">
+                <NativeSelectOption value="mixed">Mixed (30/45/25)</NativeSelectOption>
+                {DIFFICULTIES.map((level) => (
+                  <NativeSelectOption key={level} value={level}>
+                    {cap(level)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+          </div>
+          {bank.cos.length > 0 && (
+            <fieldset className="grid gap-2">
+              <legend className="mb-1 text-sm font-medium">Course outcomes</legend>
+              <div className="ring-border grid gap-2.5 rounded-md p-3 ring-1">
+                {bank.cos.map((co) => (
+                  <label key={co.id} className="flex items-start gap-2.5 text-[0.8125rem]">
+                    <input
+                      type="checkbox"
+                      name="coIds[]"
+                      value={co.id}
+                      className="accent-foreground mt-0.5 size-4 shrink-0"
+                    />
+                    <span>
+                      <b className="font-semibold">{co.code}</b> {co.statement}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <FieldErrors name="coIds[]" />
+            </fieldset>
+          )}
+          <p className="text-muted-foreground bg-muted/60 flex gap-2 rounded-md px-3 py-2 text-xs">
+            <InfoIcon className="size-4 shrink-0" />
+            Only the topic, the outcomes you pick and the level are sent. No student data leaves the LMS.
+          </p>
+        </FormDialog>
       )}
       {bank.canEdit && open === 'import' && (
         <FormDialog

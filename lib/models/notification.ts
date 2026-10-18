@@ -11,6 +11,7 @@ export const NOTIFICATION_KINDS = [
   'assessment.published',
   'assessment.dueSoon',
   'results.published',
+  'bank.drafted',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

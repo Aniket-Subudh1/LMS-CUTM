@@ -6,6 +6,7 @@ import type {
   AssessmentSweepJob,
   CoursewareListJob,
   CoursewarePageJob,
+  DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
   LiveControlJob,
@@ -29,7 +30,8 @@ type ComputeData =
   | ProctorRetentionJob
   | GradeCodeJob
   | TestStatsJob
-  | MakeTestFileJob;
+  | MakeTestFileJob
+  | DraftQuestionsJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -38,7 +40,8 @@ type ComputeName =
   | 'proctorRetention'
   | 'gradeCode'
   | 'testStats'
-  | 'makeTestFile';
+  | 'makeTestFile'
+  | 'draftQuestions';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -161,6 +164,12 @@ export async function queueTestFile(fileId: string, requestedAt: Date): Promise<
     { fileId },
     { jobId: `file-${fileId}-${requestedAt.getTime()}`, attempts: 3, backoff: { type: 'fixed', delay: 10_000 } },
   );
+}
+
+// 06 §6 (TP-10): AI drafts into a bank. One try only: a retry after the drafts were saved would save them twice, so a
+// failure tells the teacher, who asks again.
+export async function queueDraftQuestions(job: DraftQuestionsJob): Promise<void> {
+  await computeQueue().add('draftQuestions', job, { jobId: `draft-${job.requestedBy}-${Date.now()}`, attempts: 1 });
 }
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.

@@ -10,7 +10,8 @@ import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
-import { questionOf, requireOfferedLanguages, storedItem } from '@/lib/data/questions';
+import { requireOfferedLanguages } from '@/lib/data/code';
+import { questionOf, storedItem } from '@/lib/data/questions';
 import { releaseResults, rulesOf } from '@/lib/data/results';
 import { db } from '@/lib/db';
 import { countedAttempt, deadlineAt, windowState } from '@/lib/domain/attempts';
@@ -305,6 +306,8 @@ export const addFromBank = action({ input: AddFromBank, roles: TEACH }, async (i
   const docs = await BankItem.find({
     _id: { $in: input['bankItemIds[]'] },
     ...(offering ? { courseId: offering.courseId } : { ownerId: viewer.id }),
+    // TP-10: an AI draft waits for its review.
+    aiDraft: { $ne: true },
   }).lean();
   const unfit = docs.filter((doc) => !MODE_ITEM_TYPES[assessment.mode].includes(doc.type)).length;
   if (unfit > 0) {

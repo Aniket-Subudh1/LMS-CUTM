@@ -1,5 +1,7 @@
 import 'server-only';
+import { getSettings } from '@/lib/data/settings';
 import { testStatus } from '@/lib/domain/code';
+import { AppError } from '@/lib/errors';
 import { runBatch } from '@/lib/integrations/code-runner';
 import type { RunStatus } from '@/lib/schemas/assessment';
 
@@ -36,4 +38,16 @@ export async function runSamples(
       memoryKb: run.memoryKb,
     };
   });
+}
+
+// TP-09: a code question offers only languages the codeRunner setting has now (a test's or a bank's).
+export async function requireOfferedLanguages(items: readonly { code?: { languages: readonly string[] } | null }[]) {
+  const asked = items.flatMap((item) => item.code?.languages ?? []);
+  if (asked.length === 0) return;
+  const offered = new Set((await getSettings('codeRunner')).languages.map((language) => language.key));
+  if (asked.some((key) => !offered.has(key))) {
+    throw new AppError('VALIDATION', 'Pick languages that are offered now.', {
+      'language[]': ['Pick languages that are offered now.'],
+    });
+  }
 }

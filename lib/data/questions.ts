@@ -1,5 +1,4 @@
 import { Types } from 'mongoose';
-import { getSettings } from '@/lib/data/settings';
 import { rubricTotal } from '@/lib/domain/grading';
 import { roundHalfUp } from '@/lib/domain/round';
 import { AppError } from '@/lib/errors';
@@ -64,18 +63,6 @@ export function storedItem(input: ItemInput) {
 }
 export type StoredItem = ReturnType<typeof storedItem>;
 
-// TP-09: a code question offers only languages the codeRunner setting has now (a test's or a bank's).
-export async function requireOfferedLanguages(items: readonly { code?: { languages: readonly string[] } | null }[]) {
-  const asked = items.flatMap((item) => item.code?.languages ?? []);
-  if (asked.length === 0) return;
-  const offered = new Set((await getSettings('codeRunner')).languages.map((language) => language.key));
-  if (asked.some((key) => !offered.has(key))) {
-    throw new AppError('VALIDATION', 'Pick languages that are offered now.', {
-      'language[]': ['Pick languages that are offered now.'],
-    });
-  }
-}
-
 // The question itself, without where it is kept: for copying between a test and a bank (TP-05). Its options keep their
 // ids, so its key still names them.
 export function questionOf<
@@ -116,7 +103,7 @@ export function questionOf<
   };
 }
 
-const paragraph = (text: string): RichTextDoc => ({
+export const paragraph = (text: string): RichTextDoc => ({
   type: 'doc',
   content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
 });

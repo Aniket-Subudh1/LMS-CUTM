@@ -106,7 +106,7 @@ Rules:
 | Monitor messages (M04b) | staff | 30 / min |
 | Files from the results (`requestTestFile`, M04b) | user | 10 / hour |
 | Beacon | user | 120 / 10 min |
-| AI suggestion | user | 30 / hour |
+| AI suggestion (`ai`; M04b: `draftWithAi`, whatever it asks for) | user | 30 / hour |
 
 The client IP is the first entry of `X-Forwarded-For`, which the production load balancer must overwrite (11 §4). On limit: `AppError('RATE_LIMITED')` / HTTP 429.
 
@@ -208,7 +208,7 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 
 ## 12. AI data policy (M09, M10)
 
-- Sent to the model: question text, CO statements and Bloom levels, PO/PSO titles, and numeric engagement metrics with labels.
+- Sent to the model: question text, a topic a teacher types for drafts (M04b, TP-10), CO statements and Bloom levels, PO/PSO titles, and numeric engagement metrics with labels.
 - Never sent: student names, roll numbers, emails, answers, submissions, marks of identifiable students, faculty names.
-- AI output is a suggestion rendered for a human; nothing is written to records until a human submits the normal form.
+- AI output is a suggestion rendered for a human; nothing is written to records until a human submits the normal form. M04b: drafts are saved to the bank as AI drafts, which no test uses until a teacher saves each in its dialog.
 - The API key is server-only (`ANTHROPIC_API_KEY`).

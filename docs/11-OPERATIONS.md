@@ -37,7 +37,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | M04b | `http://judge0:2358`, token | Judge0 `AUTHN_TOKEN`. Unset, the URL is Judge0's free public server (`https://ce.judge0.com`, no token): fine for development and the pilot, but students' code goes to a third party and its rate limits are not ours — set the university's own server before going public (Q-55). The e2e run uses `tests/e2e/fake-runner.ts` on port 2358 |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` | M07 | | PEM with `\n` escapes |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET` | M07 | | The App's OAuth credentials and webhook secret |
-| `ANTHROPIC_API_KEY` | M09 | | |
+| `ANTHROPIC_API_KEY` | M04b, M09 | | Optional: unset, the AI helpers (the bank's Draft with AI) say "AI suggestions are not set up" and nothing is sent |
 
 `.env.example` lists every variable with a safe placeholder. `.env*` files other than `.env.example` are git-ignored (already in `.gitignore`).
 

@@ -70,3 +70,17 @@ export type TestStatsJob = z.infer<typeof TestStatsJob>;
 // `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;
+
+// `compute/draftQuestions` (06 §6, M04b TP-10): AI drafts into a bank — a course's or one person's. `offeringId` is
+// where the bank page was opened, for the notice's link.
+export const DraftQuestionsJob = z.object({
+  bank: z.union([z.object({ courseId: objectId }), z.object({ ownerId: objectId })]),
+  offeringId: objectId.nullable(),
+  requestedBy: objectId,
+  topic: z.string().min(1).max(60),
+  count: z.number().int().min(1).max(20),
+  type: z.enum(['mcq', 'msq', 'true_false', 'numeric', 'text']),
+  level: z.enum(['mixed', 'easy', 'medium', 'hard']),
+  coIds: z.array(objectId),
+});
+export type DraftQuestionsJob = z.infer<typeof DraftQuestionsJob>;

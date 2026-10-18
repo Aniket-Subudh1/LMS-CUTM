@@ -5,7 +5,7 @@ import { BLOOM_LEVELS, csvFile } from '@/lib/schemas/structure';
 
 // M04b (TP-05): the question bank. A course's bank is reached through an offering of it (whoever teaches the offering
 // edits its course's bank); without an offering it is the viewer's own bank, for their standalone tests.
-export const BANK_LIMITS = { perBank: 5000, csvRows: 500, pick: 100 } as const;
+export const BANK_LIMITS = { perBank: 5000, csvRows: 500, pick: 100, draft: 20 } as const;
 
 const blankIsMissing = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
@@ -26,6 +26,46 @@ export const AddFromBank = z.object({
   sectionId: blankIsMissing(objectId),
   'bankItemIds[]': z.array(objectId).min(1, 'Pick at least one question.').max(BANK_LIMITS.pick),
 });
+
+// --- AI drafts (M04b, TP-10, 06 §4.7) ---
+
+// The types a draft can be: the ones a CSV row can carry, so a draft is checked as an imported row is.
+export const DRAFT_TYPES = ['mcq', 'msq', 'true_false', 'numeric', 'text'] as const;
+export const DRAFT_LEVELS = ['mixed', 'easy', 'medium', 'hard'] as const;
+export const DraftQuestions = z.object({
+  ...scope,
+  topic: z
+    .string()
+    .trim()
+    .min(3, 'Name the topic.')
+    .max(ASSESSMENT_LIMITS.topic, `Keep the topic under ${ASSESSMENT_LIMITS.topic} characters.`),
+  count: z.coerce
+    .number({ error: 'Enter how many.' })
+    .int('Enter a whole number.')
+    .min(1, 'At least 1.')
+    .max(BANK_LIMITS.draft, `At most ${BANK_LIMITS.draft} at a time.`),
+  type: z.enum(DRAFT_TYPES),
+  level: z.enum(DRAFT_LEVELS),
+  'coIds[]': z.preprocess((value) => value ?? [], z.array(objectId).max(ASSESSMENT_LIMITS.coIds)),
+});
+export type DraftQuestions = z.output<typeof DraftQuestions>;
+
+// What the AI writes for each draft: plain fields only (a structured output cannot carry the CSV row's checks), checked
+// afterwards as an imported row is. `answer` is said as a CSV row says it.
+export const AiDrafts = z.object({
+  questions: z.array(
+    z.object({
+      question: z.string(),
+      options: z.array(z.string()),
+      answer: z.string(),
+      explanation: z.string(),
+      difficulty: z.enum(DIFFICULTIES),
+      bloom: z.enum(BLOOM_LEVELS),
+      outcomes: z.array(z.string()),
+    }),
+  ),
+});
+export type AiDraft = z.output<typeof AiDrafts>['questions'][number];
 
 export const BankFilter = z.object({
   q: z.string().trim().max(80).optional().catch(undefined),

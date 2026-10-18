@@ -4,6 +4,7 @@ import mongoose, { type Types } from 'mongoose';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
+import { csvItem, paragraph, storedItem } from '@/lib/data/questions';
 import { releaseResults } from '@/lib/data/results';
 import { countedAttempt, windowState } from '@/lib/domain/attempts';
 import { deriveAttendance } from '@/lib/domain/attendance';
@@ -13,6 +14,7 @@ import { plainText } from '@/lib/domain/rich-text';
 import { roundHalfUp } from '@/lib/domain/round';
 import { similarPairs } from '@/lib/domain/similarity';
 import { assessmentPath } from '@/lib/domain/test-links';
+import { draftQuestions } from '@/lib/integrations/ai';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
 import { runBatch, type RunJob } from '@/lib/integrations/code-runner';
 import { deleteObjects } from '@/lib/integrations/storage';
@@ -21,6 +23,7 @@ import { log } from '@/lib/log';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { BankItem } from '@/lib/models/bank-item';
+import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
@@ -31,9 +34,11 @@ import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
 import { queueLiveFinalize, queueTestStats } from '@/lib/queue';
 import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
+import { BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { RichTextDoc } from '@/lib/schemas/common';
 import {
   AssessmentSweepJob,
+  DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
   LiveControlJob,
@@ -54,7 +59,8 @@ type ComputeName =
   | 'proctorRetention'
   | 'gradeCode'
   | 'testStats'
-  | 'makeTestFile';
+  | 'makeTestFile'
+  | 'draftQuestions';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -63,7 +69,8 @@ type ComputeData =
   | ProctorRetentionJob
   | GradeCodeJob
   | TestStatsJob
-  | MakeTestFileJob;
+  | MakeTestFileJob
+  | DraftQuestionsJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -649,6 +656,67 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
   log.info('test stats', { assessmentId, takers: counted.length, flagged: alike.size });
 }
 
+// `compute/draftQuestions` (06 §6, TP-10): the AI's drafts into a bank, each checked as an imported CSV row is (one that
+// fails is dropped) and kept as an AI draft until a teacher reviews it. Only the topic, the chosen outcomes' statements
+// and the level are sent (09 §12). The teacher is told how it went, a failure included.
+async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
+  const bank =
+    'courseId' in job.bank
+      ? { courseId: new mongoose.Types.ObjectId(job.bank.courseId) }
+      : { ownerId: new mongoose.Types.ObjectId(job.bank.ownerId) };
+  const course = 'courseId' in bank ? await Course.findById(bank.courseId, { cos: 1 }).lean() : null;
+  const cos = (course?.cos ?? []).filter((co) => job.coIds.includes(String(co._id)));
+  const tellTeacher = (title: string) =>
+    notify([job.requestedBy], {
+      kind: 'bank.drafted',
+      title: title.length > 160 ? `${title.slice(0, 159)}…` : title,
+      href: job.offeringId ? `/courses/${job.offeringId}/bank` : '/tests/bank',
+    });
+  let drafts;
+  try {
+    drafts = await draftQuestions({
+      topic: job.topic,
+      count: job.count,
+      type: job.type,
+      level: job.level,
+      cos: cos.map((co) => ({ code: co.code, statement: co.statement })),
+    });
+  } catch (error) {
+    await tellTeacher(`The AI could not draft questions on “${job.topic}” just now. Try again in a few minutes.`);
+    throw error;
+  }
+  const idOf = new Map(cos.map((co) => [co.code, String(co._id)]));
+  const items = (drafts ?? []).slice(0, job.count).flatMap((draft) => {
+    const row = BankCsvRow.safeParse({
+      type: job.type,
+      question: draft.question.trim(),
+      options: draft.options.map((option) => option.replaceAll('|', '/')).join('|'),
+      answer: draft.answer,
+      marks: 1,
+      negative: 0,
+      difficulty: draft.difficulty,
+      topic: job.topic,
+      bloom: draft.bloom,
+      cos: '',
+    });
+    if (!row.success) return [];
+    const coIds = [...new Set(draft.outcomes.flatMap((code) => idOf.get(code.trim().toUpperCase()) ?? []))];
+    const explanation = draft.explanation.trim();
+    return [storedItem({ ...csvItem(row.data, coIds), explanation: explanation ? paragraph(explanation) : null })];
+  });
+  const room = Math.max(0, BANK_LIMITS.perBank - (await BankItem.countDocuments(bank)));
+  const kept = items.slice(0, room);
+  if (kept.length > 0) {
+    await BankItem.insertMany(kept.map((item) => ({ ...bank, ...item, aiDraft: true, createdBy: job.requestedBy })));
+  }
+  await tellTeacher(
+    kept.length > 0
+      ? `${kept.length} AI draft${kept.length === 1 ? '' : 's'} on “${job.topic}” ready to review`
+      : `The AI’s drafts on “${job.topic}” could not be used. Try again, perhaps with a narrower topic.`,
+  );
+  log.info('bank drafts', { requested: job.count, returned: drafts?.length ?? 0, kept: kept.length });
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
@@ -658,6 +726,7 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   }
   if (job.name === 'gradeCode') return gradeCode(GradeCodeJob.parse(job.data));
   if (job.name === 'testStats') return testStats(TestStatsJob.parse(job.data));
+  if (job.name === 'draftQuestions') return draftBankQuestions(DraftQuestionsJob.parse(job.data));
   if (job.name === 'makeTestFile') {
     return makeTestFile(MakeTestFileJob.parse(job.data), job.attemptsMade + 1 >= (job.opts.attempts ?? 1));
   }

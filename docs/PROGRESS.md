@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; phases A (access), B (build), C (integrity), D (code), E1 (results) and E2 (PDFs, certificates, Excel) built and committed locally; E3 (AI helpers) left; on branch `m04-assessments` |
+| M04b Test platform | Built — T0 picked; phases A (access), B (build), C (integrity), D (code) and E (results, files, AI drafts) committed locally on branch `m04-assessments`, not pushed; awaiting Aniket's walk-through and merge. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -259,6 +259,11 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-46 | The reports PDF has a report for every hand-in (every attempt), by name, with no size cap (the worker streams it); heads of department may make both staff files, as they read the results | M04b | — |
 | A-M04b-47 | A person may ask for 10 files an hour; a file still being made after 10 minutes may be asked for again | M04b | — |
 | A-M04b-48 | The certificate check `/v/<code>` shows the record as it is now, and says "No longer valid" when a later regrade took the result below the threshold | M04b | — |
+| A-M04b-49 | The AI drafts bank questions from a topic, how many (1–20), one of the five types a CSV row can carry, a level and the course's outcomes the teacher picks, with keys and explanations; each draft is worth 1 mark with no negative marks until the teacher changes it | M04b | — |
+| A-M04b-50 | A draft is checked as an imported CSV row is; one that fails is dropped, outcome codes the teacher did not pick are dropped, and the notice says how many were kept | M04b | — |
+| A-M04b-51 | Saving an AI draft in its dialog is its review and accepts it; a draft is discarded with ⋮ Delete. Drafts count toward the bank's 5,000 but not toward its other counts | M04b | — |
+| A-M04b-52 | A draft request is tried once, never retried by itself, so drafts are never saved twice; the teacher is told how it went, a failure included | M04b | — |
+| A-M04b-53 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it; the model is `claude-opus-5-5` at medium effort with the server-side fallback (06 §4.7) | M04b | — |
 
 ## 5. Log
 
@@ -1931,4 +1936,58 @@ Phase E's second part (TP-12) of `docs/milestones/M04b-test-platform.md`, on bra
   - `/v/<code>` signed out, and an unknown code;
   - faculty1's results page and the builder's Results dialog;
   - no error page, and no page wider than the screen after the `Section` fix.
+
+### 2026-10-18 · M04b/E3 Test platform: AI drafts in the question bank · Claude Code, at Aniket's request
+
+Phase E's last part (TP-10) of `docs/milestones/M04b-test-platform.md`, on branch `m04-assessments`, committed locally and not pushed. With it every M04b phase is built; the milestone waits for Aniket's walk-through of its validation checklist and the merge.
+
+**Created**
+- **The adapter** `lib/integrations/ai.ts` (06 §4.7), with `@anthropic-ai/sdk` 0.133.0 installed (pinned in 03 for M09):
+  - `aiConfigured()`, and `draftQuestions({ topic, count, type, level, cos })` through `beta.messages.parse` and `betaZodOutputFormat(AiDrafts)`.
+  - The call shape type-checks against the installed SDK.
+  - Only the topic, the chosen outcomes' codes and statements, and the level are sent (09 §12).
+  - The optional `ANTHROPIC_API_KEY` is in `lib/env.ts` and `.env.example`.
+- **The worker job** `compute/draftQuestions` (`queueDraftQuestions`, one try):
+  - Each draft is checked as an imported CSV row is (`BankCsvRow`, then `csvItem` and `storedItem`), with its explanation.
+  - Only the outcomes the teacher picked are kept.
+  - Drafts that pass are saved with `aiDraft: true` (05 §5.2d), within the bank's 5,000.
+  - The teacher gets a `bank.drafted` notice whichever way it goes.
+- **The action** `draftWithAi` (the bank's editors; 1–20 at a time; the course's outcomes only; limit `ai` 30 an hour). Without the key it answers "AI suggestions are not set up."
+- **Review before use.**
+  - Saving a draft in its dialog accepts it.
+  - Paper draws (`sectionPools`), "From the bank" (`pickFromBank`) and `addFromBank` skip drafts.
+- **The screen (mock-up C2), on the bank page:**
+  - Draft with AI (`?new=draft`): topic, how many, type, level, the course's outcomes, and a note on what is sent.
+  - The "AI drafts to review" tile; each draft's "AI draft · review it" chip and Review button; the "Review the AI draft" dialog.
+- **Tests.**
+  - Integration: `tests/integration/ai-drafts.test.ts`, 3 cases through the real queue and worker, with the AI's answers stubbed. They check:
+    - what is sent;
+    - the row checks, kept outcomes and options containing "|";
+    - drafts kept out of tests and draws until reviewed, then offered;
+    - the refusals (no key, a reader, another course's outcomes, more than 20, a student);
+    - a person's own bank;
+    - the notices for a failure and for nothing usable.
+  - E2E: `tests/e2e/bank.spec.ts`. On the e2e server, which has no key, Draft with AI says it is not set up and asking is refused with that message.
+- **Docs.** 02 §8 and the adapter table; 03; 05 §5.2d; 06 §4.7, §6, §6.2, §9; 08 (bank route, `QuestionBank`); 09 §4, §12; 11 §2.
+
+**Changed beyond TP-10 (found while building or verifying)**
+- `requireOfferedLanguages` moved from `lib/data/questions.ts` to `lib/data/code.ts`, because it reads settings (`next/cache`). `questions.ts` is now worker-safe and `paragraph` is exported.
+- The bank's tile labels wrap instead of being cut off. The new "AI drafts to review" tile was cut off at 390 px ("AI drafts to r…"), as were three existing ones.
+
+**Not done**
+- **The AI has not been called for real.** There is no key on this machine, so no request has gone to the Anthropic API. The SDK call is checked only by the types and the stubbed tests. Setting `ANTHROPIC_API_KEY` and drafting once is the first thing to try.
+- TP-10's suggested mark bands for written and code answers wait on Q-56.
+- The submit button says "Draft the questions", not "Draft 10 questions" as in mock-up C2: the label does not follow the number typed.
+- The same four e2e tests outside M04b still fail (E2 entry). The walk left three AI drafts in CUTM1602's bank on the e2e database, to review in the walk-through.
+
+**Assumptions** — A-M04b-49 to A-M04b-53 (§4).
+
+**Open questions** — none new; Q-56 stands.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 33 passed (33)`, `Tests 515 passed (515)`.
+- `npm run test:integration` → exit 0; `Test Files 23 passed (23)`, `Tests 280 passed (280)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "119 files scanned … clean".
+- `npx playwright test` (all 20) → `16 passed`, `4 failed`: `admin-structure` (2), `content` (the course plan), `live` (no LiveKit here), as in E2.
+- A scripted walk at 1440 px and 390 px on the e2e data with three drafts in CUTM1602's bank: the bank, the Draft with AI dialog and a draft's review dialog. No error page, and no page wider than the screen. They match mock-up C2, with outcomes as checkboxes as in the question dialog.
 

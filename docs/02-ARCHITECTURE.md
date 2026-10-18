@@ -202,7 +202,7 @@ Two checks, always both:
 | Queue | Job names | Concurrency / instance | Producers |
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
-| `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile` (M04b), `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
+| `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
 | `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 
@@ -236,7 +236,7 @@ Each external system sits behind one file in `lib/integrations/` exposing a type
 | Code runner | `code-runner.ts` | Judge0 CE 1.13.1 HTTP API (Judge0's free public server, 1.14.0, until the university runs its own — **Q-55**) | M04b (from M05) — same caveat (**Q-25**) |
 | GitHub | `github.ts` | `octokit` App (installation token) + OAuth (identity link) | M07 |
 | Exam system | `exam-api.ts` | — | **Blocked on Q-04**. CSV import/export ships in M08 without an adapter |
-| AI | `ai.ts` | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output | M09 |
+| AI | `ai.ts` | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output | M04b (bank drafts), M09 |
 | CUTM courseware | `courseware.ts` | `fetch` + `happy-dom` (scripts off); read only | M01b |
 
 ## 10. Conventions

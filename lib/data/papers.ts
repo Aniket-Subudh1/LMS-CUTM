@@ -68,6 +68,8 @@ export async function sectionPools(
         type: { $in: types },
         ...(draw.coIds.length > 0 ? { coIds: { $in: draw.coIds } } : {}),
         ...(draw.topics.length > 0 ? { topic: { $in: draw.topics } } : {}),
+        // TP-10: an AI draft is drawn only once a teacher has reviewed it.
+        aiDraft: { $ne: true },
       },
       { difficulty: 1 },
     )
