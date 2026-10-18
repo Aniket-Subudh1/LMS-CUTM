@@ -419,7 +419,7 @@ function PdfDialog({ course }: { course: EditableCourse }) {
   return (
     <FormDialog
       openParam="syllabus-pdf"
-      icon={<UploadSimpleIcon weight="duotone" />}
+      icon={<PageIcon name="fileq" className="size-8" />}
       title={course.syllabusFileKey ? 'Replace the syllabus PDF' : 'Upload the syllabus PDF'}
       description="The university’s official syllabus. Everyone who can see the course can open it."
       action={setSyllabusFile}

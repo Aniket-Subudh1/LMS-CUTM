@@ -17,6 +17,7 @@ import { Field } from '@/components/action-form';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon } from '@/components/page-icon';
 import { RowMenu } from '@/components/row-menu';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
@@ -101,7 +102,7 @@ export async function LiveMonitor({
         </Link>
       </Button>
       <Section
-        icon={<PulseIcon />}
+        icon={<PageIcon name="live" className="size-8" />}
         title="Live monitor"
         description={`Who is writing now, how far they are${m.assessment.proctoring ? ', and every warning as it happens' : ''}. Refreshes every 15 seconds.`}
         action={
@@ -248,7 +249,7 @@ function TimeDialog({ m, person, trigger }: { m: Monitor; person?: MonitorRow; t
         )
       }
       openParam={person && `time-${person.id}`}
-      icon={<TimerIcon weight="duotone" />}
+      icon={<PageIcon name="session" className="size-8" />}
       title={person ? `Add time for ${person.student.name}` : 'Add time for everyone writing'}
       description="Added to each running attempt now, and shown on their timer within 15 seconds. This is recorded."
       action={extendAttempts}
@@ -275,7 +276,7 @@ function MessageDialog({ m, person, trigger }: { m: Monitor; person?: MonitorRow
         )
       }
       openParam={person && `message-${person.id}`}
-      icon={<ChatCircleTextIcon weight="duotone" />}
+      icon={<PageIcon name="chat" className="size-8" />}
       title={person ? `Message ${person.student.name}` : 'Message everyone writing'}
       description="It appears at the top of their test within 15 seconds."
       action={messageTakers}

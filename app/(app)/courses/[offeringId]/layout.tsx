@@ -1,18 +1,11 @@
 import { Suspense } from 'react';
-import {
-  ClockIcon,
-  EyeIcon,
-  GraduationCapIcon,
-  ImageIcon,
-  PlayCircleIcon,
-  StackIcon,
-  UsersThreeIcon,
-} from '@phosphor-icons/react/ssr';
+import { EyeIcon, ImageIcon } from '@phosphor-icons/react/ssr';
 import { clearOfferingCover, setOfferingCover } from '../actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { CourseCover } from '@/components/course-cover';
 import { FileUpload } from '@/components/file-upload';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { TabNav } from '@/components/tab-nav';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -30,25 +23,27 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
   const workspace = await getWorkspace((await params).offeringId);
   const base = `/courses/${workspace.id}`;
   const learn = workspace.access === 'learn';
+  const mark = (name: PageIconName) => <PageIcon name={name} className="size-4" />;
   const tabs = [
-    { href: base, label: 'Overview' },
+    { href: base, label: 'Overview', icon: mark('overview') },
     {
       href: `${base}/content`,
       label: learn ? 'Lessons' : 'Content',
+      icon: mark('lessons'),
     },
-    { href: `${base}/plan`, label: 'Course plan' },
-    { href: `${base}/live`, label: 'Live' },
-    { href: `${base}/syllabus`, label: 'Syllabus' },
+    { href: `${base}/plan`, label: 'Course plan', icon: mark('plan') },
+    { href: `${base}/live`, label: 'Live', icon: mark('live') },
+    { href: `${base}/syllabus`, label: 'Syllabus', icon: mark('books') },
     // A non-credit course has no outcomes (01 §6).
-    ...(workspace.category === 'ugc' ? [{ href: `${base}/outcomes`, label: 'Outcomes' }] : []),
-    { href: `${base}/assessments`, label: 'Assessments' },
+    ...(workspace.category === 'ugc' ? [{ href: `${base}/outcomes`, label: 'Outcomes', icon: mark('outcomes') }] : []),
+    { href: `${base}/assessments`, label: 'Assessments', icon: mark('evaluation') },
     // M04b (TP-05): the course's question bank, for whoever teaches or oversees it.
-    ...(learn ? [] : [{ href: `${base}/bank`, label: 'Question bank' }]),
+    ...(learn ? [] : [{ href: `${base}/bank`, label: 'Question bank', icon: mark('bank') }]),
     // REC-01, REC-02: learning records for theory, lab records for practice.
     ...(workspace.category === 'ugc' && (workspace.credits.theory > 0 || workspace.credits.practice > 0)
-      ? [{ href: `${base}/records`, label: 'Records' }]
+      ? [{ href: `${base}/records`, label: 'Records', icon: mark('books') }]
       : []),
-    ...(learn ? [] : [{ href: `${base}/people`, label: 'People' }]),
+    ...(learn ? [] : [{ href: `${base}/people`, label: 'People', icon: mark('people') }]),
   ];
   return (
     <>
@@ -111,12 +106,16 @@ function Chips({ workspace }: { workspace: Workspace }) {
   const { stats } = workspace;
   const credits = creditTotal(workspace.credits);
   const chips = [
-    { icon: <StackIcon />, text: plural(stats.modules, 'module') },
-    { icon: <PlayCircleIcon />, text: plural(stats.lessons, 'lesson') },
-    ...(stats.videoSec > 0 ? [{ icon: <ClockIcon />, text: `${formatDuration(stats.videoSec)} of video` }] : []),
-    ...(workspace.access === 'learn' ? [] : [{ icon: <UsersThreeIcon />, text: plural(stats.students, 'student') }]),
+    { icon: <PageIcon name="lessons" className="size-3.5" />, text: plural(stats.modules, 'module') },
+    { icon: <PageIcon name="video" className="size-3.5" />, text: plural(stats.lessons, 'lesson') },
+    ...(stats.videoSec > 0
+      ? [{ icon: <PageIcon name="session" className="size-3.5" />, text: `${formatDuration(stats.videoSec)} of video` }]
+      : []),
+    ...(workspace.access === 'learn'
+      ? []
+      : [{ icon: <PageIcon name="users" className="size-3.5" />, text: plural(stats.students, 'student') }]),
     {
-      icon: <GraduationCapIcon />,
+      icon: <PageIcon name="diploma" className="size-3.5" />,
       text: credits > 0 ? `${plural(credits, 'credit')} · ${formatCredits(workspace.credits)}` : 'Non-credit',
     },
   ];
@@ -141,7 +140,7 @@ function CoverDialog({ workspace }: { workspace: Workspace }) {
           <ImageIcon /> {workspace.coverKey ? 'Change cover' : 'Add a cover'}
         </Button>
       }
-      icon={<ImageIcon weight="duotone" />}
+      icon={<PageIcon name="cover" className="size-8" />}
       title="Course cover"
       description="Shown on this class’s course card and at the top of every tab. It is cropped to a wide strip before it uploads."
       action={setOfferingCover}

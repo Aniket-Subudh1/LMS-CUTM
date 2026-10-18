@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CheckSquareIcon, PaperPlaneTiltIcon, PencilSimpleIcon, TrashIcon } from '@phosphor-icons/react/ssr';
 import { deleteAssessment, publishResults } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { MODE_ICON } from '@/components/new-assessment-dialog';
+import { PageIcon } from '@/components/page-icon';
 import { DataTable } from '@/components/data-table';
 import { RowMenu, type RowMenuItem } from '@/components/row-menu';
 import { Badge } from '@/components/ui/badge';
@@ -22,10 +23,9 @@ export const STATE_LABEL: Record<DisplayState, string> = {
 };
 
 export function ModeChip({ mode }: { mode: AssessmentSummary['mode'] }) {
-  const ModeIcon = MODE_ICON[mode];
   return (
     <span className="bg-muted inline-flex w-fit items-center gap-1 rounded-sm px-1.5 py-px text-[0.6875rem] font-medium">
-      <ModeIcon className="size-3" /> {MODE_LABEL[mode]}
+      <PageIcon name={MODE_ICON[mode]} className="size-3.5" /> {MODE_LABEL[mode]}
     </span>
   );
 }

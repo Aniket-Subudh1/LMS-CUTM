@@ -315,7 +315,7 @@ function FacultyCell({ offering }: { offering: OfferingRow }) {
             <UserSwitchIcon weight="duotone" />
           </Button>
         }
-        icon={<UserSwitchIcon weight="duotone" />}
+        icon={<PageIcon name="users" className="size-8" />}
         title="Change faculty"
         description={offering.title}
         action={updateOfferingFaculty}

@@ -320,7 +320,7 @@ function AddStudentDialog({ offeringId }: { offeringId: string }) {
   return (
     <FormDialog
       openParam="student"
-      icon={<UserPlusIcon weight="duotone" />}
+      icon={<PageIcon name="users" className="size-8" />}
       title="Add a student"
       description="They see the course at once. A student who was dropped is added again."
       action={addStudent}
@@ -339,7 +339,7 @@ function CsvDialog({ offeringId }: { offeringId: string }) {
   return (
     <FormDialog
       openParam="csv"
-      icon={<FileArrowUpIcon weight="duotone" />}
+      icon={<PageIcon name="imports" className="size-8" />}
       title="Upload a list of changes"
       description="A CSV with the columns rollNo and action (add or drop). If any row is wrong, nothing is changed and every wrong row is listed."
       action={changeEnrollments}

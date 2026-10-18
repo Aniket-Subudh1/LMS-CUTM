@@ -223,7 +223,7 @@ function ReadyToStart({
 }) {
   return (
     <Section
-      icon={<PlayIcon weight="duotone" />}
+      icon={<PageIcon name="live" className="size-8" />}
       title={canStart ? 'Ready to start' : `You can start from ${formatTime(detail.canStartAt)}`}
       description="Your students are told the moment you start, and can join from the course or their dashboard."
       action={

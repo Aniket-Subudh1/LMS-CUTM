@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import {
   ArrowClockwiseIcon,
   ArrowLeftIcon,
-  ChartBarIcon,
   FilePdfIcon,
   FileXlsIcon,
   PercentIcon,
@@ -16,6 +15,7 @@ import { z } from 'zod';
 import { refreshResults } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
+import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { TestFileButton } from '@/components/test-file-button';
 import { Button } from '@/components/ui/button';
@@ -78,7 +78,7 @@ export async function TestResultsView({
         </Link>
       </Button>
       <Section
-        icon={<ChartBarIcon />}
+        icon={<PageIcon name="chart" className="size-8" />}
         title="Results and analytics"
         description={
           stats

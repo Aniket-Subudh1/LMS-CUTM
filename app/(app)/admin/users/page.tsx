@@ -149,7 +149,7 @@ async function NewUser() {
         </Button>
       }
       size="wide"
-      icon={<UserPlusIcon weight="duotone" />}
+      icon={<PageIcon name="users" className="size-8" />}
       title="New user"
       description="The person receives an email to set their password. Fill in the student fields for a student and the staff fields for faculty or head of department."
       openParam="user"
@@ -233,7 +233,7 @@ function ImportUsers() {
         </Button>
       }
       size="wide"
-      icon={<FileArrowUpIcon weight="duotone" />}
+      icon={<PageIcon name="imports" className="size-8" />}
       title="Import users"
       description="Upload a CSV with one row per person. If any row is wrong nothing is saved, and the rows to fix are listed."
       openParam="import"

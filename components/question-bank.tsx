@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import {
-  DatabaseIcon,
   InfoIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -81,7 +80,7 @@ export async function QuestionBank({
   return (
     <>
       <Section
-        icon={<PageIcon name="books" className="size-8" />}
+        icon={<PageIcon name="bank" className="size-8" />}
         title={bank.courseTitle ? `Question bank · ${bank.courseTitle}` : 'Your question bank'}
         description={
           bank.courseTitle
@@ -109,7 +108,11 @@ export async function QuestionBank({
           {tiles.map((tile) => (
             <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                {'draft' in tile ? <SparkleIcon className="size-4.5" /> : <DatabaseIcon className="size-4.5" />}
+                {'draft' in tile ? (
+                  <PageIcon name="sparkle" className="size-7" />
+                ) : (
+                  <PageIcon name="bank" className="size-7" />
+                )}
               </span>
               <div className="grid min-w-0">
                 <dd className={cn('text-lg leading-tight font-semibold tabular-nums', 'draft' in tile && 'text-gold')}>
@@ -126,16 +129,13 @@ export async function QuestionBank({
               <PlusIcon className="size-4" /> Add a question
             </p>
             <div className="flex flex-wrap gap-2">
-              {ITEM_TYPES.map((type) => {
-                const TypeIcon = TYPE_ICON[type];
-                return (
-                  <Button key={type} asChild variant="outline" size="sm">
-                    <Link href={here(`item-${type}`)} scroll={false}>
-                      <TypeIcon /> {ITEM_LABEL[type]}
-                    </Link>
-                  </Button>
-                );
-              })}
+              {ITEM_TYPES.map((type) => (
+                <Button key={type} asChild variant="outline" size="sm">
+                  <Link href={here(`item-${type}`)} scroll={false}>
+                    <PageIcon name={TYPE_ICON[type]} className="size-4" /> {ITEM_LABEL[type]}
+                  </Link>
+                </Button>
+              ))}
             </div>
           </div>
         )}
@@ -194,7 +194,7 @@ export async function QuestionBank({
                   </span>
                   {row.aiDraft && (
                     <span className="bg-gold/10 text-gold flex w-fit items-center gap-1 rounded-sm px-1.5 py-px text-[0.6875rem] font-medium">
-                      <SparkleIcon className="size-3" /> AI draft · review it
+                      <PageIcon name="sparkle" className="size-3.5" /> AI draft · review it
                     </span>
                   )}
                 </span>
@@ -329,7 +329,7 @@ export async function QuestionBank({
           key={open}
           openParam="draft"
           size="wide"
-          icon={<SparkleIcon weight="duotone" />}
+          icon={<PageIcon name="sparkle" className="size-8" />}
           title="Draft questions with AI"
           description="AI writes drafts with keys and explanations. Nothing is used until you review and accept each one."
           action={draftWithAi}
@@ -408,7 +408,7 @@ export async function QuestionBank({
           key={open}
           openParam="import"
           size="wide"
-          icon={<UploadSimpleIcon weight="duotone" />}
+          icon={<PageIcon name="imports" className="size-8" />}
           title="Import questions from a CSV"
           description={`Up to ${BANK_LIMITS.csvRows} questions at a time. Every row is checked first; nothing is saved unless all are right.`}
           action={importBankCsv}

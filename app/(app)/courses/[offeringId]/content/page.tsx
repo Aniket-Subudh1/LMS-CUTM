@@ -9,17 +9,14 @@ import {
   CheckIcon,
   EyeIcon,
   EyeSlashIcon,
-  FilePdfIcon,
   FolderPlusIcon,
   ImageIcon,
-  LinkIcon,
   PaperclipIcon,
   PencilSimpleIcon,
   PlayIcon,
   PlusIcon,
   TrashIcon,
   UploadSimpleIcon,
-  VideoCameraIcon,
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
@@ -154,7 +151,7 @@ function Build({
     return (
       <>
         <EmptyState
-          icon={<FolderPlusIcon weight="duotone" />}
+          icon={<PageIcon name="lessons" />}
           text={
             canTeach
               ? 'Start with a module, for example one per unit of the syllabus. Then add lessons to it.'
@@ -497,7 +494,10 @@ function ModulePane({
           {(['video', 'document', 'link'] as const).map((kind) => (
             <Button key={kind} asChild variant="outline" size="sm">
               <Link href={here(`lesson-${kind}`)} scroll={false}>
-                {kind === 'video' ? <VideoCameraIcon /> : kind === 'document' ? <FilePdfIcon /> : <LinkIcon />}
+                <PageIcon
+                  name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'}
+                  className="size-4"
+                />
                 {KIND[kind].add}
               </Link>
             </Button>
@@ -520,7 +520,10 @@ function AddLesson({ here }: { here: (dialog?: string) => string }) {
         {(['video', 'document', 'link'] as const).map((kind) => (
           <DropdownMenuItem key={kind} asChild>
             <Link href={here(`lesson-${kind}`)} scroll={false}>
-              {kind === 'video' ? <VideoCameraIcon /> : kind === 'document' ? <FilePdfIcon /> : <LinkIcon />}
+              <PageIcon
+                name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'}
+                className="size-4"
+              />
               {KIND[kind].add}
             </Link>
           </DropdownMenuItem>
@@ -535,7 +538,7 @@ function ModuleDialog({ offeringId, module }: { offeringId: string; module?: Con
   return (
     <FormDialog
       openParam={dialog}
-      icon={<FolderPlusIcon weight="duotone" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title={module ? 'Rename module' : 'Add a module'}
       description="A module groups related lessons, for example one unit of the syllabus. Students see modules in this order."
       action={saveModule}
@@ -570,15 +573,7 @@ function LessonDialog({
     <FormDialog
       openParam={`lesson-${kind}`}
       size="wide"
-      icon={
-        kind === 'video' ? (
-          <VideoCameraIcon weight="duotone" />
-        ) : kind === 'document' ? (
-          <FilePdfIcon weight="duotone" />
-        ) : (
-          <LinkIcon weight="duotone" />
-        )
-      }
+      icon={<PageIcon name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'} className="size-8" />}
       title={kind === 'video' ? 'Add a video lesson' : kind === 'document' ? 'Add PDF notes' : 'Add a link'}
       description="It stays hidden from students until you publish it."
       action={createLesson}
@@ -673,7 +668,7 @@ function MoveDialog({
   return (
     <FormDialog
       openParam={`move-${lesson.id}`}
-      icon={<ArrowsDownUpIcon weight="duotone" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title="Move to another module"
       description={`“${lesson.title}” goes to the end of the module you choose.`}
       action={moveLessonToModule}

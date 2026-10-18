@@ -1,19 +1,7 @@
 import type { ReactNode } from 'react';
-import {
-  ArrowsLeftRightIcon,
-  CheckSquareIcon,
-  CodeIcon,
-  FileArrowUpIcon,
-  HashIcon,
-  ListNumbersIcon,
-  RadioButtonIcon,
-  TextAaIcon,
-  TextboxIcon,
-  ToggleRightIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
 import { Field, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -29,17 +17,17 @@ import {
 } from '@/lib/schemas/assessment';
 import { BLOOM_LEVELS } from '@/lib/schemas/structure';
 
-export const TYPE_ICON: Record<ItemType, Icon> = {
-  mcq: RadioButtonIcon,
-  msq: CheckSquareIcon,
-  true_false: ToggleRightIcon,
-  numeric: HashIcon,
-  fill_blank: TextboxIcon,
-  matching: ArrowsLeftRightIcon,
-  ordering: ListNumbersIcon,
-  text: TextAaIcon,
-  file: FileArrowUpIcon,
-  code: CodeIcon,
+export const TYPE_ICON: Record<ItemType, PageIconName> = {
+  mcq: 'mcq',
+  msq: 'msq',
+  true_false: 'truefalse',
+  numeric: 'numeric',
+  fill_blank: 'blank',
+  matching: 'matching',
+  ordering: 'ordering',
+  text: 'textq',
+  file: 'fileq',
+  code: 'code',
 };
 
 const TYPE_HINT: Record<ItemType, string> = {
@@ -83,7 +71,6 @@ export function QuestionDialog({
   sections: { id: string; title: string }[];
   languages: { key: string; label: string }[];
 }) {
-  const TypeIcon = TYPE_ICON[type];
   const options = item?.options ?? [];
   const correct = new Set(item?.key && 'optionIds' in item.key ? item.key.optionIds : []);
   const rubric = item?.rubric ?? [];
@@ -230,7 +217,7 @@ export function QuestionDialog({
     <FormDialog
       openParam={openParam}
       size="wide"
-      icon={<TypeIcon weight="duotone" />}
+      icon={<PageIcon name={TYPE_ICON[type]} className="size-8" />}
       title={title}
       description={TYPE_HINT[type]}
       action={action}

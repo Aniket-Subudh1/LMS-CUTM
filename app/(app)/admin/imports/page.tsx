@@ -174,7 +174,7 @@ function UploadDialog() {
           <FileArrowUpIcon weight="duotone" /> Upload course list
         </Button>
       }
-      icon={<FileArrowUpIcon weight="duotone" />}
+      icon={<PageIcon name="imports" className="size-8" />}
       title="Upload the course list"
       description="If any row is wrong nothing is saved, and the rows to fix are listed. Courses are matched by code: only their title and credits change, never their content."
       openParam="courses"

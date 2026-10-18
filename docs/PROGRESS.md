@@ -2012,3 +2012,24 @@ Aniket asked for ChatGPT rather than Anthropic, because of the cost.
 **Verification**
 - `npm run check` → exit 0; `npm run test:integration` → exit 0 (the AI drafts tests stub the adapter, which is unchanged in shape); `npm run build` → exit 0; `npm run check:bundle` → clean.
 
+### 2026-10-18 · Generated marks on the remaining pages and dialogs · Cursor
+
+Aniket said pages and modals were still missing the clay marks.
+
+**Created**
+- `public/icons/`: assignment, bank, blank, chart, chat, code, cover, fileq, lab, labtest, matching, mcq, msq, numeric, ordering, quiz, sparkle, textq, trophy, truefalse. `blank` was regenerated once: the first mark was a hairline and read as a dash at 16 px.
+
+**Changed**
+- `components/page-icon.tsx`: those keys.
+- Assessment type picker and its dialog (`MODE_ICON`), question types and their dialog (`TYPE_ICON`), the mode chip, and the “add a question” buttons.
+- Course workspace tabs and the header chips; the cover, lesson, module, plan, people, users, imports, syllabus PDF, live-monitor, results, instructions, and question-bank dialogs and sections.
+- 08 §5.2 (`PageIcon`, `TabNav`).
+
+**Not done** — `npm run check`, the integration suite, and a production build were not re-run. Count tiles that report a status (handed in, warnings, dropped) still use Phosphor. Buttons and row actions still use Phosphor.
+
+**Assumptions** — A dialog uses the mark of the thing it names. A button that does the action keeps Phosphor. Syllabus and Records both use the books mark.
+
+**Open questions** — none.
+
+**Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied. On `next dev`, signed in as `admin@seed.cutm.test`: the course tabs each show a loaded mark; New assessment shows the eight type marks; the question bank’s ten type buttons and the fill-in-the-blanks dialog show marks; Course cover and Import users dialogs show marks. Hovering a home tile leaves the picture transparent (`rgba(0,0,0,0)`) and does not fill the chip with the primary colour.
+

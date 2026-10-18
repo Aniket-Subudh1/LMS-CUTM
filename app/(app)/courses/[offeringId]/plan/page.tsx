@@ -314,7 +314,7 @@ function PlanDocDialog({ plan }: { plan: CoursePlan }) {
         </Button>
       }
       size="wide"
-      icon={<PencilSimpleIcon weight="duotone" />}
+      icon={<PageIcon name="plan" className="size-8" />}
       title="How the course will run"
       description="How you teach it, how students are assessed and what you expect of them."
       action={savePlan}
@@ -411,7 +411,7 @@ function FillDialog({ plan }: { plan: CoursePlan }) {
           <SparkleIcon /> Fill from the session plan
         </Button>
       }
-      icon={<SparkleIcon weight="duotone" />}
+      icon={<PageIcon name="sparkle" className="size-8" />}
       title="Fill from the course’s session plan"
       description={`The course has ${plan.sessionPlan} sessions in order. Choose the first class and the days you teach, and they are dated for you. Edit any of them afterwards.`}
       action={fillCalendarFromCourse}

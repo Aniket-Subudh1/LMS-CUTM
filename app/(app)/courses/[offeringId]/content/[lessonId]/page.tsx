@@ -12,7 +12,6 @@ import {
   EyeSlashIcon,
   FilePdfIcon,
   ImageIcon,
-  PaperclipIcon,
   PencilSimpleIcon,
   PlusIcon,
   TrashIcon,
@@ -200,7 +199,7 @@ function Editor({ lesson, content, activity }: { lesson: LessonDetail; content: 
                     </Button>
                   }
                   size="wide"
-                  icon={<PencilSimpleIcon weight="duotone" />}
+                  icon={<PageIcon name="lesson" className="size-8" />}
                   title="Edit lesson"
                   description="Change the title, the module it sits in, or what students read with it."
                   action={updateLesson}
@@ -270,7 +269,7 @@ function Editor({ lesson, content, activity }: { lesson: LessonDetail; content: 
                         <UploadSimpleIcon /> Replace
                       </Button>
                     }
-                    icon={<UploadSimpleIcon weight="duotone" />}
+                    icon={<PageIcon name={lesson.kind === 'video' ? 'video' : 'books'} className="size-8" />}
                     title={lesson.kind === 'video' ? 'Replace the video' : 'Replace the PDF'}
                     description={
                       lesson.kind === 'video'
@@ -335,7 +334,7 @@ function Editor({ lesson, content, activity }: { lesson: LessonDetail; content: 
                       <ImageIcon /> Upload picture
                     </Button>
                   }
-                  icon={<ImageIcon weight="duotone" />}
+                  icon={<PageIcon name="cover" className="size-8" />}
                   title="Upload a thumbnail"
                   description="A JPEG, PNG or WebP picture. It is cropped to 16 by 9 before it uploads."
                   action={setLessonThumb}
@@ -394,7 +393,7 @@ function Editor({ lesson, content, activity }: { lesson: LessonDetail; content: 
                       <PlusIcon /> Add PDF
                     </Button>
                   }
-                  icon={<PaperclipIcon weight="duotone" />}
+                  icon={<PageIcon name="fileq" className="size-8" />}
                   title="Add notes"
                   description={`PDFs students open beside the lesson. A lesson holds up to ${MAX_NOTES}.`}
                   action={addLessonNotes}

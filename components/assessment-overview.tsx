@@ -27,6 +27,7 @@ import type { Icon } from '@phosphor-icons/react';
 import { startAttempt } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
 import { ActionForm } from '@/components/action-form';
 import { RichTextView } from '@/components/rich-text-view';
+import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
 import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { TestFileButton } from '@/components/test-file-button';
@@ -83,7 +84,11 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
           <div className="grid gap-4">
             <DeviceCheck fullscreen={a.proctoring?.fullscreen} camera={a.proctoring?.camera} />
             {a.instructions && (
-              <Section icon={<InfoIcon />} title="Instructions" description="Read these before you start.">
+              <Section
+                icon={<PageIcon name="plan" className="size-8" />}
+                title="Instructions"
+                description="Read these before you start."
+              >
                 <RichTextView doc={a.instructions} />
               </Section>
             )}
@@ -124,7 +129,11 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
       ) : (
         !result && (
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-            <Section icon={<InfoIcon />} title="Instructions" description="As they were given.">
+            <Section
+              icon={<PageIcon name="plan" className="size-8" />}
+              title="Instructions"
+              description="As they were given."
+            >
               {a.instructions ? (
                 <RichTextView doc={a.instructions} />
               ) : (
@@ -401,7 +410,7 @@ function Results({ page }: { page: StudentPage }) {
         )}
 
         <Section
-          icon={<CheckSquareIcon />}
+          icon={<PageIcon name="evaluation" className="size-8" />}
           title="Your answers"
           description="Each question with your marks and the grader’s comments."
         >

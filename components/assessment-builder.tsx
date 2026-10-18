@@ -3,16 +3,10 @@ import Form from 'next/form';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeftIcon,
-  ChartBarIcon,
   CheckCircleIcon,
   CheckSquareIcon,
-  ClockIcon,
   DatabaseIcon,
   EnvelopeSimpleIcon,
-  GlobeIcon,
-  InfoIcon,
-  LinkIcon,
-  ListChecksIcon,
   LockIcon,
   LockSimpleIcon,
   PaperPlaneTiltIcon,
@@ -20,11 +14,7 @@ import {
   PlusIcon,
   PowerIcon,
   PulseIcon,
-  ShieldCheckIcon,
-  StackIcon,
-  TimerIcon,
   TrashIcon,
-  UsersThreeIcon,
   WarningIcon,
   XIcon,
 } from '@phosphor-icons/react/ssr';
@@ -53,6 +43,7 @@ import { BloomChip } from '@/components/bloom-chip';
 import { CopyButton } from '@/components/copy-button';
 import { FormDialog } from '@/components/form-dialog';
 import { istLocal } from '@/components/new-assessment-dialog';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { QuestionDialog, TYPE_ICON } from '@/components/question-dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { RichTextView } from '@/components/rich-text-view';
@@ -194,7 +185,7 @@ export async function AssessmentBuilder({
             {a.status !== 'draft' && (
               <Button asChild variant="outline" size="sm">
                 <Link href={`${b.path}/results`}>
-                  <ChartBarIcon /> Results
+                  <PageIcon name="chart" className="size-4" /> Results
                 </Link>
               </Button>
             )}
@@ -256,7 +247,7 @@ export async function AssessmentBuilder({
         <div className="grid min-w-0 gap-4">
           <Sections b={b} editable={editQuestions} here={here} />
           <Section
-            icon={<ListChecksIcon />}
+            icon={<PageIcon name="evaluation" className="size-8" />}
             title="Questions"
             description={
               !course
@@ -283,19 +274,16 @@ export async function AssessmentBuilder({
                   <PlusIcon className="size-4" /> Add a question
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {MODE_ITEM_TYPES[a.mode].map((type) => {
-                    const TypeIcon = TYPE_ICON[type];
-                    return (
-                      <Button key={type} asChild variant="outline" size="sm">
-                        <Link href={here(`item-${type}`)} scroll={false}>
-                          <TypeIcon /> {ITEM_LABEL[type]}
-                        </Link>
-                      </Button>
-                    );
-                  })}
+                  {MODE_ITEM_TYPES[a.mode].map((type) => (
+                    <Button key={type} asChild variant="outline" size="sm">
+                      <Link href={here(`item-${type}`)} scroll={false}>
+                        <PageIcon name={TYPE_ICON[type]} className="size-4" /> {ITEM_LABEL[type]}
+                      </Link>
+                    </Button>
+                  ))}
                   <Button asChild variant="secondary" size="sm">
                     <Link href={here('bank')} scroll={false}>
-                      <DatabaseIcon /> From the bank
+                      <PageIcon name="bank" className="size-4" /> From the bank
                     </Link>
                   </Button>
                 </div>
@@ -306,7 +294,7 @@ export async function AssessmentBuilder({
 
         <div className="grid gap-4">
           <Section
-            icon={<ClockIcon />}
+            icon={<PageIcon name="settings" className="size-8" />}
             title="Settings"
             description="When it runs and how it is attempted."
             action={
@@ -354,7 +342,7 @@ export async function AssessmentBuilder({
           )}
           {b.canEdit && <ExtraTime b={b} />}
           <Section
-            icon={<InfoIcon />}
+            icon={<PageIcon name="plan" className="size-8" />}
             title="Instructions"
             description={course ? 'Shown to students before they start.' : 'Shown to everyone before they start.'}
             action={
@@ -383,7 +371,7 @@ export async function AssessmentBuilder({
         <FormDialog
           key={open}
           openParam="instructions"
-          icon={<InfoIcon weight="duotone" />}
+          icon={<PageIcon name="plan" className="size-8" />}
           title="Instructions"
           description="What students read before they start: what to bring, how long it takes, how it is marked."
           action={saveInstructions}
@@ -538,7 +526,7 @@ function SettingsDialog({ b }: { b: Builder }) {
     <FormDialog
       openParam="settings"
       size="wide"
-      icon={<ClockIcon weight="duotone" />}
+      icon={<PageIcon name="settings" className="size-8" />}
       title="Settings"
       description={
         fixed
@@ -643,7 +631,7 @@ function ResultRules({ b, here }: { b: Builder; here: (name: string) => string }
   ];
   return (
     <Section
-      icon={<ChartBarIcon />}
+      icon={<PageIcon name="chart" className="size-8" />}
       title="Results"
       description="When they go out and what people see."
       action={
@@ -683,7 +671,7 @@ function ResultRulesDialog({ b }: { b: Builder }) {
     <FormDialog
       openParam="results"
       size="wide"
-      icon={<ChartBarIcon weight="duotone" />}
+      icon={<PageIcon name="chart" className="size-8" />}
       title="Results"
       description="None of this changes a mark. Ranks and the leaderboard appear once the results are published."
       action={saveResultRules}
@@ -781,7 +769,7 @@ function Proctoring({ b, here }: { b: Builder; here: (name: string) => string })
     : [];
   return (
     <Section
-      icon={<ShieldCheckIcon />}
+      icon={<PageIcon name="signin" className="size-8" />}
       title="Proctoring"
       description={
         p
@@ -831,7 +819,7 @@ function ProctoringDialog({ b }: { b: Builder }) {
     <FormDialog
       openParam="proctoring"
       size="wide"
-      icon={<ShieldCheckIcon weight="duotone" />}
+      icon={<PageIcon name="signin" className="size-8" />}
       title="Proctoring"
       description="Everyone sees exactly what is watched before they start. Nothing here can change once someone has started."
       action={saveProctoring}
@@ -914,7 +902,7 @@ function Sections({ b, editable, here }: { b: Builder; editable: boolean; here: 
   const chip = 'bg-muted rounded-sm px-1.5 py-0.5 text-[0.6875rem] font-medium';
   return (
     <Section
-      icon={<StackIcon />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title="Sections and papers"
       description={
         b.sections.length === 0
@@ -1056,7 +1044,7 @@ function SectionDialog({
     <FormDialog
       openParam={openParam}
       size="wide"
-      icon={<StackIcon weight="duotone" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title={section ? `Section · ${section.title}` : 'New section'}
       description="Its own clock and order rule, a passage, and questions drawn from the bank for each person."
       action={saveSection}
@@ -1170,7 +1158,7 @@ function BankPicker({ b, rows, base, bq }: { b: Builder; rows: BankRow[]; base: 
     <FormDialog
       openParam="bank"
       size="wide"
-      icon={<DatabaseIcon weight="duotone" />}
+      icon={<PageIcon name="bank" className="size-8" />}
       title="Add from the bank"
       description={`Copies questions from ${b.offeringId ? 'the course’s' : 'your'} bank into this test. Changing them here leaves the bank as it is.`}
       preface={
@@ -1246,7 +1234,7 @@ function BankPicker({ b, rows, base, bq }: { b: Builder; rows: BankRow[]; base: 
 function ExtraTime({ b }: { b: Builder }) {
   return (
     <Section
-      icon={<TimerIcon />}
+      icon={<PageIcon name="session" className="size-8" />}
       title="Extra time"
       description="For one person, added to their time and the closing time."
     >
@@ -1320,7 +1308,7 @@ function ShareLinks({
 }) {
   return (
     <Section
-      icon={<LinkIcon />}
+      icon={<PageIcon name="globe" className="size-8" />}
       title="Share"
       description={draft ? 'Links work once you publish.' : 'Links that take people straight to this test.'}
       action={
@@ -1342,7 +1330,7 @@ function ShareLinks({
           {links.map((link, i) => {
             const fields = { assessmentId: aid, linkId: link.id };
             const qrSrc = `data:image/svg+xml;utf8,${encodeURIComponent(qr[i] ?? '')}`;
-            const AudienceIcon = link.audience === 'guests' ? GlobeIcon : UsersThreeIcon;
+            const audience: PageIconName = link.audience === 'guests' ? 'globe' : 'users';
             const rules = [
               link.audience === 'guests' ? 'Guests' : course ? 'This class' : 'LMS users',
               link.accessCode && `code ${link.accessCode}`,
@@ -1354,7 +1342,7 @@ function ShareLinks({
               <li key={link.id} className="ring-border/70 grid gap-2.5 rounded-md p-3 ring-1">
                 <div className="flex items-start gap-2.5">
                   <span className="icon-chip size-8 shrink-0">
-                    <AudienceIcon className="size-4" />
+                    <PageIcon name={audience} className="size-7" />
                   </span>
                   <span className="grid min-w-0 flex-1 gap-0.5">
                     <b className="truncate text-[0.8125rem] font-semibold">{link.label}</b>
@@ -1434,7 +1422,7 @@ function NewLinkDialog({ aid, course }: { aid: string; course: boolean }) {
   return (
     <FormDialog
       openParam="link"
-      icon={<LinkIcon weight="duotone" />}
+      icon={<PageIcon name="globe" className="size-8" />}
       title="New share link"
       description="Who it is for, and anything that narrows who may use it. Leave a field empty to skip it."
       action={createLink}
@@ -1451,7 +1439,7 @@ function NewLinkDialog({ aid, course }: { aid: string; course: boolean }) {
           {[
             {
               value: 'class',
-              icon: UsersThreeIcon,
+              icon: 'users' as const,
               title: course ? 'This class' : 'LMS users',
               hint: course
                 ? 'Its students sign in with their password.'
@@ -1462,12 +1450,12 @@ function NewLinkDialog({ aid, course }: { aid: string; course: boolean }) {
               : [
                   {
                     value: 'guests',
-                    icon: GlobeIcon,
+                    icon: 'globe' as const,
                     title: 'Guests',
                     hint: 'Outside people register with an email code.',
                   },
                 ]),
-          ].map(({ value, icon: OptionIcon, title, hint }) => (
+          ].map(({ value, icon, title, hint }) => (
             <label
               key={value}
               className="ring-border has-checked:ring-foreground has-checked:bg-muted/40 has-focus-visible:ring-ring flex cursor-pointer items-start gap-3 rounded-md p-3 ring-1 transition-colors has-checked:ring-2"
@@ -1480,7 +1468,7 @@ function NewLinkDialog({ aid, course }: { aid: string; course: boolean }) {
                 className="sr-only"
               />
               <span className="icon-chip size-8">
-                <OptionIcon className="size-4" />
+                <PageIcon name={icon} className="size-7" />
               </span>
               <span className="grid gap-0.5">
                 <span className="text-[0.8125rem] font-semibold">{title}</span>
@@ -1513,7 +1501,7 @@ function InviteDialog({ aid, link, openParam }: { aid: string; link: ShareLink; 
   return (
     <FormDialog
       openParam={openParam}
-      icon={<EnvelopeSimpleIcon weight="duotone" />}
+      icon={<PageIcon name="envelope" className="size-8" />}
       title="Invite by email"
       description={`Each address gets the test’s dates and the “${link.label}” link.${link.accessCode ? ' Send the access code separately.' : ''}`}
       action={inviteToTest}

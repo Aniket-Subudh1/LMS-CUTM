@@ -1,34 +1,23 @@
-import {
-  BookOpenIcon,
-  CodeIcon,
-  ExamIcon,
-  FlaskIcon,
-  InfoIcon,
-  ListChecksIcon,
-  NotebookIcon,
-  PlusIcon,
-  TestTubeIcon,
-  TrophyIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { InfoIcon } from '@phosphor-icons/react/ssr';
 import { createAssessment } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { createTest } from '@/app/(app)/tests/actions';
 import { Field, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
+import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { Input } from '@/components/ui/input';
 import { istDayKey, istTimeOfDay } from '@/lib/domain/time';
 import { MODE_LABEL } from '@/lib/format';
 import { ASSESSMENT_MODES, type AssessmentMode } from '@/lib/schemas/assessment';
 
-export const MODE_ICON: Record<AssessmentMode, Icon> = {
-  quiz: ListChecksIcon,
-  written_test: ExamIcon,
-  assignment: NotebookIcon,
-  learning_record: BookOpenIcon,
-  lab_record: FlaskIcon,
-  coding_test: CodeIcon,
-  lab_test: TestTubeIcon,
-  coding_competition: TrophyIcon,
+export const MODE_ICON: Record<AssessmentMode, PageIconName> = {
+  quiz: 'quiz',
+  written_test: 'evaluation',
+  assignment: 'assignment',
+  learning_record: 'books',
+  lab_record: 'lab',
+  coding_test: 'code',
+  lab_test: 'labtest',
+  coding_competition: 'trophy',
 };
 
 const MODE_HINT: Record<AssessmentMode, string> = {
@@ -55,7 +44,7 @@ export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string |
     <FormDialog
       openParam={mode}
       size="wide"
-      icon={<PlusIcon weight="duotone" />}
+      icon={<PageIcon name={MODE_ICON[mode]} className="size-8" />}
       title={offeringId ? 'New assessment' : 'New test'}
       description="Pick the kind of work. You add the questions in the next step."
       action={offeringId ? createAssessment : createTest}
@@ -66,24 +55,21 @@ export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string |
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">Type</legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          {ASSESSMENT_MODES.map((value) => {
-            const ModeIcon = MODE_ICON[value];
-            return (
-              <label
-                key={value}
-                className="ring-border has-checked:ring-foreground has-checked:bg-muted/40 has-focus-visible:ring-ring flex cursor-pointer items-start gap-3 rounded-md p-3 ring-1 transition-colors has-checked:ring-2"
-              >
-                <input type="radio" name="mode" value={value} defaultChecked={value === mode} className="sr-only" />
-                <span className="icon-chip size-8">
-                  <ModeIcon className="size-4" />
-                </span>
-                <span className="grid gap-0.5">
-                  <span className="text-[0.8125rem] font-semibold">{MODE_LABEL[value]}</span>
-                  <span className="text-muted-foreground text-xs leading-relaxed">{MODE_HINT[value]}</span>
-                </span>
-              </label>
-            );
-          })}
+          {ASSESSMENT_MODES.map((value) => (
+            <label
+              key={value}
+              className="ring-border has-checked:ring-foreground has-checked:bg-muted/40 has-focus-visible:ring-ring flex cursor-pointer items-start gap-3 rounded-md p-3 ring-1 transition-colors has-checked:ring-2"
+            >
+              <input type="radio" name="mode" value={value} defaultChecked={value === mode} className="sr-only" />
+              <span className="icon-chip size-8">
+                <PageIcon name={MODE_ICON[value]} className="size-7" />
+              </span>
+              <span className="grid gap-0.5">
+                <span className="text-[0.8125rem] font-semibold">{MODE_LABEL[value]}</span>
+                <span className="text-muted-foreground text-xs leading-relaxed">{MODE_HINT[value]}</span>
+              </span>
+            </label>
+          ))}
         </div>
         <FieldErrors name="mode" />
       </fieldset>
