@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -19,8 +20,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getSubmissionForGrading, type AnswerValue, type GradingView, type TeacherItem } from '@/lib/data/assessments';
+import { normalizeBlank } from '@/lib/domain/grading';
 import { assessmentPath } from '@/lib/domain/test-links';
-import { formatDateTime, initials, ITEM_LABEL, statusTone } from '@/lib/format';
+import { formatDateTime, formatDuration, initials, ITEM_LABEL, statusTone } from '@/lib/format';
+import { OBJECTIVE_TYPES } from '@/lib/schemas/assessment';
 
 // T6: one hand-in. Each answer sits beside the key and its marks (automatic marks can be changed), a rubric question's
 // criteria, and a comment; "Save and open the next" goes to the next hand-in waiting for marks (M04 decision 5).
@@ -35,10 +38,18 @@ export async function GradingPage({
   if (view.path !== assessmentPath(offeringId ?? null, aid)) notFound();
   const { submission: s, assessment: a } = view;
   const list = `${view.path}/grade`;
+  // M04b: this attempt's own paper, under each section's title.
   const questions = (
     <div className="grid gap-4">
-      {a.items.map((item, i) => (
-        <QuestionCard key={item.id} item={item} n={i + 1} view={view} />
+      {view.items.map((item, i) => (
+        <Fragment key={item.id}>
+          {item.sectionTitle && item.sectionTitle !== view.items[i - 1]?.sectionTitle && (
+            <h2 className="text-muted-foreground mt-2 text-xs font-semibold tracking-wide uppercase">
+              {item.sectionTitle}
+            </h2>
+          )}
+          <QuestionCard item={item} n={i + 1} view={view} />
+        </Fragment>
       ))}
     </div>
   );
@@ -130,7 +141,8 @@ export async function GradingPage({
 function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: GradingView }) {
   const answer = view.submission.answers[item.id];
   const score = view.submission.scores[item.id];
-  const auto = item.type === 'mcq' || item.type === 'msq' || item.type === 'numeric';
+  const auto = OBJECTIVE_TYPES.some((type) => type === item.type);
+  const spent = view.submission.spent[item.id] ?? 0;
   return (
     <article className="surface grid gap-3 p-4 sm:p-5">
       <input type="hidden" name="item[]" value={item.id} />
@@ -138,9 +150,18 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
         <span className="bg-muted grid size-6 shrink-0 place-items-center rounded-sm text-xs font-semibold">{n}</span>
         <div className="grid min-w-0 flex-1 gap-1 text-[0.8125rem]">
           {item.prompt && <RichTextView doc={item.prompt} />}
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             {ITEM_LABEL[item.type]}
             {auto ? ' · marked automatically, you can change it' : item.rubric ? ' · rubric' : ''}
+            {item.negativeMarks > 0 && ` · −${item.negativeMarks} if wrong`}
+            {item.partialCredit && ' · part marks'}
+            {spent > 0 && ` · ${formatDuration(spent)} on it`}
+            {item.drawn && <Badge variant="secondary">From the bank</Badge>}
+            {view.submission.flags.includes(item.id) && (
+              <Badge variant="warning" className="normal-case">
+                Flagged by them
+              </Badge>
+            )}
           </span>
         </div>
         {item.rubric ? (
@@ -156,7 +177,7 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
             <Input
               name="marks[]"
               type="number"
-              min={0}
+              min={-item.negativeMarks}
               max={item.maxMarks}
               step={0.01}
               defaultValue={score?.marks ?? ''}
@@ -220,17 +241,86 @@ function AnswerView({ item, answer }: { item: TeacherItem; answer: AnswerValue |
         ) : (
           chosen.map((id) => (
             <p key={id} className="flex items-center gap-2">
-              {correct.includes(id) ? (
-                <CheckIcon className="text-success size-4" />
-              ) : (
-                <XIcon className="text-destructive size-4" />
-              )}
+              <Mark ok={correct.includes(id)} />
               {options.get(id)}
             </p>
           ))
         )}
         <p className="text-muted-foreground text-xs">Correct: {correct.map((id) => options.get(id)).join(', ')}</p>
       </div>
+    );
+  }
+  if (answer.type === 'true_false') {
+    const truth = key && 'truth' in key ? key.truth : null;
+    return (
+      <p className="flex items-center gap-2 text-[0.8125rem]">
+        {answer.truth === null ? (
+          <span className="text-muted-foreground">No answer.</span>
+        ) : (
+          <>
+            <Mark ok={answer.truth === truth} />
+            {answer.truth ? 'True' : 'False'}
+          </>
+        )}
+        <span className="text-muted-foreground text-xs">· key {truth ? 'True' : 'False'}</span>
+      </p>
+    );
+  }
+  if (answer.type === 'fill_blank') {
+    return (
+      <ol className="grid gap-1 text-[0.8125rem]">
+        {(item.blanks ?? []).map((accepted, i) => {
+          const given = answer.texts[i] ?? '';
+          return (
+            <li key={i} className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground text-xs">Blank {i + 1}</span>
+              {given.trim() ? (
+                <>
+                  <Mark ok={accepted.some((a) => normalizeBlank(a) === normalizeBlank(given))} />
+                  <b className="font-medium">{given}</b>
+                </>
+              ) : (
+                <span className="text-muted-foreground">empty</span>
+              )}
+              <span className="text-muted-foreground text-xs">· accepts {accepted.join(' or ')}</span>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
+  if (answer.type === 'matching') {
+    const chosen = new Map(answer.matches.map((m) => [m.left, m.right]));
+    const rightText = new Map((item.pairs ?? []).map((pair) => [pair.rightId, pair.right]));
+    return (
+      <ul className="grid gap-1 text-[0.8125rem]">
+        {(item.pairs ?? []).map((pair) => {
+          const picked = chosen.get(pair.id);
+          return (
+            <li key={pair.id} className="flex flex-wrap items-center gap-2">
+              {picked ? <Mark ok={picked === pair.rightId} /> : <span className="size-4" />}
+              {pair.left} → {picked ? rightText.get(picked) : <span className="text-muted-foreground">no match</span>}
+              {picked !== pair.rightId && <span className="text-muted-foreground text-xs">· key {pair.right}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+  if (answer.type === 'ordering') {
+    const right = key && 'optionIds' in key ? key.optionIds : [];
+    if (answer.optionIds.length === 0) return <p className="text-muted-foreground text-[0.8125rem]">Left untouched.</p>;
+    return (
+      <ol className="grid gap-1 text-[0.8125rem]">
+        {answer.optionIds.map((id, i) => (
+          <li key={id} className="flex items-center gap-2">
+            <Mark ok={right[i] === id} />
+            <span className="text-muted-foreground text-xs tabular-nums">{i + 1}.</span>
+            {options.get(id)}
+          </li>
+        ))}
+        <li className="text-muted-foreground text-xs">Right order: {right.map((id) => options.get(id)).join(' → ')}</li>
+      </ol>
     );
   }
   if (answer.type === 'numeric') {
@@ -290,3 +380,6 @@ function AnswerView({ item, answer }: { item: TeacherItem; answer: AnswerValue |
     </div>
   );
 }
+
+const Mark = ({ ok }: { ok: boolean }) =>
+  ok ? <CheckIcon className="text-success size-4 shrink-0" /> : <XIcon className="text-destructive size-4 shrink-0" />;

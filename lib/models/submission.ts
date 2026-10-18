@@ -1,4 +1,5 @@
 import mongoose, { Schema, type FlattenMaps, type InferSchemaType, type Model } from 'mongoose';
+import { itemDefinition } from '@/lib/models/assessment';
 import { ASSESSMENT_LIMITS, SUBMISSION_STATUSES } from '@/lib/schemas/assessment';
 
 // A file a student handed in (a `submission` upload, 06 §5); the name is the sanitized one they chose.
@@ -15,17 +16,32 @@ const fileSchema = new Schema(
 const answerSchema = new Schema(
   {
     optionId: { type: Schema.Types.ObjectId },
+    // msq: the options chosen; ordering: the options in the order given.
     optionIds: { type: [Schema.Types.ObjectId], default: undefined },
     value: { type: Number },
     text: { type: Schema.Types.Mixed },
     files: { type: [fileSchema], default: undefined },
+    // M04b: true_false; fill_blank (one text per blank); matching (each left side's chosen right side).
+    truth: { type: Boolean },
+    texts: { type: [{ type: String, maxlength: ASSESSMENT_LIMITS.blankText }], default: undefined },
+    matches: {
+      type: [
+        {
+          _id: false,
+          left: { type: Schema.Types.ObjectId, required: true },
+          right: { type: Schema.Types.ObjectId, required: true },
+        },
+      ],
+      default: undefined,
+    },
   },
   { _id: false },
 );
 
 const scoreSchema = new Schema(
   {
-    marks: { type: Number, required: true, min: 0 },
+    // Negative only for an objective question answered wrongly with negative marks (07 §14, M04b).
+    marks: { type: Number, required: true, min: -1000 },
     criteria: {
       type: [
         {
@@ -43,6 +59,15 @@ const scoreSchema = new Schema(
   { _id: false },
 );
 
+// M04b (TP-05): a question as this attempt was given it — the assessment's question or one drawn from the bank (then
+// `bankItemId`), in this attempt's order with its options in this attempt's order. Editing the assessment or the bank
+// later never changes it; grading reads it.
+const paperItemSchema = new Schema({
+  ...itemDefinition,
+  sectionId: { type: Schema.Types.ObjectId, default: null },
+  bankItemId: { type: Schema.Types.ObjectId, default: null },
+});
+
 // One document per attempt (05 §5.2). Answers and scores are maps keyed by item id, so each save is one $set.
 const submissionSchema = new Schema(
   {
@@ -57,18 +82,25 @@ const submissionSchema = new Schema(
     submittedAt: { type: Date, default: null },
     late: { type: Boolean, required: true, default: false },
     autoSubmitted: { type: Boolean, required: true, default: false },
-    // This attempt's order of questions and of each question's options (seededShuffle).
-    order: {
+    paper: { type: [paperItemSchema], default: [] },
+    answers: { type: Map, of: answerSchema, default: {} },
+    // TP-07: questions flagged for review, and seconds spent on each (time per question).
+    flags: { type: [Schema.Types.ObjectId], default: [] },
+    spent: { type: Map, of: Number, default: {} },
+    // TP-06: when each section was first opened and when it closed for good (left, or its time ran out).
+    visits: {
       type: [
         {
           _id: false,
-          itemId: { type: Schema.Types.ObjectId, required: true },
-          optionIds: { type: [Schema.Types.ObjectId], default: undefined },
+          sectionId: { type: Schema.Types.ObjectId, required: true },
+          startedAt: { type: Date, required: true },
+          closedAt: { type: Date, default: null },
         },
       ],
       default: [],
     },
-    answers: { type: Map, of: answerSchema, default: {} },
+    // The section the runner shows; leaving a "no going back" one closes it (planSectionMove).
+    currentSectionId: { type: Schema.Types.ObjectId, default: null },
     scores: { type: Map, of: scoreSchema, default: {} },
     // Null until every question is scored.
     total: { type: Number, default: null },
@@ -86,7 +118,7 @@ submissionSchema.index({ assessmentId: 1, status: 1, submittedAt: 1 });
 // The hourly sweep's expired attempts.
 submissionSchema.index({ status: 1, deadlineAt: 1 });
 
-// Every read is lean, which returns `answers` and `scores` as plain objects keyed by item id, not Maps.
+// Every read is lean, which returns `answers`, `spent` and `scores` as plain objects keyed by item id, not Maps.
 export type SubmissionDoc = FlattenMaps<InferSchemaType<typeof submissionSchema>>;
 export const Submission: Model<SubmissionDoc> =
   mongoose.models.Submission ?? mongoose.model('Submission', submissionSchema);

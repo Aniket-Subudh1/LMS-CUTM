@@ -310,8 +310,12 @@ Per assignee: `assigned`; `done`; `doneOnTime` (`doneAt ≤ dueAt`); `overdue` (
 | Item | Marks |
 |---|---|
 | `mcq` | `maxMarks` if the chosen option equals the key, else 0 |
-| `msq` | `maxMarks` if the chosen set equals the key set exactly, else 0 (no partial credit) |
+| `msq` | `maxMarks` if the chosen set equals the key set exactly, else 0 (with partial credit, below) |
+| `true_false` (M04b) | `maxMarks` if the answer equals the key, else 0 |
 | `numeric` | `maxMarks` if `|value − key| ≤ tolerance`, else 0 |
+| `fill_blank` (M04b) | `maxMarks` when every blank matches one of its accepted answers, comparing `trim`, repeated spaces as one, and lower case (`normalizeBlank`) |
+| `matching` (M04b) | `maxMarks` when every left side is matched to its own right side (a pair's `rightId`, which differs from its id) |
+| `ordering` (M04b) | `maxMarks` when every step is in its place |
 | `code` | `roundHalfUp(maxMarks × Σ weight of passed cases / Σ weight of all cases, 2)` |
 | `text`, `file`, `observation` | manual; with a rubric, item marks = Σ criterion marks |
 
@@ -324,7 +328,36 @@ Per assignee: `assigned`; `done`; `doneOnTime` (`doneAt ≤ dueAt`); `overdue` (
 | `"5"` | `"6"` | no |
 | `"a b"` | `"a  b"` | no (inner whitespace is significant) |
 
-Attempt total = `roundHalfUp(Σ item marks, 2)`. Results can be published only when every submitted attempt has every item scored.
+**Partial credit and negative marks (M04b, TP-06)** — per question, set by its author.
+- With `partialCredit` (msq, fill_blank, matching, ordering), a partly right answer earns `roundHalfUp(maxMarks × right, 2)`, where `right` is: msq `max(0, (chosen correct − chosen wrong) / correct)`; fill_blank the share of blanks right; matching the share of pairs right; ordering the share of steps in their place.
+- With `negativeMarks > 0` (objective types), an answered question that earns nothing scores `−negativeMarks`. An unanswered one always scores 0.
+
+| Item | Answer | Marks |
+|---|---|---|
+| msq {a,b,c}, 4 marks, partial | {a,b} | 2.67 |
+| msq {a,b,c}, 4 marks, partial | {a,b,d} | 1.33 |
+| msq {a,b,c}, 4 marks, partial | {a,d} | 0 |
+| msq {a,b,c}, 4 marks, partial, −1 | {d} | −1 |
+| msq {a,b,c}, 4 marks, partial, −1 | {a} | 1.33 |
+| mcq, 2 marks, −0.5 | wrong / none / right | −0.5 / 0 / 2 |
+| fill_blank 2 blanks, 2 marks | "  Recursion ", "BASE" | 2 |
+| fill_blank 2 blanks, 2 marks, partial | "recursive", "" | 1 |
+| matching 4 pairs, 4 marks, partial | two swapped | 2 |
+| ordering 4 steps, 4 marks, partial | last two swapped | 2 |
+| ordering | never moved (no answer saved) | 0 |
+
+Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never take a total below 0 (A-M04b-9). Results can be published only when every submitted attempt has every item scored. Since M04b every mark is read from the attempt's own paper (05 §5.2), never from the assessment.
+
+**Drawing a paper (M04b, TP-05)** — `lib/domain/papers.ts`. A section draws `count` questions; with a mix (easy/medium/hard %, adding to 100) each level gets `count × % / 100`, whole questions handed out by the largest remainder, ties to the easier level; with no mix (all 0) any level will do. `drawQuestions` shuffles each level's pool with `seededShuffle(seed:level)` and takes the first n, so the same attempt id always draws the same paper. `shortfall` names what a pool lacks (publishing and the builder refuse or warn). `distinctPapers` is Π over sections and levels of C(have, need), capped at 1,000,000.
+
+| Count | Mix | Per level |
+|---|---|---|
+| 15 | 30 / 45 / 25 | 4 / 7 / 4 (4.5, 6.75, 3.75: the two .75s get the extra) |
+| 10 | 30 / 45 / 25 | 3 / 5 / 2 (tie at .5 → medium before hard) |
+| 3 | 34 / 33 / 33 | 1 / 1 / 1 |
+| 1 | 50 / 50 / 0 | 1 / 0 / 0 |
+
+**Sections (M04b, TP-06)** — `lib/domain/attempts.ts`. A section with its own time closes `durationMin` after it was first opened, never after the attempt's deadline. `planSectionMove(rules, visits, from, to)`: a closed section (left when "no going back", or out of time) cannot be opened; a "no going back" section is a gate — nothing after it opens until it is left (or its time runs out), and leaving it closes it. Extra time for one person adds to both the time limit and the end of hand-ins (`deadlineAt(…, extraMin)`).
 
 **Counted score** — `countedScore(attempts, policy)` in `lib/domain/attempts.ts` (M04; these rows stood in §2 until M01b rewrote it). Only **graded** attempts count: `best` → the highest `total`; `last` → the `total` of the graded attempt with the highest `attemptNo`; no graded attempt → **0** (a missed assessment counts as zero, A-14). M06 and M09 use the same function.
 

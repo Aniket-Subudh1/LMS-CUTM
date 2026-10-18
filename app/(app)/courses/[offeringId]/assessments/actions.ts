@@ -9,8 +9,10 @@ import { requireManage, requireTeach } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
+import { sectionPools, shortfallMessages } from '@/lib/data/papers';
+import { questionOf, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
-import { windowState } from '@/lib/domain/attempts';
+import { deadlineAt, windowState } from '@/lib/domain/attempts';
 import { attemptTotal, rubricTotal } from '@/lib/domain/grading';
 import { isPermutation } from '@/lib/domain/order';
 import { roundHalfUp } from '@/lib/domain/round';
@@ -19,11 +21,13 @@ import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
 import { formatDateTime } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
+import { BankItem } from '@/lib/models/bank-item';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
 import { TestLink } from '@/lib/models/test-link';
+import { User } from '@/lib/models/user';
 import {
   ASSESSMENT_LIMITS,
   AssessmentRef,
@@ -33,10 +37,15 @@ import {
   MODE_ITEM_TYPES,
   ItemRef,
   ReorderItems,
+  ReorderSections,
   SaveInstructions,
   SaveItem,
+  SaveSection,
+  SectionRef,
+  SetExtraTime,
   UpdateAssessmentSettings,
 } from '@/lib/schemas/assessment';
+import { AddFromBank } from '@/lib/schemas/bank';
 import { marks as marksInput } from '@/lib/schemas/common';
 
 const TEACH = ['admin', 'faculty'] as const;
@@ -63,11 +72,64 @@ async function requireUnlocked(offeringId: Types.ObjectId | null | undefined) {
   if (offering.lockedAt) throw new AppError('LOCKED', 'Marks for this course are locked.');
 }
 
-// 05 §5.1: the stored total follows every change to the questions.
+// 05 §5.1: the stored total follows every change to the questions and to the sections' draws (M04b).
 const recountMarks = (assessmentId: string) =>
-  Assessment.updateOne({ _id: assessmentId }, [{ $set: { maxMarks: { $round: [{ $sum: '$items.maxMarks' }, 2] } } }], {
-    updatePipeline: true,
-  });
+  Assessment.updateOne(
+    { _id: assessmentId },
+    [
+      {
+        $set: {
+          maxMarks: {
+            $round: [
+              {
+                $add: [
+                  { $sum: '$items.maxMarks' },
+                  {
+                    $sum: {
+                      $map: {
+                        input: '$sections',
+                        as: 'section',
+                        in: {
+                          $multiply: [
+                            { $ifNull: ['$$section.draw.count', 0] },
+                            { $ifNull: ['$$section.draw.marksEach', 0] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+              2,
+            ],
+          },
+        },
+      },
+    ],
+    { updatePipeline: true },
+  );
+
+// CPP-05/06: the outcomes must be the course's own; a standalone test has none (M04b).
+async function requireCourseCos(
+  offeringId: Types.ObjectId | null | undefined,
+  coIds: readonly string[],
+  field: string,
+) {
+  if (coIds.length === 0) return;
+  if (!offeringId) {
+    throw new AppError('VALIDATION', 'A test outside a course has no course outcomes.', {
+      [field]: ['A test outside a course has no course outcomes.'],
+    });
+  }
+  const offering = await Offering.findById(offeringId, { courseId: 1 }).lean();
+  const course = offering ? await Course.findById(offering.courseId, { 'cos._id': 1 }).lean() : null;
+  const known = new Set(course?.cos.map((co) => String(co._id)) ?? []);
+  if (coIds.some((id) => !known.has(id))) {
+    throw new AppError('VALIDATION', 'Pick outcomes of this course only.', {
+      [field]: ['Pick outcomes of this course only.'],
+    });
+  }
+}
 
 // A-M04-6: the type, title and window come from the dialog; the rest from the type's typical settings.
 export const createAssessment = action({ input: CreateAssessment, roles: TEACH }, async (input, viewer) => {
@@ -137,64 +199,24 @@ export const saveItem = action({ input: SaveItem, roles: TEACH }, async (input, 
     throw new AppError('VALIDATION', 'This kind of question is not used in this type of assessment.');
   }
   if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
-  // A standalone test has no course, so no course outcomes (M04b).
   const offering = assessment.offeringId
-    ? await Offering.findById(assessment.offeringId, { category: 1, courseId: 1 }).lean()
+    ? await Offering.findById(assessment.offeringId, { category: 1 }).lean()
     : null;
-  if (!offering && input.coIds.length > 0) {
-    throw new AppError('VALIDATION', 'A test outside a course has no course outcomes.', {
-      'cos[]': ['A test outside a course has no course outcomes.'],
-    });
-  }
   if (offering?.category === 'ugc' && input.coIds.length === 0) {
     throw new AppError('VALIDATION', 'Tag the question with at least one course outcome.', {
       'cos[]': ['Tick at least one course outcome.'],
     });
   }
-  if (offering && input.coIds.length > 0) {
-    const course = await Course.findById(offering.courseId, { 'cos._id': 1 }).lean();
-    const known = new Set(course?.cos.map((co) => String(co._id)) ?? []);
-    if (input.coIds.some((id) => !known.has(id))) {
-      throw new AppError('VALIDATION', 'Pick outcomes of this course only.', {
-        'cos[]': ['Pick outcomes of this course only.'],
-      });
-    }
+  await requireCourseCos(assessment.offeringId, input.coIds, 'cos[]');
+  // M04b: a question belongs to a section once the test has any; a new one without a choice goes to the first.
+  const sectionIds = assessment.sections.map((section) => String(section._id));
+  if (input.sectionId && !sectionIds.includes(input.sectionId)) {
+    throw new AppError('NOT_FOUND', 'That section was deleted. Reload the page.');
   }
-  const maxMarks = roundHalfUp(input.maxMarks, 2);
-  const rubric = input.rubric?.map((row) => ({
-    _id: new Types.ObjectId(),
-    ...row,
-    maxMarks: roundHalfUp(row.maxMarks, 2),
-  }));
-  if (rubric && rubricTotal(rubric.map((row) => row.maxMarks)) !== maxMarks) {
-    const sum = rubricTotal(rubric.map((row) => row.maxMarks));
-    throw new AppError('VALIDATION', 'The criteria must add up to the question’s marks.', {
-      'criterion[]': [`The criteria add up to ${sum}; the question has ${maxMarks} marks.`],
-    });
-  }
+  const current = assessment.items.find((i) => String(i._id) === input.itemId);
+  const sectionId = input.sectionId ?? (current?.sectionId ? String(current.sectionId) : sectionIds[0]) ?? null;
   // A-M04-7: the options get new ids; no attempt refers to them yet.
-  const options = input.options?.map((text) => ({ _id: new Types.ObjectId(), text }));
-  const key = input.key;
-  let answer:
-    { optionId?: Types.ObjectId; optionIds?: Types.ObjectId[]; value?: number; tolerance?: number } | undefined;
-  if (options && key?.correct) {
-    answer =
-      input.type === 'mcq'
-        ? { optionId: options[key.correct[0]]._id }
-        : { optionIds: key.correct.map((place) => options[place]._id) };
-  } else if (key?.value !== undefined && key.tolerance !== undefined) {
-    answer = { value: key.value, tolerance: key.tolerance };
-  }
-  const item = {
-    type: input.type,
-    prompt: input.prompt,
-    maxMarks,
-    coIds: input.coIds,
-    bloomLevel: input.bloomLevel,
-    options,
-    answer,
-    rubric,
-  };
+  const item = { ...storedItem(input), sectionId };
   if (input.itemId) {
     const written = await Assessment.updateOne(
       { _id: assessment._id, 'items._id': input.itemId },
@@ -243,11 +265,195 @@ export const reorderItems = action({ input: ReorderItems, roles: TEACH }, async 
   refresh();
 });
 
+// TP-05: bank questions copied in as the test's own, into a section (the first when none is chosen). The bank is the
+// course's, or the viewer's own for a standalone test.
+export const addFromBank = action({ input: AddFromBank, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
+  const offering = assessment.offeringId
+    ? await Offering.findById(assessment.offeringId, { courseId: 1 }).lean()
+    : null;
+  const docs = await BankItem.find({
+    _id: { $in: input['bankItemIds[]'] },
+    ...(offering ? { courseId: offering.courseId } : { ownerId: viewer.id }),
+  }).lean();
+  const unfit = docs.filter((doc) => !MODE_ITEM_TYPES[assessment.mode].includes(doc.type)).length;
+  if (unfit > 0) {
+    throw new AppError('VALIDATION', `${unfit} of these questions are of a kind this type of assessment does not use.`);
+  }
+  if (docs.length === 0) throw new AppError('NOT_FOUND', 'Those questions were deleted. Reload the page.');
+  const sectionIds = assessment.sections.map((section) => String(section._id));
+  if (input.sectionId && !sectionIds.includes(input.sectionId)) {
+    throw new AppError('NOT_FOUND', 'That section was deleted. Reload the page.');
+  }
+  const sectionId = input.sectionId ?? sectionIds[0] ?? null;
+  if (assessment.items.length + docs.length > ASSESSMENT_LIMITS.items) {
+    throw new AppError('CONFLICT', `An assessment holds at most ${ASSESSMENT_LIMITS.items} questions.`);
+  }
+  const written = await Assessment.updateOne(
+    { _id: assessment._id, items: { $size: assessment.items.length } },
+    { $push: { items: { $each: docs.map((doc) => ({ ...questionOf(doc), sectionId })) } } },
+  );
+  if (written.matchedCount === 0) {
+    throw new AppError('CONFLICT', 'The questions changed meanwhile. Reload the page and try again.');
+  }
+  await recountMarks(String(assessment._id));
+  refresh();
+  return { added: docs.length };
+});
+
+// M04b (TP-05, TP-06): a section's name, clock, order rule, passage and draw from the bank. The first section takes
+// every question there is; a section's draw is worth its marks each, so the total follows.
+export const saveSection = action({ input: SaveSection, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
+  await requireCourseCos(assessment.offeringId, input['drawCos[]'], 'drawCos[]');
+  const section = {
+    title: input.title,
+    durationMin: input.durationMin ?? null,
+    locked: input.locked,
+    passage: input.passage,
+    draw:
+      input.drawCount === undefined || input.marksEach === undefined
+        ? null
+        : {
+            count: input.drawCount,
+            easy: input.easy,
+            medium: input.medium,
+            hard: input.hard,
+            coIds: input['drawCos[]'].map((id) => new Types.ObjectId(id)),
+            topics: input.drawTopics,
+            marksEach: roundHalfUp(input.marksEach, 2),
+            negativeEach: roundHalfUp(input.negativeEach, 2),
+          },
+  };
+  if (input.sectionId) {
+    const written = await Assessment.updateOne(
+      { _id: assessment._id, 'sections._id': input.sectionId },
+      { $set: { 'sections.$': { _id: input.sectionId, ...section } } },
+    );
+    if (written.matchedCount === 0) throw new AppError('NOT_FOUND', 'That section was deleted. Reload the page.');
+  } else {
+    const _id = new Types.ObjectId();
+    const first = assessment.sections.length === 0;
+    const written = await Assessment.updateOne(
+      { _id: assessment._id, [`sections.${ASSESSMENT_LIMITS.sections - 1}`]: { $exists: false } },
+      { $push: { sections: { _id, ...section } }, ...(first ? { $set: { 'items.$[].sectionId': _id } } : {}) },
+    );
+    if (written.matchedCount === 0) {
+      throw new AppError('CONFLICT', `A test has at most ${ASSESSMENT_LIMITS.sections} sections.`);
+    }
+  }
+  await recountMarks(String(assessment._id));
+  refresh();
+});
+
+// A section goes only once its questions have moved to another or been deleted.
+export const deleteSection = action({ input: SectionRef, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
+  if (assessment.items.some((item) => String(item.sectionId) === input.sectionId)) {
+    throw new AppError('CONFLICT', 'Move this section’s questions to another section, or delete them, first.');
+  }
+  await Assessment.updateOne({ _id: assessment._id }, { $pull: { sections: { _id: input.sectionId } } });
+  await recountMarks(String(assessment._id));
+  refresh();
+});
+
+export const reorderSections = action({ input: ReorderSections, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
+  const current = assessment.sections.map((section) => String(section._id));
+  if (!isPermutation(current, input['ids[]'])) {
+    throw new AppError('CONFLICT', 'The sections changed meanwhile. Reload the page and try again.');
+  }
+  const byId = new Map(assessment.sections.map((section) => [String(section._id), section]));
+  const written = await Assessment.updateOne(
+    { _id: assessment._id, sections: { $size: current.length }, 'sections._id': { $all: current } },
+    { $set: { sections: input['ids[]'].flatMap((id) => byId.get(id) ?? []) } },
+  );
+  if (written.matchedCount === 0) {
+    throw new AppError('CONFLICT', 'The sections changed meanwhile. Reload the page and try again.');
+  }
+  refresh();
+});
+
+// TP-07: extra minutes for one person, found by email or roll number; a running attempt gets them at once. Audited,
+// as the time a person had bears on their marks.
+export const setExtraTime = action({ input: SetExtraTime, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  const who = input.who.trim();
+  const person = await User.findOne(
+    { $or: [{ email: who.toLowerCase() }, { rollNo: who.toUpperCase() }] },
+    { _id: 1 },
+  ).lean();
+  if (!person) {
+    throw new AppError('VALIDATION', 'No one has that email or roll number.', {
+      who: ['No one has that email or roll number.'],
+    });
+  }
+  const before = assessment.extraTime.find((entry) => entry.userId.equals(person._id))?.minutes ?? 0;
+  const others = assessment.extraTime.filter((entry) => !entry.userId.equals(person._id));
+  if (input.minutes > 0 && others.length >= ASSESSMENT_LIMITS.extraTime) {
+    throw new AppError('CONFLICT', `Extra time can go to at most ${ASSESSMENT_LIMITS.extraTime} people per test.`);
+  }
+  const running = await Submission.find(
+    { assessmentId: assessment._id, studentId: person._id, status: 'in_progress' },
+    { startedAt: 1 },
+  ).lean();
+  await mongoose.connection.transaction(async (session) => {
+    await Assessment.updateOne(
+      { _id: assessment._id },
+      {
+        $set: {
+          extraTime: input.minutes > 0 ? [...others, { userId: person._id, minutes: input.minutes }] : others,
+        },
+      },
+      { session },
+    );
+    for (const attempt of running) {
+      await Submission.updateOne(
+        { _id: attempt._id, status: 'in_progress' },
+        {
+          $set: {
+            deadlineAt: deadlineAt({
+              startedAt: attempt.startedAt,
+              durationMin: assessment.durationMin ?? null,
+              closesAt: assessment.closesAt,
+              lateUntil: assessment.lateUntil ?? null,
+              extraMin: input.minutes,
+            }),
+          },
+        },
+        { session },
+      );
+    }
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: 'assessment.extra_time',
+        entity: 'assessment',
+        entityId: String(assessment._id),
+        offeringId: assessment.offeringId ? String(assessment.offeringId) : undefined,
+        before: { userId: String(person._id), minutes: before },
+        after: { userId: String(person._id), minutes: input.minutes },
+      },
+      session,
+    );
+  });
+  refresh();
+});
+
 // T4: AC-M04-01, a credit course's assessment is published only when every question names a CO.
 export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
   if (assessment.status !== 'draft') throw new AppError('CONFLICT', 'This assessment is already published.');
-  if (assessment.items.length === 0) throw new AppError('VALIDATION', 'Add at least one question first.');
+  if (assessment.items.length === 0 && !assessment.sections.some((section) => section.draw)) {
+    throw new AppError('VALIDATION', 'Add at least one question first.');
+  }
+  // M04b: every draw must be possible from the bank as it is now.
+  const short = shortfallMessages(assessment.sections, await sectionPools(assessment));
+  if (short.length > 0) throw new AppError('VALIDATION', `${short[0]}.`);
   const offering = assessment.offeringId
     ? await Offering.findById(assessment.offeringId, { category: 1, title: 1 }).lean()
     : null;
@@ -308,27 +514,35 @@ export const deleteAssessment = action({ input: AssessmentRef, roles: TEACH }, a
 // change is audited with each question's marks before and after (AC-M04-07); regrading after publication is allowed.
 export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, async (input, viewer) => {
   await db();
-  const attempt = await Submission.findById(input.submissionId, { assessmentId: 1, status: 1, scores: 1 }).lean();
+  const attempt = await Submission.findById(input.submissionId, {
+    assessmentId: 1,
+    status: 1,
+    scores: 1,
+    paper: 1,
+  }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
   await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
-  const assessment = await Assessment.findById(attempt.assessmentId, { items: 1 }).lean();
-  if (!assessment) throw new AppError('NOT_FOUND', 'Assessment not found.');
+  // M04b: the questions this attempt was given.
+  const paper = attempt.paper;
   const posted = input['item[]'];
-  const itemIds = assessment.items.map((item) => String(item._id));
+  const itemIds = paper.map((item) => String(item._id));
   if (!isPermutation(itemIds, posted)) {
     throw new AppError('CONFLICT', 'The questions changed meanwhile. Reload the page and grade again.');
   }
   const errors: Record<string, string[]> = {};
-  const readMarks = (raw: string, max: number, field: string): number | null | undefined => {
+  // An objective question answered wrongly may keep its negative marks (07 §14, M04b).
+  const readMarks = (raw: string, max: number, field: string, min = 0): number | null | undefined => {
     if (raw === '') return null;
-    const parsed = marksInput.safeParse(raw);
-    if (!parsed.success || parsed.data > max) {
-      errors[field] = [`Use 0 to ${max}.`];
+    const negative = raw.startsWith('-');
+    const parsed = marksInput.safeParse(negative ? raw.slice(1) : raw);
+    const value = parsed.success ? (negative ? -parsed.data : parsed.data) : NaN;
+    if (!parsed.success || value > max || value < min) {
+      errors[field] = [`Use ${min} to ${max}.`];
       return undefined;
     }
-    return roundHalfUp(parsed.data, 2);
+    return roundHalfUp(value, 2);
   };
   const before = attempt.scores ?? {};
   const scores: Record<
@@ -336,7 +550,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     { marks: number; by: string; comment?: string; criteria?: { criterionId: Types.ObjectId; marks: number }[] }
   > = {};
   posted.forEach((itemId, row) => {
-    const item = assessment.items.find((i) => String(i._id) === itemId);
+    const item = paper.find((i) => String(i._id) === itemId);
     if (!item) return;
     const comment = input['comment[]'][row];
     let marks: number | null | undefined;
@@ -356,7 +570,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
         return;
       } else marks = null;
     } else {
-      marks = readMarks(input['marks[]'][row], item.maxMarks, `marks-${itemId}`);
+      marks = readMarks(input['marks[]'][row], item.maxMarks, `marks-${itemId}`, -item.negativeMarks);
     }
     if (marks === undefined) return;
     if (marks === null) {

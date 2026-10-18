@@ -67,6 +67,7 @@ Every exported DAL function and every action applies these filters; integration 
 | Assessments | `status ≠ draft` | all | all | all |
 | Submissions | `studentId = me` | offering's | offering's | all |
 | Standalone tests (M04b) | anyone with a `testGrants` row (made by a share link), `status ≠ draft`; their own submissions | their own (`ownerIds ∋ me`): manage | — | all: manage |
+| Question banks (M04b) | — | a course's bank through an offering they teach (edit); their own bank | a course's bank of an offering in their department (read) | all |
 | Share links (M04b) | — (a link's page shows only the test's title, owner, window and counts) | of tests they manage | — | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
@@ -178,7 +179,8 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 
 ## 10. Assessment secrecy
 
-- Student-facing assessment DTOs are built by one function, `toStudentAssessment()`, which omits `items[].answer`, CO tags and Bloom levels, the rubric until results are published, and every `testCases` entry with `hidden: true` (visible cases are shown with input and expected output). The attempt DTO calls the student's own saved answers `saved`, so a search for `answer` in what a student receives finds nothing (M04).
+- A question reaches whoever takes it only through one function, `toStudentItem()` (M04b; `toStudentAssessment()` before), which omits `answer`, a fill-in-the-blank's accepted answers, CO tags and Bloom levels, the rubric until results are published, and every `testCases` entry with `hidden: true` (visible cases are shown with input and expected output). A matching question's sides carry different ids (`_id` left, `rightId` right) and the right sides are shuffled, so nothing pairs them; an ordering question's steps never start in the right order. The lobby's DTO (`toStudentAssessment()`) carries counts and section rules, never questions. The attempt DTO calls the student's own saved answers `saved`, so a search for `answer` in what a student receives finds nothing (M04).
+- Since M04b an attempt's questions are its own paper (05 §5.2): grading, the grader's view and the results read only the paper, so a bank or assessment edited afterwards changes no attempt. Section rules are enforced on the server: a closed section (left when "no going back", or out of time) refuses saves (CLOSED).
 - Auto-grading runs on the server against the stored keys; the browser never receives a score before results are published.
 - Attempt timing is server-side: `deadlineAt` is computed when the attempt starts; a save more than 5 s after `deadlineAt` (the grace for one sent just before 0:00, `SAVE_GRACE_MS`) is rejected and the attempt is auto-submitted with the answers saved until then. The runner's countdown runs on the server's clock (M04), and a closed tab is handed in by the hourly sweep.
 - Integration test (M04/M05): serialize the student DTO of an assessment with answers and hidden cases and assert neither appears.

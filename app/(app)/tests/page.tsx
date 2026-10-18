@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { PlusIcon } from '@phosphor-icons/react/ssr';
+import { DatabaseIcon, PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { AssessmentMenu, ModeChip, STATE_LABEL, StudentList } from '@/components/assessment-lists';
@@ -85,11 +85,18 @@ async function Tests({ searchParams }: { searchParams: PageProps<'/tests'>['sear
         title="Tests"
         description="Tests outside a course, such as recruitment, placement or entrance tests. Share them by link."
         action={
-          <Button asChild size="sm">
-            <Link href={`/tests?${new URLSearchParams({ ...query, new: 'quiz' })}`} scroll={false}>
-              <PlusIcon /> New test
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/tests/bank">
+                <DatabaseIcon /> Your question bank
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href={`/tests?${new URLSearchParams({ ...query, new: 'quiz' })}`} scroll={false}>
+                <PlusIcon /> New test
+              </Link>
+            </Button>
+          </>
         }
       >
         <FilterForm

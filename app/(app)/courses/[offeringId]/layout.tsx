@@ -42,6 +42,8 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
     // A non-credit course has no outcomes (01 §6).
     ...(workspace.category === 'ugc' ? [{ href: `${base}/outcomes`, label: 'Outcomes' }] : []),
     { href: `${base}/assessments`, label: 'Assessments' },
+    // M04b (TP-05): the course's question bank, for whoever teaches or oversees it.
+    ...(learn ? [] : [{ href: `${base}/bank`, label: 'Question bank' }]),
     // REC-01, REC-02: learning records for theory, lab records for practice.
     ...(workspace.category === 'ugc' && (workspace.credits.theory > 0 || workspace.credits.practice > 0)
       ? [{ href: `${base}/records`, label: 'Records' }]

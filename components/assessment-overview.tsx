@@ -6,7 +6,9 @@ import {
   CheckSquareIcon,
   CloudCheckIcon,
   InfoIcon,
+  ClockCountdownIcon,
   ListNumbersIcon,
+  LockSimpleIcon,
   PaperPlaneTiltIcon,
   TimerIcon,
 } from '@phosphor-icons/react/ssr';
@@ -19,6 +21,7 @@ import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { Countdown, DeviceCheck } from '@/components/test-lobby';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/cn';
 import { getAssessmentPage, type AssessmentPage } from '@/lib/data/assessments';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { formatDateTime, formatDue, formatDuration, MODE_LABEL, statusTone } from '@/lib/format';
@@ -49,7 +52,8 @@ export async function AssessmentOverview({ params }: { params: Promise<{ offerin
           <ModeChip mode={a.mode} />
           <h1 className="text-[1.0625rem] font-semibold tracking-tight text-balance">{a.title}</h1>
           <p className="text-muted-foreground text-[0.8125rem]">
-            {a.items.length} question{a.items.length === 1 ? '' : 's'} · {a.maxMarks} marks
+            {a.questions} question{a.questions === 1 ? '' : 's'} · {a.maxMarks} marks
+            {a.sections.length > 0 && ` · ${a.sections.length} sections`}
           </p>
         </div>
         {result ? (
@@ -147,9 +151,12 @@ function BeforeYouStart({ page }: { page: StudentPage }) {
   const end = a.lateUntil ?? a.closesAt;
   const facts = [
     ['Time limit', a.durationMin ? formatDuration(a.durationMin * 60) : 'None'],
-    ['Questions', String(a.items.length)],
+    ...(a.sections.length > 0 ? [['Sections', String(a.sections.length)]] : []),
+    ['Questions', String(a.questions)],
     ['Attempts used', `${attempts.length} of ${a.attemptsAllowed}`],
   ];
+  const timed = a.sections.filter((section) => section.durationMin);
+  const locked = a.sections.filter((section) => section.locked);
   const rules: { icon: Icon; text: string }[] = [
     a.durationMin
       ? {
@@ -165,11 +172,31 @@ function BeforeYouStart({ page }: { page: StudentPage }) {
     ...(a.attemptsAllowed > 1
       ? [{ icon: ListNumbersIcon, text: `You have ${a.attemptsAllowed} attempts; your ${a.attemptPolicy} one counts.` }]
       : []),
+    // TP-06: the sections' own clocks and order rules.
+    ...(timed.length > 0
+      ? [
+          {
+            icon: ClockCountdownIcon,
+            text: `${timed.map((section) => `${section.title} has ${formatDuration((section.durationMin ?? 0) * 60)}`).join('; ')}, from when you open it.`,
+          },
+        ]
+      : []),
+    ...(locked.length > 0
+      ? [
+          {
+            icon: LockSimpleIcon,
+            text: `No going back from ${locked.map((section) => section.title).join(', ')}: once you leave ${locked.length === 1 ? 'it' : 'one'}, its answers cannot change.`,
+          },
+        ]
+      : []),
+    ...(page.extraMin > 0
+      ? [{ icon: TimerIcon, text: `You have ${page.extraMin} extra minutes, added to your time.` }]
+      : []),
   ];
   return (
     <section className="surface grid gap-4 p-5">
       <h2 className="text-[0.9375rem] font-semibold">Before you start</h2>
-      <dl className="grid grid-cols-3 gap-2 sm:gap-3">
+      <dl className={cn('grid grid-cols-2 gap-2 sm:gap-3', facts.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
         {facts.map(([label, value]) => (
           <div key={label} className="bg-muted/60 grid rounded-md p-3">
             <dt className="text-muted-foreground text-xs">{label}</dt>
@@ -211,9 +238,8 @@ function Attempts({ attempts }: { attempts: StudentPage['attempts'] }) {
 
 // T5: the counted attempt's marks per question, the rubric's criteria and the grader's comments. No answer keys.
 function Results({ page }: { page: StudentPage }) {
-  const { assessment: a, result } = page;
+  const { result } = page;
   if (!result) return null;
-  const scoreOf = new Map(result.items.map((item) => [item.id, item]));
   return (
     <Section
       icon={<CheckSquareIcon />}
@@ -221,8 +247,7 @@ function Results({ page }: { page: StudentPage }) {
       description="Per question, with the grader’s comments. Correct answers are not shown."
     >
       <ol className="grid">
-        {a.items.map((item, i) => {
-          const score = scoreOf.get(item.id);
+        {result.items.map((item, i) => {
           return (
             <li key={item.id} className="border-border/70 flex gap-3 border-b py-3 last:border-0">
               <span className="bg-muted grid size-6 shrink-0 place-items-center rounded-sm text-xs font-semibold">
@@ -230,9 +255,9 @@ function Results({ page }: { page: StudentPage }) {
               </span>
               <div className="grid min-w-0 flex-1 gap-2 text-[0.8125rem]">
                 {item.prompt && <RichTextView doc={item.prompt} />}
-                {score?.criteria && (
+                {item.criteria && (
                   <div className="bg-muted/60 grid gap-1.5 rounded-md p-3 text-xs">
-                    {score.criteria.map((c) => (
+                    {item.criteria.map((c) => (
                       <div key={c.criterion} className="flex justify-between gap-3">
                         <span>{c.criterion}</span>
                         <b className="tabular-nums">
@@ -242,15 +267,15 @@ function Results({ page }: { page: StudentPage }) {
                     ))}
                   </div>
                 )}
-                {score?.comment && (
+                {item.comment && (
                   <p className="flex gap-2">
                     <ChatTextIcon className="text-primary size-4 shrink-0" />
-                    {score.comment}
+                    {item.comment}
                   </p>
                 )}
               </div>
               <b className="text-[0.8125rem] font-semibold whitespace-nowrap tabular-nums">
-                {score?.marks ?? '—'} / {item.maxMarks}
+                {item.marks ?? '—'} / {item.maxMarks}
               </b>
             </li>
           );

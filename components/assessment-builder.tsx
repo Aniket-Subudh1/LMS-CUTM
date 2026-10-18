@@ -1,93 +1,82 @@
 import Link from 'next/link';
+import Form from 'next/form';
 import { notFound } from 'next/navigation';
 import {
   ArrowLeftIcon,
   CheckCircleIcon,
   CheckSquareIcon,
   ClockIcon,
+  DatabaseIcon,
   EnvelopeSimpleIcon,
-  FileArrowUpIcon,
   GlobeIcon,
-  HashIcon,
   InfoIcon,
   LinkIcon,
   ListChecksIcon,
   LockIcon,
+  LockSimpleIcon,
   PaperPlaneTiltIcon,
   PencilSimpleIcon,
   PlusIcon,
   PowerIcon,
-  RadioButtonIcon,
-  TextAaIcon,
+  StackIcon,
+  TimerIcon,
   TrashIcon,
   UsersThreeIcon,
   WarningIcon,
+  XIcon,
 } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
 import QRCode from 'qrcode';
 import { z } from 'zod';
 import {
+  addFromBank,
   deleteItem,
+  deleteSection,
   publishAssessment,
   reorderItems,
+  reorderSections,
   saveInstructions,
   saveItem,
+  saveSection,
+  setExtraTime,
   updateAssessmentSettings,
 } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import { copyToBank } from '@/app/(app)/tests/bank/actions';
 import { createLink, deleteLink, inviteToTest, setLinkActive } from '@/app/(app)/tests/actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
+import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { BloomChip } from '@/components/bloom-chip';
 import { CopyButton } from '@/components/copy-button';
 import { FormDialog } from '@/components/form-dialog';
 import { istLocal } from '@/components/new-assessment-dialog';
+import { QuestionDialog, TYPE_ICON } from '@/components/question-dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { RichTextView } from '@/components/rich-text-view';
 import { RowMenu } from '@/components/row-menu';
 import { Section } from '@/components/section';
 import { SortableList } from '@/components/sortable-list';
-import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { getBuilder, type Builder, type TeacherItem } from '@/lib/data/assessments';
+import { Textarea } from '@/components/ui/textarea';
+import { getBuilder, type Builder, type BuilderSection, type TeacherItem } from '@/lib/data/assessments';
+import { pickFromBank, type BankRow } from '@/lib/data/bank';
 import { listLinks, type ShareLink } from '@/lib/data/test-links';
+import { PAPERS_CAP } from '@/lib/domain/papers';
+import { plainText } from '@/lib/domain/rich-text';
 import { formatDateTime, formatDuration, ITEM_LABEL, statusTone } from '@/lib/format';
-import { ASSESSMENT_LIMITS, MODE_ITEM_TYPES, type ItemType } from '@/lib/schemas/assessment';
+import { ASSESSMENT_LIMITS, MODE_ITEM_TYPES } from '@/lib/schemas/assessment';
 import type { RichTextDoc } from '@/lib/schemas/common';
-import { BLOOM_LEVELS } from '@/lib/schemas/structure';
 import { TEST_LIMITS } from '@/lib/schemas/tests';
 
-const TYPE_ICON: Record<ItemType, Icon> = {
-  mcq: RadioButtonIcon,
-  msq: CheckSquareIcon,
-  numeric: HashIcon,
-  text: TextAaIcon,
-  file: FileArrowUpIcon,
-};
-const TYPE_HINT: Record<ItemType, string> = {
-  mcq: 'Students pick one option. It is marked as soon as they hand in.',
-  msq: 'Students tick every correct option; all of them, and only those, score.',
-  numeric: 'Students type a number. It scores when it is within the margin you allow.',
-  text: 'Students type their answer. You mark it, criterion by criterion if you add a rubric.',
-  file: 'Students upload photos or a PDF of written work. You mark it.',
-};
+const plain = (doc: RichTextDoc | null) => plainText(doc) || 'Untitled question';
 
-// The question's first words, for its row.
-function plain(doc: RichTextDoc | null): string {
-  const out: string[] = [];
-  const walk = (nodes: RichTextDoc['content']) => {
-    for (const node of nodes ?? []) {
-      if (node.text) out.push(node.text);
-      walk(node.content);
-    }
-  };
-  walk(doc?.content);
-  return out.join(' ').trim() || 'Untitled question';
-}
-
-const Search = z.object({ new: z.string().max(40).optional().catch(undefined) });
+const Search = z.object({
+  new: z.string().max(40).optional().catch(undefined),
+  // The "Add from the bank" dialog's own search (TP-05).
+  bq: z.string().trim().max(80).optional().catch(undefined),
+  btopic: z.string().trim().max(60).optional().catch(undefined),
+});
 
 // T4 ("Builder A", M04 decision 3): questions are rows, each edited in its own dialog; Settings and Instructions beside
 // them; a readiness strip above Publish. A head of department reads it with no controls. Shared by a course's
@@ -100,7 +89,7 @@ export async function AssessmentBuilder({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { offeringId, aid } = await params;
-  const { new: open } = Search.parse(await searchParams);
+  const { new: open, bq, btopic } = Search.parse(await searchParams);
   const b = await getBuilder(aid);
   if (b.offeringId !== (offeringId ?? null)) notFound();
   const a = b.assessment;
@@ -115,20 +104,38 @@ export async function AssessmentBuilder({
   const editing = open?.startsWith('item-') ? open.slice(5) : undefined;
   const editItem = a.items.find((item) => item.id === editing);
   const newType = MODE_ITEM_TYPES[a.mode].find((type) => type === editing);
+  const editingSection = open?.startsWith('section-') ? b.sections.find((s) => s.id === open.slice(8)) : undefined;
+  const picking =
+    editQuestions && open === 'bank'
+      ? await pickFromBank(b.offeringId, MODE_ITEM_TYPES[a.mode], { q: bq, topic: btopic })
+      : null;
+  const sectionTitle = new Map(b.sections.map((section) => [section.id, section.title]));
 
   const rows = a.items.map((item, i) => ({
     id: item.id,
     label: `Question ${i + 1}`,
-    node: <QuestionRow key={item.id} item={item} n={i + 1} b={b} editable={editQuestions} here={here} />,
+    node: (
+      <QuestionRow
+        key={item.id}
+        item={item}
+        n={i + 1}
+        b={b}
+        editable={editQuestions}
+        here={here}
+        section={item.sectionId ? (sectionTitle.get(item.sectionId) ?? null) : null}
+      />
+    ),
   }));
   const checks = [
     {
-      ok: a.items.length > 0,
+      ok: a.questions > 0,
       text:
-        a.items.length > 0
+        a.questions > 0
           ? `${a.questions} question${a.questions === 1 ? '' : 's'} · ${a.maxMarks} marks`
           : 'No questions yet',
     },
+    // TP-05: every section's draw must be possible from the bank.
+    ...b.bank.shortfalls.map((text) => ({ ok: false, text })),
     ...(b.credit
       ? [
           {
@@ -218,48 +225,56 @@ export async function AssessmentBuilder({
       </section>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <Section
-          icon={<ListChecksIcon />}
-          title="Questions"
-          description={
-            !course
-              ? 'Drag to reorder.'
-              : b.credit
-                ? 'Drag to reorder. Each question needs at least one course outcome.'
-                : 'Drag to reorder. Course outcomes are optional on a non-credit course.'
-          }
-        >
-          {a.items.length === 0 && !editQuestions ? (
-            <p className="text-muted-foreground text-[0.8125rem]">No questions yet.</p>
-          ) : editQuestions && a.items.length > 0 ? (
-            <SortableList items={rows} action={reorderItems} fields={{ assessmentId: aid }} noun="question" />
-          ) : (
-            <ol className="grid gap-2">
-              {rows.map((row) => (
-                <li key={row.id}>{row.node}</li>
-              ))}
-            </ol>
-          )}
-          {editQuestions && a.items.length < ASSESSMENT_LIMITS.items && (
-            <div className="grid gap-2 rounded-md border border-dashed p-3">
-              <p className="text-muted-foreground flex items-center gap-2 text-[0.8125rem]">
-                <PlusIcon className="size-4" /> Add a question
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {MODE_ITEM_TYPES[a.mode].map((type) => {
-                  const TypeIcon = TYPE_ICON[type];
-                  return (
-                    <Button key={type} asChild variant="outline" size="sm">
-                      <Link href={here(`item-${type}`)} scroll={false}>
-                        <TypeIcon /> {ITEM_LABEL[type]}
-                      </Link>
-                    </Button>
-                  );
-                })}
+        <div className="grid min-w-0 gap-4">
+          <Sections b={b} editable={editQuestions} here={here} />
+          <Section
+            icon={<ListChecksIcon />}
+            title="Questions"
+            description={
+              !course
+                ? 'Drag to reorder.'
+                : b.credit
+                  ? 'Drag to reorder. Each question needs at least one course outcome.'
+                  : 'Drag to reorder. Course outcomes are optional on a non-credit course.'
+            }
+          >
+            {a.items.length === 0 && !editQuestions ? (
+              <p className="text-muted-foreground text-[0.8125rem]">No questions yet.</p>
+            ) : editQuestions && a.items.length > 0 ? (
+              <SortableList items={rows} action={reorderItems} fields={{ assessmentId: aid }} noun="question" />
+            ) : (
+              <ol className="grid gap-2">
+                {rows.map((row) => (
+                  <li key={row.id}>{row.node}</li>
+                ))}
+              </ol>
+            )}
+            {editQuestions && a.items.length < ASSESSMENT_LIMITS.items && (
+              <div className="grid gap-2 rounded-md border border-dashed p-3">
+                <p className="text-muted-foreground flex items-center gap-2 text-[0.8125rem]">
+                  <PlusIcon className="size-4" /> Add a question
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {MODE_ITEM_TYPES[a.mode].map((type) => {
+                    const TypeIcon = TYPE_ICON[type];
+                    return (
+                      <Button key={type} asChild variant="outline" size="sm">
+                        <Link href={here(`item-${type}`)} scroll={false}>
+                          <TypeIcon /> {ITEM_LABEL[type]}
+                        </Link>
+                      </Button>
+                    );
+                  })}
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href={here('bank')} scroll={false}>
+                      <DatabaseIcon /> From the bank
+                    </Link>
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </Section>
+            )}
+          </Section>
+        </div>
 
         <div className="grid gap-4">
           <Section
@@ -307,6 +322,7 @@ export async function AssessmentBuilder({
           {b.canEdit && (
             <ShareLinks links={links} qr={qr} here={here} aid={aid} draft={a.status === 'draft'} course={course} />
           )}
+          {b.canEdit && <ExtraTime b={b} />}
           <Section
             icon={<InfoIcon />}
             title="Instructions"
@@ -350,15 +366,28 @@ export async function AssessmentBuilder({
       {b.canEdit && open === 'link' && <NewLinkDialog aid={aid} course={course} />}
       {b.canEdit && inviting && <InviteDialog key={open} aid={aid} link={inviting} openParam={open ?? ''} />}
       {editQuestions && open && (editItem || newType) && (
-        <ItemDialog
+        <QuestionDialog
           key={open}
           openParam={open}
-          b={b}
-          item={editItem}
+          title={`Question ${editItem ? a.items.indexOf(editItem) + 1 : a.items.length + 1} · ${ITEM_LABEL[editItem?.type ?? newType ?? 'text']}`}
           type={editItem?.type ?? newType ?? 'text'}
-          n={editItem ? a.items.indexOf(editItem) + 1 : a.items.length + 1}
+          item={editItem}
+          action={saveItem}
+          hidden={
+            <>
+              {ref}
+              {editItem && <input type="hidden" name="itemId" value={editItem.id} />}
+            </>
+          }
+          cos={course ? b.cos : null}
+          credit={b.credit}
+          sections={b.sections}
         />
       )}
+      {editQuestions && (open === 'section' || editingSection) && (
+        <SectionDialog key={open} b={b} section={editingSection} openParam={open ?? 'section'} />
+      )}
+      {picking && <BankPicker key={`${bq}-${btopic}`} b={b} rows={picking} base={base} bq={bq} />}
     </>
   );
 }
@@ -369,12 +398,14 @@ function QuestionRow({
   b,
   editable,
   here,
+  section,
 }: {
   item: TeacherItem;
   n: number;
   b: Builder;
   editable: boolean;
   here: (name: string) => string;
+  section: string | null;
 }) {
   const codes = item.coIds.flatMap((id) => b.cos.find((co) => co.id === id)?.code ?? []);
   const how =
@@ -410,13 +441,14 @@ function QuestionRow({
             </span>
           )}
           {item.bloomLevel && <BloomChip level={item.bloomLevel} />}
+          {section && <span className="text-muted-foreground text-xs">{section} ·</span>}
           <span className="text-muted-foreground text-xs">{how}</span>
         </div>
       </div>
       <span className="text-[0.8125rem] font-medium whitespace-nowrap tabular-nums">
         {item.maxMarks} mark{item.maxMarks === 1 ? '' : 's'}
       </span>
-      {editable && (
+      {b.canEdit && (
         <RowMenu
           label={`Question ${n}`}
           move={{
@@ -426,23 +458,38 @@ function QuestionRow({
             fields: { assessmentId: b.assessment.id },
           }}
           items={[
-            { kind: 'link', label: 'Edit', href: here(`item-${item.id}`), icon: <PencilSimpleIcon /> },
-            { kind: 'moves' },
-            { kind: 'separator' },
+            ...(editable
+              ? ([
+                  { kind: 'link', label: 'Edit', href: here(`item-${item.id}`), icon: <PencilSimpleIcon /> },
+                  { kind: 'moves' },
+                ] as const)
+              : []),
             {
               kind: 'action',
-              label: 'Delete',
-              icon: <TrashIcon />,
-              destructive: true,
-              action: deleteItem,
-              fields: { assessmentId: b.assessment.id, itemId: item.id },
-              confirm: {
-                title: `Delete question ${n}?`,
-                message: 'Its marks come off the assessment’s total.',
-                confirmLabel: 'Delete',
-                destructive: true,
-              },
+              label: 'Save to the bank',
+              icon: <DatabaseIcon />,
+              action: copyToBank,
+              fields: { assessmentId: b.assessment.id, 'itemIds[]': [item.id] },
             },
+            ...(editable
+              ? ([
+                  { kind: 'separator' },
+                  {
+                    kind: 'action',
+                    label: 'Delete',
+                    icon: <TrashIcon />,
+                    destructive: true,
+                    action: deleteItem,
+                    fields: { assessmentId: b.assessment.id, itemId: item.id },
+                    confirm: {
+                      title: `Delete question ${n}?`,
+                      message: 'Its marks come off the assessment’s total.',
+                      confirmLabel: 'Delete',
+                      destructive: true,
+                    },
+                  },
+                ] as const)
+              : []),
           ]}
         />
       )}
@@ -530,216 +577,391 @@ function SettingsDialog({ b }: { b: Builder }) {
   );
 }
 
-function ItemDialog({
-  openParam,
-  b,
-  item,
-  type,
-  n,
-}: {
-  openParam: string;
-  b: Builder;
-  item: TeacherItem | undefined;
-  type: ItemType;
-  n: number;
-}) {
-  const TypeIcon = TYPE_ICON[type];
-  const options = item?.options ?? [];
-  const correct = new Set(item?.key && 'optionIds' in item.key ? item.key.optionIds : []);
-  const rubric = item?.rubric ?? [];
-  const optionRow = (row: number) => {
-    const option = options[row];
-    return (
-      <div key={row} className="flex items-center gap-3">
-        <input
-          type={type === 'mcq' ? 'radio' : 'checkbox'}
-          name={type === 'mcq' ? 'correct' : 'correct[]'}
-          value={row}
-          defaultChecked={option ? correct.has(option.id) : false}
-          aria-label={`Option ${row + 1} is correct`}
-          className="accent-foreground size-4 shrink-0"
-        />
-        <Input
-          name="option[]"
-          defaultValue={option?.text ?? ''}
-          maxLength={ASSESSMENT_LIMITS.optionText}
-          placeholder={`Option ${row + 1}`}
-        />
-      </div>
-    );
-  };
-  const criterionRow = (row: number) => (
-    <div key={row} className="grid grid-cols-[1fr_6rem] gap-3">
-      <Input
-        name="criterion[]"
-        defaultValue={rubric[row]?.criterion ?? ''}
-        maxLength={ASSESSMENT_LIMITS.criterion}
-        placeholder="Criterion"
-        aria-label={`Criterion ${row + 1}`}
-      />
-      <Input
-        name="criterionMarks[]"
-        type="number"
-        min={0.01}
-        step={0.01}
-        defaultValue={rubric[row]?.maxMarks ?? ''}
-        aria-label={`Marks for criterion ${row + 1}`}
-      />
-    </div>
+// TP-05, TP-06 (mock-up "Sections and papers"): each section's rules as chips with its ⋮, and how many different
+// papers the bank can make — or what it is short of.
+function Sections({ b, editable, here }: { b: Builder; editable: boolean; here: (name: string) => string }) {
+  if (b.sections.length === 0 && !editable) return null;
+  const codeOf = new Map(b.cos.map((co) => [co.id, co.code]));
+  const chip = 'bg-muted rounded-sm px-1.5 py-0.5 text-[0.6875rem] font-medium';
+  return (
+    <Section
+      icon={<StackIcon />}
+      title="Sections and papers"
+      description={
+        b.sections.length === 0
+          ? 'Split the test into parts with their own time and order, or draw questions from the bank for each person.'
+          : 'Each person gets their own paper by these rules.'
+      }
+      action={
+        editable &&
+        b.sections.length < ASSESSMENT_LIMITS.sections && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={here('section')} scroll={false}>
+              <PlusIcon /> Add section
+            </Link>
+          </Button>
+        )
+      }
+    >
+      {b.sections.length > 0 && (
+        <ol className="grid gap-3">
+          {b.sections.map((section, i) => {
+            const draw = section.draw;
+            const mix = draw && draw.easy + draw.medium + draw.hard > 0;
+            return (
+              <li key={section.id} className="ring-border/70 grid gap-2 rounded-md p-3 ring-1">
+                <div className="flex items-center gap-2">
+                  <b className="text-[0.875rem] font-semibold">
+                    {i + 1} · {section.title}
+                  </b>
+                  {section.locked && (
+                    <span className="bg-warning/10 text-warning inline-flex items-center gap-1 rounded-sm px-1.5 py-px text-[0.6875rem] font-medium">
+                      <LockSimpleIcon className="size-3" /> No going back
+                    </span>
+                  )}
+                  {editable && (
+                    <span className="ml-auto">
+                      <RowMenu
+                        label={section.title}
+                        move={{
+                          id: section.id,
+                          ids: b.sections.map((s) => s.id),
+                          action: reorderSections,
+                          fields: { assessmentId: b.assessment.id },
+                        }}
+                        items={[
+                          {
+                            kind: 'link',
+                            label: 'Edit',
+                            href: here(`section-${section.id}`),
+                            icon: <PencilSimpleIcon />,
+                          },
+                          { kind: 'moves' },
+                          { kind: 'separator' },
+                          {
+                            kind: 'action',
+                            label: 'Delete',
+                            icon: <TrashIcon />,
+                            destructive: true,
+                            action: deleteSection,
+                            fields: { assessmentId: b.assessment.id, sectionId: section.id },
+                            confirm: {
+                              title: `Delete “${section.title}”?`,
+                              message: 'Only an empty section can go: move or delete its questions first.',
+                              confirmLabel: 'Delete',
+                              destructive: true,
+                            },
+                          },
+                        ]}
+                      />
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className={chip}>
+                    {section.questions - (draw?.count ?? 0)} own question
+                    {section.questions - (draw?.count ?? 0) === 1 ? '' : 's'}
+                  </span>
+                  {draw && (
+                    <>
+                      <span className={chip}>{draw.count} drawn from the bank</span>
+                      <span className={chip}>
+                        {mix ? `Easy ${draw.easy}% · medium ${draw.medium}% · hard ${draw.hard}%` : 'Any level'}
+                      </span>
+                      <span className={chip}>
+                        {draw.marksEach} mark{draw.marksEach === 1 ? '' : 's'} each
+                        {draw.negativeEach > 0 ? ` · −${draw.negativeEach} if wrong` : ''}
+                      </span>
+                      {draw.coIds.length > 0 && (
+                        <span className={chip}>{draw.coIds.map((id) => codeOf.get(id) ?? '').join(', ')}</span>
+                      )}
+                      {draw.topics.length > 0 && <span className={chip}>Topics: {draw.topics.join(', ')}</span>}
+                    </>
+                  )}
+                  <span className={chip}>
+                    {section.durationMin
+                      ? `${formatDuration(section.durationMin * 60)} of its own`
+                      : 'Shares the test time'}
+                  </span>
+                  {section.passage && <span className={chip}>With a passage</span>}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {b.bank.papers !== null &&
+        (b.bank.shortfalls.length === 0 ? (
+          <p className="text-success flex items-center gap-2 text-[0.8125rem] font-medium">
+            <CheckCircleIcon weight="fill" className="size-4" />
+            The bank can make {b.bank.papers >= PAPERS_CAP
+              ? 'over a million'
+              : b.bank.papers.toLocaleString('en-IN')}{' '}
+            different paper
+            {b.bank.papers === 1 ? '' : 's'} with these rules.
+          </p>
+        ) : (
+          <ul className="text-warning grid gap-1 text-[0.8125rem] font-medium">
+            {b.bank.shortfalls.map((text) => (
+              <li key={text} className="flex items-center gap-2">
+                <WarningIcon weight="fill" className="size-4" /> {text}.
+              </li>
+            ))}
+          </ul>
+        ))}
+    </Section>
   );
-  const shownOptions = Math.max(4, options.length);
-  const shownCriteria = Math.max(3, rubric.length);
+}
+
+function SectionDialog({
+  b,
+  section,
+  openParam,
+}: {
+  b: Builder;
+  section: BuilderSection | undefined;
+  openParam: string;
+}) {
+  const draw = section?.draw;
   return (
     <FormDialog
       openParam={openParam}
       size="wide"
-      icon={<TypeIcon weight="duotone" />}
-      title={`Question ${n} · ${ITEM_LABEL[type]}`}
-      description={TYPE_HINT[type]}
-      action={saveItem}
-      submitLabel="Save question"
-      successMessage="Question saved."
+      icon={<StackIcon weight="duotone" />}
+      title={section ? `Section · ${section.title}` : 'New section'}
+      description="Its own clock and order rule, a passage, and questions drawn from the bank for each person."
+      action={saveSection}
+      submitLabel="Save section"
+      successMessage="Section saved."
     >
       <input type="hidden" name="assessmentId" value={b.assessment.id} />
-      <input type="hidden" name="type" value={type} />
-      {item && <input type="hidden" name="itemId" value={item.id} />}
-      <div className="grid gap-2">
-        <span className="text-sm font-medium">Question</span>
-        <RichTextEditor name="prompt" initial={item?.prompt} placeholder="Write the question…" />
-        <FieldErrors name="prompt" />
-      </div>
-      <div className="grid gap-5 sm:grid-cols-[8rem_1fr]">
-        <Field name="maxMarks" label="Marks">
+      {section && <input type="hidden" name="sectionId" value={section.id} />}
+      <div className="grid gap-5 sm:grid-cols-[1fr_12rem]">
+        <Field name="title" label="Name">
           <Input
-            name="maxMarks"
-            type="number"
+            name="title"
             required
-            min={0.01}
-            max={1000}
-            step={0.01}
-            defaultValue={item?.maxMarks ?? ''}
+            maxLength={ASSESSMENT_LIMITS.sectionTitle}
+            defaultValue={section?.title ?? ''}
+            placeholder="Aptitude"
           />
         </Field>
-        <Field name="bloomLevel" label="Thinking level (Bloom)">
-          <NativeSelect name="bloomLevel" defaultValue={item?.bloomLevel ?? ''}>
-            <NativeSelectOption value="">Not set</NativeSelectOption>
-            {BLOOM_LEVELS.map((level) => (
-              <NativeSelectOption key={level} value={level}>
-                {level.charAt(0).toUpperCase() + level.slice(1)}
+        <Field name="durationMin" label="Its own time (minutes)" hint="Empty: it shares the test's time.">
+          <Input name="durationMin" type="number" min={1} max={600} defaultValue={section?.durationMin ?? ''} />
+        </Field>
+      </div>
+      <label className="flex items-start gap-2.5 text-[0.8125rem]">
+        <input
+          type="checkbox"
+          name="locked"
+          value="true"
+          defaultChecked={section?.locked ?? false}
+          className="accent-foreground mt-0.5 size-4 shrink-0"
+        />
+        <span>
+          <b className="font-medium">No going back.</b> Once someone leaves this section its answers cannot change, and
+          the sections after it open only after they leave it.
+        </span>
+      </label>
+      <div className="grid gap-2">
+        <span className="text-sm font-medium">Passage (optional)</span>
+        <RichTextEditor
+          name="passage"
+          initial={section?.passage}
+          placeholder="A text shown beside each question of this section…"
+        />
+        <FieldErrors name="passage" />
+      </div>
+      <fieldset className="ring-border grid gap-4 rounded-md p-4 ring-1">
+        <legend className="px-1 text-sm font-medium">Questions drawn from the bank (optional)</legend>
+        <p className="text-muted-foreground -mt-2 text-xs leading-relaxed">
+          Each person gets their own questions from {b.offeringId ? 'the course’s' : 'your'} bank, besides the section’s
+          own. Only questions marked automatically are drawn.
+        </p>
+        <div className="grid gap-5 sm:grid-cols-3">
+          <Field name="drawCount" label="How many" hint="Empty: none.">
+            <Input
+              name="drawCount"
+              type="number"
+              min={1}
+              max={ASSESSMENT_LIMITS.items}
+              defaultValue={draw?.count ?? ''}
+            />
+          </Field>
+          <Field name="marksEach" label="Marks each">
+            <Input name="marksEach" type="number" min={0.01} step={0.01} defaultValue={draw?.marksEach ?? ''} />
+          </Field>
+          <Field name="negativeEach" label="Taken off if wrong">
+            <Input name="negativeEach" type="number" min={0} step={0.01} defaultValue={draw?.negativeEach ?? 0} />
+          </Field>
+        </div>
+        <div className="grid gap-2">
+          <span className="text-sm font-medium">Mix of levels (%)</span>
+          <div className="grid grid-cols-3 gap-3">
+            {(['easy', 'medium', 'hard'] as const).map((level) => (
+              <label key={level} className="grid gap-1 text-xs">
+                <span className="text-muted-foreground capitalize">{level}</span>
+                <Input name={level} type="number" min={0} max={100} defaultValue={draw?.[level] ?? 0} />
+              </label>
+            ))}
+          </div>
+          <p className="text-muted-foreground text-xs">Add up to 100, or leave all at 0 for any level.</p>
+          <FieldErrors name="easy" />
+        </div>
+        {b.offeringId && b.cos.length > 0 && (
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-sm font-medium">Only questions on these outcomes</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {b.cos.map((co) => (
+                <label key={co.id} className="flex items-center gap-2 text-[0.8125rem]" title={co.statement}>
+                  <input
+                    type="checkbox"
+                    name="drawCos[]"
+                    value={co.id}
+                    defaultChecked={draw?.coIds.includes(co.id) ?? false}
+                    className="accent-foreground size-4"
+                  />
+                  {co.code}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <Field name="drawTopics" label="Only these topics" hint="Separated by commas. Empty: any topic.">
+          <Input name="drawTopics" defaultValue={draw?.topics.join(', ') ?? ''} placeholder="arrays, loops" />
+        </Field>
+      </fieldset>
+    </FormDialog>
+  );
+}
+
+// TP-05: questions copied from the bank into this test (its course's bank, or the owner's own for a standalone test).
+function BankPicker({ b, rows, base, bq }: { b: Builder; rows: BankRow[]; base: string; bq: string | undefined }) {
+  return (
+    <FormDialog
+      openParam="bank"
+      size="wide"
+      icon={<DatabaseIcon weight="duotone" />}
+      title="Add from the bank"
+      description={`Copies questions from ${b.offeringId ? 'the course’s' : 'your'} bank into this test. Changing them here leaves the bank as it is.`}
+      preface={
+        <Form action={base} scroll={false} className="flex gap-2">
+          <input type="hidden" name="new" value="bank" />
+          <Input name="bq" defaultValue={bq} placeholder="Search the bank" aria-label="Search the bank" />
+          <Button type="submit" variant="outline">
+            Search
+          </Button>
+        </Form>
+      }
+      action={addFromBank}
+      submitLabel="Add the ticked questions"
+      successMessage="Questions added."
+    >
+      <input type="hidden" name="assessmentId" value={b.assessment.id} />
+      {b.sections.length > 0 && (
+        <Field name="sectionId" label="Into section">
+          <NativeSelect name="sectionId" defaultValue={b.sections[0].id}>
+            {b.sections.map((section) => (
+              <NativeSelectOption key={section.id} value={section.id}>
+                {section.title}
               </NativeSelectOption>
             ))}
           </NativeSelect>
         </Field>
-      </div>
-      {b.offeringId && (
-        <fieldset className="grid gap-2">
-          <legend className="mb-1 text-sm font-medium">Course outcomes</legend>
-          {b.cos.length === 0 ? (
-            <p className="text-muted-foreground text-[0.8125rem]">
-              This course has no outcomes yet. The course coordinator adds them on the Outcomes tab.
-            </p>
-          ) : (
-            <div className="ring-border grid gap-2.5 rounded-md p-3 ring-1">
-              {b.cos.map((co) => (
-                <label key={co.id} className="flex items-start gap-2.5 text-[0.8125rem]">
-                  <input
-                    type="checkbox"
-                    name="cos[]"
-                    value={co.id}
-                    defaultChecked={item?.coIds.includes(co.id) ?? false}
-                    className="accent-foreground mt-0.5 size-4 shrink-0"
-                  />
-                  <span>
-                    <b className="font-semibold">{co.code}</b> {co.statement}
+      )}
+      {rows.length === 0 ? (
+        <p className="text-muted-foreground text-[0.8125rem]">
+          Nothing in the bank fits this test{bq ? ' and that search' : ''}. Add questions on the{' '}
+          <Link
+            href={b.offeringId ? `/courses/${b.offeringId}/bank` : '/tests/bank'}
+            className="text-primary underline"
+          >
+            question bank
+          </Link>{' '}
+          page.
+        </p>
+      ) : (
+        <ul className="ring-border/70 grid max-h-[50dvh] gap-px overflow-y-auto rounded-md ring-1">
+          {rows.map((row) => (
+            <li key={row.id}>
+              <label className="hover:bg-muted/50 has-checked:bg-muted/60 flex cursor-pointer items-start gap-3 p-2.5">
+                <input
+                  type="checkbox"
+                  name="bankItemIds[]"
+                  value={row.id}
+                  className="accent-foreground mt-0.5 size-4 shrink-0"
+                />
+                <span className="grid min-w-0 gap-0.5">
+                  <span className="text-[0.8125rem] font-medium">{row.question}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {[ITEM_LABEL[row.type], row.difficulty, row.topic, row.coCodes.join(', '), row.detail]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
-                </label>
-              ))}
-            </div>
-          )}
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            {b.credit
-              ? 'Every question of a credit course is tagged with at least one outcome; it feeds attainment.'
-              : 'Optional on a non-credit course.'}
-          </p>
-          <FieldErrors name="cos[]" />
-        </fieldset>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
       )}
+      <FieldErrors name="bankItemIds[]" />
+      <p className="text-muted-foreground text-xs">
+        The {rows.length} newest that fit are shown; search to find others.
+      </p>
+    </FormDialog>
+  );
+}
 
-      {(type === 'mcq' || type === 'msq') && (
-        <fieldset className="grid gap-2">
-          <legend className="mb-1 text-sm font-medium">
-            {type === 'mcq' ? 'Options · pick the correct one' : 'Options · tick every correct one'}
-          </legend>
-          {Array.from({ length: shownOptions }, (_, row) => optionRow(row))}
-          {shownOptions < ASSESSMENT_LIMITS.options && (
-            <details className="grid gap-2">
-              <summary className="text-primary cursor-pointer text-xs font-medium">
-                Up to {ASSESSMENT_LIMITS.options - shownOptions} more options
-              </summary>
-              <div className="mt-2 grid gap-2">
-                {Array.from({ length: ASSESSMENT_LIMITS.options - shownOptions }, (_, i) =>
-                  optionRow(shownOptions + i),
-                )}
-              </div>
-            </details>
-          )}
-          <p className="text-muted-foreground text-xs">Leave a row empty to skip it.</p>
-          <FieldErrors name="option[]" />
-          <FieldErrors name="correct" />
-        </fieldset>
+// TP-07: extra minutes for one person (an accommodation, or a lost connection): added to their time limit and to the
+// closing time; a running attempt gets them at once.
+function ExtraTime({ b }: { b: Builder }) {
+  return (
+    <Section
+      icon={<TimerIcon />}
+      title="Extra time"
+      description="For one person, added to their time and the closing time."
+    >
+      {b.extraTime.length > 0 && (
+        <ul className="grid gap-2">
+          {b.extraTime.map((entry) => (
+            <li key={entry.userId} className="flex items-center gap-2 text-[0.8125rem]">
+              <span className="grid min-w-0 flex-1">
+                <b className="truncate font-medium">{entry.name}</b>
+                <span className="text-muted-foreground truncate text-xs">{entry.email}</span>
+              </span>
+              <span className="tabular-nums">+{entry.minutes} min</span>
+              <ActionForm
+                action={setExtraTime}
+                submitLabel={`Take away ${entry.name}’s extra time`}
+                submitVariant="outline"
+                submitIcon={<XIcon />}
+                iconOnly
+              >
+                <input type="hidden" name="assessmentId" value={b.assessment.id} />
+                <input type="hidden" name="who" value={entry.email} />
+                <input type="hidden" name="minutes" value="0" />
+              </ActionForm>
+            </li>
+          ))}
+        </ul>
       )}
-
-      {type === 'numeric' && (
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field name="value" label="Correct answer">
-            <Input
-              name="value"
-              type="number"
-              step="any"
-              required
-              defaultValue={item?.key && 'value' in item.key ? item.key.value : ''}
-            />
+      <ActionForm
+        action={setExtraTime}
+        submitLabel="Give extra time"
+        submitSize="sm"
+        successMessage="Extra time given."
+      >
+        <input type="hidden" name="assessmentId" value={b.assessment.id} />
+        <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-3">
+          <Field name="who" label="Email or roll number">
+            <Input name="who" required maxLength={120} />
           </Field>
-          <Field name="tolerance" label="Allowed margin (±)" hint="0 means the exact value only.">
-            <Input
-              name="tolerance"
-              type="number"
-              step="any"
-              min={0}
-              defaultValue={item?.key && 'tolerance' in item.key ? item.key.tolerance : 0}
-            />
+          <Field name="minutes" label="Minutes">
+            <Input name="minutes" type="number" min={1} max={600} required />
           </Field>
         </div>
-      )}
-
-      {(type === 'text' || type === 'file') && (
-        <fieldset className="grid gap-2">
-          <legend className="mb-1 text-sm font-medium">Rubric (optional)</legend>
-          <div className="text-muted-foreground grid grid-cols-[1fr_6rem] gap-3 text-[0.6875rem] font-medium tracking-wide uppercase">
-            <span>Criterion</span>
-            <span>Marks</span>
-          </div>
-          {Array.from({ length: shownCriteria }, (_, row) => criterionRow(row))}
-          {shownCriteria < ASSESSMENT_LIMITS.criteria && (
-            <details>
-              <summary className="text-primary cursor-pointer text-xs font-medium">
-                Up to {ASSESSMENT_LIMITS.criteria - shownCriteria} more criteria
-              </summary>
-              <div className="mt-2 grid gap-2">
-                {Array.from({ length: ASSESSMENT_LIMITS.criteria - shownCriteria }, (_, i) =>
-                  criterionRow(shownCriteria + i),
-                )}
-              </div>
-            </details>
-          )}
-          <p className="text-muted-foreground text-xs leading-relaxed">
-            With a rubric you mark each criterion, and the question’s marks are their total, so they must add up to its
-            marks.
-          </p>
-          <FieldErrors name="criterion[]" />
-        </fieldset>
-      )}
-    </FormDialog>
+      </ActionForm>
+    </Section>
   );
 }
 

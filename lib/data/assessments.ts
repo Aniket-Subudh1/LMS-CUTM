@@ -4,11 +4,23 @@ import { Types, type QueryFilter } from 'mongoose';
 import { assessmentAccess, offeringAccess, type AssessmentAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { SAVE_GRACE_MS } from '@/lib/data/attempts';
+import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { escapeRegex } from '@/lib/data/courses';
 import { db } from '@/lib/db';
-import { canStart, countedScore, windowState, type StartCheck, type WindowState } from '@/lib/domain/attempts';
+import {
+  canStart,
+  countedScore,
+  sectionDeadline,
+  sectionOpen,
+  windowState,
+  type StartCheck,
+  type WindowState,
+} from '@/lib/domain/attempts';
+import { distinctPapers } from '@/lib/domain/papers';
+import { seededShuffle } from '@/lib/domain/shuffle';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
+import type { BankItemDoc } from '@/lib/models/bank-item';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
@@ -21,6 +33,7 @@ import {
   type AssessmentMode,
   type AssessmentState,
   type AttemptPolicy,
+  type Difficulty,
   type ItemType,
 } from '@/lib/schemas/assessment';
 import { pageSize, RichTextDoc } from '@/lib/schemas/common';
@@ -89,7 +102,8 @@ const SUMMARY = {
   shuffleItems: 1,
   shuffleOptions: 1,
   status: 1,
-  questions: { $size: '$items' },
+  // M04b: a section's drawn questions count too.
+  questions: { $add: [{ $size: '$items' }, { $sum: '$sections.draw.count' }] },
 } as const;
 type SummaryRow = Pick<AssessmentDoc, Exclude<keyof typeof SUMMARY, 'questions'>> & {
   _id: Types.ObjectId;
@@ -316,27 +330,87 @@ async function readAssessment(assessmentId: string) {
   return doc;
 }
 type AssessmentRead = Awaited<ReturnType<typeof readAssessment>>;
+type PaperItem = SubmissionDoc['paper'][number];
+// An assessment's question, a paper's copy of one, or a bank's (M04b): the same fields.
+type AnyItem = AssessmentRead['items'][number] | PaperItem | (BankItemDoc & { _id: Types.ObjectId });
+
+const questionsOf = (doc: Pick<AssessmentRead, 'items' | 'sections'>) =>
+  doc.items.length + doc.sections.reduce((sum, section) => sum + (section.draw?.count ?? 0), 0);
 
 export type StudentItem = {
   id: string;
   type: ItemType;
   prompt: RichTextDoc | null;
   maxMarks: number;
+  // M04b: shown beside the marks ("−0.5 if wrong", "part marks").
+  negativeMarks: number;
+  partialCredit: boolean;
+  sectionId: string | null;
+  // mcq, msq, ordering (the steps in the order this attempt starts with).
   options: { id: string; text: string }[] | null;
+  // fill_blank: the sentence, with ___ for each blank.
+  template: string | null;
+  // matching: the left sides in order and the right sides shuffled; nothing says which belong together.
+  pairs: { lefts: { id: string; text: string }[]; rights: { id: string; text: string }[] } | null;
   // Shown with the marks once results are published, so the student reads how each criterion went.
   rubric: { id: string; criterion: string; maxMarks: number }[] | null;
 };
 
-export type StudentAssessment = Omit<AssessmentSummary, 'state' | 'questions'> & {
-  instructions: RichTextDoc | null;
-  resultsPublished: boolean;
-  items: StudentItem[];
+// 09 §10: the only way a question reaches whoever takes it. No key, no accepted answers for a blank, nothing that pairs
+// a matching question's sides, no CO tags, and no rubric until results are published.
+export function toStudentItem(item: AnyItem, seed: string, resultsPublished: boolean): StudentItem {
+  return {
+    id: String(item._id),
+    type: item.type,
+    prompt: docOf(item.prompt),
+    maxMarks: item.maxMarks,
+    negativeMarks: item.negativeMarks,
+    partialCredit: item.partialCredit,
+    sectionId: 'sectionId' in item && item.sectionId ? String(item.sectionId) : null,
+    options: item.options ? item.options.map((o) => ({ id: String(o._id), text: o.text })) : null,
+    template: item.type === 'fill_blank' ? (item.template ?? null) : null,
+    pairs: item.pairs
+      ? {
+          lefts: item.pairs.map((pair) => ({ id: String(pair._id), text: pair.left })),
+          rights: seededShuffle(
+            item.pairs.map((pair) => ({ id: String(pair.rightId), text: pair.right })),
+            `${seed}:${String(item._id)}:rights`,
+          ),
+        }
+      : null,
+    rubric:
+      resultsPublished && item.rubric
+        ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
+        : null,
+  };
+}
+
+export type SectionSummary = {
+  id: string;
+  title: string;
+  durationMin: number | null;
+  locked: boolean;
+  questions: number;
 };
 
-// 09 §10: the only way a student's view of an assessment is built. It has no answer keys, no CO tags and, until results
-// are published, no rubric; scores live on the submission and are added only after publication.
-export function toStudentAssessment(doc: AssessmentRead): StudentAssessment {
-  const resultsPublished = doc.status === 'results_published';
+const sectionSummaries = (doc: Pick<AssessmentRead, 'items' | 'sections'>): SectionSummary[] =>
+  doc.sections.map((section) => ({
+    id: String(section._id),
+    title: section.title,
+    durationMin: section.durationMin ?? null,
+    locked: section.locked,
+    questions:
+      doc.items.filter((item) => String(item.sectionId) === String(section._id)).length + (section.draw?.count ?? 0),
+  }));
+
+export type StudentAssessment = Omit<AssessmentSummary, 'state'> & {
+  instructions: RichTextDoc | null;
+  resultsPublished: boolean;
+  sections: SectionSummary[];
+};
+
+// What a taker reads about a test before starting (the lobby): never its questions.
+function toStudentAssessment(doc: AssessmentRead): StudentAssessment {
   return {
     id: String(doc._id),
     title: doc.title,
@@ -350,27 +424,76 @@ export function toStudentAssessment(doc: AssessmentRead): StudentAssessment {
     attemptPolicy: doc.attemptPolicy,
     shuffleItems: doc.shuffleItems,
     shuffleOptions: doc.shuffleOptions,
+    questions: questionsOf(doc),
     instructions: docOf(doc.instructions),
-    resultsPublished,
-    items: doc.items.map((item) => ({
-      id: String(item._id),
-      type: item.type,
-      prompt: docOf(item.prompt),
-      maxMarks: item.maxMarks,
-      options: item.options ? item.options.map((o) => ({ id: String(o._id), text: o.text })) : null,
-      rubric:
-        resultsPublished && item.rubric
-          ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
-          : null,
-    })),
+    resultsPublished: doc.status === 'results_published',
+    sections: sectionSummaries(doc),
   };
 }
 
-export type TeacherItem = StudentItem & {
+export type TeacherItem = Omit<StudentItem, 'pairs' | 'rubric'> & {
   coIds: string[];
   bloomLevel: BloomLevel | null;
-  // mcq/msq: the correct option ids; numeric: the value and its margin.
-  key: { optionIds: string[] } | { value: number; tolerance: number } | null;
+  difficulty: Difficulty | null;
+  topic: string | null;
+  explanation: RichTextDoc | null;
+  rubric: { id: string; criterion: string; maxMarks: number }[] | null;
+  // mcq/msq: the correct options; ordering: every step in the right order; numeric: the value and its margin.
+  key: { optionIds: string[] } | { value: number; tolerance: number } | { truth: boolean } | null;
+  // fill_blank: what each blank accepts; matching: the pairs as written (with the ids an answer names them by).
+  blanks: string[][] | null;
+  pairs: { id: string; rightId: string; left: string; right: string }[] | null;
+  // A question a paper drew from the bank (M04b).
+  drawn: boolean;
+};
+
+export function teacherItemOf(item: AnyItem): TeacherItem {
+  const key = item.answer;
+  return {
+    ...toStudentItem(item, '', true),
+    coIds: item.coIds.map(String),
+    bloomLevel: item.bloomLevel ?? null,
+    difficulty: item.difficulty ?? null,
+    topic: item.topic ?? null,
+    explanation: docOf(item.explanation),
+    rubric: item.rubric
+      ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
+      : null,
+    key: !key
+      ? null
+      : item.type === 'numeric'
+        ? { value: key.value ?? 0, tolerance: key.tolerance ?? 0 }
+        : item.type === 'true_false'
+          ? { truth: key.truth ?? false }
+          : {
+              optionIds:
+                item.type === 'mcq' ? (key.optionId ? [String(key.optionId)] : []) : (key.optionIds ?? []).map(String),
+            },
+    blanks: item.blanks ? item.blanks.map((blank) => blank.accepted) : null,
+    pairs: item.pairs
+      ? item.pairs.map((pair) => ({
+          id: String(pair._id),
+          rightId: String(pair.rightId),
+          left: pair.left,
+          right: pair.right,
+        }))
+      : null,
+    drawn: 'bankItemId' in item && Boolean(item.bankItemId),
+  };
+}
+
+export type BuilderSection = SectionSummary & {
+  passage: RichTextDoc | null;
+  draw: {
+    count: number;
+    easy: number;
+    medium: number;
+    hard: number;
+    coIds: string[];
+    topics: string[];
+    marksEach: number;
+    negativeEach: number;
+  } | null;
 };
 
 export type Builder = {
@@ -388,36 +511,15 @@ export type Builder = {
     instructions: RichTextDoc | null;
     items: TeacherItem[];
   };
+  // M04b (TP-05, TP-06)
+  sections: BuilderSection[];
+  // What the bank cannot supply for the sections' draws, and how many different papers it can make (null: no draws).
+  bank: { shortfalls: string[]; papers: number | null };
+  extraTime: { userId: string; name: string; email: string; minutes: number }[];
   // What publishing still needs (T4): question numbers without a CO on a credit course.
   missingCos: number[];
   counts: { handedIn: number; toGrade: number; inProgress: number };
 };
-
-function teacherItems(doc: AssessmentRead): TeacherItem[] {
-  return doc.items.map((item) => {
-    const key = item.answer;
-    return {
-      id: String(item._id),
-      type: item.type,
-      prompt: docOf(item.prompt),
-      maxMarks: item.maxMarks,
-      options: item.options ? item.options.map((o) => ({ id: String(o._id), text: o.text })) : null,
-      rubric: item.rubric
-        ? item.rubric.map((r) => ({ id: String(r._id), criterion: r.criterion, maxMarks: r.maxMarks }))
-        : null,
-      coIds: item.coIds.map(String),
-      bloomLevel: item.bloomLevel ?? null,
-      key: !key
-        ? null
-        : item.type === 'numeric'
-          ? { value: key.value ?? 0, tolerance: key.tolerance ?? 0 }
-          : {
-              optionIds:
-                item.type === 'mcq' ? (key.optionId ? [String(key.optionId)] : []) : (key.optionIds ?? []).map(String),
-            },
-    };
-  });
-}
 
 // T4: the builder for whoever teaches the class; a head of department reads it with no controls.
 export async function getBuilder(assessmentId: string): Promise<Builder> {
@@ -428,16 +530,32 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     readAssessment(assessmentId),
     offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean() : null,
   ]);
-  const [course, statuses] = await Promise.all([
+  const [course, statuses, pools, people] = await Promise.all([
     offering ? Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean() : null,
     Submission.aggregate<{ _id: string; n: number }>([
       { $match: { assessmentId: doc._id } },
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]),
+    sectionPools(doc),
+    User.find({ _id: { $in: doc.extraTime.map((e) => e.userId) } }, { name: 1, email: 1 }).lean(),
   ]);
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
   const credit = offering?.category === 'ugc';
-  const items = teacherItems(doc);
+  const items = doc.items.map(teacherItemOf);
+  const drawing = doc.sections.flatMap((section) =>
+    section.draw
+      ? [
+          {
+            pool: pools.get(String(section._id)) ?? [],
+            rule: {
+              count: section.draw.count,
+              mix: { easy: section.draw.easy, medium: section.draw.medium, hard: section.draw.hard },
+            },
+          },
+        ]
+      : [],
+  );
+  const personOf = new Map(people.map((p) => [String(p._id), p]));
   return {
     offeringId,
     path: assessmentPath(offeringId, assessmentId),
@@ -447,11 +565,43 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     offeringTitle: offering?.title ?? null,
     cos: (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })),
     assessment: {
-      ...summaryOf({ ...doc, questions: doc.items.length }, new Date()),
+      ...summaryOf({ ...doc, questions: questionsOf(doc) }, new Date()),
       status: doc.status,
       instructions: docOf(doc.instructions),
       items,
     },
+    sections: sectionSummaries(doc).map((summary, i) => {
+      const draw = doc.sections[i].draw;
+      return {
+        ...summary,
+        passage: docOf(doc.sections[i].passage),
+        draw: draw
+          ? {
+              count: draw.count,
+              easy: draw.easy,
+              medium: draw.medium,
+              hard: draw.hard,
+              coIds: draw.coIds.map(String),
+              topics: draw.topics,
+              marksEach: draw.marksEach,
+              negativeEach: draw.negativeEach,
+            }
+          : null,
+      };
+    }),
+    bank: {
+      shortfalls: shortfallMessages(doc.sections, pools),
+      papers: drawing.length > 0 ? distinctPapers(drawing) : null,
+    },
+    extraTime: doc.extraTime.map((entry) => {
+      const person = personOf.get(String(entry.userId));
+      return {
+        userId: String(entry.userId),
+        name: person?.name ?? 'Unknown',
+        email: person?.email ?? '',
+        minutes: entry.minutes,
+      };
+    }),
     missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
     counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
   };
@@ -460,26 +610,44 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
 export type AnswerValue =
   | { type: 'mcq'; optionId: string | null }
   | { type: 'msq'; optionIds: string[] }
+  | { type: 'true_false'; truth: boolean | null }
   | { type: 'numeric'; value: number | null }
+  | { type: 'fill_blank'; texts: string[] }
+  | { type: 'matching'; matches: { left: string; right: string }[] }
+  | { type: 'ordering'; optionIds: string[] }
   | { type: 'text'; text: RichTextDoc | null }
   | { type: 'file'; files: UploadedFile[] };
 
-type StoredAnswer = NonNullable<NonNullable<Awaited<ReturnType<typeof readSubmission>>>['answers']>[string];
+type StoredAnswer = NonNullable<SubmissionDoc['answers']>[string];
 
 function answerOf(type: ItemType, stored: StoredAnswer | undefined): AnswerValue {
-  if (type === 'mcq') return { type, optionId: stored?.optionId ? String(stored.optionId) : null };
-  if (type === 'msq') return { type, optionIds: (stored?.optionIds ?? []).map(String) };
-  if (type === 'numeric') return { type, value: stored?.value ?? null };
-  if (type === 'text') return { type, text: docOf(stored?.text) };
-  return {
-    type,
-    files: (stored?.files ?? []).map((f) => ({
-      key: f.key,
-      fileName: f.fileName,
-      contentType: f.contentType,
-      size: f.size,
-    })),
-  };
+  switch (type) {
+    case 'mcq':
+      return { type, optionId: stored?.optionId ? String(stored.optionId) : null };
+    case 'msq':
+    case 'ordering':
+      return { type, optionIds: (stored?.optionIds ?? []).map(String) };
+    case 'true_false':
+      return { type, truth: stored?.truth ?? null };
+    case 'numeric':
+      return { type, value: stored?.value ?? null };
+    case 'fill_blank':
+      return { type, texts: stored?.texts ?? [] };
+    case 'matching':
+      return { type, matches: (stored?.matches ?? []).map((m) => ({ left: String(m.left), right: String(m.right) })) };
+    case 'text':
+      return { type, text: docOf(stored?.text) };
+    case 'file':
+      return {
+        type,
+        files: (stored?.files ?? []).map((f) => ({
+          key: f.key,
+          fileName: f.fileName,
+          contentType: f.contentType,
+          size: f.size,
+        })),
+      };
+  }
 }
 
 async function readSubmission(filter: QueryFilter<SubmissionDoc>) {
@@ -488,12 +656,11 @@ async function readSubmission(filter: QueryFilter<SubmissionDoc>) {
 
 export type MyResult = {
   total: number;
-  items: {
-    id: string;
+  items: (StudentItem & {
     marks: number | null;
     comment: string | null;
     criteria: { criterion: string; marks: number | null; maxMarks: number }[] | null;
-  }[];
+  })[];
 };
 
 export type AssessmentPage =
@@ -504,6 +671,8 @@ export type AssessmentPage =
       assessment: StudentAssessment;
       state: DisplayState;
       check: StartCheck;
+      // TP-07: extra minutes this person was given.
+      extraMin: number;
       attempts: {
         attemptNo: number;
         status: 'in_progress' | 'submitted' | 'graded';
@@ -511,7 +680,7 @@ export type AssessmentPage =
         late: boolean;
         autoSubmitted: boolean;
       }[];
-      // The counted attempt's marks per question, once results are published (T5).
+      // The counted attempt's marks per question of its own paper, once results are published (T5).
       result: MyResult | null;
     };
 
@@ -525,7 +694,7 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
   if (doc.status === 'draft') notFound();
   const mine = await Submission.find(
     { assessmentId: doc._id, studentId: viewerId },
-    { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, deadlineAt: 1, scores: 1 },
+    { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, deadlineAt: 1 },
   )
     .sort({ attemptNo: 1 })
     .lean();
@@ -548,13 +717,15 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
     const graded = mine.filter((s) => s.status === 'graded' && s.total !== null);
     const best = Math.max(...graded.map((s) => s.total ?? 0));
     const counted = doc.attemptPolicy === 'best' ? graded.find((s) => s.total === best) : graded[graded.length - 1];
-    if (counted) {
+    const paper = counted ? await readSubmission({ _id: counted._id }) : null;
+    if (paper) {
       result = {
         total: countedScore(mine, doc.attemptPolicy),
-        items: assessment.items.map((item) => {
-          const score = counted.scores?.[item.id];
+        items: paper.paper.map((raw) => {
+          const item = toStudentItem(raw, String(paper._id), true);
+          const score = paper.scores?.[item.id];
           return {
-            id: item.id,
+            ...item,
             marks: score?.marks ?? null,
             comment: score?.comment ?? null,
             criteria: item.rubric
@@ -575,6 +746,7 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
     assessment,
     state: stateOf(doc, now),
     check,
+    extraMin: doc.extraTime.find((entry) => String(entry.userId) === viewerId)?.minutes ?? 0,
     attempts: mine.map((s) => ({
       attemptNo: s.attemptNo,
       status: s.status,
@@ -586,6 +758,14 @@ export async function getAssessmentPage(assessmentId: string): Promise<Assessmen
   };
 }
 
+export type AttemptSection = SectionSummary & {
+  passage: RichTextDoc | null;
+  // TP-06: open (answers can change), closed (left for good, or its time ran out), or not opened yet.
+  state: 'open' | 'closed' | 'unvisited';
+  // When an opened section with its own time limit closes.
+  closesAt: Date | null;
+};
+
 export type AttemptDTO = {
   submissionId: string;
   assessmentId: string;
@@ -594,41 +774,62 @@ export type AttemptDTO = {
   title: string;
   // The course's title, or null for a standalone test.
   offeringTitle: string | null;
+  // Whose attempt it is, on the runner's top bar (M04b "Runner A").
+  takerName: string;
   timed: boolean;
   deadlineAt: Date;
+  // M04b: empty when the test has no sections.
+  sections: AttemptSection[];
+  currentSectionId: string | null;
+  flags: string[];
   // `saved` is what the student has saved so far, never a key.
   items: (StudentItem & { saved: AnswerValue })[];
 };
 
-// T5: the runner's attempt, owner only: questions and options in the order this attempt was given (seededShuffle),
-// with the answers saved so far. Null when the student has no attempt running.
+// T5: the runner's attempt, owner only: the questions of its own paper (M04b) in its order, with the answers saved so
+// far. Null when the student has no attempt running.
 export async function getAttemptForStudent(assessmentId: string): Promise<AttemptDTO | null> {
   const { viewerId, access, offeringId } = await testAccess(assessmentId);
   if (access !== 'take') notFound();
   await db();
   const doc = await readAssessment(assessmentId);
-  const [attempt, offering] = await Promise.all([
+  const [attempt, offering, viewer] = await Promise.all([
     readSubmission({ assessmentId: doc._id, studentId: viewerId, status: 'in_progress' }),
     offeringId ? Offering.findById(offeringId, { title: 1 }).lean() : null,
+    requireViewer(),
   ]);
   if (!attempt) return null;
-  const assessment = toStudentAssessment(doc);
-  const itemOf = new Map(assessment.items.map((item) => [item.id, item]));
-  const items = attempt.order.flatMap(({ itemId, optionIds }) => {
-    const item = itemOf.get(String(itemId));
-    if (!item) return [];
-    const optionOf = new Map((item.options ?? []).map((o) => [o.id, o]));
-    const options = optionIds ? optionIds.flatMap((id) => optionOf.get(String(id)) ?? []) : item.options;
-    return [{ ...item, options, saved: answerOf(item.type, attempt.answers?.[item.id]) }];
+  const now = new Date();
+  const seed = String(attempt._id);
+  const items = attempt.paper.map((raw) => {
+    const item = toStudentItem(raw, seed, false);
+    return { ...item, saved: answerOf(item.type, attempt.answers?.[item.id]) };
+  });
+  const rules = doc.sections.map((s) => ({ id: String(s._id), durationMin: s.durationMin ?? null, locked: s.locked }));
+  const sections = sectionSummaries(doc).map((summary, i): AttemptSection => {
+    const visit = attempt.visits.find((v) => String(v.sectionId) === summary.id);
+    const shaped = visit && { sectionId: summary.id, startedAt: visit.startedAt, closedAt: visit.closedAt ?? null };
+    return {
+      ...summary,
+      // The paper's own count: a section's drawn questions are on it.
+      questions: items.filter((item) => item.sectionId === summary.id).length,
+      passage: docOf(doc.sections[i].passage),
+      state: !shaped ? 'unvisited' : sectionOpen(rules[i], shaped, now, attempt.deadlineAt) ? 'open' : 'closed',
+      closesAt: shaped && rules[i].durationMin !== null ? sectionDeadline(rules[i], shaped, attempt.deadlineAt) : null,
+    };
   });
   return {
-    submissionId: String(attempt._id),
+    submissionId: seed,
     assessmentId,
     path: assessmentPath(offeringId, assessmentId),
     title: doc.title,
     offeringTitle: offering?.title ?? null,
+    takerName: viewer.name,
     timed: doc.durationMin !== null && doc.durationMin !== undefined,
     deadlineAt: attempt.deadlineAt,
+    sections,
+    currentSectionId: attempt.currentSectionId ? String(attempt.currentSectionId) : null,
+    flags: attempt.flags.map(String),
     items,
   };
 }
@@ -752,7 +953,9 @@ export type GradingView = {
   path: string;
   canGrade: boolean;
   locked: boolean;
-  assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status']; items: TeacherItem[] };
+  assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status'] };
+  // The questions of this attempt's own paper (M04b), with each one's section title.
+  items: (TeacherItem & { sectionTitle: string | null })[];
   submission: {
     id: string;
     attemptNo: number;
@@ -764,6 +967,9 @@ export type GradingView = {
     student: { name: string; email: string; rollNo: string };
     answers: Record<string, AnswerValue>;
     scores: Record<string, { marks: number; by: string; comment: string | null; criteria: Record<string, number> }>;
+    // TP-07: seconds spent on each question.
+    spent: Record<string, number>;
+    flags: string[];
   };
   previousId: string | null;
   // M04 decision 5: the next hand-in waiting for marks, after this one in the order they came in, else the first.
@@ -802,13 +1008,18 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       .sort({ submittedAt: 1, _id: 1 })
       .lean(),
   ]);
-  const items = teacherItems(doc);
+  const titleOf = new Map(doc.sections.map((section) => [String(section._id), section.title]));
+  const items = attempt.paper.map((raw) => {
+    const item = teacherItemOf(raw);
+    return { ...item, sectionTitle: item.sectionId ? (titleOf.get(item.sectionId) ?? null) : null };
+  });
   const next = nextAfter ?? firstToGrade;
   return {
     path: assessmentPath(offeringId, assessmentId),
     canGrade: access === 'manage' && !locked,
     locked,
-    assessment: { id: String(doc._id), title: doc.title, maxMarks: doc.maxMarks, status: doc.status, items },
+    assessment: { id: String(doc._id), title: doc.title, maxMarks: doc.maxMarks, status: doc.status },
+    items,
     submission: {
       id: String(attempt._id),
       attemptNo: attempt.attemptNo,
@@ -830,6 +1041,8 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
           },
         ]),
       ),
+      spent: attempt.spent ?? {},
+      flags: attempt.flags.map(String),
     },
     previousId: previous ? String(previous._id) : null,
     nextToGradeId: next ? String(next._id) : null,

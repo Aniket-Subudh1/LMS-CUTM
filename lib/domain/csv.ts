@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
 import { creditTotal, formatCredits, normalizeCode, parseCredits, type Credits } from '@/lib/domain/catalog';
+import { BANK_CSV_COLUMNS, BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { CourseListCsvRow, EnrollmentCsvRow, UserCsvRow } from '@/lib/schemas/structure';
 
 // `row` is 1-based and excludes the header; 0 means the file as a whole (06 §8).
@@ -151,7 +152,9 @@ export function parseCourseListCsv(text: string): CsvResult<CourseListRow> {
   records.forEach((record, i) => {
     const row = i + 1;
     const parsed = CourseListCsvRow.safeParse(
-      Object.fromEntries(['programme', 'stream', 'basket', 'type', 'code', 'title', 'credits', 'tpp'].map((c) => [c, cell(record, c)])),
+      Object.fromEntries(
+        ['programme', 'stream', 'basket', 'type', 'code', 'title', 'credits', 'tpp'].map((c) => [c, cell(record, c)]),
+      ),
     );
     if (!parsed.success) {
       errors.push({ row, message: [...new Set(parsed.error.issues.map((issue) => issue.message))].join(' ') });
@@ -173,13 +176,53 @@ export function parseCourseListCsv(text: string): CsvResult<CourseListRow> {
     const credits = formatCredits(split.credits);
     const first = courses.get(code);
     if (!first) courses.set(code, { row, title: rest.title, credits });
-    else if (first.title !== rest.title) errors.push({ row, message: `${code} has a different title in row ${first.row}.` });
-    else if (first.credits !== credits) errors.push({ row, message: `${code} has different credits in row ${first.row}.` });
+    else if (first.title !== rest.title)
+      errors.push({ row, message: `${code} has a different title in row ${first.row}.` });
+    else if (first.credits !== credits)
+      errors.push({ row, message: `${code} has different credits in row ${first.row}.` });
     const link = `${rest.programme.toLowerCase()} ${code}`;
     const twice = links.get(link);
     if (twice) errors.push({ row, message: `${code} is already listed under ${rest.programme} in row ${twice}.` });
     else links.set(link, row);
     rows.push({ ...rest, code, credits: split.credits, row });
+  });
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
+}
+
+export type BankRow = BankCsvRow & { row: number };
+
+// 06 §8.6 (M04b, TP-05): questions for a bank. Every row is checked before any is saved; CO codes are matched by the
+// action, against the course's outcomes.
+export function parseBankCsv(text: string): CsvResult<BankRow> {
+  const read = readCsv(text);
+  if (!read.ok) return read;
+  const { columns, records } = read.data;
+  const missing = missingColumns(columns, BANK_CSV_COLUMNS);
+  if (missing.length > 0) return { ok: false, errors: missing };
+  if (records.length > BANK_LIMITS.csvRows) {
+    return { ok: false, errors: [{ row: 0, message: `Import at most ${BANK_LIMITS.csvRows} questions at a time.` }] };
+  }
+  const errors: CsvError[] = [];
+  const rows: BankRow[] = [];
+  records.forEach((record, i) => {
+    const row = i + 1;
+    const parsed = BankCsvRow.safeParse({
+      type: cell(record, 'type'),
+      question: cell(record, 'question'),
+      options: cell(record, 'options'),
+      answer: cell(record, 'answer'),
+      marks: cell(record, 'marks'),
+      negative: cell(record, 'negative') || undefined,
+      difficulty: cell(record, 'difficulty').toLowerCase(),
+      topic: cell(record, 'topic'),
+      bloom: cell(record, 'bloom'),
+      cos: cell(record, 'cos'),
+    });
+    if (!parsed.success) {
+      errors.push({ row, message: [...new Set(parsed.error.issues.map((issue) => issue.message))].join(' ') });
+      return;
+    }
+    rows.push({ ...parsed.data, row });
   });
   return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
 }

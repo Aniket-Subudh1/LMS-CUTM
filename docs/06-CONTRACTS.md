@@ -233,6 +233,15 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 
 `<minuteBucket>` = `Math.floor(now / 60000)`: repeated triggers inside one minute collapse into one job.
 
+### 6.2 Building and taking a test (M04b phase B, `lib/schemas/assessment.ts`, `lib/schemas/bank.ts`)
+
+- **Questions:** `saveItem` takes one question's fields for every type (`ItemInput`: options, key, rubric, blanks, pairs, negative marks, partial credit, explanation, difficulty, topic) plus its `sectionId`; `storedItem` (`lib/data/questions.ts`) gives every option, criterion, blank and pair a new id.
+- **Sections:** `saveSection`, `deleteSection` (only an empty one), `reorderSections`; the first section takes in every question there is. `publishAssessment` refuses while a draw cannot be met (`shortfallMessages`, `lib/data/papers.ts`).
+- **Bank:** `saveBankItem`, `deleteBankItem`, `importBankCsv`, `copyToBank` (`app/(app)/tests/bank/actions.ts`, faculty and admin; a course bank through an offering they teach, `requireBankEditor`) and `addFromBank` (assessment actions). Reads: `getBank`, `getBankItem`, `pickFromBank` (`lib/data/bank.ts`).
+- **Extra time:** `setExtraTime({ assessmentId, who, minutes })` — `who` is an email or roll number; 0 takes it away; a running attempt's `deadlineAt` moves at once; audited.
+- **Attempt:** `startAttempt` builds the paper (`buildPaper`: fixed questions per section, then draws seeded by the attempt id; `usedCount` +1 on drawn bank questions; CONFLICT when the bank can no longer meet a rule) and opens the first section. `saveAnswer({ submissionId, itemId, answer, spentSec })` checks the answer against the paper's question and refuses (CLOSED) a closed section; `flagItem({ submissionId, itemId, flagged })`; `enterSection({ submissionId, sectionId })` applies `planSectionMove` and writes the visits whole over the ones read (CONFLICT from another tab).
+- **Grading:** `gradeSubmission` reads the attempt's paper; a mark may be as low as the question's `−negativeMarks`.
+
 ### 6.1 Test links and guests (M04b, `lib/schemas/tests.ts`)
 
 Not jobs, but the contract other phases build on. Actions: `createTest`, `createLink`, `setLinkActive`, `deleteLink`, `inviteToTest` (`app/(app)/tests/actions.ts`, faculty and admin, `requireManage`); `openLink`, `signInToTest`, `registerGuest`, `returnAsGuest`, `verifyGuestCode`, `leaveLink` (`app/(auth)/t/[token]/actions.ts`, before or after sign-in). Every M04 assessment action takes `assessmentId` (or `submissionId`) alone; access comes from the assessment (`assessmentAccess` in `lib/auth/access.ts`: `manage` · `oversee` · `take`).
@@ -287,6 +296,21 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 - `programme` is matched to an LMS programme by name, then by code (case and spaces ignored), so `MSc` finds the programme named MSc even when `M.Sc` was given the code `MSC`. With "Create programmes that do not exist yet" ticked, a missing one is created (code from its name, no department, PSO titles by default); otherwise its rows are errors.
 - `basket` is matched by name inside the programme or added to it (≤ 12 baskets). `type` labels the link; it sets the course's type only when the course has none.
 - Courses are upserted by code: a new course is `active`; for a known one only the title and the credits change (a credit change adds the review note "Credits changed by the course list from X to Y."), never its content. Links are upserted; an unchanged link is not rewritten, so the same file twice changes nothing. Nothing is deleted (A-64). One transaction and one audit entry `course.list_imported` (entity `course_list`) with the counts.
+
+### 8.6 Question bank — "Import CSV" on a question bank (M04b, TP-05)
+
+`parseBankCsv` (`lib/domain/csv.ts`, rows checked by `BankCsvRow` in `lib/schemas/bank.ts`); at most 500 rows; every row is checked before any is saved (the CSV contract of §8).
+
+| Column | Needed | Value |
+|---|---|---|
+| `type` | yes | `one answer`, `several answers`, `true or false`, `number`, `written answer` (or `mcq`, `msq`, `true_false`, `numeric`, `text`) |
+| `question` | yes | plain text, ≤ 4,000 characters |
+| `options` | for one / several answers | 2–8, separated by `|` |
+| `answer` | for all but written | the right option's number (several: `1|3`); `true` or `false`; a number with an optional margin `3.14 ± 0.01` |
+| `marks` | yes | > 0 |
+| `difficulty`, `topic`, `bloom` | no | easy/medium/hard; a short topic; a Bloom level |
+| `cos` | no | the course's CO codes separated by `|` (a personal bank has none) |
+| `negative` | no | marks taken off when wrong, ≤ marks |
 
 ### 8.3 End-semester marks — `/admin/exams/import` (M08)
 `rollno,coursecode,termcode,endsemmarks,endsemmax,absent`

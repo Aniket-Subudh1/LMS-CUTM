@@ -4,6 +4,7 @@ import {
   ASSESSMENT_MODES,
   ASSESSMENT_STATUSES,
   ATTEMPT_POLICIES,
+  DIFFICULTIES,
   ITEM_TYPES,
 } from '@/lib/schemas/assessment';
 import { BLOOM_LEVELS } from '@/lib/schemas/structure';
@@ -18,26 +19,86 @@ const criterionSchema = new Schema({
 });
 
 // The key of an objective question. It never reaches a student's browser (09 §10): toStudentAssessment leaves it out.
+// mcq: optionId · msq: optionIds (a set) · ordering: optionIds (the right order) · numeric: value ± tolerance ·
+// true_false: truth. Fill-in-the-blank keys are `blanks`, matching keys are `pairs` themselves.
 const answerKeySchema = new Schema(
   {
     optionId: { type: Schema.Types.ObjectId },
     optionIds: { type: [Schema.Types.ObjectId], default: undefined },
     value: { type: Number },
     tolerance: { type: Number, min: 0 },
+    truth: { type: Boolean },
   },
   { _id: false },
 );
 
-const itemSchema = new Schema({
+const blankSchema = new Schema({
+  accepted: { type: [{ type: String, trim: true, maxlength: ASSESSMENT_LIMITS.blankText }], required: true },
+});
+
+// `_id` names the left side and `rightId` the right one, so a page can list both without saying which go together.
+const pairSchema = new Schema({
+  rightId: { type: Schema.Types.ObjectId, required: true },
+  left: { type: String, required: true, trim: true, maxlength: ASSESSMENT_LIMITS.pairText },
+  right: { type: String, required: true, trim: true, maxlength: ASSESSMENT_LIMITS.pairText },
+});
+
+// One question, as an assessment holds it, as the bank holds it (lib/models/bank-item.ts) and as an attempt's paper
+// keeps a copy of it (lib/models/submission.ts).
+export const itemDefinition = {
   type: { type: String, enum: ITEM_TYPES, required: true },
   prompt: { type: Schema.Types.Mixed, required: true },
   maxMarks: { type: Number, required: true, min: 0.01, max: 1000 },
   // CPP-05/06: at least one for a credit course; each is one of the course's COs (deleteCo refuses one in use).
   coIds: { type: [Schema.Types.ObjectId], default: [] },
   bloomLevel: { type: String, enum: BLOOM_LEVELS, default: null },
+  // M04b (TP-05, TP-06)
+  difficulty: { type: String, enum: DIFFICULTIES, default: null },
+  topic: { type: String, trim: true, lowercase: true, maxlength: ASSESSMENT_LIMITS.topic, default: null },
+  negativeMarks: { type: Number, min: 0, max: 1000, default: 0 },
+  partialCredit: { type: Boolean, default: false },
+  explanation: { type: Schema.Types.Mixed, default: null },
   options: { type: [optionSchema], default: undefined },
   answer: { type: answerKeySchema, default: undefined },
   rubric: { type: [criterionSchema], default: undefined },
+  // fill_blank: the sentence with ___ for each blank, and what each blank accepts.
+  template: { type: String, maxlength: ASSESSMENT_LIMITS.template, default: undefined },
+  blanks: { type: [blankSchema], default: undefined },
+  // matching: each pair is a left side and its right side; the runner shuffles the right sides.
+  pairs: { type: [pairSchema], default: undefined },
+};
+
+const itemSchema = new Schema({
+  ...itemDefinition,
+  // M04b: the section it belongs to; null while the assessment has no sections.
+  sectionId: { type: Schema.Types.ObjectId, default: null },
+});
+
+// M04b (TP-05, TP-06): a part of the test with its own clock and order rule, a passage shown beside its questions, and
+// questions drawn from the bank for each attempt (`draw`, each worth `marksEach`).
+const sectionSchema = new Schema({
+  title: { type: String, required: true, trim: true, maxlength: ASSESSMENT_LIMITS.sectionTitle },
+  durationMin: { type: Number, min: 1, max: 600, default: null },
+  // "No going back": once left it closes, and nothing after it opens until it is left.
+  locked: { type: Boolean, required: true, default: false },
+  passage: { type: Schema.Types.Mixed, default: null },
+  draw: {
+    type: new Schema(
+      {
+        count: { type: Number, required: true, min: 1, max: ASSESSMENT_LIMITS.items },
+        // Percent of `count` per level; all 0 means any level.
+        easy: { type: Number, required: true, min: 0, max: 100, default: 0 },
+        medium: { type: Number, required: true, min: 0, max: 100, default: 0 },
+        hard: { type: Number, required: true, min: 0, max: 100, default: 0 },
+        coIds: { type: [Schema.Types.ObjectId], default: [] },
+        topics: { type: [String], default: [] },
+        marksEach: { type: Number, required: true, min: 0.01, max: 1000 },
+        negativeEach: { type: Number, required: true, min: 0, max: 1000, default: 0 },
+      },
+      { _id: false },
+    ),
+    default: null,
+  },
 });
 
 const assessmentSchema = new Schema(
@@ -49,7 +110,9 @@ const assessmentSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 160 },
     instructions: { type: Schema.Types.Mixed },
     items: { type: [itemSchema], default: [] },
-    // Σ items.maxMarks, kept with every change to the questions.
+    // At most ASSESSMENT_LIMITS.sections; empty means one part holding every question.
+    sections: { type: [sectionSchema], default: [] },
+    // Σ items.maxMarks + Σ sections' draw.count × marksEach, kept with every change to the questions and sections.
     maxMarks: { type: Number, required: true, default: 0 },
     opensAt: { type: Date, required: true },
     closesAt: { type: Date, required: true },
@@ -59,6 +122,17 @@ const assessmentSchema = new Schema(
     attemptPolicy: { type: String, enum: ATTEMPT_POLICIES, required: true, default: 'best' },
     shuffleItems: { type: Boolean, required: true, default: false },
     shuffleOptions: { type: Boolean, required: true, default: false },
+    // TP-07: extra minutes for named people (at most ASSESSMENT_LIMITS.extraTime), read when an attempt starts.
+    extraTime: {
+      type: [
+        {
+          _id: false,
+          userId: { type: Schema.Types.ObjectId, required: true },
+          minutes: { type: Number, required: true, min: 1, max: 600 },
+        },
+      ],
+      default: [],
+    },
     // Open or closed is derived from the dates and now (windowState, lib/domain/attempts.ts).
     status: { type: String, enum: ASSESSMENT_STATUSES, required: true, default: 'draft' },
     publishedAt: { type: Date },

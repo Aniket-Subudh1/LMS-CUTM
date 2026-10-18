@@ -7,20 +7,23 @@ import { assessmentAccess } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, SAVE_GRACE_MS } from '@/lib/data/attempts';
 import { addEngagement } from '@/lib/data/engagement';
+import { buildPaper } from '@/lib/data/papers';
 import { db, isDuplicateKey } from '@/lib/db';
-import { canStart, deadlineAt } from '@/lib/domain/attempts';
-import { seededShuffle } from '@/lib/domain/shuffle';
+import { canStart, deadlineAt, planSectionMove, sectionOpen, type SectionRule } from '@/lib/domain/attempts';
+import { isPermutation } from '@/lib/domain/order';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { parseKey, sanitizeFileName } from '@/lib/domain/uploads';
 import { AppError } from '@/lib/errors';
 import { formatDateTime } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
+import { BankItem } from '@/lib/models/bank-item';
 import { Submission } from '@/lib/models/submission';
 import { limit } from '@/lib/rate-limit';
-import { AssessmentRef, SaveAnswer, SubmissionRef } from '@/lib/schemas/assessment';
+import { AssessmentRef, EnterSection, FlagItem, SaveAnswer, SubmissionRef } from '@/lib/schemas/assessment';
 
 // A course's students, and the candidates and LMS users a share link let into a standalone test (M04b).
 const TAKERS = ['student', 'candidate', 'faculty', 'hod', 'admin', 'support'] as const;
+const RELOAD = 'Reload the page and answer again.';
 
 async function requireTake(viewer: Viewer, assessmentId: string) {
   const found = await assessmentAccess(viewer, assessmentId);
@@ -33,12 +36,15 @@ const isExpired = (attempt: { deadlineAt: Date }, now: Date) =>
   now.getTime() > attempt.deadlineAt.getTime() + SAVE_GRACE_MS;
 
 // T5. An attempt left running past its deadline is handed in first; a second tab starting at the same moment finds the
-// unique attempt number taken and resumes the first one.
+// unique attempt number taken and resumes the first one. M04b: the attempt keeps its own paper (drawn from the bank
+// where sections say so), opens the first section, and gets the person's extra time.
 export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, async ({ assessmentId }, viewer) => {
   const offeringId = await requireTake(viewer, assessmentId);
   const assessment = await Assessment.findOne(
     { _id: assessmentId, status: { $ne: 'draft' } },
     {
+      offeringId: 1,
+      ownerIds: 1,
       mode: 1,
       opensAt: 1,
       closesAt: 1,
@@ -48,6 +54,8 @@ export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, asyn
       shuffleItems: 1,
       shuffleOptions: 1,
       items: 1,
+      sections: 1,
+      extraTime: 1,
     },
   ).lean();
   if (!assessment) throw new AppError('NOT_FOUND', 'Assessment not found.');
@@ -76,15 +84,8 @@ export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, asyn
   if (check === 'no_attempts_left') throw new AppError('CONFLICT', 'You have used all your attempts.');
   if (check === 'start') {
     const _id = new Types.ObjectId();
-    const seed = String(_id);
-    const items = assessment.shuffleItems ? seededShuffle(assessment.items, seed) : assessment.items;
-    const order = items.map((item) => {
-      const optionIds = item.options?.map((o) => o._id);
-      return {
-        itemId: item._id,
-        optionIds: optionIds && assessment.shuffleOptions ? seededShuffle(optionIds, `${seed}:${item._id}`) : optionIds,
-      };
-    });
+    const { paper, drawn } = await buildPaper(assessment, String(_id));
+    const first = assessment.sections[0];
     try {
       await mongoose.connection.transaction(async (session) => {
         await Submission.create(
@@ -101,12 +102,18 @@ export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, asyn
                 durationMin: assessment.durationMin ?? null,
                 closesAt: assessment.closesAt,
                 lateUntil,
+                extraMin: assessment.extraTime.find((entry) => entry.userId.equals(viewer.id))?.minutes ?? 0,
               }),
-              order,
+              paper,
+              visits: first ? [{ sectionId: first._id, startedAt: now, closedAt: null }] : [],
+              currentSectionId: first?._id ?? null,
             },
           ],
           { session },
         );
+        // The bank's "Used" column (TP-05).
+        if (drawn.length > 0)
+          await BankItem.updateMany({ _id: { $in: drawn } }, { $inc: { usedCount: 1 } }, { session });
         // SKL-02, ENG-01: a quiz attempt counts once, when it starts (a course's quizzes only).
         if (offeringId && assessment.mode === 'quiz') {
           await addEngagement([{ offeringId, studentId: viewer.id, at: now, inc: { quizAttempts: 1 } }], session);
@@ -119,13 +126,12 @@ export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, asyn
   redirect(runner);
 });
 
-// T5: one question's answer, an atomic $set on its key (05 §5.2). The deadline is the server's (AC-M04-03): a save more
-// than a moment after it hands the attempt in instead. 60 saves a minute (09 §4).
-export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (input, viewer) => {
+// The running attempt of this viewer: handed in instead when its time is up (AC-M04-03).
+async function runningAttempt(viewer: Viewer, submissionId: string) {
   await db();
   const attempt = await Submission.findOne(
-    { _id: input.submissionId, studentId: viewer.id },
-    { assessmentId: 1, status: 1, deadlineAt: 1 },
+    { _id: submissionId, studentId: viewer.id },
+    { assessmentId: 1, status: 1, deadlineAt: 1, paper: 1, visits: 1, currentSectionId: 1 },
   ).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Attempt not found.');
   await requireTake(viewer, String(attempt.assessmentId));
@@ -135,54 +141,146 @@ export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (in
     await handInAttempts([String(attempt._id)], now);
     throw new AppError('CLOSED', 'Time is up — your answers were submitted.');
   }
+  const assessment = await Assessment.findById(attempt.assessmentId, { sections: 1 }).lean();
+  const rules: SectionRule[] = (assessment?.sections ?? []).map((section) => ({
+    id: String(section._id),
+    durationMin: section.durationMin ?? null,
+    locked: section.locked,
+  }));
+  const visits = attempt.visits.map((visit) => ({
+    sectionId: String(visit.sectionId),
+    startedAt: visit.startedAt,
+    closedAt: visit.closedAt ?? null,
+  }));
+  return { attempt, now, rules, visits };
+}
+
+// T5: one question's answer, an atomic $set on its key (05 §5.2), checked against the question on this attempt's
+// paper. M04b: a section that closed (left for good, or out of time) takes no more answers; the seconds spent on the
+// question add up (TP-07). 60 saves a minute (09 §4).
+export const saveAnswer = action({ input: SaveAnswer, roles: TAKERS }, async (input, viewer) => {
+  const { attempt, now, rules, visits } = await runningAttempt(viewer, input.submissionId);
   await limit('autosave', viewer.id, 60, 60_000);
-  const assessment = await Assessment.findById(attempt.assessmentId, {
-    'items._id': 1,
-    'items.type': 1,
-    'items.options': 1,
-  }).lean();
-  const item = assessment?.items.find((i) => String(i._id) === input.itemId);
+  const item = attempt.paper.find((i) => String(i._id) === input.itemId);
   const { answer } = input;
-  if (!item || item.type !== answer.type) throw new AppError('VALIDATION', 'Reload the page and answer again.');
-  const options = new Set((item.options ?? []).map((o) => String(o._id)));
+  if (!item || item.type !== answer.type) throw new AppError('VALIDATION', RELOAD);
+  if (item.sectionId) {
+    const rule = rules.find((r) => r.id === String(item.sectionId));
+    const visit = visits.find((v) => v.sectionId === String(item.sectionId));
+    if (!rule || !sectionOpen(rule, visit, now, attempt.deadlineAt)) {
+      throw new AppError('CLOSED', 'This section is closed; its answers can no longer change.');
+    }
+  }
+  const options = (item.options ?? []).map((o) => String(o._id));
   let value: Record<string, unknown> | null = null;
-  if (answer.type === 'mcq' || answer.type === 'msq') {
-    const chosen = answer.type === 'mcq' ? (answer.optionId ? [answer.optionId] : []) : answer.optionIds;
-    if (chosen.some((id) => !options.has(id))) throw new AppError('VALIDATION', 'Reload the page and answer again.');
-    if (chosen.length > 0)
-      value = answer.type === 'mcq' ? { optionId: chosen[0] } : { optionIds: [...new Set(chosen)] };
-  } else if (answer.type === 'numeric') {
-    if (answer.value !== null) value = { value: answer.value };
-  } else if (answer.type === 'text') {
-    if (answer.text) value = { text: answer.text };
-  } else {
-    // 09 §5: only this student's uploads for this assessment.
-    const files = answer.files.map((file) => {
-      const owner = parseKey(file.key);
-      if (
-        !owner ||
-        owner.purpose !== 'submission' ||
-        owner.contextId !== String(attempt.assessmentId) ||
-        owner.userId !== viewer.id
-      ) {
-        throw new AppError('VALIDATION', 'Upload the file again.');
+  switch (answer.type) {
+    case 'mcq':
+    case 'msq': {
+      const chosen = answer.type === 'mcq' ? (answer.optionId ? [answer.optionId] : []) : answer.optionIds;
+      if (chosen.some((id) => !options.includes(id))) throw new AppError('VALIDATION', RELOAD);
+      if (chosen.length > 0)
+        value = answer.type === 'mcq' ? { optionId: chosen[0] } : { optionIds: [...new Set(chosen)] };
+      break;
+    }
+    case 'ordering':
+      if (answer.optionIds.length > 0) {
+        if (!isPermutation(options, answer.optionIds)) throw new AppError('VALIDATION', RELOAD);
+        value = { optionIds: answer.optionIds };
       }
-      return {
-        key: file.key,
-        fileName: sanitizeFileName(file.fileName),
-        contentType: file.contentType,
-        size: file.size,
-      };
-    });
-    if (files.length > 0) value = { files };
+      break;
+    case 'true_false':
+      if (answer.truth !== null) value = { truth: answer.truth };
+      break;
+    case 'numeric':
+      if (answer.value !== null) value = { value: answer.value };
+      break;
+    case 'fill_blank': {
+      if (answer.texts.length > (item.blanks?.length ?? 0)) throw new AppError('VALIDATION', RELOAD);
+      if (answer.texts.some((text) => text.trim() !== '')) value = { texts: answer.texts };
+      break;
+    }
+    case 'matching': {
+      const lefts = new Set((item.pairs ?? []).map((pair) => String(pair._id)));
+      const rights = new Set((item.pairs ?? []).map((pair) => String(pair.rightId)));
+      if (answer.matches.some((m) => !lefts.has(m.left) || !rights.has(m.right))) {
+        throw new AppError('VALIDATION', RELOAD);
+      }
+      const unique = new Map(answer.matches.map((m) => [m.left, m.right]));
+      if (unique.size > 0) value = { matches: [...unique].map(([left, right]) => ({ left, right })) };
+      break;
+    }
+    case 'text':
+      if (answer.text) value = { text: answer.text };
+      break;
+    case 'file': {
+      // 09 §5: only this student's uploads for this assessment.
+      const files = answer.files.map((file) => {
+        const owner = parseKey(file.key);
+        if (
+          !owner ||
+          owner.purpose !== 'submission' ||
+          owner.contextId !== String(attempt.assessmentId) ||
+          owner.userId !== viewer.id
+        ) {
+          throw new AppError('VALIDATION', 'Upload the file again.');
+        }
+        return {
+          key: file.key,
+          fileName: sanitizeFileName(file.fileName),
+          contentType: file.contentType,
+          size: file.size,
+        };
+      });
+      if (files.length > 0) value = { files };
+      break;
+    }
   }
   const path = `answers.${input.itemId}`;
+  const spent = input.spentSec > 0 ? { $inc: { [`spent.${input.itemId}`]: input.spentSec } } : {};
   const written = await Submission.updateOne(
     { _id: attempt._id, status: 'in_progress' },
-    value ? { $set: { [path]: value } } : { $unset: { [path]: 1 } },
+    value ? { $set: { [path]: value }, ...spent } : { $unset: { [path]: 1 }, ...spent },
   );
   if (written.matchedCount === 0) throw new AppError('CLOSED', 'These answers were already handed in.');
   return { savedAt: now };
+});
+
+// TP-07: "Flag for review", kept with the attempt so it survives a reload.
+export const flagItem = action({ input: FlagItem, roles: TAKERS }, async (input, viewer) => {
+  const { attempt } = await runningAttempt(viewer, input.submissionId);
+  if (!attempt.paper.some((item) => String(item._id) === input.itemId)) throw new AppError('VALIDATION', RELOAD);
+  await Submission.updateOne(
+    { _id: attempt._id, status: 'in_progress' },
+    input.flagged ? { $addToSet: { flags: input.itemId } } : { $pull: { flags: input.itemId } },
+  );
+});
+
+// TP-06: opening a section (a tab, or the runner's move on). A "no going back" section left closes for good, and a
+// closed or gated section stays shut; the server, not the page, decides.
+export const enterSection = action({ input: EnterSection, roles: TAKERS }, async (input, viewer) => {
+  const { attempt, now, rules, visits } = await runningAttempt(viewer, input.submissionId);
+  const from = attempt.currentSectionId ? String(attempt.currentSectionId) : null;
+  const move = planSectionMove(rules, visits, from, input.sectionId, now, attempt.deadlineAt);
+  if (!move.ok) {
+    throw new AppError(
+      'CLOSED',
+      move.reason === 'closed'
+        ? 'That section is closed.'
+        : 'Finish the section before it first; it has no going back.',
+    );
+  }
+  // At most ASSESSMENT_LIMITS.sections visits: the list is written whole, and only over the one read (two tabs).
+  const next = [
+    ...visits.map((visit) => (move.close.includes(visit.sectionId) ? { ...visit, closedAt: now } : visit)),
+    ...(visits.some((visit) => visit.sectionId === input.sectionId)
+      ? []
+      : [{ sectionId: input.sectionId, startedAt: now, closedAt: null }]),
+  ];
+  const written = await Submission.updateOne(
+    { _id: attempt._id, status: 'in_progress', visits: { $size: visits.length } },
+    { $set: { currentSectionId: input.sectionId, visits: next } },
+  );
+  if (written.matchedCount === 0) throw new AppError('CONFLICT', 'Your test changed in another tab. Reload the page.');
 });
 
 // T5: the student's Submit, or the runner's at 0:00 (handInAttempts marks that one as the timer's).

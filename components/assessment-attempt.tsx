@@ -13,9 +13,15 @@ export async function AssessmentAttempt({ params }: { params: Promise<{ offering
   const attempt = await getAttemptForStudent(aid);
   if (!attempt) redirect(path);
   if (attempt.path !== path) notFound();
-  // The questions are rendered here (RichTextView is server-only) and handed to the runner as nodes.
+  // The questions and the sections' passages are rendered here (RichTextView is server-only) and handed to the runner
+  // as nodes.
   const prompts = Object.fromEntries(
     attempt.items.map((item) => [item.id, item.prompt ? <RichTextView doc={item.prompt} /> : null]),
   );
-  return <AssessmentRunner attempt={attempt} prompts={prompts} serverNow={new Date().getTime()} />;
+  const passages = Object.fromEntries(
+    attempt.sections.flatMap((section) =>
+      section.passage ? [[section.id, <RichTextView key={section.id} doc={section.passage} />]] : [],
+    ),
+  );
+  return <AssessmentRunner attempt={attempt} prompts={prompts} passages={passages} serverNow={new Date().getTime()} />;
 }

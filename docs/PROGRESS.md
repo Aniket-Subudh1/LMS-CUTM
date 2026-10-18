@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked, phase A (access) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M04b Test platform | In progress — T0 picked; phases A (access) and B (build) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -215,6 +215,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-6 | Accepting the rules is a required checkbox in the Start form, checked by the browser and not stored; phase C records it with the proctoring consent | M04b | — |
 | A-M04b-7 | Faculty and admins make standalone tests; a head of department has no view of a colleague's standalone tests | M04b | — |
 | A-M04b-8 | A link's access code is kept readable so its owner can pass it on again; it is compared in constant time | M04b | — |
+| A-M04b-9 | Negative marks never take an attempt's total below 0 (a question's own score can be negative) | M04b | — |
+| A-M04b-10 | A section draws only automatically marked questions from the bank, each worth the section's marks (a rubric could not follow a changed mark) | M04b | — |
+| A-M04b-11 | A course's bank belongs to the catalogue course: every offering and term shares it; whoever teaches any offering of it edits it, a head of department reads it. A standalone test draws from its owners' own banks | M04b | — |
+| A-M04b-12 | A bank holds at most 5,000 questions; a CSV adds at most 500 and carries one answer, several answers, true or false, number and written answer (the other types are added in the dialog) | M04b | — |
+| A-M04b-13 | "Time per question" (TP-07) is the time spent on each question, recorded in whole seconds and shown to graders; there is no time limit per question | M04b | — |
+| A-M04b-14 | Extra time is per test and per person (by email or roll number, at most 200 people), lengthens both the time limit and the end of hand-ins, and reaches a running attempt at once | M04b | — |
+| A-M04b-15 | A matching question pairs each left side with one right side; an ordering question never moved is unanswered (0 marks); a fill-in-the-blank ignores case and extra spaces | M04b | — |
+| A-M04b-16 | Explanations are kept with questions and shown to graders now; takers see them with results once phase E's release rules allow | M04b | — |
 
 ## 5. Log
 
@@ -1566,4 +1574,71 @@ Phase A of `docs/milestones/M04b-test-platform.md` (TP-01–TP-04), on branch `m
   - The screens: Tests, New test, the builder with Share and a QR code, New link, Invite, hand-ins, the guests, class and closed link pages, the code step, the lobby, My tests, and returning on the link.
   - No error page, and no page wider than the screen.
   - After the walk: badge text in sentence case, the timer rule reworded, and "All tests" / "LMS users" for standalone tests.
+
+### 2026-10-18 · M04b/B Test platform: build — question bank, sections, new types, papers, Runner A · Claude Code, at Aniket's request
+
+Phase B of `docs/milestones/M04b-test-platform.md` (TP-05, TP-06, TP-07), on branch `m04-assessments`, committed locally and not pushed.
+
+**Created**
+- **Question types (TP-06).**
+  - True or false, fill in the blanks, matching (sides with their own ids) and ordering.
+  - Negative marks and partial credit, with the grading rules and vectors in 07 §14, and explanations.
+  - Difficulty and topic on every question (05 §5.1).
+  - One dialog for every type, `components/question-dialog.tsx`, shared by the builder and the bank.
+- **Sections (TP-06).**
+  - Each section has its own clock and an optional "no going back" (a gate), a passage, and draws from the bank (count, level mix, outcomes, topics, marks each, negative each).
+  - Actions `saveSection`, `deleteSection`, `reorderSections`; the rules in 07 §14 (`planSectionMove`, `sectionDeadline`).
+  - The builder's "Sections and papers" card follows mock-up C3.
+- **Question bank (TP-05).**
+  - The `questionBank` collection (05 §5.2d): a course's bank or a member of staff's own.
+  - Actions `saveBankItem`, `deleteBankItem`, `importBankCsv` (06 §8.6), `copyToBank`, `addFromBank`.
+  - Pages `/courses/<id>/bank` (a new workspace tab) and `/tests/bank`, following mock-up C1 (`components/question-bank.tsx`).
+  - The builder adds "From the bank" and each question's "Save to the bank".
+- **Papers (TP-05).**
+  - An attempt keeps its own paper (`submissions.paper`), drawn by `buildPaper` (`lib/data/papers.ts`) and seeded by the attempt.
+  - `lib/domain/papers.ts` (allocate, draw, shortfall, distinct papers) has unit tests.
+  - Grading, the grader's view and results read the paper; publishing refuses a draw the bank cannot meet.
+- **Runner A (TP-07, M04b decision 5).**
+  - One question at a time, with section tabs, the question map, "Flag for review" and a review page.
+  - Text size and high contrast.
+  - Answers are kept on the device while offline and sent again.
+  - Time on each question is recorded, the section clock runs, and leaving a "no going back" section asks first (`components/assessment-runner.tsx`).
+  - New server actions `flagItem` and `enterSection`.
+- **Extra time (TP-07).** `setExtraTime` and the builder's Extra time card; audited, and it reaches a running attempt.
+- **Lobby, results and grading.**
+  - The lobby shows sections and their rules.
+  - Results list the counted attempt's own questions.
+  - Grading shows each new type beside its key, plus section titles, time spent, "From the bank" and "Flagged by them".
+- **Tests.**
+  - Unit: grading vectors for every type, negative and partial marks; papers; sections and extra time; the new item schemas; the bank CSV parser; `plainText`.
+  - `tests/integration/build.test.ts` (12 cases): the new types stored with their keys; sections and drawn marks; the bank's access, sharing and CSV; copying both ways; publishing against the bank; frozen and graded papers; section rules on the server; secrecy; extra time; negative marks a grader keeps.
+  - The M04 integration and e2e tests now use papers and Runner A.
+- **Docs.** 05 §5.1, §5.2, §5.2d and §2; 06 §6.2 and §8.6; 07 §14; 08 (route map, workspace tabs, §5.2 rows for the runner, builder, `QuestionDialog` and `QuestionBank`); 09 §3 and §10.
+
+**Not done**
+- Pictures in questions and options (part of TP-06). They need an image upload purpose readable by whoever takes the test, and an editor that can place images.
+- Dragging steps in an ordering question; they move with Move up and Move down only.
+- Explanations and answers shown to takers, and "Draft with AI" (phase E).
+- The offline backup was not tested with a real lost connection, only through reloads in the e2e walk.
+- Nothing was checked on a real phone.
+
+**Assumptions** — A-M04b-9 to A-M04b-16 (§4).
+
+**Open questions** — none new.
+
+**Bugs found and fixed while verifying**
+- Leaving a section wrote one field of `visits` and pushed to the same list in one update, which MongoDB refuses; found by the integration test. The list is now written whole, guarded by its length.
+- The runner's Submit button had no accessible name below 640 px; found by the 390 px walk.
+- The type lists were checked with `as` casts, which the coding laws forbid; replaced.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 28 passed (28)`, `Tests 416 passed (416)`.
+- `npm run test:integration` (mongodb-memory-server, local Redis) → exit 0; `Test Files 18 passed (18)`, `Tests 244 passed (244)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "114 files scanned … clean".
+- `npm run db:indexes:e2e` (now with `questionBank`), then on the final build: `npx playwright test tests/e2e/tests.spec.ts tests/e2e/assessments.spec.ts tests/e2e/auth.spec.ts` → exit 0, `7 passed`. The other specs were not run in this phase.
+- A scripted walk at 1440 px and 390 px, on a sectioned quiz seeded into the e2e database with the bank and every new type:
+  - faculty1: the builder, a section's dialog, the blank and matching question dialogs, "From the bank", the course bank and its import dialog.
+  - student01: the lobby, then each section through to the review page, handing in; then faculty1's hand-ins and grading.
+  - No error page, and no page wider than the screen.
+  - The builder, bank and runner match mock-ups C3, C1 and B1.
 

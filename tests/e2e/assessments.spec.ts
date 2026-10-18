@@ -59,7 +59,7 @@ test('a teacher builds and publishes a quiz; a student takes it; the teacher gra
   await expect(faculty.getByRole('heading', { name: QUIZ })).toBeVisible();
 
   await addQuestion(faculty, 'One answer', async (dialog) => {
-    await write(faculty, dialog.locator('.ProseMirror'), 'Which of these is a valid identifier in C?');
+    await write(faculty, dialog.locator('.ProseMirror').first(), 'Which of these is a valid identifier in C?');
     await dialog.getByLabel('Marks', { exact: true }).fill('2');
     await dialog.getByRole('checkbox', { name: /CO1/ }).check();
     await dialog.getByPlaceholder('Option 1').fill('2nd_value');
@@ -67,14 +67,14 @@ test('a teacher builds and publishes a quiz; a student takes it; the teacher gra
     await dialog.getByRole('radio', { name: 'Option 2 is correct' }).check();
   });
   await addQuestion(faculty, 'Number', async (dialog) => {
-    await write(faculty, dialog.locator('.ProseMirror'), 'How many bytes is an int on a 32-bit compiler?');
+    await write(faculty, dialog.locator('.ProseMirror').first(), 'How many bytes is an int on a 32-bit compiler?');
     await dialog.getByLabel('Marks', { exact: true }).fill('3');
     await dialog.getByRole('checkbox', { name: /CO1/ }).check();
     await dialog.getByLabel('Correct answer').fill('4');
   });
   // A rubric must add up to the question's marks (AC-M04-05).
   await addQuestion(faculty, 'Written answer', async (dialog) => {
-    await write(faculty, dialog.locator('.ProseMirror'), 'Write a loop that adds an array.');
+    await write(faculty, dialog.locator('.ProseMirror').first(), 'Write a loop that adds an array.');
     await dialog.getByLabel('Marks', { exact: true }).fill('5');
     await dialog.getByRole('checkbox', { name: /CO2/ }).check();
     await dialog.getByLabel('Criterion 1', { exact: true }).fill('Correct loop');
@@ -98,15 +98,26 @@ test('a teacher builds and publishes a quiz; a student takes it; the teacher gra
   await student.getByRole('checkbox', { name: /I have read the rules/ }).check();
   await student.getByRole('button', { name: 'Start quiz' }).click();
   await expect(student).toHaveURL(/\/attempt$/);
-  await student.getByRole('radio', { name: '_total' }).check();
-  await student.getByRole('textbox', { name: /^Answer to question/ }).fill('4');
-  await write(student, student.locator('.ProseMirror'), 'for (int i = 0; i < n; i++) s += a[i];');
-  await expect(student.getByText('All answers saved').first()).toBeVisible({ timeout: 15_000 });
+  // "Runner A" (M04b): one question at a time, in this attempt's shuffled order; each is answered as it comes.
+  const answers: Record<string, () => Promise<void>> = {
+    'valid identifier': () => student.getByText('_total', { exact: true }).click(),
+    'bytes is an int': () => student.getByRole('textbox', { name: /bytes is an int/ }).fill('4'),
+    'adds an array': () => write(student, student.locator('.ProseMirror'), 'for (int i = 0; i < n; i++) s += a[i];'),
+  };
+  for (let n = 0; n < 3; n++) {
+    const prompt = (await student.locator('article [id$="-title"]').first().innerText()).toLowerCase();
+    const key = Object.keys(answers).find((k) => prompt.includes(k));
+    if (!key) throw new Error(`unexpected question: ${prompt}`);
+    await answers[key]();
+    await student.getByRole('button', { name: /^(Save and next|Review answers)$/ }).click();
+  }
+  await expect(student.getByText('Saved', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(student.getByRole('heading', { name: 'Review before you hand in' })).toBeVisible();
   await student.reload();
-  await expect(student.getByRole('radio', { name: '_total' })).toBeChecked();
-  await expect(student.getByRole('textbox', { name: /^Answer to question/ })).toHaveValue('4');
-  await expect(student.locator('.ProseMirror')).toContainText('s += a[i]');
+  // After a reload every answer is still there: three answered on the map.
+  await expect(student.getByRole('button', { name: /^Question \d, answered/ })).toHaveCount(3);
   await student.getByRole('button', { name: 'Submit' }).click();
+  await student.getByRole('button', { name: 'Hand in now' }).click();
   await student.getByRole('alertdialog').getByRole('button', { name: 'Hand in' }).click();
   await expect(student).toHaveURL(/\/assessments\/[a-f\d]{24}$/);
   await expect(student.getByText('Your answers are handed in.', { exact: false })).toBeVisible();

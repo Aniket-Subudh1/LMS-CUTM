@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RichTextDoc, richText } from '@/lib/schemas/common';
-import { renderRichText } from './rich-text';
+import { plainText, renderRichText } from './rich-text';
 
 const paragraph = (text: string) => ({
   type: 'doc',
@@ -85,5 +85,29 @@ describe('richText', () => {
     expect(richText.safeParse('')).toMatchObject({ success: true, data: null });
     expect(field({ type: 'doc', content: [{ type: 'paragraph' }] })).toMatchObject({ success: true, data: null });
     expect(field(paragraph('   '))).toMatchObject({ success: true, data: null });
+  });
+});
+
+describe('plainText', () => {
+  it('joins the words of every text node', () => {
+    expect(
+      plainText({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Pick' },
+              { type: 'text', text: 'one.' },
+            ],
+          },
+          {
+            type: 'bulletList',
+            content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A' }] }] }],
+          },
+        ],
+      }),
+    ).toBe('Pick one. A');
+    expect(plainText(null)).toBe('');
   });
 });

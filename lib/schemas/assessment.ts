@@ -8,18 +8,43 @@ export const ASSESSMENT_MODES = ['quiz', 'written_test', 'assignment', 'learning
 export type AssessmentMode = (typeof ASSESSMENT_MODES)[number];
 export const RECORD_MODES = ['learning_record', 'lab_record'] as const satisfies readonly AssessmentMode[];
 
-export const ITEM_TYPES = ['mcq', 'msq', 'numeric', 'text', 'file'] as const;
+// M04b (TP-06) adds true or false, fill in the blanks, matching and ordering.
+export const ITEM_TYPES = [
+  'mcq',
+  'msq',
+  'true_false',
+  'numeric',
+  'fill_blank',
+  'matching',
+  'ordering',
+  'text',
+  'file',
+] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
-export const OBJECTIVE_TYPES = ['mcq', 'msq', 'numeric'] as const satisfies readonly ItemType[];
+export const OBJECTIVE_TYPES = [
+  'mcq',
+  'msq',
+  'true_false',
+  'numeric',
+  'fill_blank',
+  'matching',
+  'ordering',
+] as const satisfies readonly ItemType[];
+// The types that can earn part of their marks (07 §14, TP-06).
+export const PARTIAL_TYPES = ['msq', 'fill_blank', 'matching', 'ordering'] as const satisfies readonly ItemType[];
+const OBJECTIVE = ['mcq', 'msq', 'true_false', 'numeric', 'fill_blank', 'matching', 'ordering'] as const;
 
 // Which question types each mode may hold (the milestone's table); saveItem refuses any other pair.
 export const MODE_ITEM_TYPES: Record<AssessmentMode, readonly ItemType[]> = {
-  quiz: ['mcq', 'msq', 'numeric', 'text'],
-  written_test: ['mcq', 'msq', 'numeric', 'text', 'file'],
+  quiz: [...OBJECTIVE, 'text'],
+  written_test: [...OBJECTIVE, 'text', 'file'],
   assignment: ['text', 'file'],
   learning_record: ['text', 'file'],
   lab_record: ['text', 'file'],
 };
+
+export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
+export type Difficulty = (typeof DIFFICULTIES)[number];
 
 // The typical settings of each mode (the milestone's table): the New assessment dialog asks only for the type, title and
 // window, and the builder's Settings change the rest (A-M04-6).
@@ -50,6 +75,18 @@ export const ASSESSMENT_LIMITS = {
   files: 10,
   comment: 1000,
   coIds: 15,
+  // M04b
+  sections: 10,
+  sectionTitle: 80,
+  blanks: 10,
+  accepted: 10,
+  blankText: 200,
+  pairs: 10,
+  pairText: 200,
+  topic: 60,
+  template: 2000,
+  extraTime: 200,
+  spentSec: 600,
 } as const;
 
 const title = z.string().trim().min(3, 'Use at least 3 characters.').max(160, 'Use at most 160 characters.');
@@ -108,16 +145,9 @@ export const ReorderItems = z.object({
   'ids[]': z.array(objectId).min(1).max(ASSESSMENT_LIMITS.items),
 });
 
-// --- One question (T4). Each type's dialog posts only its own fields; blank option and rubric rows are skipped. ---
+// --- One question (T4; M04b TP-06). Each type's dialog posts only its own fields; blank option, rubric, blank and
+// pair rows are skipped. The fields are shared by an assessment's questions and the question bank (TP-05). ---
 
-const itemBase = {
-  ...AssessmentRef.shape,
-  itemId: blankIsMissing(objectId),
-  prompt: richText.refine((doc) => doc !== null, 'Write the question.'),
-  maxMarks: z.coerce.number({ error: 'Enter the marks.' }).gt(0, 'Give it more than 0 marks.').max(1000),
-  'cos[]': list(objectId, ASSESSMENT_LIMITS.coIds),
-  bloomLevel: blankIsMissing(z.enum(BLOOM_LEVELS, 'Pick from the levels shown.')),
-};
 const optionRows = list(
   z.string().trim().max(ASSESSMENT_LIMITS.optionText, `Use at most ${ASSESSMENT_LIMITS.optionText} characters.`),
   ASSESSMENT_LIMITS.options,
@@ -134,6 +164,24 @@ const rubricRows = {
   ),
   'criterionMarks[]': list(z.string().trim().max(20), ASSESSMENT_LIMITS.criteria),
 };
+const pairRows = list(
+  z.string().trim().max(ASSESSMENT_LIMITS.pairText, `Use at most ${ASSESSMENT_LIMITS.pairText} characters.`),
+  ASSESSMENT_LIMITS.pairs,
+);
+
+const itemBase = {
+  prompt: richText.refine((doc) => doc !== null, 'Write the question.'),
+  maxMarks: z.coerce.number({ error: 'Enter the marks.' }).gt(0, 'Give it more than 0 marks.').max(1000),
+  'cos[]': list(objectId, ASSESSMENT_LIMITS.coIds),
+  bloomLevel: blankIsMissing(z.enum(BLOOM_LEVELS, 'Pick from the levels shown.')),
+  difficulty: blankIsMissing(z.enum(DIFFICULTIES, 'Pick easy, medium or hard.')),
+  topic: blankIsMissing(
+    z.string().trim().toLowerCase().max(ASSESSMENT_LIMITS.topic, `Use at most ${ASSESSMENT_LIMITS.topic} characters.`),
+  ),
+  negativeMarks: z.coerce.number({ error: 'Enter a number.' }).min(0, 'Use 0 or more.').max(1000).default(0),
+  partialCredit: z.stringbool().default(false),
+  explanation: richText,
+};
 
 const ItemFields = z.discriminatedUnion(
   'type',
@@ -145,6 +193,7 @@ const ItemFields = z.discriminatedUnion(
       'option[]': optionRows,
       'correct[]': list(rowIndex, ASSESSMENT_LIMITS.options),
     }),
+    z.object({ ...itemBase, type: z.literal('true_false'), truth: z.enum(['true', 'false'], 'Pick true or false.') }),
     z.object({
       ...itemBase,
       type: z.literal('numeric'),
@@ -154,59 +203,143 @@ const ItemFields = z.discriminatedUnion(
         z.coerce.number({ error: 'Enter a number.' }).min(0, 'The margin cannot be negative.').max(1e12),
       ),
     }),
+    z.object({
+      ...itemBase,
+      type: z.literal('fill_blank'),
+      template: z
+        .string()
+        .trim()
+        .max(ASSESSMENT_LIMITS.template, `Use at most ${ASSESSMENT_LIMITS.template} characters.`),
+      'accepted[]': list(
+        z
+          .string()
+          .trim()
+          .max(ASSESSMENT_LIMITS.blankText * 4),
+        ASSESSMENT_LIMITS.blanks,
+      ),
+    }),
+    z.object({ ...itemBase, type: z.literal('matching'), 'left[]': pairRows, 'right[]': pairRows }),
+    z.object({ ...itemBase, type: z.literal('ordering'), 'option[]': optionRows }),
     z.object({ ...itemBase, type: z.literal('text'), ...rubricRows }),
     z.object({ ...itemBase, type: z.literal('file'), ...rubricRows }),
   ],
   { error: 'Choose a question type.' },
 );
 
-export type ItemKey = { correct: number[] } | { value: number; tolerance: number };
+// mcq/msq: the right options by their place among the filled rows; ordering: the rows as written are the right order.
+export type ItemKey =
+  { correct: number[] } | { value: number; tolerance: number } | { truth: boolean } | { ordered: true };
 
-// Rows become options and criteria; the key names options by their place among the filled rows.
-export const SaveItem = ItemFields.transform((input, ctx) => {
+// What only some types have; each type's branch fills in its own.
+type ItemParts = {
+  options: string[] | null;
+  key: ItemKey | null;
+  rubric: { criterion: string; maxMarks: number }[] | null;
+  template: string | null;
+  blanks: { accepted: string[] }[] | null;
+  pairs: { left: string; right: string }[] | null;
+};
+const NO_PARTS: ItemParts = { options: null, key: null, rubric: null, template: null, blanks: null, pairs: null };
+
+// A blank in a fill-in-the-blanks sentence: three or more underscores.
+export const BLANK = /_{3,}/g;
+
+// Rows become options, blanks, pairs and criteria. Negative marks and partial credit apply only where they mean
+// something (07 §14).
+export const ItemInput = ItemFields.transform((input, ctx) => {
   const fail = (path: string, message: string) => {
     ctx.addIssue({ code: 'custom', path: [path], message });
     return z.NEVER;
   };
+  const objective = OBJECTIVE_TYPES.some((type) => type === input.type);
+  if (input.negativeMarks > input.maxMarks)
+    return fail('negativeMarks', 'Take off no more than the question is worth.');
   const base = {
-    assessmentId: input.assessmentId,
-    itemId: input.itemId,
     type: input.type,
     prompt: input.prompt,
     maxMarks: input.maxMarks,
     coIds: input['cos[]'],
     bloomLevel: input.bloomLevel ?? null,
+    difficulty: input.difficulty ?? null,
+    topic: input.topic ?? null,
+    negativeMarks: objective ? input.negativeMarks : 0,
+    partialCredit: PARTIAL_TYPES.some((type) => type === input.type) && input.partialCredit,
+    explanation: input.explanation,
+    ...NO_PARTS,
   };
-  if (input.type === 'mcq' || input.type === 'msq') {
-    const rows = input['option[]'].map((text, row) => ({ text, row })).filter((option) => option.text !== '');
-    if (rows.length < 2) return fail('option[]', 'Write at least two options.');
-    const chosen = input.type === 'mcq' ? (input.correct === undefined ? [] : [input.correct]) : input['correct[]'];
-    const correct = rows.flatMap((option, place) => (chosen.includes(option.row) ? [place] : []));
-    if (correct.length === 0 || correct.length !== chosen.length) {
-      return fail('correct', input.type === 'mcq' ? 'Pick the correct option.' : 'Tick every correct option.');
+  switch (input.type) {
+    case 'mcq':
+    case 'msq': {
+      const rows = input['option[]'].map((text, row) => ({ text, row })).filter((option) => option.text !== '');
+      if (rows.length < 2) return fail('option[]', 'Write at least two options.');
+      const chosen = input.type === 'mcq' ? (input.correct === undefined ? [] : [input.correct]) : input['correct[]'];
+      const correct = rows.flatMap((option, place) => (chosen.includes(option.row) ? [place] : []));
+      if (correct.length === 0 || correct.length !== chosen.length) {
+        return fail('correct', input.type === 'mcq' ? 'Pick the correct option.' : 'Tick every correct option.');
+      }
+      return { ...base, options: rows.map((option) => option.text), key: { correct } };
     }
-    return { ...base, options: rows.map((option) => option.text), key: { correct } satisfies ItemKey, rubric: null };
+    case 'true_false':
+      return { ...base, key: { truth: input.truth === 'true' } };
+    case 'numeric':
+      return { ...base, key: { value: input.value, tolerance: input.tolerance } };
+    case 'ordering': {
+      const rows = input['option[]'].filter((text) => text !== '');
+      if (rows.length < 2) return fail('option[]', 'Write at least two steps.');
+      return { ...base, options: rows, key: { ordered: true as const } };
+    }
+    case 'fill_blank': {
+      const count = input.template.match(BLANK)?.length ?? 0;
+      if (count === 0) return fail('template', 'Mark each blank with three underscores: ___');
+      if (count > ASSESSMENT_LIMITS.blanks) return fail('template', `Use at most ${ASSESSMENT_LIMITS.blanks} blanks.`);
+      const blanks = Array.from({ length: count }, (_, i) => ({
+        accepted: [
+          ...new Set(
+            (input['accepted[]'][i] ?? '')
+              .split('|')
+              .map((answer) => answer.trim())
+              .filter(Boolean),
+          ),
+        ].slice(0, ASSESSMENT_LIMITS.accepted),
+      }));
+      const missing = blanks.findIndex((blank) => blank.accepted.length === 0);
+      if (missing !== -1) return fail('accepted[]', `Blank ${missing + 1}: write the answer it accepts.`);
+      return { ...base, template: input.template, blanks };
+    }
+    case 'matching': {
+      const pairs: { left: string; right: string }[] = [];
+      for (const [row, left] of input['left[]'].entries()) {
+        const right = input['right[]'][row] ?? '';
+        if (left === '' && right === '') continue;
+        if (left === '' || right === '') return fail('left[]', `Row ${row + 1}: fill in both sides.`);
+        pairs.push({ left, right });
+      }
+      if (pairs.length < 2) return fail('left[]', 'Write at least two pairs.');
+      return { ...base, pairs };
+    }
+    case 'text':
+    case 'file': {
+      const rubric: { criterion: string; maxMarks: number }[] = [];
+      for (const [row, criterion] of input['criterion[]'].entries()) {
+        const raw = input['criterionMarks[]'][row] ?? '';
+        if (criterion === '' && raw === '') continue;
+        const value = Number(raw);
+        if (criterion === '') return fail('criterion[]', `Row ${row + 1}: name the criterion.`);
+        if (raw === '' || !Number.isFinite(value) || value <= 0)
+          return fail('criterion[]', `Row ${row + 1}: give it more than 0 marks.`);
+        rubric.push({ criterion, maxMarks: value });
+      }
+      return { ...base, rubric: rubric.length > 0 ? rubric : null };
+    }
   }
-  if (input.type === 'numeric') {
-    return {
-      ...base,
-      options: null,
-      key: { value: input.value, tolerance: input.tolerance } satisfies ItemKey,
-      rubric: null,
-    };
-  }
-  const rubric: { criterion: string; maxMarks: number }[] = [];
-  for (const [row, criterion] of input['criterion[]'].entries()) {
-    const raw = input['criterionMarks[]'][row] ?? '';
-    if (criterion === '' && raw === '') continue;
-    const value = Number(raw);
-    if (criterion === '') return fail('criterion[]', `Row ${row + 1}: name the criterion.`);
-    if (raw === '' || !Number.isFinite(value) || value <= 0)
-      return fail('criterion[]', `Row ${row + 1}: give it more than 0 marks.`);
-    rubric.push({ criterion, maxMarks: value });
-  }
-  return { ...base, options: null, key: null, rubric: rubric.length > 0 ? rubric : null };
 });
+export type ItemInput = z.output<typeof ItemInput>;
+
+// An assessment's question: the assessment, the question when editing one, and its section (M04b).
+export const SaveItem = z.intersection(
+  z.object({ ...AssessmentRef.shape, itemId: blankIsMissing(objectId), sectionId: blankIsMissing(objectId) }),
+  ItemInput,
+);
 export type SaveItem = z.output<typeof SaveItem>;
 
 // --- Attempting (T5) ---
@@ -215,7 +348,17 @@ export type SaveItem = z.output<typeof SaveItem>;
 export const Answer = z.discriminatedUnion('type', [
   z.object({ type: z.literal('mcq'), optionId: objectId.nullable() }),
   z.object({ type: z.literal('msq'), optionIds: z.array(objectId).max(ASSESSMENT_LIMITS.options) }),
+  z.object({ type: z.literal('true_false'), truth: z.boolean().nullable() }),
   z.object({ type: z.literal('numeric'), value: z.number().finite().min(-1e12).max(1e12).nullable() }),
+  z.object({
+    type: z.literal('fill_blank'),
+    texts: z.array(z.string().max(ASSESSMENT_LIMITS.blankText)).max(ASSESSMENT_LIMITS.blanks),
+  }),
+  z.object({
+    type: z.literal('matching'),
+    matches: z.array(z.object({ left: objectId, right: objectId })).max(ASSESSMENT_LIMITS.pairs),
+  }),
+  z.object({ type: z.literal('ordering'), optionIds: z.array(objectId).max(ASSESSMENT_LIMITS.options) }),
   z.object({ type: z.literal('text'), text: richText }),
   z.object({
     type: z.literal('file'),
@@ -224,8 +367,90 @@ export const Answer = z.discriminatedUnion('type', [
 ]);
 export type Answer = z.output<typeof Answer>;
 
-export const SaveAnswer = z.object({ submissionId: objectId, itemId: objectId, answer: Answer });
+// `spentSec`: seconds on this question since the last save (TP-07, "time per question").
+export const SaveAnswer = z.object({
+  submissionId: objectId,
+  itemId: objectId,
+  answer: Answer,
+  spentSec: z.number().int().min(0).max(ASSESSMENT_LIMITS.spentSec).default(0),
+});
 export const SubmissionRef = z.object({ submissionId: objectId });
+// TP-07: "Flag for review".
+export const FlagItem = z.object({ ...SubmissionRef.shape, itemId: objectId, flagged: z.boolean() });
+// TP-06: opening a section (the runner's tabs and its move to the next one).
+export const EnterSection = z.object({ ...SubmissionRef.shape, sectionId: objectId });
+
+// --- Sections (M04b, TP-05, TP-06): their own time and "no going back"; a passage beside their questions; and
+// questions drawn from the bank for each attempt, by count, difficulty mix, outcomes and topics. ---
+
+const percent = z.coerce.number().int('Use whole percentages.').min(0).max(100).default(0);
+export const SaveSection = z
+  .object({
+    ...AssessmentRef.shape,
+    sectionId: blankIsMissing(objectId),
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Name the section.')
+      .max(ASSESSMENT_LIMITS.sectionTitle, `Use at most ${ASSESSMENT_LIMITS.sectionTitle} characters.`),
+    durationMin: blankIsMissing(z.coerce.number().int('Use whole minutes.').min(1).max(600)),
+    locked: z.stringbool().default(false),
+    passage: richText,
+    drawCount: blankIsMissing(
+      z.coerce
+        .number()
+        .int()
+        .min(1, 'Draw at least 1.')
+        .max(ASSESSMENT_LIMITS.items, `Draw at most ${ASSESSMENT_LIMITS.items}.`),
+    ),
+    easy: percent,
+    medium: percent,
+    hard: percent,
+    'drawCos[]': list(objectId, ASSESSMENT_LIMITS.coIds),
+    drawTopics: z
+      .string()
+      .max(400)
+      .default('')
+      .transform((value) => [
+        ...new Set(
+          value
+            .split(',')
+            .map((t) => t.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ])
+      .pipe(z.array(z.string().max(ASSESSMENT_LIMITS.topic)).max(10, 'Use at most 10 topics.')),
+    marksEach: blankIsMissing(z.coerce.number().gt(0, 'Give each more than 0 marks.').max(1000)),
+    negativeEach: z.coerce.number().min(0, 'Use 0 or more.').max(1000).default(0),
+  })
+  .superRefine((input, ctx) => {
+    const mix = input.easy + input.medium + input.hard;
+    if (mix !== 0 && mix !== 100)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['easy'],
+        message: 'Make the mix add up to 100%, or leave all three at 0.',
+      });
+    if (input.drawCount !== undefined && input.marksEach === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['marksEach'], message: 'Give the drawn questions their marks.' });
+    }
+    if (input.marksEach !== undefined && input.negativeEach > input.marksEach) {
+      ctx.addIssue({ code: 'custom', path: ['negativeEach'], message: 'Take off no more than a question is worth.' });
+    }
+  });
+export const SectionRef = z.object({ ...AssessmentRef.shape, sectionId: objectId });
+export const ReorderSections = z.object({
+  ...AssessmentRef.shape,
+  'ids[]': z.array(objectId).min(1).max(ASSESSMENT_LIMITS.sections),
+});
+
+// TP-07: extra time for one person on one test (0 takes it away).
+export const SetExtraTime = z.object({
+  ...AssessmentRef.shape,
+  // An email or a roll number.
+  who: z.string().trim().min(1, 'Enter an email or a roll number.').max(120),
+  minutes: z.coerce.number().int('Use whole minutes.').min(0).max(600, 'Give at most 600 minutes.'),
+});
 
 // --- Grading (T6). One row per question in order; a rubric question posts its criteria instead of marks. ---
 

@@ -93,7 +93,7 @@ const unique = (items: readonly string[]) => new Set(items).size === items.lengt
 // A group of checkboxes with none ticked sends no field at all; that is an empty list, not a type error.
 const noneChecked = (raw: unknown) => raw ?? [];
 
-const csvFile = z
+export const csvFile = z
   .file('Choose a CSV file.')
   .min(1, 'The file is empty.')
   .max(2_000_000, 'The file is larger than 2 MB. Split it into smaller files.');

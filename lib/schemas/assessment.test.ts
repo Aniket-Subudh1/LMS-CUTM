@@ -64,6 +64,53 @@ describe('SaveItem', () => {
   });
 });
 
+describe('SaveItem, the M04b types (TP-06)', () => {
+  it('reads true or false, blanks with their accepted answers, pairs and steps', () => {
+    expect(SaveItem.parse({ ...base, type: 'true_false', truth: 'false' }).key).toEqual({ truth: false });
+    expect(
+      SaveItem.parse({
+        ...base,
+        type: 'fill_blank',
+        template: 'It is ___ and ___.',
+        'accepted[]': [' recursive | recursion ', 'base'],
+      }).blanks,
+    ).toEqual([{ accepted: ['recursive', 'recursion'] }, { accepted: ['base'] }]);
+    expect(
+      SaveItem.parse({ ...base, type: 'matching', 'left[]': ['Stack', '', 'Queue'], 'right[]': ['Undo', '', 'Jobs'] })
+        .pairs,
+    ).toEqual([
+      { left: 'Stack', right: 'Undo' },
+      { left: 'Queue', right: 'Jobs' },
+    ]);
+    expect(SaveItem.parse({ ...base, type: 'ordering', 'option[]': ['a', '', 'b'] })).toMatchObject({
+      options: ['a', 'b'],
+      key: { ordered: true },
+    });
+  });
+
+  it.each([
+    ['a sentence without a blank', { type: 'fill_blank', template: 'No blank.', 'accepted[]': [] }, 'template'],
+    ['a blank that accepts nothing', { type: 'fill_blank', template: 'A ___', 'accepted[]': [' | '] }, 'accepted[]'],
+    ['a pair with one side', { type: 'matching', 'left[]': ['A', 'B'], 'right[]': ['1', ''] }, 'left[]'],
+    ['one step', { type: 'ordering', 'option[]': ['only'] }, 'option[]'],
+    ['negative marks above the marks', { type: 'true_false', truth: 'true', negativeMarks: '3' }, 'negativeMarks'],
+  ])('refuses %s', (_, over, path) => {
+    expect(issues(SaveItem.safeParse({ ...base, ...over }))?.[0]).toMatch(
+      new RegExp(`^${path.replace(/[[\]]/g, '\\$&')}:`),
+    );
+  });
+
+  it('keeps negative marks and partial credit only where they mean something', () => {
+    expect(SaveItem.parse({ ...base, type: 'text', negativeMarks: '1', partialCredit: 'true' })).toMatchObject({
+      negativeMarks: 0,
+      partialCredit: false,
+    });
+    expect(
+      SaveItem.parse({ ...base, type: 'msq', 'option[]': ['a', 'b'], 'correct[]': ['0'], partialCredit: 'true' }),
+    ).toMatchObject({ partialCredit: true });
+  });
+});
+
 describe('assessment windows', () => {
   const create = {
     offeringId: id(1),

@@ -30,7 +30,7 @@ import {
   listOfferingAssessments,
   listSubmissions,
   listToGrade,
-  toStudentAssessment,
+  toStudentItem,
 } from '@/lib/data/assessments';
 import { listRoster } from '@/lib/data/workspace';
 import { db } from '@/lib/db';
@@ -384,7 +384,7 @@ describe('secrecy (09 §10, AC-M04-02)', () => {
     const keys = [String(right), '271828.5', '"answer"', '"coIds"', 'Correct loop'];
     const read = await Assessment.findById(a._id).lean();
     if (!read) throw new Error('missing');
-    const dto = JSON.stringify(toStudentAssessment(read));
+    const dto = JSON.stringify(read.items.map((item) => toStudentItem(item, 'seed', false)));
     for (const key of keys.slice(1)) expect(dto).not.toContain(key);
     // The correct option is one of the options, so its id is there; nothing marks it.
     expect(dto).toContain(String(right));
@@ -597,6 +597,8 @@ describe('grading and results (T6)', () => {
       startedAt: new Date(Date.now() - 30 * MIN),
       deadlineAt: new Date(Date.now() - 5 * MIN),
       submittedAt: new Date(Date.now() - 10 * MIN),
+      // The paper the attempt was given (M04b): the quiz's own questions.
+      paper: q.a.items,
       answers: { [String(q.essay._id)]: { text: doc('for (i = 0; i < n; i++) s += a[i];') } },
       scores: { [String(q.pick._id)]: { marks: 2, by: 'auto' }, [String(q.num._id)]: { marks: 0, by: 'auto' } },
     });
@@ -651,7 +653,7 @@ describe('grading and results (T6)', () => {
     await grade(w, s, ['2', '0', ''], ['3', '1'], 'Name the loop counter.');
     expect(await AuditLog.countDocuments({ action: 'submission.graded', entityId: s.submissionId })).toBe(1);
     const view = await getSubmissionForGrading(s.aid, s.submissionId);
-    expect(view.assessment.items[0].key).toEqual({ optionIds: [String(s.right)] });
+    expect(view.items.find((item) => item.id === String(s.pick._id))?.key).toEqual({ optionIds: [String(s.right)] });
   });
 
   it('publishes results once the window has closed and every hand-in is marked (AC-M04-06)', async () => {
@@ -667,6 +669,7 @@ describe('grading and results (T6)', () => {
       status: 'in_progress',
       startedAt: new Date(Date.now() - 40 * MIN),
       deadlineAt: new Date(Date.now() - 20 * MIN),
+      paper: s.a.items,
     });
     const ref = { assessmentId: s.aid };
     await signInAs(w.faculty);
@@ -803,6 +806,7 @@ describe('the hourly sweep (T8)', () => {
       status: 'in_progress',
       startedAt: new Date(Date.now() - 40 * MIN),
       deadlineAt: new Date(Date.now() - 10 * MIN),
+      paper: other.a.items,
     });
     for (let run = 0; run < 2; run++) {
       const job = await computeQueue().add('assessmentSweep', {}, { jobId: `test-sweep-${crypto.randomUUID()}` });

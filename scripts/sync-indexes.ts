@@ -4,6 +4,7 @@ import { log } from '@/lib/log';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
+import { BankItem } from '@/lib/models/bank-item';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
@@ -43,6 +44,7 @@ const models = [
   Attendance,
   Assessment,
   Submission,
+  BankItem,
   TestLink,
   TestGrant,
   Otp,

@@ -172,7 +172,11 @@ export const MODE_LABEL: Record<AssessmentMode, string> = {
 export const ITEM_LABEL: Record<ItemType, string> = {
   mcq: 'One answer',
   msq: 'Several answers',
+  true_false: 'True or false',
   numeric: 'Number',
+  fill_blank: 'Fill in the blanks',
+  matching: 'Matching',
+  ordering: 'Ordering',
   text: 'Written answer',
   file: 'Upload',
 };

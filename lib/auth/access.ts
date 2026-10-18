@@ -1,7 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { notFound } from 'next/navigation';
-import { isValidObjectId } from 'mongoose';
+import { isValidObjectId, Types } from 'mongoose';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { Assessment } from '@/lib/models/assessment';
@@ -88,4 +88,35 @@ export async function requireManage(viewer: Viewer, assessmentId: string) {
   const found = await assessmentAccess(viewer, assessmentId);
   if (found.access !== 'manage') notFound();
   return found;
+}
+
+// M04b (TP-05): a question bank. Through an offering it is the course's bank, shared by every offering of the course:
+// whoever teaches the offering and admins change it, a head of department reads it. Without one it is the viewer's
+// own bank (faculty and admins), for their standalone tests.
+export type BankAccess = {
+  filter: { courseId: Types.ObjectId } | { ownerId: Types.ObjectId };
+  courseId: string | null;
+  canEdit: boolean;
+};
+
+export async function bankAccess(viewer: Viewer, offeringId: string | undefined): Promise<BankAccess> {
+  if (!offeringId) {
+    if (!viewer.roles.some((r) => r === 'faculty' || r === 'admin')) notFound();
+    return { filter: { ownerId: new Types.ObjectId(viewer.id) }, courseId: null, canEdit: true };
+  }
+  const access = await offeringAccess(viewer, offeringId);
+  if (access === 'learn') notFound();
+  const offering = await Offering.findById(offeringId, { courseId: 1 }).lean();
+  if (!offering) notFound();
+  return {
+    filter: { courseId: offering.courseId },
+    courseId: String(offering.courseId),
+    canEdit: access === 'teach' || viewer.roles.includes('admin'),
+  };
+}
+
+export async function requireBankEditor(viewer: Viewer, offeringId: string | undefined): Promise<BankAccess> {
+  const bank = await bankAccess(viewer, offeringId);
+  if (!bank.canEdit) throw new AppError('FORBIDDEN', 'Only the course’s teachers change its question bank.');
+  return bank;
 }

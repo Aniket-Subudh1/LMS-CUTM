@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCsvErrors, parseCourseListCsv, parseEnrollmentCsv, parseUsersCsv } from './csv';
+import { formatCsvErrors, parseBankCsv, parseCourseListCsv, parseEnrollmentCsv, parseUsersCsv } from './csv';
 
 const HEADER = 'role,name,email,rollno,employeeid,department,program,batchstartyear,section';
 
@@ -156,7 +156,12 @@ describe('parseCourseListCsv', () => {
           title: 'Advanced complex analysis',
           credits: { theory: 3, practice: 0, project: 1 },
         },
-        expect.objectContaining({ row: 2, code: 'CUTM1024', stream: 'CSE/MCA', credits: { theory: 2, practice: 2, project: 2 } }),
+        expect.objectContaining({
+          row: 2,
+          code: 'CUTM1024',
+          stream: 'CSE/MCA',
+          credits: { theory: 2, practice: 2, project: 2 },
+        }),
         expect.objectContaining({ row: 3, code: 'CUTM1014', credits: { theory: 1.5, practice: 0, project: 1.5 } }),
         expect.objectContaining({ row: 4, programme: 'MBA', type: undefined }),
       ],
@@ -196,5 +201,46 @@ describe('parseCourseListCsv', () => {
     });
     const many = [header, ...Array.from({ length: 5001 }, (_, i) => `BTech,,,,C${i},T,3,2+0+1`)].join('\n');
     expect(parseCourseListCsv(many)).toMatchObject({ ok: false, errors: [{ row: 0 }] });
+  });
+});
+
+describe('parseBankCsv (06 §8.6)', () => {
+  const header = 'type,question,options,answer,marks,difficulty,topic,cos,negative';
+  it('reads each kind a line can say', () => {
+    const parsed = parseBankCsv(
+      [
+        header,
+        'One answer,Which is LIFO?,Queue|Stack,2,1,Easy,Stacks,co1,0.5',
+        'several answers,Pick two,A|B|C,1|3,2,,,CO1|CO2,',
+        'true or false,FIFO?,,TRUE,1,,,,',
+        'number,Pi?,,3.14 ± 0.01,1,,,,',
+        'written answer,Explain.,,,5,hard,,,',
+      ].join('\n'),
+    );
+    expect(parsed.ok && parsed.rows.map((r) => [r.type, r.correct, r.truth, r.value, r.tolerance])).toEqual([
+      ['mcq', [1], null, null, 0],
+      ['msq', [0, 2], null, null, 0],
+      ['true_false', null, true, null, 0],
+      ['numeric', null, null, 3.14, 0.01],
+      ['text', null, null, null, 0],
+    ]);
+    expect(parsed.ok && parsed.rows[0]).toMatchObject({
+      difficulty: 'easy',
+      topic: 'stacks',
+      coCodes: ['CO1'],
+      negativeMarks: 0.5,
+    });
+  });
+
+  it.each([
+    ['an unknown type', 'essay,Q,,,1', 'Type is one of'],
+    ['one option', 'one answer,Q,A,1,1', 'Give 2 to 8 options'],
+    ['an answer past the options', 'one answer,Q,A|B,3,1', 'Answer is the number'],
+    ['two answers to one answer', 'one answer,Q,A|B,1|2,1', 'exactly one'],
+    ['a true or false answer', 'true or false,Q,,yes,1', 'Answer is true or false'],
+    ['no marks', 'number,Q,,4,', 'Marks is'],
+  ])('refuses %s, by row', (_, line, message) => {
+    const parsed = parseBankCsv(`${header}\n${line}`);
+    expect(parsed.ok ? [] : parsed.errors).toEqual([{ row: 1, message: expect.stringContaining(message) }]);
   });
 });

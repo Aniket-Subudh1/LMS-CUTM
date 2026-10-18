@@ -14,3 +14,16 @@ const EXTENSIONS = [
 export function renderRichText(doc: RichTextDoc): string {
   return generateHTML(doc, EXTENSIONS);
 }
+
+// A question's words without formatting, for a one-line list row (the builder, the question bank).
+export function plainText(doc: RichTextDoc | null): string {
+  const out: string[] = [];
+  const walk = (nodes: RichTextDoc['content']) => {
+    for (const node of nodes ?? []) {
+      if (node.text) out.push(node.text);
+      walk(node.content);
+    }
+  };
+  walk(doc?.content);
+  return out.join(' ').trim();
+}

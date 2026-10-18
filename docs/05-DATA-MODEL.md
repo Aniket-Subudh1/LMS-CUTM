@@ -32,6 +32,7 @@ terms ────────────────────────�
                                              └─ engagementDaily
 gradeSheets (term × student) · notifications · settings · syncRuns · auditLogs
 assessments with no offering (standalone tests, M04b) ── submissions · testLinks ── testGrants ── users(candidates) · otps
+questionBank (M04b): courses' banks and staff's own banks ── drawn into submissions.paper
 ```
 
 ---
@@ -233,13 +234,15 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | title | S | ≤ 160 |
 | instructions | RichText? | |
 | items | [Item] | 0–100 while a draft, 1–100 to publish (see below) |
-| maxMarks | N | Σ `items.maxMarks`, stored |
+| sections | [Section] | M04b (TP-05, TP-06), ≤ 10; empty = one part holding every question (below) |
+| maxMarks | N | Σ `items.maxMarks` + Σ sections' `draw.count × draw.marksEach`, stored |
 | opensAt, closesAt | D | opensAt < closesAt |
 | lateUntil | D? | ≥ closesAt; null = no late submissions |
 | durationMin | N? | 1–600; null = untimed |
 | attemptsAllowed | N | 1–10 |
 | attemptPolicy | S | `best` · `last` |
-| shuffleItems, shuffleOptions | B | |
+| shuffleItems, shuffleOptions | B | items shuffle within their section |
+| extraTime | `[{ userId: Id, minutes: N }]` | M04b (TP-07), ≤ 200 people, 1–600 minutes; lengthens that person's time limit and the end of hand-ins (07 §14); audited (`assessment.extra_time`) |
 | proctoring | `{ enabled: B, fullscreen: B, tabSwitchLimit: N, blockPaste: B, webcamSnapshots: B, snapshotIntervalSec: N }` | M05; `tabSwitchLimit` 0 = log only; interval 30–600 |
 | status | S | `draft` · `published` · `results_published`. Open/closed is **derived** from `opensAt`, `closesAt`, `lateUntil` and now |
 | publishedAt, resultsPublishedAt | D? | |
@@ -249,17 +252,26 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 **Item** (embedded, `_id` per item):
 | Field | Type | Rules |
 |---|---|---|
-| type | S | `mcq` · `msq` · `numeric` · `text` · `file` · `code` · `observation` |
+| type | S | `mcq` · `msq` · `true_false` · `numeric` · `fill_blank` · `matching` · `ordering` · `text` · `file` · `code` · `observation` (the M04b types in **TP-06**) |
 | prompt | RichText | |
 | maxMarks | N | > 0 |
-| coIds | [Id] | **≥ 1 for ugc offerings** (CPP-05/06); each ∈ course.cos |
+| coIds | [Id] | **≥ 1 for ugc offerings** (CPP-05/06); each ∈ course.cos; none on a standalone test |
 | bloomLevel | S? | |
-| options | `[{ _id: Id, text: S }]?` | mcq/msq: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-M04-7) |
-| answer | `{ optionId? , optionIds?, value?, tolerance? }?` | mcq: optionId; msq: optionIds; numeric: value + tolerance ≥ 0. **Never sent to students** |
+| difficulty, topic | S?, S? | M04b: `easy` · `medium` · `hard`; topic lowercase ≤ 60. What bank draws filter by |
+| negativeMarks | N | M04b, ≥ 0, ≤ maxMarks; objective types only (07 §14) |
+| partialCredit | B | M04b; msq, fill_blank, matching, ordering only |
+| explanation | RichText? | M04b; shown to graders now, to takers with results when the release rules say so (phase E) |
+| sectionId | Id? | M04b; the section it belongs to (all of them once any section exists) |
+| options | `[{ _id: Id, text: S }]?` | mcq/msq/ordering: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-M04-7) |
+| answer | `{ optionId? , optionIds?, value?, tolerance?, truth? }?` | mcq: optionId; msq: optionIds; ordering: optionIds in the right order; numeric: value + tolerance ≥ 0; true_false: truth. **Never sent to students** |
+| template, blanks | S?, `[{ _id, accepted: [S] }]?` | fill_blank: the sentence with `___` per blank (≤ 10 blanks); what each blank accepts (≤ 10 answers). **`accepted` never sent to students** |
+| pairs | `[{ _id, rightId: Id, left: S, right: S }]?` | matching, 2–10: `_id` names the left side and `rightId` the right one, so a page can list both without saying which go together |
 | rubric | `[{ _id: Id, criterion: S, maxMarks: N }]?` | text/file/observation; max 10; Σ maxMarks = item.maxMarks |
 | code | `{ languages: [S], starter: { [lang]: S }, timeLimitSec: N, memoryKb: N, testCases: [{ _id: Id, input: S, expected: S, hidden: B, weight: N }] }?` | code only; ≤ 5 code items per assessment; 1–15 test cases; input/expected ≤ 8 KB; hidden cases **never sent to students** |
 
 `observation` items have no student answer — faculty score them (project reviews, viva). `text`/`file` items are what records and written assignments are made of.
+
+**Section** (embedded, M04b): `title` S ≤ 80 · `durationMin` N? (1–600; its own clock from when an attempt first opens it) · `locked` B ("no going back": closes when left; later sections open only after it) · `passage` RichText? (shown beside each of its questions) · `draw` `{ count: 1–100, easy, medium, hard: % (0 or adding to 100), coIds: [Id], topics: [S], marksEach: N, negativeEach: N }?` — questions drawn from the bank for each attempt (only automatically marked types, A-M04b-10), each worth `marksEach`.
 
 Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b).
 Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
@@ -276,17 +288,26 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | submittedAt | D? | |
 | late | B | submittedAt > closesAt |
 | autoSubmitted | B | time ran out or proctoring limit hit; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-M04-3) |
-| order | `[{ itemId: Id, optionIds: [Id]? }]` | per-attempt shuffle |
-| answers | Map `<itemId>` → `{ optionId?, optionIds?, value?, text?: RichText, files?: [{ key: S, fileName: S, contentType: S, size: N }], code?: { language: S, source: S } }` | Map keyed by item id so each save is one atomic `$set: { 'answers.<itemId>': … }`; files max 10, each a `submission` upload of this student for this assessment with its sanitized name (M04: the name is shown to the grader, so the answer keeps more than the key); source ≤ 64 KB (M05) |
+| paper | [Item + `sectionId`, `bankItemId`?] | M04b (TP-05): the questions this attempt was given, frozen at its start — the assessment's own and those its sections drew from the bank (`bankItemId`, worth the section's marks) — in this attempt's order, options in this attempt's order (an ordering question's steps never start in the right order). Grading and results read only this; ≤ 100 items. Keys included: **never sent to students** as stored |
+| flags | [Id] | M04b (TP-07): questions flagged for review |
+| spent | Map `<itemId>` → N | M04b (TP-07): seconds on each question, added by saves (≤ 600 a save) |
+| visits | `[{ sectionId, startedAt: D, closedAt: D? }]` | M04b (TP-06): when each section was first opened and closed for good; written whole (≤ 10) |
+| currentSectionId | Id? | M04b: the section the runner shows |
+| answers | Map `<itemId>` → `{ optionId?, optionIds?, value?, truth?, texts?: [S], matches?: [{ left: Id, right: Id }], text?: RichText, files?: [{ key: S, fileName: S, contentType: S, size: N }], code?: { language: S, source: S } }` | Map keyed by item id so each save is one atomic `$set: { 'answers.<itemId>': … }`; files max 10, each a `submission` upload of this student for this assessment with its sanitized name (M04: the name is shown to the grader, so the answer keeps more than the key); source ≤ 64 KB (M05) |
 | runs | `[{ itemId, at: D, passed: N, total: N }]` | code runs (LAB-03); max 200 (`$slice: -200`) |
 | results | `[{ itemId, testCaseId, status: S, timeMs: N?, memoryKb: N? }]` | final graded code results |
-| scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000 |
+| scores | Map `<itemId>` → `{ marks: N, criteria: [{ criterionId, marks }]?, by: S, comment: S? }` | `by` is `auto` or the grader's id as a string; comment ≤ 1000; marks may be negative (negative marking, 07 §14) |
 | total | N? | null until every item is scored |
 | gradedAt, gradedBy | D?, Id? | |
 | proctor | `{ violations: N, events: [{ type: S, at: D, detail: S? }], snapshots: [{ key: S, at: D }] }` | events max 300, snapshots max 120 (`$slice`) |
 
 Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04).
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
+
+### 5.2d `questionBank` (M04b, TP-05)
+`courseId` Id? · `ownerId` Id? (exactly one: a catalogue course's bank, shared by every offering of the course in any term; or one member of staff's own, for their standalone tests) · the Item fields above (no `sectionId`) · `usedCount` N (papers that drew it) · `createdBy` Id · timestamps. Collection name `questionBank`.
+Indexes: `{ courseId: 1, createdAt: -1 }` and `{ ownerId: 1, createdAt: -1 }` (partial, the bank page) · `{ courseId: 1, type: 1, difficulty: 1 }` · `{ ownerId: 1, type: 1, difficulty: 1 }` (a draw's candidates).
+Invariants: at most 5,000 per bank (`BANK_LIMITS.perBank`), so a draw's candidates are one bounded read. A course bank's COs are its course's. Deleting a bank question changes no paper (each keeps its own copy).
 
 ### 5.2a `testLinks` (M04b, TP-01)
 | Field | Type | Rules |

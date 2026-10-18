@@ -69,7 +69,7 @@ test('staff share a standalone test with guests; a guest registers by email code
   const question = faculty.getByRole('dialog', { name: /· One answer$/ });
   // Outside a course there are no course outcomes to tag.
   await expect(question.getByText('Course outcomes')).toHaveCount(0);
-  await question.locator('.ProseMirror').click();
+  await question.locator('.ProseMirror').first().click();
   await faculty.keyboard.type('Which of these is a valid identifier in C?');
   await question.getByLabel('Marks', { exact: true }).fill('2');
   await question.getByPlaceholder('Option 1').fill('2nd_value');
@@ -115,9 +115,10 @@ test('staff share a standalone test with guests; a guest registers by email code
   await guest.getByRole('checkbox', { name: /I have read the rules/ }).check();
   await guest.getByRole('button', { name: 'Start quiz' }).click();
   await expect(guest).toHaveURL(/\/tests\/[a-f\d]{24}\/attempt$/);
-  await guest.getByRole('radio', { name: '_total' }).check();
-  await expect(guest.getByText('All answers saved').first()).toBeVisible({ timeout: 15_000 });
-  await guest.getByRole('button', { name: 'Submit' }).click();
+  await guest.getByText('_total', { exact: true }).click();
+  await expect(guest.getByText('Saved', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await guest.getByRole('button', { name: 'Review answers' }).click();
+  await guest.getByRole('button', { name: 'Hand in now' }).click();
   await guest.getByRole('alertdialog').getByRole('button', { name: 'Hand in' }).click();
   await expect(guest).toHaveURL(/\/tests\/[a-f\d]{24}$/);
   await expect(guest.getByText('Your answers are handed in.', { exact: false })).toBeVisible();
