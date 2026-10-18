@@ -1,17 +1,15 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CheckSquareIcon, PaperPlaneTiltIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react/ssr';
+import { PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
-import { deleteAssessment, publishResults } from './actions';
-import { NewAssessmentDialog } from './new-assessment-dialog';
-import { ModeChip, STATE_LABEL, StudentList } from './student-list';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
+import { NewAssessmentDialog } from '@/components/new-assessment-dialog';
 import { PageIcon } from '@/components/page-icon';
-import { RowMenu, type RowMenuItem } from '@/components/row-menu';
 import { Section } from '@/components/section';
+import { AssessmentMenu, ModeChip, STATE_LABEL, StudentList } from '@/components/assessment-lists';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -85,7 +83,7 @@ async function Assessments({
       >
         {toolbar}
         <StudentList
-          offeringId={offeringId}
+          base={base}
           rows={list.rows}
           total={list.total}
           page={page}
@@ -200,7 +198,7 @@ function TeacherTable({
               {
                 header: '',
                 className: 'w-10',
-                cell: (row: TeacherRow) => <AssessmentMenu row={row} offeringId={offeringId} />,
+                cell: (row: TeacherRow) => <AssessmentMenu row={row} base={`${base}/${row.id}`} />,
               },
             ]
           : []),
@@ -219,49 +217,4 @@ function TeacherTable({
       }
     />
   );
-}
-
-function AssessmentMenu({ row, offeringId }: { row: TeacherRow; offeringId: string }) {
-  const base = `/courses/${offeringId}/assessments/${row.id}`;
-  const fields = { offeringId, assessmentId: row.id };
-  const items: RowMenuItem[] = [
-    { kind: 'link', label: 'Edit questions and settings', href: `${base}/edit`, icon: <PencilSimpleIcon /> },
-    ...(row.state === 'draft'
-      ? []
-      : [{ kind: 'link' as const, label: 'Grade hand-ins', href: `${base}/grade`, icon: <CheckSquareIcon /> }]),
-    ...(row.state === 'closed'
-      ? [
-          {
-            kind: 'action' as const,
-            label: 'Publish results',
-            icon: <PaperPlaneTiltIcon />,
-            action: publishResults,
-            fields,
-            confirm: {
-              title: `Publish the results of “${row.title}”?`,
-              message: 'Students who handed in see their marks and your comments, and are told.',
-              confirmLabel: 'Publish results',
-            },
-          },
-        ]
-      : []),
-    { kind: 'separator' },
-    row.state === 'draft'
-      ? {
-          kind: 'action',
-          label: 'Delete',
-          icon: <TrashIcon />,
-          destructive: true,
-          action: deleteAssessment,
-          fields,
-          confirm: {
-            title: `Delete “${row.title}”?`,
-            message: 'Its questions go with it. Nobody has seen it yet.',
-            confirmLabel: 'Delete',
-            destructive: true,
-          },
-        }
-      : { kind: 'disabled', label: 'Delete', icon: <TrashIcon />, reason: 'Only a draft can be deleted.' },
-  ];
-  return <RowMenu label={row.title} items={items} />;
 }

@@ -14,12 +14,15 @@ import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
 import { Notification } from '@/lib/models/notification';
+import { Otp } from '@/lib/models/otp';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
+import { TestGrant } from '@/lib/models/test-grant';
+import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
 
 // Creates collections and declared indexes; never drops anything (no syncIndexes()).
@@ -40,6 +43,9 @@ const models = [
   Attendance,
   Assessment,
   Submission,
+  TestLink,
+  TestGrant,
+  Otp,
   EngagementDaily,
   Notification,
   Setting,

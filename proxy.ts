@@ -9,6 +9,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!login|forgot-password|reset-password|api/|_next/|favicon.ico|icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    // `t/`: a test's share link opens signed out, to sign in or register there (M04b, TP-01).
+    '/((?!login|forgot-password|reset-password|t/|api/|_next/|favicon.ico|icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

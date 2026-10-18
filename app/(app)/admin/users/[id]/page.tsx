@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { requireViewer } from '@/lib/auth/session';
 import { getUserDetail, type UserDetail } from '@/lib/data/users';
 import { formatDateTime, ROLE_LABEL, statusTone } from '@/lib/format';
-import { ROLES } from '@/lib/schemas/common';
+import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 
 export const metadata: Metadata = { title: 'User' };
 
@@ -161,7 +161,7 @@ function Access({ user, isAdmin }: { user: UserDetail; isAdmin: boolean }) {
                 <fieldset className="grid gap-2">
                   <legend className="mb-2 text-sm font-medium">Roles</legend>
                   <div className="flex flex-wrap gap-2">
-                    {ROLES.map((r) => (
+                    {ASSIGNABLE_ROLES.map((r) => (
                       <label
                         key={r}
                         className="ring-border has-checked:bg-primary/10 has-checked:ring-primary/40 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1 transition-colors"

@@ -4,9 +4,11 @@ import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
+import { Assessment } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
+import { TestGrant } from '@/lib/models/test-grant';
 import type { Viewer } from '@/lib/auth/session';
 
 export type OfferingAccess = 'teach' | 'learn' | 'oversee';
@@ -52,4 +54,38 @@ export async function requireCourseEditor(viewer: Viewer, courseId: string): Pro
   if (!(await canEditCourse(viewer, courseId))) {
     throw new AppError('FORBIDDEN', 'Only the course coordinator and the administrators can change this course.');
   }
+}
+
+export type AssessmentAccess = 'manage' | 'oversee' | 'take';
+
+// M04b (TP-02): who may do what with an assessment. A course's assessment follows its offering: whoever teaches it and
+// admins manage, a head of department oversees, an enrolled student takes it. A standalone test belongs to its owners
+// and the admins, and is taken by those a share link let in (`testGrants`). Takers never see a draft.
+export const assessmentAccess = cache(
+  async (viewer: Viewer, assessmentId: string): Promise<{ access: AssessmentAccess; offeringId: string | null }> => {
+    if (!isValidObjectId(assessmentId)) notFound();
+    await db();
+    const assessment = await Assessment.findById(assessmentId, { offeringId: 1, ownerIds: 1, status: 1 }).lean();
+    if (!assessment) notFound();
+    const offeringId = assessment.offeringId ? String(assessment.offeringId) : null;
+    let access: AssessmentAccess;
+    if (offeringId) {
+      const via = await offeringAccess(viewer, offeringId);
+      access = via === 'teach' || viewer.roles.includes('admin') ? 'manage' : via === 'oversee' ? 'oversee' : 'take';
+    } else if (viewer.roles.includes('admin') || assessment.ownerIds.some((id) => id.equals(viewer.id))) {
+      access = 'manage';
+    } else if (await TestGrant.exists({ assessmentId, userId: viewer.id })) {
+      access = 'take';
+    } else {
+      notFound();
+    }
+    if (access === 'take' && assessment.status === 'draft') notFound();
+    return { access, offeringId };
+  },
+);
+
+export async function requireManage(viewer: Viewer, assessmentId: string) {
+  const found = await assessmentAccess(viewer, assessmentId);
+  if (found.access !== 'manage') notFound();
+  return found;
 }

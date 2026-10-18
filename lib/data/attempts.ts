@@ -83,7 +83,8 @@ export async function handInAttempts(submissionIds: readonly string[], now: Date
         { session },
       );
       if (written.modifiedCount === 0) return false;
-      // ENG-01 signals (05 §7.1), counted on the day it was handed in.
+      // ENG-01 signals (05 §7.1), counted on the day it was handed in; a standalone test has no course to count in.
+      if (!attempt.offeringId) return true;
       await addEngagement(
         [
           {

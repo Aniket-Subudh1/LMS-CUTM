@@ -46,6 +46,50 @@ export function resetEmail({ to, name, link }: Recipient): MailSend {
   );
 }
 
+const dateTimeFormat = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  day: 'numeric',
+  month: 'short',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+// TP-03: the one-time code a guest confirms. It is in the subject too, so a phone's notification shows it.
+export function guestCodeEmail(mail: { to: string; name: string; code: string; test: string; link: string }): MailSend {
+  return compose(
+    mail.to,
+    `${mail.code} is your code for ${mail.test}`,
+    [
+      `Hello ${mail.name},`,
+      `Your code is ${mail.code}. Enter it on the test's page to continue. It works for 10 minutes.`,
+      'If you did not ask for this, ignore this email.',
+    ],
+    { label: 'Back to the test', href: mail.link },
+  );
+}
+
+// TP-01: an invitation to a test, sent by its owner to a list of addresses.
+export function testInvitationEmail(mail: {
+  to: string;
+  test: string;
+  from: string;
+  opensAt: Date;
+  closesAt: Date;
+  link: string;
+}): MailSend {
+  return compose(
+    mail.to,
+    `You are invited: ${mail.test}`,
+    [
+      'Hello,',
+      `${mail.from} has invited you to take “${mail.test}” on the CUTM LMS.`,
+      `It opens on ${dateTimeFormat.format(mail.opensAt)} and closes on ${dateTimeFormat.format(mail.closesAt)} (Indian Standard Time).`,
+      'Open the link to sign in or register with this email address.',
+    ],
+    { label: 'Open the test', href: mail.link },
+  );
+}
+
 export type CoursePlanMail = {
   to: string;
   name: string;

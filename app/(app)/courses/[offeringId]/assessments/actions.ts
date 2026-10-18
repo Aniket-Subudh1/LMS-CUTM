@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import mongoose, { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { requireTeach } from '@/lib/auth/access';
+import { requireManage, requireTeach } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts } from '@/lib/data/attempts';
 import { notify } from '@/lib/data/notify';
@@ -14,6 +14,7 @@ import { windowState } from '@/lib/domain/attempts';
 import { attemptTotal, rubricTotal } from '@/lib/domain/grading';
 import { isPermutation } from '@/lib/domain/order';
 import { roundHalfUp } from '@/lib/domain/round';
+import { assessmentPath } from '@/lib/domain/test-links';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
 import { formatDateTime } from '@/lib/format';
@@ -22,6 +23,7 @@ import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
+import { TestLink } from '@/lib/models/test-link';
 import {
   ASSESSMENT_LIMITS,
   AssessmentRef,
@@ -39,20 +41,23 @@ import { marks as marksInput } from '@/lib/schemas/common';
 
 const TEACH = ['admin', 'faculty'] as const;
 
-const base = (offeringId: string) => `/courses/${offeringId}/assessments`;
+// These actions serve a course's assessments and standalone tests alike (M04b): access comes from the assessment.
 const fit = (title: string) => (title.length > 160 ? `${title.slice(0, 159)}…` : title);
 const questionsFixed = () => new AppError('CONFLICT', 'Questions cannot change after students have started.');
+const pathOf = (assessment: { _id: Types.ObjectId; offeringId?: Types.ObjectId | null }) =>
+  assessmentPath(assessment.offeringId ? String(assessment.offeringId) : null, String(assessment._id));
 
-async function teachAssessment(viewer: Viewer, offeringId: string, assessmentId: string) {
-  await requireTeach(viewer, offeringId);
+async function manageAssessment(viewer: Viewer, assessmentId: string) {
+  await requireManage(viewer, assessmentId);
   await db();
-  const assessment = await Assessment.findOne({ _id: assessmentId, offeringId }).lean();
+  const assessment = await Assessment.findById(assessmentId).lean();
   if (!assessment) throw new AppError('NOT_FOUND', 'Assessment not found.');
   return assessment;
 }
 
-// 05 §3.8: while marks are locked nothing may change a score or the state of results.
-async function requireUnlocked(offeringId: string) {
+// 05 §3.8: while marks are locked nothing may change a score or the state of results. A standalone test has no lock.
+async function requireUnlocked(offeringId: Types.ObjectId | null | undefined) {
+  if (!offeringId) return;
   const offering = await Offering.findById(offeringId, { lockedAt: 1 }).lean();
   if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
   if (offering.lockedAt) throw new AppError('LOCKED', 'Marks for this course are locked.');
@@ -82,14 +87,14 @@ export const createAssessment = action({ input: CreateAssessment, roles: TEACH }
       createdBy: viewer.id,
     },
   ]);
-  return { next: `${base(input.offeringId)}/${created._id}/edit` };
+  return { next: `${assessmentPath(input.offeringId, String(created._id))}/edit` };
 });
 
 // T4: everything while no student has started; afterwards only the title and the dates (05 §5.1).
 export const updateAssessmentSettings = action(
   { input: UpdateAssessmentSettings, roles: TEACH },
   async (input, viewer) => {
-    const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+    const assessment = await manageAssessment(viewer, input.assessmentId);
     const started = Boolean(await Submission.exists({ assessmentId: assessment._id }));
     const dates = {
       title: input.title,
@@ -117,7 +122,7 @@ export const updateAssessmentSettings = action(
 );
 
 export const saveInstructions = action({ input: SaveInstructions, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
   await Assessment.updateOne(
     { _id: assessment._id },
     input.instructions ? { $set: { instructions: input.instructions } } : { $unset: { instructions: 1 } },
@@ -127,19 +132,26 @@ export const saveInstructions = action({ input: SaveInstructions, roles: TEACH }
 
 // T4: one question at a time. CPP-05/06: on a credit course every question names at least one of the course's COs.
 export const saveItem = action({ input: SaveItem, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
   if (!MODE_ITEM_TYPES[assessment.mode].includes(input.type)) {
     throw new AppError('VALIDATION', 'This kind of question is not used in this type of assessment.');
   }
   if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
-  const offering = await Offering.findById(input.offeringId, { category: 1, courseId: 1 }).lean();
-  if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
-  if (offering.category === 'ugc' && input.coIds.length === 0) {
+  // A standalone test has no course, so no course outcomes (M04b).
+  const offering = assessment.offeringId
+    ? await Offering.findById(assessment.offeringId, { category: 1, courseId: 1 }).lean()
+    : null;
+  if (!offering && input.coIds.length > 0) {
+    throw new AppError('VALIDATION', 'A test outside a course has no course outcomes.', {
+      'cos[]': ['A test outside a course has no course outcomes.'],
+    });
+  }
+  if (offering?.category === 'ugc' && input.coIds.length === 0) {
     throw new AppError('VALIDATION', 'Tag the question with at least one course outcome.', {
       'cos[]': ['Tick at least one course outcome.'],
     });
   }
-  if (input.coIds.length > 0) {
+  if (offering && input.coIds.length > 0) {
     const course = await Course.findById(offering.courseId, { 'cos._id': 1 }).lean();
     const known = new Set(course?.cos.map((co) => String(co._id)) ?? []);
     if (input.coIds.some((id) => !known.has(id))) {
@@ -204,7 +216,7 @@ export const saveItem = action({ input: SaveItem, roles: TEACH }, async (input, 
 });
 
 export const deleteItem = action({ input: ItemRef, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
   if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
   await Assessment.updateOne({ _id: assessment._id }, { $pull: { items: { _id: input.itemId } } });
   await recountMarks(String(assessment._id));
@@ -213,7 +225,7 @@ export const deleteItem = action({ input: ItemRef, roles: TEACH }, async (input,
 
 // M04 decision 3: a drag or a Move menu sends the whole new order.
 export const reorderItems = action({ input: ReorderItems, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
   if (await Submission.exists({ assessmentId: assessment._id })) throw questionsFixed();
   const current = assessment.items.map((item) => String(item._id));
   const proposed = input['ids[]'];
@@ -233,13 +245,14 @@ export const reorderItems = action({ input: ReorderItems, roles: TEACH }, async 
 
 // T4: AC-M04-01, a credit course's assessment is published only when every question names a CO.
 export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
   if (assessment.status !== 'draft') throw new AppError('CONFLICT', 'This assessment is already published.');
   if (assessment.items.length === 0) throw new AppError('VALIDATION', 'Add at least one question first.');
-  const offering = await Offering.findById(input.offeringId, { category: 1, title: 1 }).lean();
-  if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
+  const offering = assessment.offeringId
+    ? await Offering.findById(assessment.offeringId, { category: 1, title: 1 }).lean()
+    : null;
   const untagged = assessment.items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : []));
-  if (offering.category === 'ugc' && untagged.length > 0) {
+  if (offering?.category === 'ugc' && untagged.length > 0) {
     const list = untagged.length === 1 ? `question ${untagged[0]}` : `questions ${untagged.join(', ')}`;
     throw new AppError('VALIDATION', `Tag ${list} with a course outcome before publishing.`);
   }
@@ -262,47 +275,43 @@ export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, 
         action: 'assessment.published',
         entity: 'assessment',
         entityId: String(assessment._id),
-        offeringId: input.offeringId,
+        offeringId: assessment.offeringId ? String(assessment.offeringId) : undefined,
         before: { status: 'draft' },
         after: { status: 'published' },
       },
       session,
     );
   });
-  // COM-03.
-  const students = await Enrollment.distinct('studentId', { offeringId: input.offeringId, status: 'active' });
-  await notify(students.map(String), {
-    kind: 'assessment.published',
-    title: fit(`${assessment.title} — open until ${formatDateTime(assessment.closesAt)} (${offering.title})`),
-    href: `${base(input.offeringId)}/${assessment._id}`,
-  });
+  // COM-03: a course's students are told; a standalone test reaches people through its share links.
+  if (offering) {
+    const students = await Enrollment.distinct('studentId', { offeringId: offering._id, status: 'active' });
+    await notify(students.map(String), {
+      kind: 'assessment.published',
+      title: fit(`${assessment.title} — open until ${formatDateTime(assessment.closesAt)} (${offering.title})`),
+      href: pathOf(assessment),
+    });
+  }
   refresh();
 });
 
 // 05 §5.1: only a draft is deleted; nothing refers to it yet.
 export const deleteAssessment = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
-  await requireTeach(viewer, input.offeringId);
-  await db();
-  const removed = await Assessment.deleteOne({
-    _id: input.assessmentId,
-    offeringId: input.offeringId,
-    status: 'draft',
-  });
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  const removed = await Assessment.deleteOne({ _id: assessment._id, status: 'draft' });
   if (removed.deletedCount === 0) throw new AppError('CONFLICT', 'Only a draft can be deleted.');
-  redirect(base(input.offeringId));
+  // Nobody can have joined through a draft's links (a link lets no one into a draft), so they go with it.
+  await TestLink.deleteMany({ assessmentId: assessment._id });
+  redirect(assessment.offeringId ? `/courses/${assessment.offeringId}/assessments` : '/tests');
 });
 
 // T6: marks per question (a rubric question's are its criteria), comments, and overrides of the automatic marks. Every
 // change is audited with each question's marks before and after (AC-M04-07); regrading after publication is allowed.
 export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, async (input, viewer) => {
-  await requireTeach(viewer, input.offeringId);
   await db();
-  await requireUnlocked(input.offeringId);
-  const attempt = await Submission.findOne(
-    { _id: input.submissionId, offeringId: input.offeringId },
-    { assessmentId: 1, status: 1, scores: 1 },
-  ).lean();
+  const attempt = await Submission.findById(input.submissionId, { assessmentId: 1, status: 1, scores: 1 }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
+  const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
+  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
   const assessment = await Assessment.findById(attempt.assessmentId, { items: 1 }).lean();
   if (!assessment) throw new AppError('NOT_FOUND', 'Assessment not found.');
@@ -399,7 +408,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
           action: 'submission.graded',
           entity: 'submission',
           entityId: String(attempt._id),
-          offeringId: input.offeringId,
+          offeringId: offeringId ?? undefined,
           before: Object.fromEntries(changed.map((id) => [id, before[id]?.marks ?? null])),
           after: Object.fromEntries(changed.map((id) => [id, scores[id]?.marks ?? null])),
         },
@@ -415,7 +424,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     )
       .sort({ submittedAt: 1, _id: 1 })
       .lean();
-    const list = `${base(input.offeringId)}/${attempt.assessmentId}/grade`;
+    const list = `${assessmentPath(offeringId, String(attempt.assessmentId))}/grade`;
     redirect(next ? `${list}/${next._id}` : list);
   }
   refresh();
@@ -424,8 +433,8 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
 // T6: AC-M04-06. Results go out once the window has closed (A-M04-2) and every hand-in is marked; attempts still
 // running have expired by then and are handed in first. Only students who handed something in are told.
 export const publishResults = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
-  const assessment = await teachAssessment(viewer, input.offeringId, input.assessmentId);
-  await requireUnlocked(input.offeringId);
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  await requireUnlocked(assessment.offeringId);
   if (assessment.status === 'draft') throw new AppError('CONFLICT', 'Publish the assessment first.');
   if (assessment.status === 'results_published') throw new AppError('CONFLICT', 'Results are already published.');
   const now = new Date();
@@ -466,19 +475,19 @@ export const publishResults = action({ input: AssessmentRef, roles: TEACH }, asy
         action: 'assessment.results_published',
         entity: 'assessment',
         entityId: String(assessment._id),
-        offeringId: input.offeringId,
+        offeringId: assessment.offeringId ? String(assessment.offeringId) : undefined,
         before: { status: 'published' },
         after: { status: 'results_published' },
       },
       session,
     );
   });
-  const offering = await Offering.findById(input.offeringId, { title: 1 }).lean();
+  const offering = assessment.offeringId ? await Offering.findById(assessment.offeringId, { title: 1 }).lean() : null;
   const students = await Submission.distinct('studentId', { assessmentId: assessment._id });
   await notify(students.map(String), {
     kind: 'results.published',
-    title: fit(`Results: ${assessment.title} (${offering?.title ?? ''})`),
-    href: `${base(input.offeringId)}/${assessment._id}`,
+    title: fit(`Results: ${assessment.title}${offering ? ` (${offering.title})` : ''}`),
+    href: pathOf(assessment),
   });
   refresh();
 });

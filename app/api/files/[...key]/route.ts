@@ -79,13 +79,15 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
   }
 
   if (owner.purpose === 'submission') {
-    // 06 §5: the student who uploaded it, and whoever teaches or oversees the assessment's class. The name is the one
-    // kept with the answer (a student has at most 10 attempts, so the search is bounded).
-    const assessment = await Assessment.findById(owner.contextId, { offeringId: 1 }).lean();
+    // 06 §5: the student who uploaded it, and whoever teaches or oversees the assessment's class — or, for a
+    // standalone test (M04b), its owners and the admins. The name is the one kept with the answer (a student has at
+    // most 10 attempts, so the search is bounded).
+    const assessment = await Assessment.findById(owner.contextId, { offeringId: 1, ownerIds: 1 }).lean();
     if (!assessment) return missing();
-    if (owner.userId !== viewer.id && (await reach(viewer, { _id: String(assessment.offeringId) })) !== 'staff') {
-      return missing();
-    }
+    const staff = assessment.offeringId
+      ? (await reach(viewer, { _id: String(assessment.offeringId) })) === 'staff'
+      : viewer.roles.includes('admin') || assessment.ownerIds.some((id) => id.equals(viewer.id));
+    if (owner.userId !== viewer.id && !staff) return missing();
     const attempts = await Submission.find({ assessmentId: assessment._id, studentId: owner.userId }, { answers: 1 })
       .limit(10)
       .lean();

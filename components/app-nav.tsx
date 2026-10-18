@@ -8,7 +8,7 @@ import { logout } from '@/app/(auth)/actions';
 import { LinkSpinner } from '@/components/link-spinner';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { cn } from '@/lib/cn';
-import type { Role } from '@/lib/schemas/common';
+import { ASSIGNABLE_ROLES, type Role } from '@/lib/schemas/common';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -30,9 +30,11 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
   {
     label: 'Menu',
     items: [
-      { href: '/home', label: 'Dashboard', icon: 'dashboard' },
+      { href: '/home', label: 'Dashboard', icon: 'dashboard', roles: [...ASSIGNABLE_ROLES] },
       { href: '/courses', label: 'My courses', icon: 'courses', roles: ['student', 'faculty', 'hod', 'admin'] },
       { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
+      // M04b (TP-02): standalone tests, and those a share link let anyone into (a candidate's whole LMS).
+      { href: '/tests', label: 'Tests', icon: 'evaluation' },
       { href: '/notifications', label: 'Notifications', icon: 'notifications' },
     ],
   },

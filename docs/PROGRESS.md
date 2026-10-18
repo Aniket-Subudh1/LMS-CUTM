@@ -26,7 +26,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | In progress — T0 picked; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
+| M04b Test platform | In progress — T0 picked, phase A (access) built and committed locally; on branch `m04-assessments` | | Owner request, 18 Oct 2026; plan in `docs/milestones/M04b-test-platform.md`. Takes proctoring and coding from M05 and AI drafting from M09 |
 | M05 Virtual lab & proctoring | Not started | | Runner identity: Q-25 (b); feature set: Q-09 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -207,6 +207,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04-5 | A skill course's "Quiz average %" is the mean of each published quiz's counted percentage, a quiz not attempted counting as 0 | M04 | Q-02 |
 | A-M04-6 | The New assessment dialog asks only for the type, title and window; time limit, attempts and shuffling start from the type's typical settings and are changed in the builder | M04 | — |
 | A-M04-7 | A question's options get new ids each time it is saved, which is allowed only before any student starts | M04 | — |
+| A-M04b-1 | Guests take only standalone tests. A course's assessment has only "this class" links, which take enrolled students to it and let no one else in | M04b | — |
+| A-M04b-2 | Someone a link let in keeps their way back through it after it is turned off, expires or fills up, and after the test closes (to finish or read results); a returning guest asks for a new code on the link's page | M04b | — |
+| A-M04b-3 | An email that belongs to an LMS account cannot register as a guest or sign in by code; it signs in with its password on the link's page | M04b | — |
+| A-M04b-4 | A link someone joined through is never deleted, only turned off (it records how they got in); a draft's links go with the draft | M04b | — |
+| A-M04b-5 | Until proctoring (phase C) the lobby checks the browser (cookies) and the connection (under 600 ms good; slower warns but does not stop Start) | M04b | — |
+| A-M04b-6 | Accepting the rules is a required checkbox in the Start form, checked by the browser and not stored; phase C records it with the proctoring consent | M04b | — |
+| A-M04b-7 | Faculty and admins make standalone tests; a head of department has no view of a colleague's standalone tests | M04b | — |
+| A-M04b-8 | A link's access code is kept readable so its owner can pass it on again; it is compared in constant time | M04b | — |
 
 ## 5. Log
 
@@ -1494,3 +1502,68 @@ Request: bring every feature of Aniket's two earlier test products into the LMS'
 **Open questions** — Judge0 server and token for coding questions; an Anthropic API key for the AI helpers; the certificate's design and signatory; how long guest records are kept (defaults in the milestone file).
 
 **Verification** — 20 mock-ups drawn inside the real app (a build of this branch on port 3101 with the e2e database) at 1440 px, plus 4 at 390 px. Aniket's picks are recorded in decision 5. The phone mock-ups of the runner and the coding screen were wider than the screen; the build is checked at 360 px.
+
+### 2026-10-18 · M04b/A Test platform: access — standalone tests, share links, guests, the lobby · Claude Code, at Aniket's request
+
+Phase A of `docs/milestones/M04b-test-platform.md` (TP-01–TP-04), on branch `m04-assessments`, committed locally and not pushed.
+
+**Created**
+- **Standalone tests (TP-02).**
+  - An assessment's `offeringId` may be null, with `ownerIds`. Its submissions have no `offeringId` and no engagement counters.
+  - `assessmentAccess()` (`lib/auth/access.ts`) decides `manage` · `oversee` · `take` from the assessment. Every M04 action and DAL read now takes the assessment (or submission) id alone.
+  - The M04 pages became shared components (`AssessmentBuilder`, `AssessmentOverview`, `HandInsView`, `GradingPage`, `AssessmentAttempt`, `assessment-lists.tsx`, `NewAssessmentDialog`, 08 §5.2) behind thin course routes and new `/tests` routes. A course route 404s for another course's assessment.
+  - `/tests` lists "Tests you run" and "My tests" (`listTests`).
+  - The sidebar has Tests. A candidate's Home sends them to it.
+- **Share links (TP-01).**
+  - `testLinks` and `testGrants` (05 §5.2a–b).
+  - Actions `createLink`, `setLinkActive`, `deleteLink`, `inviteToTest` (`app/(app)/tests/actions.ts`).
+  - The builder's Share card lists each link with its rules, address, Copy (`CopyButton`), QR code (`qrcode` 1.5.4, server-side SVG, 03 §3) and ⋮, plus the New link and Invite by email dialogs.
+  - Invitations are `mail/send` jobs (`testInvitationEmail`).
+- **Guests (TP-03).**
+  - The `candidate` role (`ROLES`; admins assign only `ASSIGNABLE_ROLES`).
+  - `otps` (05 §5.2c, HMAC only, `lib/auth/otp.ts`).
+  - `/t/[token]` in the `(auth)` layout, exempt from `proxy.ts`, with the actions `openLink`, `signInToTest`, `registerGuest`, `returnAsGuest`, `verifyGuestCode` and `leaveLink`.
+  - The password check moved from `login` into `lib/auth/sign-in.ts`, so the link page signs LMS users in too.
+- **The lobby (TP-04, "Lobby B").**
+  - `DeviceCheck` and `Countdown` (`components/test-lobby.tsx`). The runner's clock (`useServerSeconds`, `clock`) moved there.
+  - The rules and the agreement sit beside Start, for course assessments too.
+- **Other changes.**
+  - `/api/files` lets a standalone test's owners and admins open its hand-in files.
+  - The hourly sweep reminds a standalone test's joined people.
+  - `sync-indexes` adds the three collections.
+  - `lib/domain/test-links.ts` (`assessmentPath`, `linkState`, `emailAllowed`, `maskEmail`) has unit tests.
+- **Tests.**
+  - `tests/integration/tests.test.ts` (13 cases): creation and ownership, link rules (code, domains, limit, switch, window, draft), one use per person, course links without grants, sign-in on the link page, invitations, guest registration and codes (hash, tries, LMS emails refused), returning after the link closed, a candidate's attempt graded and published, the reminder.
+  - `tests/e2e/tests.spec.ts`: faculty1 makes and shares a test; a guest registers with the code from Mailpit, passes the lobby and hands in.
+  - The M04 integration test and e2e spec follow the new signatures and the lobby's agreement.
+- **Docs.** 03 §3, 05 (users, assessments, submissions, §5.2a–c, §8), 06 §5, §6 and §6.1, 08 (route map, sidebar, §5.2 rows), 09 (§3, §4, §9).
+
+**Not done**
+- Phases B–E.
+- The lobby's camera and microphone checks come with proctoring in phase C.
+- New page marks: Tests borrows `evaluation`.
+- `/login` has no `next` parameter. A deep link opened while signed out lands on Home after sign-in; a share link avoids this because it signs in on its own page.
+- Nothing was checked on a real phone.
+
+**Assumptions** — A-M04b-1 to A-M04b-8 (§4).
+
+**Open questions** — none new; the milestone's four still stand (Judge0, AI key, certificates, guest retention).
+
+**Bugs found and fixed while verifying**
+- Someone already let in was refused by a full link; found by the integration test. A grant now always lets its holder back.
+- The builder read a variable before declaring it inside a `find` callback (a production `ReferenceError`; `tsc` cannot see it); found by the e2e test.
+- `proxy.ts` sent signed-out visitors of `/t/<token>` to `/login`; found by the e2e test.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 27 passed (27)`, `Tests 358 passed (358)`.
+- `npm run test:integration` (mongodb-memory-server, local Redis) → exit 0; `Test Files 17 passed (17)`, `Tests 232 passed (232)`.
+- `npm run build` → exit 0; `npm run check:bundle` → "110 files scanned … clean". `qrcode` is in no client chunk.
+- `npm run db:indexes:e2e`, then e2e with Mailpit v1.31.0 (run from a download, as Docker is not installed here):
+  - On the final build: `npx playwright test tests/e2e/tests.spec.ts tests/e2e/assessments.spec.ts tests/e2e/auth.spec.ts` → exit 0, `7 passed`.
+  - The five auth tests cover the sign-in refactor.
+  - The other specs were not run in this phase.
+- A scripted walk of 15 phase A screens at 1440 px and 390 px as faculty1 and a new guest:
+  - The screens: Tests, New test, the builder with Share and a QR code, New link, Invite, hand-ins, the guests, class and closed link pages, the code step, the lobby, My tests, and returning on the link.
+  - No error page, and no page wider than the screen.
+  - After the walk: badge text in sentence case, the timer rule reworded, and "All tests" / "LMS users" for standalone tests.
+

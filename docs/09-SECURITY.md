@@ -66,6 +66,8 @@ Every exported DAL function and every action applies these filters; integration 
 | Lessons | `published = true` | all of the offering | all | all |
 | Assessments | `status ≠ draft` | all | all | all |
 | Submissions | `studentId = me` | offering's | offering's | all |
+| Standalone tests (M04b) | anyone with a `testGrants` row (made by a share link), `status ≠ draft`; their own submissions | their own (`ownerIds ∋ me`): manage | — | all: manage |
+| Share links (M04b) | — (a link's page shows only the test's title, owner, window and counts) | of tests they manage | — | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
 | Projects & tasks | `memberIds ∋ me` | offering's | offering's | all |
@@ -77,6 +79,7 @@ Rules:
 - Never accept a `studentId` from a student's request; use `viewer.id`.
 - Never trust a hidden form field for ownership (`offeringId` in a form is re-checked).
 - Ids that do not resolve or are not accessible → `notFound()`.
+- M04b: an assessment's access is decided from the assessment (`assessmentAccess()` → `manage` · `oversee` · `take`): a course's follows `offeringAccess()`; a standalone test's comes from `ownerIds` and admin (manage) or a grant (take). A page under a course 404s when the assessment is not that course's. A candidate (05 §3.1) reaches nothing but their granted tests and their own results.
 
 ## 4. Rate limits (`lib/rate-limit.ts`, 07 §16)
 
@@ -86,6 +89,10 @@ Rules:
 | Login (failed attempts) | IP | 30 / 15 min |
 | Forgot password | email | 3 / hour |
 | Forgot password | IP | 20 / hour |
+| Guest registration and sign-in codes (M04b, TP-03) | IP | 20 / 15 min |
+| Guest registration and sign-in codes | email | 5 / 15 min |
+| Guest code check | IP | 30 / 15 min; and 5 tries per code, counted before the check |
+| Test invitations (M04b) | owner | 20 sends / day, ≤ 500 addresses each |
 | Code run | student | 1 per `runCooldownSec` (3 s), 200 / hour |
 | `createUpload` | user | 60 / hour |
 | Answer autosave | user | 60 / min |
@@ -165,6 +172,8 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Login failure message is always "Email or password is incorrect." (also for invited users without a password and disabled users).
 - `forgot-password` says "This email does not exist in the database." when no active or invited user has that email, and "This email is registered. A reset link has been sent." when one does. Login still uses one message for every failure.
 - Session: 12 h TTL; `sessionVersion` check on every request (02 §6). "Sign out everywhere" and password change increment it.
+- **Guests (M04b, TP-03).** A guest registers on a guests link with name and email; a 6-digit code (`crypto.randomInt`) goes to that email and lives 10 minutes with 5 tries. Only its HMAC-SHA256 (keyed with `SESSION_PASSWORD`, bound to the email and the link) is stored (05 §5.2c). Confirming it makes or finds a `candidate` account — no password, role exactly `['candidate']` — and signs it in. An email that belongs to any other account never signs in by code (CONFLICT at registration, FORBIDDEN at confirmation): it signs in with its password on the same page, so a guest link is never a way into a staff or student account. A link's access code is compared in constant time; the link's token (18 random bytes) is its only secret. The link page masks the pending email (`ri••••@gmail.com`).
+- `proxy.ts` lets `/t/<token>` through without a session (it is public by design); every other check is in its actions.
 - Server Actions are POST-only and Next.js checks `Origin` against `Host`; route handlers that mutate (`/api/beacon`) rely on the `sameSite=lax` cookie, which browsers do not send on cross-site POSTs; webhooks rely on signatures.
 
 ## 10. Assessment secrecy

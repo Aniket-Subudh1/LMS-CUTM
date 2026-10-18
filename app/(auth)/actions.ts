@@ -3,8 +3,9 @@
 import { redirect } from 'next/navigation';
 import { publicAction } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { hashPassword } from '@/lib/auth/password';
 import { signIn, signOut } from '@/lib/auth/session';
+import { passwordSignIn } from '@/lib/auth/sign-in';
 import { queueResetLink, readToken } from '@/lib/auth/tokens';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
@@ -13,22 +14,10 @@ import { clientIp, limit } from '@/lib/rate-limit';
 import { LoginInput, ResetInput, ResetRequestInput } from '@/lib/schemas/auth';
 
 const MINUTE = 60_000;
-const INCORRECT = 'Email or password is incorrect.';
 const EXPIRED = 'This link has expired or was already used.';
 
 export const login = publicAction(LoginInput, async ({ email, password }) => {
-  const attempts = [
-    await limit('login-ip', await clientIp(), 30, 15 * MINUTE),
-    await limit('login', email, 5, 15 * MINUTE),
-  ];
-  await db();
-  const user = await User.findOne({ email, status: 'active' }, { passwordHash: 1, sessionVersion: 1 }).lean();
-  if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, password))) {
-    throw new AppError('UNAUTHENTICATED', INCORRECT);
-  }
-  await Promise.all(attempts.map((a) => a.refund()));
-  await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
-  await signIn({ id: String(user._id), sessionVersion: user.sessionVersion });
+  await passwordSignIn(email, password);
   redirect('/home');
 });
 

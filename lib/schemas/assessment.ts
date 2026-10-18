@@ -73,7 +73,6 @@ export const CreateAssessment = z
 // While students have attempts, only the title and dates are read: the other fields are disabled, so they do not post.
 export const UpdateAssessmentSettings = z
   .object({
-    offeringId: objectId,
     assessmentId: objectId,
     title,
     opensAt: istDateTime,
@@ -98,9 +97,10 @@ export const UpdateAssessmentSettings = z
     message: 'Late hand-ins end at or after the closing time.',
   });
 
-export const SaveInstructions = z.object({ offeringId: objectId, assessmentId: objectId, instructions: richText });
+export const SaveInstructions = z.object({ assessmentId: objectId, instructions: richText });
 
-export const AssessmentRef = z.object({ offeringId: objectId, assessmentId: objectId });
+// M04b: an assessment is found by its own id; access comes from it (its course or its owners), never from a posted course.
+export const AssessmentRef = z.object({ assessmentId: objectId });
 export const ItemRef = z.object({ ...AssessmentRef.shape, itemId: objectId });
 // A drag or a Move menu sends the whole new order (lib/domain/order.ts).
 export const ReorderItems = z.object({
@@ -169,7 +169,6 @@ export const SaveItem = ItemFields.transform((input, ctx) => {
     return z.NEVER;
   };
   const base = {
-    offeringId: input.offeringId,
     assessmentId: input.assessmentId,
     itemId: input.itemId,
     type: input.type,
@@ -225,8 +224,8 @@ export const Answer = z.discriminatedUnion('type', [
 ]);
 export type Answer = z.output<typeof Answer>;
 
-export const SaveAnswer = z.object({ offeringId: objectId, submissionId: objectId, itemId: objectId, answer: Answer });
-export const SubmissionRef = z.object({ offeringId: objectId, submissionId: objectId });
+export const SaveAnswer = z.object({ submissionId: objectId, itemId: objectId, answer: Answer });
+export const SubmissionRef = z.object({ submissionId: objectId });
 
 // --- Grading (T6). One row per question in order; a rubric question posts its criteria instead of marks. ---
 

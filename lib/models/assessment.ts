@@ -42,7 +42,9 @@ const itemSchema = new Schema({
 
 const assessmentSchema = new Schema(
   {
-    offeringId: { type: Schema.Types.ObjectId, required: true },
+    // Null for a standalone test (M04b, TP-02): it belongs to `ownerIds` and never feeds CE or attainment.
+    offeringId: { type: Schema.Types.ObjectId, default: null },
+    ownerIds: { type: [Schema.Types.ObjectId], default: [] },
     mode: { type: String, enum: ASSESSMENT_MODES, required: true },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     instructions: { type: Schema.Types.Mixed },
@@ -73,6 +75,9 @@ assessmentSchema.index({ offeringId: 1, mode: 1 });
 assessmentSchema.index({ status: 1, closesAt: 1 });
 // deleteCo asks whether any question is tagged with the CO.
 assessmentSchema.index({ 'items.coIds': 1 });
+// The Tests page: a member of staff's standalone tests, the latest closing first (M04b). An admin's list of every
+// standalone test uses { offeringId, status, closesAt } with offeringId null.
+assessmentSchema.index({ ownerIds: 1, closesAt: -1, _id: -1 });
 
 export type AssessmentDoc = InferSchemaType<typeof assessmentSchema>;
 export const Assessment: Model<AssessmentDoc> =

@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
-import { NewAssessmentDialog } from '../assessments/new-assessment-dialog';
-import { StudentList } from '../assessments/student-list';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
+import { NewAssessmentDialog } from '@/components/new-assessment-dialog';
 import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
+import { StudentList } from '@/components/assessment-lists';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getRecordsGrid, listOfferingAssessments, type RecordCell } from '@/lib/data/assessments';
@@ -57,7 +57,7 @@ async function Records({
         description="Your lab records and learning record. Write in the editor or upload photos of your notebook."
       >
         <StudentList
-          offeringId={offeringId}
+          base={`/courses/${offeringId}/assessments`}
           rows={list.view === 'student' ? list.rows : []}
           total={list.total}
           page={page}

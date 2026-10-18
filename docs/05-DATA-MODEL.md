@@ -31,6 +31,7 @@ terms ────────────────────────�
                                              ├─ attainments
                                              └─ engagementDaily
 gradeSheets (term × student) · notifications · settings · syncRuns · auditLogs
+assessments with no offering (standalone tests, M04b) ── submissions · testLinks ── testGrants ── users(candidates) · otps
 ```
 
 ---
@@ -42,9 +43,9 @@ gradeSheets (term × student) · notifications · settings · syncRuns · auditL
 |---|---|---|
 | name | S | required, trimmed, ≤ 120 |
 | email | S | required, lowercase, unique |
-| roles | [S] | required, 1–3 of `admin hod faculty student support` |
+| roles | [S] | required, 1–3 of `admin hod faculty student support`; or exactly `['candidate']` (M04b, TP-03: an outside person a guests link let in — no password, signs in with an email code, sees only their tests; never assigned by an admin, `ASSIGNABLE_ROLES`) |
 | status | S | `invited` (default) · `active` · `disabled` |
-| passwordHash | S? | `select: false`; absent until the invitation is accepted |
+| passwordHash | S? | `select: false`; absent until the invitation is accepted, and always for a candidate |
 | sessionVersion | N | default 1; incremented on password change, reset, "sign out everywhere", disable |
 | rollNo | S? | students; unique when present |
 | employeeId | S? | staff; unique when present |
@@ -226,7 +227,8 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 
 | Field | Type | Rules |
 |---|---|---|
-| offeringId | Id | |
+| offeringId | Id? | null for a **standalone test** (M04b, TP-02): it belongs to its owners, has no CO tags and never feeds CE or attainment |
+| ownerIds | [Id] | standalone tests: who made it (they and admins manage it); empty on a course's assessment |
 | mode | S | one of the modes above |
 | title | S | ≤ 160 |
 | instructions | RichText? | |
@@ -259,13 +261,14 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 
 `observation` items have no student answer — faculty score them (project reviews, viva). `text`/`file` items are what records and written assignments are made of.
 
-Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }`.
-Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft`. An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
+Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b).
+Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
 
 ### 5.2 `submissions` (one document per attempt)
 | Field | Type | Rules |
 |---|---|---|
-| assessmentId, offeringId, studentId | Id | |
+| assessmentId, studentId | Id | `studentId` is whoever takes it: a student, or for a standalone test anyone a link let in (a candidate, staff) |
+| offeringId | Id? | the assessment's; null for a standalone test (no engagement counters then) |
 | attemptNo | N | 1…attemptsAllowed |
 | status | S | `in_progress` · `submitted` · `graded` |
 | startedAt | D | |
@@ -284,6 +287,33 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 
 Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs starting at once compute the same `attemptNo`; the second insert fails and resumes the first) · `{ offeringId: 1, studentId: 1 }` · `{ assessmentId: 1, status: 1, submittedAt: 1 }` (counts per status and the hand-ins list in order, M04) · `{ status: 1, deadlineAt: 1 }` (the hourly sweep's expired attempts, M04).
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments.
+
+### 5.2a `testLinks` (M04b, TP-01)
+| Field | Type | Rules |
+|---|---|---|
+| assessmentId | Id | |
+| token | S | 24 random URL-safe characters (18 bytes); the link's only secret; unique |
+| label | S | ≤ 80, for the owner |
+| audience | S | `class` (LMS users who sign in) · `guests` (outside people who register; standalone tests only) |
+| accessCode | S? | 4–40; kept readable so the owner can pass it on; compared in constant time |
+| expiresAt | D? | |
+| maxUses | N? | ≥ 1; null = no limit |
+| uses | N | people let in through it; `$inc` only while under `maxUses`, in the grant's transaction |
+| allowedDomains | [S] | ≤ 10, lowercase (`cutm.ac.in`); empty = any email |
+| active | B | turned off and on by the owner |
+| createdBy | Id | |
+
+Indexes: `{ token: 1 }` unique · `{ assessmentId: 1, createdAt: -1 }`.
+Invariants: at most 20 per test (`TEST_LIMITS.linksPerTest`). A link is deleted only while nobody joined through it (`uses: 0`); otherwise it is turned off. A course's assessment has only `class` links, which let no one in that enrolment does not (they create no grant).
+
+### 5.2b `testGrants` (M04b)
+`assessmentId` Id · `userId` Id · `linkId` Id (the link they came through) · `grantedAt` D.
+Who may take a standalone test: one row per person, made by the first open of a usable link. It is their access from then on, whatever happens to the link (they come back for results through it or Tests).
+Indexes: `{ assessmentId: 1, userId: 1 }` unique · `{ userId: 1, grantedAt: -1 }` (My tests).
+
+### 5.2c `otps` (M04b, TP-03)
+`email` S (lowercase) · `linkId` Id · `codeHash` S (HMAC-SHA256 of email, link and code under `SESSION_PASSWORD`; the code itself is never stored) · `name` S (≤ 120, for the account made on confirmation) · `attempts` N (≤ 5) · `expiresAt` D (10 minutes).
+Indexes: `{ email: 1, linkId: 1 }` unique (a new request replaces the code) · `{ expiresAt: 1 }` TTL 0.
 
 ### 5.3 `internalMarks`
 `offeringId` Id · `studentId` Id · `components` `[{ key: S, pct: N?, marks: N, counted: N }]` (keyed by the evaluation policy's parts; how assessments feed them is Q-41) · `total` N · `complete` B (every component has ≥ the required assessments) · `trend` `rising|dropping|steady|insufficient` · `slope` N? · `points` [N] (max 6) · `computedAt` D.
@@ -349,6 +379,8 @@ Invariants: never updated or deleted by application code. `before`/`after` hold 
 | Users, academic structure, offerings, assessments, submissions, attendance, marks, grade sheets, attainment | Permanent (university record) | — |
 | Audit log | Permanent | — |
 | Engagement counters | 400 days | TTL index |
+| Guest (candidate) accounts, their grants and attempts | Permanent, like any submission (M04b open question "Guests") | — |
+| Email codes (`otps`) | 10 minutes | TTL index |
 | Notifications | 90 days | TTL index |
 | Proctoring webcam snapshots | 90 days after `resultsPublishedAt` (A-13; confirm Q-24) | Daily worker job deletes objects and `$unset`s keys |
 | Lesson videos/documents | Until the lesson is deleted | Deleted with the lesson |

@@ -1,6 +1,9 @@
 import Link from 'next/link';
-import { MODE_ICON } from './new-assessment-dialog';
+import { CheckSquareIcon, PaperPlaneTiltIcon, PencilSimpleIcon, TrashIcon } from '@phosphor-icons/react/ssr';
+import { deleteAssessment, publishResults } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import { MODE_ICON } from '@/components/new-assessment-dialog';
 import { DataTable } from '@/components/data-table';
+import { RowMenu, type RowMenuItem } from '@/components/row-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { AssessmentList, AssessmentSummary, DisplayState, MyAttempts } from '@/lib/data/assessments';
@@ -55,9 +58,9 @@ export function Due({ row, now }: { row: AssessmentSummary; now: Date }) {
   );
 }
 
-// T5, T7: a student's assessments (or records) with their own status, and marks once results are published.
+// T5, T7: a student's assessments (or records, or the standalone tests they may take) with their own status, and marks once results are published.
 export function StudentList({
-  offeringId,
+  base,
   rows,
   total,
   page,
@@ -65,7 +68,8 @@ export function StudentList({
   path,
   empty,
 }: {
-  offeringId: string;
+  // Where the rows link: a course's Assessments tab, or Tests (M04b).
+  base: string;
   rows: Row[];
   total: number;
   page: number;
@@ -82,7 +86,7 @@ export function StudentList({
           header: 'Assessment',
           cell: (row: Row) => (
             <span className="grid min-w-48 gap-1">
-              <Link href={`/courses/${offeringId}/assessments/${row.id}`} className="font-medium hover:underline">
+              <Link href={`${base}/${row.id}`} className="font-medium hover:underline">
                 {row.title}
               </Link>
               <span className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-xs">
@@ -119,7 +123,7 @@ export function StudentList({
           className: 'w-24',
           cell: (row: Row) => (
             <Button asChild variant="outline" size="sm">
-              <Link href={`/courses/${offeringId}/assessments/${row.id}`}>
+              <Link href={`${base}/${row.id}`}>
                 {row.mine.counted !== null ? 'See marks' : row.mine.status === 'in_progress' ? 'Continue' : 'Open'}
               </Link>
             </Button>
@@ -136,4 +140,55 @@ export function StudentList({
       empty={empty}
     />
   );
+}
+
+// A row's actions on the Assessments tab and the Tests page; `base` is the assessment's own path.
+export function AssessmentMenu({
+  row,
+  base,
+}: {
+  row: Pick<AssessmentSummary, 'id' | 'title' | 'state'>;
+  base: string;
+}) {
+  const fields = { assessmentId: row.id };
+  const items: RowMenuItem[] = [
+    { kind: 'link', label: 'Edit questions and settings', href: `${base}/edit`, icon: <PencilSimpleIcon /> },
+    ...(row.state === 'draft'
+      ? []
+      : [{ kind: 'link' as const, label: 'Grade hand-ins', href: `${base}/grade`, icon: <CheckSquareIcon /> }]),
+    ...(row.state === 'closed'
+      ? [
+          {
+            kind: 'action' as const,
+            label: 'Publish results',
+            icon: <PaperPlaneTiltIcon />,
+            action: publishResults,
+            fields,
+            confirm: {
+              title: `Publish the results of “${row.title}”?`,
+              message: 'Students who handed in see their marks and your comments, and are told.',
+              confirmLabel: 'Publish results',
+            },
+          },
+        ]
+      : []),
+    { kind: 'separator' },
+    row.state === 'draft'
+      ? {
+          kind: 'action',
+          label: 'Delete',
+          icon: <TrashIcon />,
+          destructive: true,
+          action: deleteAssessment,
+          fields,
+          confirm: {
+            title: `Delete “${row.title}”?`,
+            message: 'Its questions go with it. Nobody has seen it yet.',
+            confirmLabel: 'Delete',
+            destructive: true,
+          },
+        }
+      : { kind: 'disabled', label: 'Delete', icon: <TrashIcon />, reason: 'Only a draft can be deleted.' },
+  ];
+  return <RowMenu label={row.title} items={items} />;
 }

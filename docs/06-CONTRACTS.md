@@ -203,7 +203,7 @@ Uploads are authorized per purpose by `createUpload` (02 §4.3). The key prefix 
 | `lesson-thumb` | teach | offering | `image/jpeg`, `image/png`, `image/webp` (never SVG) | 2 MB | `lesson-thumb/<offeringId>/…` | same as the lesson (M03b); cropped and resized in the browser to 1280 × 720 JPEG |
 | `offering-cover` | teach | offering | `image/jpeg`, `image/png`, `image/webp` (never SVG) | 2 MB | `offering-cover/<offeringId>/…` | teach, oversee, learn (M03b); resized in the browser to 1600 × 640 JPEG |
 | `syllabus` | admin, or the course's coordinator (CRS-07, M01b) | course | `application/pdf` | 20 MB | `syllabus/<courseId>/…` | any staff member (admin, HoD, faculty — they all open the catalogue course), or a student with access to an offering of the course (Q-53) |
-| `submission` | learn (own attempt in progress) | assessment | `application/pdf`, `image/jpeg`, `image/png`, `image/heic` | 25 MB each, ≤ 10 per item | `submission/<assessmentId>/<userId>/<uuid>.<ext>` | the owner; teach, oversee |
+| `submission` | whoever takes it (own attempt in progress) | assessment | `application/pdf`, `image/jpeg`, `image/png`, `image/heic` | 25 MB each, ≤ 10 per item | `submission/<assessmentId>/<userId>/<uuid>.<ext>` | the owner; teach, oversee; for a standalone test (M04b) its owners and admins |
 | `proctor-snapshot` | learn (own proctored attempt) | submission | `image/jpeg` | 300 KB | `proctor/<submissionId>/<userId>/<uuid>.jpg` | teach, oversee |
 
 The file name stored for display is sanitized (strip path separators and control characters, ≤ 120 chars). The extension in the key comes from the content type, never from the user's file name.
@@ -214,7 +214,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 
 | Queue / name | Payload | Job id | Idempotency | Effect |
 |---|---|---|---|---|
-| `mail/send` | `MailSend { to, subject, text, html }` (M00) | `mail-<ref>`, `ref` chosen by the producer (e.g. `reset-<userId>-<minuteBucket>`) | id dedupes | one email |
+| `mail/send` | `MailSend { to, subject, text, html }` (M00) | `mail-<ref>`, `ref` chosen by the producer (e.g. `reset-<userId>-<minuteBucket>`; M04b: `otp-<otpId>-<ms>` for a guest's code, `test-invite-<linkId>-<base64url(email)>-<day>` for an invitation, so a day's repeat to one address is dropped) | id dedupes | one email. M04b: `guestCodeEmail` (the code leads the subject, so a phone's notification shows it) and `testInvitationEmail` (`lib/domain/email-templates.ts`) |
 | `mail/fanout` | `MailJob` union: `invitation{userIds[]}` (M01) · `coursePlanPublished{offeringId, version}` (M02). A single known recipient (password reset) skips the fanout and enqueues `mail/send` directly | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
 | `compute/internalMarks` | `{ offeringId }` | `ce-<offeringId>-<minuteBucket>` | full recompute, upsert | 07 §2 |
 | `compute/attainment` | `{ offeringId }` or `{ programId, batchId, termIds }` | `att-<id>-<minuteBucket>` | full recompute, upsert latest | 07 §4–5 |
@@ -222,7 +222,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `compute/finalizeLiveSession` | `FinalizeLiveJob { sessionId }` (M03) | `live-final-<sessionId>` | one transaction: the claim on `finalizedAt` and every write commit together, so a crash is retried from the start and a second run finds nothing to claim; manual marks untouched | 07 §10 |
 | `compute/liveSweep` | `LiveSweepJob {}` (M03) | scheduler `liveSweep` | ends a session only while it is `live`; re-adding a finalize job is deduped by its id, and a failed one is retried instead | ends classes still live 30 min after `scheduledEnd` (at `scheduledEnd`, closing their rooms) and finalizes ended sessions left unfinalized for 10 min (02 §8) |
 | `compute/liveControl` | `LiveControlJob { op: 'rights', sessionId } \| { op: 'muteAll', sessionId, byId, byName }` (M03c) | none: each control is its own job | reads the class as it is when it runs, so a repeat applies the same state; nothing once the class is not live | `rights`: `setRights` with the class's `studentsMay` for every student in the room. `muteAll`: `muteMicrophone` for everyone but `byId`, then `tell` them "<byName> muted everyone" |
-| `compute/assessmentSweep` | `AssessmentSweepJob {}` (M04) | scheduler `assessmentSweep` | a reminder is claimed by setting `dueNotifiedAt` only where it is null; an attempt is handed in only while `in_progress`, so its counters go up once | 24 h reminders (COM-03) to enrolled students without a submission + hand in attempts whose `deadlineAt` is more than 5 min past, in batches (M04) |
+| `compute/assessmentSweep` | `AssessmentSweepJob {}` (M04) | scheduler `assessmentSweep` | a reminder is claimed by setting `dueNotifiedAt` only where it is null; an attempt is handed in only while `in_progress`, so its counters go up once | 24 h reminders (COM-03) to enrolled students without a submission — for a standalone test, to those its links let in (`testGrants`, M04b), linking to `/tests/<id>` — + hand in attempts whose `deadlineAt` is more than 5 min past, in batches (M04) |
 | `compute/gradeCode` | `{ submissionId }` | `code-<submissionId>` | overwrites the same results | M05 |
 | `compute/engagementSnapshot` | `{ offeringId }` | `eng-<offeringId>-<day>` | overwrites `enrollments.engagement` | M10 |
 | `compute/proctorRetention` | `{}` | scheduler | deletes keys then `$unset` | 05 §8 |
@@ -232,6 +232,19 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `sync/examPull`, `sync/examPush` | `{ offeringId, syncRunId }` | `exam-<pull\|push>-<syncRunId>` | **blocked on Q-04** | M08 |
 
 `<minuteBucket>` = `Math.floor(now / 60000)`: repeated triggers inside one minute collapse into one job.
+
+### 6.1 Test links and guests (M04b, `lib/schemas/tests.ts`)
+
+Not jobs, but the contract other phases build on. Actions: `createTest`, `createLink`, `setLinkActive`, `deleteLink`, `inviteToTest` (`app/(app)/tests/actions.ts`, faculty and admin, `requireManage`); `openLink`, `signInToTest`, `registerGuest`, `returnAsGuest`, `verifyGuestCode`, `leaveLink` (`app/(auth)/t/[token]/actions.ts`, before or after sign-in). Every M04 assessment action takes `assessmentId` (or `submissionId`) alone; access comes from the assessment (`assessmentAccess` in `lib/auth/access.ts`: `manage` · `oversee` · `take`).
+
+| Rule | Where |
+|---|---|
+| A link lets someone **new** in while the test is published and not closed, and the link is on, in date and under `maxUses` (`linkState`, `lib/domain/test-links.ts`); the access code and email domains are checked where they are typed | `usableLink`, `requireCode`, `requireDomain` |
+| Someone a link already let in goes straight to the test whatever the link's state, and is never counted twice | `alreadyIn` (a `testGrants` row) |
+| Letting in = one transaction: `uses` `$inc` only while `uses < maxUses`, then the grant; a course's assessment gets no grant (enrolment decides) | `enter` |
+| A guest's code: 6 digits, 10 minutes, 5 tries counted before the check, kept as an HMAC; a new request replaces it | `lib/auth/otp.ts`, `otps` (05 §5.2c) |
+| An email that belongs to a non-candidate account never signs in by code; it signs in with its password on the same page | `registerGuest` (CONFLICT), `verifyGuestCode` (FORBIDDEN) |
+| Rate limits: guests 20 per address and 5 per email per 15 min; code checks 30 per address per 15 min; invitations 20 sends (≤ 500 each) per owner per day; link-page sign-in uses the login limits | `limit()` |
 
 ## 7. Settings registry — `lib/schemas/settings.ts`
 

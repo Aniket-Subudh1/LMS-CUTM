@@ -60,6 +60,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `livekit-client` | 2.22.4 | M03 | Browser SDK (peer of components) | `components/live-room.tsx` | — |
 | `@livekit/components-react` | 2.9.24 | M03 | `LiveKitRoom`, `VideoConference` | `components/live-room.tsx` | — |
 | `@livekit/components-styles` | 1.2.0 | M03 | Styles for the above | `components/live-room.tsx` | — |
+| `qrcode` | 1.5.4 | M04b | The QR code of a test's share link (TP-01), drawn as an SVG string on the server. Writing a QR encoder (Reed–Solomon, masking) is not "reasonable code" | `components/assessment-builder.tsx` | `import QRCode from 'qrcode'`; `await QRCode.toString(text, { type: 'svg', margin: 1 })`. Server only: the browser bundle never loads it. Its `yargs` dependency is for the CLI and is never imported |
 | `@uiw/react-codemirror` | 4.25.12 | M05 | Code editor | `components/code-editor.tsx` | — |
 | `@codemirror/lang-cpp` | 6.0.3 | M05 | C/C++ highlighting | `components/code-editor.tsx` | — |
 | `@codemirror/lang-java` | 6.0.2 | M05 | Java highlighting | `components/code-editor.tsx` | — |
@@ -79,6 +80,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `prettier-plugin-tailwindcss` | 0.8.1 | M00 | Class ordering |
 | `@types/nodemailer` | 8.0.2 | M00 | Types |
 | `@types/papaparse` | 5.5.2 | M01 | Types |
+| `@types/qrcode` | 1.5.6 | M04b | Types |
 
 ## 4. `next.config.ts` additions
 

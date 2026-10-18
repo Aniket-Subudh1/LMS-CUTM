@@ -47,7 +47,8 @@ const scoreSchema = new Schema(
 const submissionSchema = new Schema(
   {
     assessmentId: { type: Schema.Types.ObjectId, required: true },
-    offeringId: { type: Schema.Types.ObjectId, required: true },
+    // Null for an attempt at a standalone test (M04b).
+    offeringId: { type: Schema.Types.ObjectId, default: null },
     studentId: { type: Schema.Types.ObjectId, required: true },
     attemptNo: { type: Number, required: true, min: 1, max: 10 },
     status: { type: String, enum: SUBMISSION_STATUSES, required: true, default: 'in_progress' },

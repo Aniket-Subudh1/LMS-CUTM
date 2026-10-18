@@ -8,7 +8,8 @@ import {
   PlusIcon,
 } from '@phosphor-icons/react/ssr';
 import type { Icon } from '@phosphor-icons/react';
-import { createAssessment } from './actions';
+import { createAssessment } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import { createTest } from '@/app/(app)/tests/actions';
 import { Field, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { Input } from '@/components/ui/input';
@@ -36,8 +37,8 @@ const MODE_HINT: Record<AssessmentMode, string> = {
 export const istLocal = (date: Date) => `${istDayKey(date)}T${istTimeOfDay(date)}`;
 
 // M04 decision 2 (A-M04-6): the type, a title and the window; the builder changes the rest. Opened from the URL
-// (`?new=<mode>`) on the Assessments and Records tabs, with that type chosen.
-export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string; mode: AssessmentMode }) {
+// (`?new=<mode>`) on the Assessments and Records tabs, with that type chosen; without a course, on Tests (M04b, TP-02).
+export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string | null; mode: AssessmentMode }) {
   // The next whole hour, and an hour later for a timed one or a week later for work done at home.
   const opens = new Date(Math.ceil(new Date().getTime() / 3_600_000) * 3_600_000);
   const closes = new Date(opens.getTime() + (mode === 'quiz' || mode === 'written_test' ? 3_600_000 : 7 * 86_400_000));
@@ -46,13 +47,13 @@ export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string; 
       openParam={mode}
       size="wide"
       icon={<PlusIcon weight="duotone" />}
-      title="New assessment"
+      title={offeringId ? 'New assessment' : 'New test'}
       description="Pick the kind of work. You add the questions in the next step."
-      action={createAssessment}
+      action={offeringId ? createAssessment : createTest}
       submitLabel="Create and add questions"
       successMessage="Created. Opening the builder…"
     >
-      <input type="hidden" name="offeringId" value={offeringId} />
+      {offeringId && <input type="hidden" name="offeringId" value={offeringId} />}
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-sm font-medium">Type</legend>
         <div className="grid gap-2 sm:grid-cols-2">

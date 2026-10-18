@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import {
   ArrowRightIcon,
   ArrowUpRightIcon,
@@ -61,6 +62,8 @@ export default function HomePage() {
 
 async function Home() {
   const viewer = await requireViewer();
+  // M04b (TP-03): a candidate has only their tests.
+  if (viewer.roles.every((role) => role === 'candidate')) redirect('/tests');
   const [summary, offerings, continueLearning, planRequests, unread, today, dueSoon, toGrade] = await Promise.all([
     getHomeSummary(),
     viewer.roles.some((r) => OFFERING_ROLES.includes(r)) ? listMyOfferings(1, {}) : null,

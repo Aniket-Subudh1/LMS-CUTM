@@ -63,41 +63,50 @@ async function Profile() {
           description="Keep your account yours. Both actions are recorded in the audit log."
         >
           <ul className="grid gap-4 md:grid-cols-2">
-            <li className="surface flex flex-col gap-4 p-5">
-              <div className="flex items-start gap-3">
-                <span className="icon-chip size-10 [&_svg]:size-5">
-                  <PageIcon name="key" className="size-8" />
-                </span>
-                <div>
-                  <h3 className="font-medium">Password</h3>
-                  <p className="text-muted-foreground text-sm">Changing it signs you out on every other device.</p>
+            {/* A candidate signs in with an email code and has no password (M04b, TP-03). */}
+            {viewer.roles.some((role) => role !== 'candidate') && (
+              <li className="surface flex flex-col gap-4 p-5">
+                <div className="flex items-start gap-3">
+                  <span className="icon-chip size-10 [&_svg]:size-5">
+                    <PageIcon name="key" className="size-8" />
+                  </span>
+                  <div>
+                    <h3 className="font-medium">Password</h3>
+                    <p className="text-muted-foreground text-sm">Changing it signs you out on every other device.</p>
+                  </div>
                 </div>
-              </div>
-              <FormDialog
-                trigger={
-                  <Button variant="outline" size="sm" className="mt-auto self-start">
-                    <LockKeyIcon weight="duotone" /> Change password
-                  </Button>
-                }
-                icon={<PageIcon name="key" className="size-8" />}
-                title="Change password"
-                description="You stay signed in on this browser."
-                openParam="password"
-                action={changePassword}
-                submitLabel="Change password"
-                successMessage="Your password has been changed."
-              >
-                <Field name="current" label="Current password">
-                  <PasswordInput name="current" autoComplete="current-password" required />
-                </Field>
-                <Field name="password" label="New password" hint="10 to 128 characters. Not your email address.">
-                  <PasswordInput name="password" autoComplete="new-password" required minLength={10} maxLength={128} />
-                </Field>
-                <Field name="confirm" label="Repeat the new password">
-                  <PasswordInput name="confirm" autoComplete="new-password" required />
-                </Field>
-              </FormDialog>
-            </li>
+                <FormDialog
+                  trigger={
+                    <Button variant="outline" size="sm" className="mt-auto self-start">
+                      <LockKeyIcon weight="duotone" /> Change password
+                    </Button>
+                  }
+                  icon={<PageIcon name="key" className="size-8" />}
+                  title="Change password"
+                  description="You stay signed in on this browser."
+                  openParam="password"
+                  action={changePassword}
+                  submitLabel="Change password"
+                  successMessage="Your password has been changed."
+                >
+                  <Field name="current" label="Current password">
+                    <PasswordInput name="current" autoComplete="current-password" required />
+                  </Field>
+                  <Field name="password" label="New password" hint="10 to 128 characters. Not your email address.">
+                    <PasswordInput
+                      name="password"
+                      autoComplete="new-password"
+                      required
+                      minLength={10}
+                      maxLength={128}
+                    />
+                  </Field>
+                  <Field name="confirm" label="Repeat the new password">
+                    <PasswordInput name="confirm" autoComplete="new-password" required />
+                  </Field>
+                </FormDialog>
+              </li>
+            )}
             <li className="surface flex flex-col gap-4 p-5">
               <div className="flex items-start gap-3">
                 <span className="icon-chip size-10 [&_svg]:size-5">

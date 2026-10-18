@@ -5,6 +5,7 @@ import { handInAttempts } from '@/lib/data/attempts';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
 import { deriveAttendance } from '@/lib/domain/attendance';
+import { assessmentPath } from '@/lib/domain/test-links';
 import { closeRoom, muteMicrophone, roomPeople, setRights, tell } from '@/lib/integrations/live';
 import { formatDateTime } from '@/lib/format';
 import { log } from '@/lib/log';
@@ -15,6 +16,7 @@ import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
+import { TestGrant } from '@/lib/models/test-grant';
 import { queueLiveFinalize } from '@/lib/queue';
 import { AssessmentSweepJob, FinalizeLiveJob, LiveControlJob, LiveSweepJob } from '@/lib/schemas/jobs';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
@@ -136,7 +138,7 @@ async function liveControl(job: LiveControlJob): Promise<void> {
 }
 
 // The hourly scheduler `assessmentSweep` (02 §8, M04 T8): the 24-hour reminder (COM-03) to students who have not
-// handed in, claimed once per assessment by `dueNotifiedAt`; then every attempt whose deadline passed more than five
+// handed in (for a standalone test, those its links let in, M04b), claimed once per assessment by `dueNotifiedAt`; then every attempt whose deadline passed more than five
 // minutes ago (a closed tab) is handed in, in batches, through the same path as the student's Submit.
 async function assessmentSweep(now: Date): Promise<void> {
   const due = await Assessment.find(
@@ -156,19 +158,22 @@ async function assessmentSweep(now: Date): Promise<void> {
       { $set: { dueNotifiedAt: now } },
     );
     if (claimed.modifiedCount === 0) continue;
-    const [students, handedIn, offering] = await Promise.all([
-      Enrollment.distinct('studentId', { offeringId: assessment.offeringId, status: 'active' }),
+    const offeringId = assessment.offeringId ? String(assessment.offeringId) : null;
+    const [takers, handedIn, offering] = await Promise.all([
+      offeringId
+        ? Enrollment.distinct('studentId', { offeringId, status: 'active' })
+        : TestGrant.distinct('userId', { assessmentId: assessment._id }),
       Submission.distinct('studentId', { assessmentId: assessment._id, status: { $in: ['submitted', 'graded'] } }),
-      Offering.findById(assessment.offeringId, { title: 1 }).lean(),
+      offeringId ? Offering.findById(offeringId, { title: 1 }).lean() : null,
     ]);
     const done = new Set(handedIn.map(String));
-    const title = `Due ${formatDateTime(assessment.closesAt)}: ${assessment.title} (${offering?.title ?? ''})`;
+    const title = `Due ${formatDateTime(assessment.closesAt)}: ${assessment.title}${offering ? ` (${offering.title})` : ''}`;
     await notify(
-      students.map(String).filter((id) => !done.has(id)),
+      takers.map(String).filter((id) => !done.has(id)),
       {
         kind: 'assessment.dueSoon',
         title: title.length > 160 ? `${title.slice(0, 159)}…` : title,
-        href: `/courses/${assessment.offeringId}/assessments/${assessment._id}`,
+        href: assessmentPath(offeringId, String(assessment._id)),
       },
     );
     reminded++;

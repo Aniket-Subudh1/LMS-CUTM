@@ -93,6 +93,9 @@ test('a teacher builds and publishes a quiz; a student takes it; the teacher gra
   // T5: the student starts; autosave survives a reload; the attempt is handed in.
   const student = await signedIn(browser, 'student01@seed.cutm.test');
   await student.getByRole('link', { name: QUIZ }).click();
+  // M04b "Lobby B": the device check, then the rules to accept before Start.
+  await expect(student.getByRole('heading', { name: 'Device check' })).toBeVisible();
+  await student.getByRole('checkbox', { name: /I have read the rules/ }).check();
   await student.getByRole('button', { name: 'Start quiz' }).click();
   await expect(student).toHaveURL(/\/attempt$/);
   await student.getByRole('radio', { name: '_total' }).check();

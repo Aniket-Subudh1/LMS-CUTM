@@ -1,14 +1,6 @@
 'use client';
 
-import {
-  startTransition,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from 'react';
+import { startTransition, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -23,6 +15,7 @@ import {
 import { saveAnswer, submitAttempt } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
 import { FileUpload } from '@/components/file-upload';
 import { RichTextEditor } from '@/components/rich-text-editor';
+import { clock, useServerSeconds } from '@/components/test-lobby';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,11 +40,6 @@ const SAVE_AFTER_MS = 2_000;
 const RETRY_MS = 5_000;
 const WARN_MS = 5 * 60_000;
 
-const tick = (notify: () => void) => {
-  const timer = window.setInterval(notify, 1000);
-  return () => window.clearInterval(timer);
-};
-
 // What the student has saved, as the runner sends it back (a written answer is the editor's JSON string).
 function payloadOf(saved: AnswerValue): Payload {
   return saved.type === 'text' ? { type: 'text', text: saved.text ? JSON.stringify(saved.text) : '' } : saved;
@@ -68,14 +56,6 @@ const answered = (p: Payload) =>
           ? (p.text ?? '') !== ''
           : p.files.length > 0;
 
-const clock = (ms: number) => {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
-};
-
 // T5 ("Runner B", M04 decision 4): the attempt on a page of its own. Each answer saves 2 s after its last change and
 // retries until it is saved; the countdown runs on the server's clock (`serverNow` corrects this device's), and at
 // 0:00 the attempt is handed in. The server keeps the real deadline (AC-M04-03): a closed tab is handed in by the
@@ -90,7 +70,7 @@ export function AssessmentRunner({
   serverNow: number;
 }) {
   const router = useRouter();
-  const summary = `/courses/${attempt.offeringId}/assessments/${attempt.assessmentId}`;
+  const summary = attempt.path;
   const [answers, setAnswers] = useState<Record<string, Payload>>(() =>
     Object.fromEntries(attempt.items.map((item) => [item.id, payloadOf(item.saved)])),
   );
@@ -101,16 +81,7 @@ export function AssessmentRunner({
   const timers = useRef(new Map<string, number>());
   const latest = useRef(new Map<string, Payload>());
 
-  // This device's clock, moved onto the server's: the offset is fixed at the first snapshot after the page arrived.
-  const offset = useRef<number | null>(null);
-  const now = useSyncExternalStore(
-    tick,
-    () => {
-      offset.current ??= serverNow - Date.now();
-      return Math.floor((Date.now() + offset.current) / 1000);
-    },
-    () => 0,
-  );
+  const now = useServerSeconds(serverNow);
   const remaining = now === 0 ? null : new Date(attempt.deadlineAt).getTime() - now * 1000;
 
   async function save(itemId: string) {
@@ -119,7 +90,6 @@ export function AssessmentRunner({
     latest.current.delete(itemId);
     setSaving((s) => ({ ...s, [itemId]: 'saving' }));
     const result = await saveAnswer({
-      offeringId: attempt.offeringId,
       submissionId: attempt.submissionId,
       itemId,
       answer: payload,
@@ -174,7 +144,7 @@ export function AssessmentRunner({
     await flush();
     setHandingIn(true);
     startTransition(async () => {
-      await submitAttempt({ offeringId: attempt.offeringId, submissionId: attempt.submissionId });
+      await submitAttempt({ submissionId: attempt.submissionId });
     });
   }
 
@@ -273,7 +243,7 @@ export function AssessmentRunner({
         </Button>
         <div className="grid min-w-0 flex-1 leading-tight">
           <b className="truncate text-[0.875rem] font-semibold">{attempt.title}</b>
-          <span className="text-muted-foreground truncate text-xs">{attempt.offeringTitle}</span>
+          <span className="text-muted-foreground truncate text-xs">{attempt.offeringTitle ?? 'Test'}</span>
         </div>
         <span className="hidden sm:inline-flex">{saveStatus}</span>
         {attempt.timed && timer}

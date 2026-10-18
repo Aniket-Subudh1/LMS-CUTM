@@ -83,5 +83,7 @@ export const marks = z.coerce
   .min(0, 'Marks cannot be negative.')
   .max(1000, 'Use at most 1000 marks.');
 
-export const ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
+// The roles an administrator gives. `candidate` (M04b, TP-03) is given only by registering through a test link.
+export const ASSIGNABLE_ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
+export const ROLES = [...ASSIGNABLE_ROLES, 'candidate'] as const;
 export type Role = (typeof ROLES)[number];

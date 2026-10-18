@@ -1,17 +1,19 @@
 import 'server-only';
 import { notFound } from 'next/navigation';
 import { Types, type QueryFilter } from 'mongoose';
-import { offeringAccess } from '@/lib/auth/access';
+import { assessmentAccess, offeringAccess, type AssessmentAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { SAVE_GRACE_MS } from '@/lib/data/attempts';
 import { escapeRegex } from '@/lib/data/courses';
 import { db } from '@/lib/db';
 import { canStart, countedScore, windowState, type StartCheck, type WindowState } from '@/lib/domain/attempts';
+import { assessmentPath } from '@/lib/domain/test-links';
 import { Assessment, type AssessmentDoc } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { Submission, type SubmissionDoc } from '@/lib/models/submission';
+import { TestGrant } from '@/lib/models/test-grant';
 import { User } from '@/lib/models/user';
 import {
   ASSESSMENT_LIMITS,
@@ -32,6 +34,14 @@ const docOf = (value: unknown): RichTextDoc | null => {
   const parsed = RichTextDoc.safeParse(value);
   return parsed.success ? parsed.data : null;
 };
+
+async function testAccess(
+  assessmentId: string,
+): Promise<{ viewerId: string; access: AssessmentAccess; offeringId: string | null }> {
+  const viewer = await requireViewer();
+  const found = await assessmentAccess(viewer, assessmentId);
+  return { viewerId: viewer.id, ...found };
+}
 
 async function viewerAccess(offeringId: string) {
   const viewer = await requireViewer();
@@ -125,11 +135,13 @@ export type MyAttempts = {
   counted: number | null;
 };
 
+type HandInCounts = { handedIn: number; toGrade: number };
+
 export type AssessmentList =
   | {
       view: 'teacher';
       canTeach: boolean;
-      rows: (AssessmentSummary & { handedIn: number; toGrade: number })[];
+      rows: (AssessmentSummary & HandInCounts)[];
       total: number;
       enrolled: number;
     }
@@ -168,66 +180,138 @@ export async function listOfferingAssessments(
     ]),
     Assessment.countDocuments(query),
   ]);
-  const assessmentIds = docs.map((d) => d._id);
-  if (learn) {
-    const mine = await Submission.find(
-      { assessmentId: { $in: assessmentIds }, studentId: viewer.id },
-      { assessmentId: 1, attemptNo: 1, status: 1, total: 1 },
-    ).lean();
-    return {
-      view: 'student',
-      total,
-      rows: docs.map((doc) => {
-        const attempts = mine.filter((s) => s.assessmentId.equals(doc._id));
-        const published = doc.status === 'results_published';
-        const handedIn = attempts.filter((s) => s.status !== 'in_progress');
-        const status = attempts.some((s) => s.status === 'in_progress')
-          ? 'in_progress'
-          : handedIn.length === 0
-            ? 'not_started'
-            : published && handedIn.some((s) => s.status === 'graded')
-              ? 'graded'
-              : 'submitted';
-        return {
-          ...summaryOf(doc, now),
-          mine: {
-            status,
-            attemptsUsed: attempts.length,
-            counted: published && handedIn.length > 0 ? countedScore(attempts, doc.attemptPolicy) : null,
-          },
-        };
-      }),
-    };
-  }
-  const [counts, enrolled] = await Promise.all([
-    Submission.aggregate<{ _id: Types.ObjectId; students: Types.ObjectId[]; toGrade: number }>([
-      { $match: { assessmentId: { $in: assessmentIds }, status: { $in: ['submitted', 'graded'] } } },
-      {
-        $group: {
-          _id: '$assessmentId',
-          students: { $addToSet: '$studentId' },
-          toGrade: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
-        },
-      },
-    ]),
+  if (learn) return { view: 'student', total, rows: await withMyAttempts(docs, viewer.id, now) };
+  const [rows, enrolled] = await Promise.all([
+    withHandIns(docs, now),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
   ]);
-  const countOf = new Map(counts.map((c) => [String(c._id), c]));
-  return {
-    view: 'teacher',
-    canTeach,
-    total,
-    enrolled,
-    rows: docs.map((doc) => {
-      const count = countOf.get(String(doc._id));
-      return { ...summaryOf(doc, now), handedIn: count?.students.length ?? 0, toGrade: count?.toGrade ?? 0 };
-    }),
-  };
+  return { view: 'teacher', canTeach, total, enrolled, rows };
 }
 
-async function readAssessment(offeringId: string, assessmentId: string) {
+// A page of assessments with the viewer's own attempts: their status, and the counted marks once published.
+async function withMyAttempts(
+  docs: SummaryRow[],
+  viewerId: string,
+  now: Date,
+): Promise<(AssessmentSummary & { mine: MyAttempts })[]> {
+  const mine = await Submission.find(
+    { assessmentId: { $in: docs.map((d) => d._id) }, studentId: viewerId },
+    { assessmentId: 1, attemptNo: 1, status: 1, total: 1 },
+  ).lean();
+  return docs.map((doc) => {
+    const attempts = mine.filter((s) => s.assessmentId.equals(doc._id));
+    const published = doc.status === 'results_published';
+    const handedIn = attempts.filter((s) => s.status !== 'in_progress');
+    const status = attempts.some((s) => s.status === 'in_progress')
+      ? 'in_progress'
+      : handedIn.length === 0
+        ? 'not_started'
+        : published && handedIn.some((s) => s.status === 'graded')
+          ? 'graded'
+          : 'submitted';
+    return {
+      ...summaryOf(doc, now),
+      mine: {
+        status,
+        attemptsUsed: attempts.length,
+        counted: published && handedIn.length > 0 ? countedScore(attempts, doc.attemptPolicy) : null,
+      },
+    };
+  });
+}
+
+// A page of assessments with how many people handed in and how many hand-ins wait for marks (one $group).
+async function withHandIns(docs: SummaryRow[], now: Date): Promise<(AssessmentSummary & HandInCounts)[]> {
+  const counts = await Submission.aggregate<{ _id: Types.ObjectId; students: Types.ObjectId[]; toGrade: number }>([
+    { $match: { assessmentId: { $in: docs.map((d) => d._id) }, status: { $in: ['submitted', 'graded'] } } },
+    {
+      $group: {
+        _id: '$assessmentId',
+        students: { $addToSet: '$studentId' },
+        toGrade: { $sum: { $cond: [{ $eq: ['$status', 'submitted'] }, 1, 0] } },
+      },
+    },
+  ]);
+  const countOf = new Map(counts.map((c) => [String(c._id), c]));
+  return docs.map((doc) => {
+    const count = countOf.get(String(doc._id));
+    return { ...summaryOf(doc, now), handedIn: count?.students.length ?? 0, toGrade: count?.toGrade ?? 0 };
+  });
+}
+
+export type TestListView = 'own' | 'take';
+
+export type TestList =
+  | {
+      view: 'own';
+      canCreate: true;
+      rows: (AssessmentSummary & HandInCounts & { joined: number })[];
+      total: number;
+    }
+  | { view: 'take'; canCreate: boolean; rows: (AssessmentSummary & { mine: MyAttempts })[]; total: number };
+
+// TP-02: the Tests page. Faculty and admins see the standalone tests they own (an admin sees every one) with who
+// joined and handed in; everyone sees the tests a share link let them into, newest first.
+export async function listTests(view: TestListView, filter: AssessmentListFilter, page: number): Promise<TestList> {
+  const viewer = await requireViewer();
+  const canCreate = viewer.roles.some((r) => r === 'faculty' || r === 'admin');
+  await db();
+  const now = new Date();
+  if (view === 'own' && canCreate) {
+    const q = filter.q?.trim();
+    const query: QueryFilter<AssessmentDoc> = {
+      offeringId: null,
+      ...(viewer.roles.includes('admin') ? {} : { ownerIds: new Types.ObjectId(viewer.id) }),
+      ...(filter.mode ? { mode: filter.mode } : {}),
+      ...(q ? { title: { $regex: escapeRegex(q), $options: 'i' } } : {}),
+      ...stateFilter(filter.state, now),
+    };
+    const [docs, total] = await Promise.all([
+      Assessment.aggregate<SummaryRow>([
+        { $match: query },
+        { $sort: { closesAt: -1, _id: -1 } },
+        { $skip: (page - 1) * pageSize },
+        { $limit: pageSize },
+        { $project: SUMMARY },
+      ]),
+      Assessment.countDocuments(query),
+    ]);
+    const [rows, joined] = await Promise.all([
+      withHandIns(docs, now),
+      TestGrant.aggregate<{ _id: Types.ObjectId; n: number }>([
+        { $match: { assessmentId: { $in: docs.map((d) => d._id) } } },
+        { $group: { _id: '$assessmentId', n: { $sum: 1 } } },
+      ]),
+    ]);
+    const joinedOf = new Map(joined.map((j) => [String(j._id), j.n]));
+    return {
+      view: 'own',
+      canCreate,
+      total,
+      rows: rows.map((row) => ({ ...row, joined: joinedOf.get(row.id) ?? 0 })),
+    };
+  }
+  const [grants, total] = await Promise.all([
+    TestGrant.find({ userId: viewer.id }, { assessmentId: 1 })
+      .sort({ grantedAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+    TestGrant.countDocuments({ userId: viewer.id }),
+  ]);
+  const ids = grants.map((g) => g.assessmentId);
+  const docs = await Assessment.aggregate<SummaryRow>([
+    { $match: { _id: { $in: ids }, status: { $ne: 'draft' } } },
+    { $project: SUMMARY },
+  ]);
+  const order = new Map(ids.map((id, i) => [String(id), i]));
+  docs.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0));
+  return { view: 'take', canCreate, total, rows: await withMyAttempts(docs, viewer.id, now) };
+}
+
+async function readAssessment(assessmentId: string) {
   if (!Types.ObjectId.isValid(assessmentId)) notFound();
-  const doc = await Assessment.findOne({ _id: assessmentId, offeringId }).lean();
+  const doc = await Assessment.findById(assessmentId).lean();
   if (!doc) notFound();
   return doc;
 }
@@ -290,11 +374,14 @@ export type TeacherItem = StudentItem & {
 };
 
 export type Builder = {
+  // M04b: null for a standalone test; `path` is where the test lives (its course's tab, or /tests).
+  offeringId: string | null;
+  path: string;
   canEdit: boolean;
   // Students have started, so the questions are fixed (05 §5.1).
   locked: boolean;
   credit: boolean;
-  offeringTitle: string;
+  offeringTitle: string | null;
   cos: { id: string; code: string; statement: string }[];
   assessment: AssessmentSummary & {
     status: AssessmentDoc['status'];
@@ -333,30 +420,31 @@ function teacherItems(doc: AssessmentRead): TeacherItem[] {
 }
 
 // T4: the builder for whoever teaches the class; a head of department reads it with no controls.
-export async function getBuilder(offeringId: string, assessmentId: string): Promise<Builder> {
-  const { access, canTeach } = await viewerAccess(offeringId);
-  if (access === 'learn') notFound();
+export async function getBuilder(assessmentId: string): Promise<Builder> {
+  const { access, offeringId } = await testAccess(assessmentId);
+  if (access === 'take') notFound();
   await db();
   const [doc, offering] = await Promise.all([
-    readAssessment(offeringId, assessmentId),
-    Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean(),
+    readAssessment(assessmentId),
+    offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean() : null,
   ]);
-  if (!offering) notFound();
   const [course, statuses] = await Promise.all([
-    Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean(),
+    offering ? Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean() : null,
     Submission.aggregate<{ _id: string; n: number }>([
       { $match: { assessmentId: doc._id } },
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]),
   ]);
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
-  const credit = offering.category === 'ugc';
+  const credit = offering?.category === 'ugc';
   const items = teacherItems(doc);
   return {
-    canEdit: canTeach,
+    offeringId,
+    path: assessmentPath(offeringId, assessmentId),
+    canEdit: access === 'manage',
     locked: statuses.length > 0,
     credit,
-    offeringTitle: offering.title,
+    offeringTitle: offering?.title ?? null,
     cos: (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })),
     assessment: {
       ...summaryOf({ ...doc, questions: doc.items.length }, new Date()),
@@ -409,9 +497,10 @@ export type MyResult = {
 };
 
 export type AssessmentPage =
-  | { view: 'staff'; canTeach: boolean }
+  | { view: 'staff'; canTeach: boolean; path: string }
   | {
       view: 'student';
+      path: string;
       assessment: StudentAssessment;
       state: DisplayState;
       check: StartCheck;
@@ -427,14 +516,15 @@ export type AssessmentPage =
     };
 
 // T5: a student's page of one assessment. Teachers are sent to the builder by the page; a head of department reads it.
-export async function getAssessmentPage(offeringId: string, assessmentId: string): Promise<AssessmentPage> {
-  const { viewer, access, canTeach } = await viewerAccess(offeringId);
-  if (access !== 'learn') return { view: 'staff', canTeach };
+export async function getAssessmentPage(assessmentId: string): Promise<AssessmentPage> {
+  const { viewerId, access, offeringId } = await testAccess(assessmentId);
+  const path = assessmentPath(offeringId, assessmentId);
+  if (access !== 'take') return { view: 'staff', canTeach: access === 'manage', path };
   await db();
-  const doc = await readAssessment(offeringId, assessmentId);
+  const doc = await readAssessment(assessmentId);
   if (doc.status === 'draft') notFound();
   const mine = await Submission.find(
-    { assessmentId: doc._id, studentId: viewer.id },
+    { assessmentId: doc._id, studentId: viewerId },
     { attemptNo: 1, status: 1, total: 1, submittedAt: 1, late: 1, autoSubmitted: 1, deadlineAt: 1, scores: 1 },
   )
     .sort({ attemptNo: 1 })
@@ -481,6 +571,7 @@ export async function getAssessmentPage(offeringId: string, assessmentId: string
   }
   return {
     view: 'student',
+    path,
     assessment,
     state: stateOf(doc, now),
     check,
@@ -497,10 +588,12 @@ export async function getAssessmentPage(offeringId: string, assessmentId: string
 
 export type AttemptDTO = {
   submissionId: string;
-  offeringId: string;
   assessmentId: string;
+  // Where the test lives: the runner goes back there (its course's tab, or /tests, M04b).
+  path: string;
   title: string;
-  offeringTitle: string;
+  // The course's title, or null for a standalone test.
+  offeringTitle: string | null;
   timed: boolean;
   deadlineAt: Date;
   // `saved` is what the student has saved so far, never a key.
@@ -509,16 +602,16 @@ export type AttemptDTO = {
 
 // T5: the runner's attempt, owner only: questions and options in the order this attempt was given (seededShuffle),
 // with the answers saved so far. Null when the student has no attempt running.
-export async function getAttemptForStudent(offeringId: string, assessmentId: string): Promise<AttemptDTO | null> {
-  const { viewer, access } = await viewerAccess(offeringId);
-  if (access !== 'learn') notFound();
+export async function getAttemptForStudent(assessmentId: string): Promise<AttemptDTO | null> {
+  const { viewerId, access, offeringId } = await testAccess(assessmentId);
+  if (access !== 'take') notFound();
   await db();
-  const doc = await readAssessment(offeringId, assessmentId);
+  const doc = await readAssessment(assessmentId);
   const [attempt, offering] = await Promise.all([
-    readSubmission({ assessmentId: doc._id, studentId: viewer.id, status: 'in_progress' }),
-    Offering.findById(offeringId, { title: 1 }).lean(),
+    readSubmission({ assessmentId: doc._id, studentId: viewerId, status: 'in_progress' }),
+    offeringId ? Offering.findById(offeringId, { title: 1 }).lean() : null,
   ]);
-  if (!attempt || !offering) return null;
+  if (!attempt) return null;
   const assessment = toStudentAssessment(doc);
   const itemOf = new Map(assessment.items.map((item) => [item.id, item]));
   const items = attempt.order.flatMap(({ itemId, optionIds }) => {
@@ -530,10 +623,10 @@ export async function getAttemptForStudent(offeringId: string, assessmentId: str
   });
   return {
     submissionId: String(attempt._id),
-    offeringId,
     assessmentId,
+    path: assessmentPath(offeringId, assessmentId),
     title: doc.title,
-    offeringTitle: offering.title,
+    offeringTitle: offering?.title ?? null,
     timed: doc.durationMin !== null && doc.durationMin !== undefined,
     deadlineAt: attempt.deadlineAt,
     items,
@@ -544,6 +637,7 @@ export type HandInFilter = { status?: 'to_grade' | 'graded' | 'in_progress'; lat
 
 export type HandIns = {
   canTeach: boolean;
+  path: string;
   assessment: { id: string; title: string; maxMarks: number; state: DisplayState; status: AssessmentDoc['status'] };
   rows: {
     id: string;
@@ -562,21 +656,16 @@ export type HandIns = {
 const STATUS_OF = { to_grade: ['submitted'], graded: ['graded'], in_progress: ['in_progress'] } as const;
 
 // T6: the hand-ins of one assessment, the oldest first, for whoever teaches or oversees the class.
-export async function listSubmissions(
-  offeringId: string,
-  assessmentId: string,
-  filter: HandInFilter,
-  page: number,
-): Promise<HandIns> {
-  const { access, canTeach } = await viewerAccess(offeringId);
-  if (access === 'learn') notFound();
+export async function listSubmissions(assessmentId: string, filter: HandInFilter, page: number): Promise<HandIns> {
+  const { access, offeringId } = await testAccess(assessmentId);
+  if (access === 'take') notFound();
   await db();
-  const doc = await readAssessment(offeringId, assessmentId);
+  const doc = await readAssessment(assessmentId);
   const q = filter.q?.trim();
   const students = q
     ? await User.find(
         {
-          _id: { $in: await Enrollment.distinct('studentId', { offeringId }) },
+          _id: { $in: await Submission.distinct('studentId', { assessmentId: doc._id }) },
           $or: [
             { rollNo: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
             { email: { $regex: `^${escapeRegex(q)}`, $options: 'i' } },
@@ -614,7 +703,9 @@ export async function listSubmissions(
       { $group: { _id: '$status', n: { $sum: 1 } } },
     ]),
     Submission.countDocuments({ assessmentId: doc._id, status: { $in: ['submitted', 'graded'] }, late: true }),
-    Enrollment.countDocuments({ offeringId, status: 'active' }),
+    offeringId
+      ? Enrollment.countDocuments({ offeringId, status: 'active' })
+      : TestGrant.countDocuments({ assessmentId }),
   ]);
   const users = await User.find(
     { _id: { $in: docs.map((d) => d.studentId) } },
@@ -623,7 +714,8 @@ export async function listSubmissions(
   const userOf = new Map(users.map((u) => [String(u._id), u]));
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
   return {
-    canTeach,
+    canTeach: access === 'manage',
+    path: assessmentPath(offeringId, assessmentId),
     assessment: {
       id: String(doc._id),
       title: doc.title,
@@ -657,6 +749,7 @@ export async function listSubmissions(
 }
 
 export type GradingView = {
+  path: string;
   canGrade: boolean;
   locked: boolean;
   assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status']; items: TeacherItem[] };
@@ -678,21 +771,18 @@ export type GradingView = {
 };
 
 // T6: one hand-in with the key beside each answer, for whoever teaches or oversees the class.
-export async function getSubmissionForGrading(
-  offeringId: string,
-  assessmentId: string,
-  submissionId: string,
-): Promise<GradingView> {
-  const { access, canTeach } = await viewerAccess(offeringId);
-  if (access === 'learn') notFound();
+export async function getSubmissionForGrading(assessmentId: string, submissionId: string): Promise<GradingView> {
+  const { access, offeringId } = await testAccess(assessmentId);
+  if (access === 'take') notFound();
   if (!Types.ObjectId.isValid(submissionId)) notFound();
   await db();
   const [doc, attempt, offering] = await Promise.all([
-    readAssessment(offeringId, assessmentId),
-    readSubmission({ _id: submissionId, assessmentId, offeringId }),
-    Offering.findById(offeringId, { lockedAt: 1 }).lean(),
+    readAssessment(assessmentId),
+    readSubmission({ _id: submissionId, assessmentId }),
+    offeringId ? Offering.findById(offeringId, { lockedAt: 1 }).lean() : null,
   ]);
-  if (!attempt || !offering) notFound();
+  if (!attempt) notFound();
+  const locked = Boolean(offering?.lockedAt);
   const order = { submittedAt: attempt.submittedAt ?? new Date(0), _id: attempt._id };
   const after = {
     $or: [{ submittedAt: { $gt: order.submittedAt } }, { submittedAt: order.submittedAt, _id: { $gt: order._id } }],
@@ -715,8 +805,9 @@ export async function getSubmissionForGrading(
   const items = teacherItems(doc);
   const next = nextAfter ?? firstToGrade;
   return {
-    canGrade: canTeach && !offering.lockedAt,
-    locked: Boolean(offering.lockedAt),
+    path: assessmentPath(offeringId, assessmentId),
+    canGrade: access === 'manage' && !locked,
+    locked,
     assessment: { id: String(doc._id), title: doc.title, maxMarks: doc.maxMarks, status: doc.status, items },
     submission: {
       id: String(attempt._id),

@@ -8,6 +8,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   faculty: 'Faculty',
   student: 'Student',
   support: 'Support',
+  candidate: 'Candidate',
 };
 
 // The courseware's six course types (labels only; the credits decide the features, 01 §6).

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Email } from '@/lib/schemas/auth';
-import { istDate, objectId, ROLES } from '@/lib/schemas/common';
+import { ASSIGNABLE_ROLES, istDate, objectId } from '@/lib/schemas/common';
 import { uploadedFiles } from '@/lib/schemas/uploads';
 
 export const CATEGORIES = ['ugc', 'skill'] as const;
@@ -422,7 +422,7 @@ export const OfferingRef = z.object({ offeringId: objectId });
 
 const userRoles = z.preprocess(
   noneChecked,
-  z.array(z.enum(ROLES)).min(1, 'Pick at least one role.').max(3).refine(unique),
+  z.array(z.enum(ASSIGNABLE_ROLES)).min(1, 'Pick at least one role.').max(3).refine(unique),
 );
 
 export const CreateUser = z.object({

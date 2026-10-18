@@ -166,7 +166,7 @@ async function quiz(w: World, over: Record<string, unknown> = {}) {
 
 async function started(w: World, aid: string, who = w.student) {
   await signInAs(who);
-  await expect(startAttempt({ offeringId: w.offeringId, assessmentId: aid })).rejects.toMatchObject(
+  await expect(startAttempt({ assessmentId: aid })).rejects.toMatchObject(
     redirectsTo(`/courses/${w.offeringId}/assessments/${aid}/attempt`),
   );
   const attempt = await Submission.findOne({ assessmentId: aid, studentId: who._id, status: 'in_progress' }).lean();
@@ -227,10 +227,9 @@ describe('building an assessment (T4)', () => {
     }
     const { aid } = await quiz(w, { status: 'draft' });
     await signInAs(w.hod);
-    expect((await getBuilder(w.offeringId, aid)).canEdit).toBe(false);
+    expect((await getBuilder(aid)).canEdit).toBe(false);
     await expect(
       saveItem({
-        offeringId: w.offeringId,
         assessmentId: aid,
         type: 'text',
         prompt: JSON.stringify(doc('Q')),
@@ -241,7 +240,7 @@ describe('building an assessment (T4)', () => {
       }),
     ).rejects.toThrow(NOT_FOUND);
     await signInAs(w.outsider);
-    await expect(getBuilder(w.offeringId, aid)).rejects.toThrow(NOT_FOUND);
+    await expect(getBuilder(aid)).rejects.toThrow(NOT_FOUND);
   });
 
   it('saves a question with the course’s outcomes, a type of the mode and a rubric that adds up', async () => {
@@ -313,21 +312,20 @@ describe('building an assessment (T4)', () => {
     const { aid, pick, num, essay } = await quiz(w);
     await signInAs(w.faculty);
     const ids = [essay, pick, num].map((i) => String(i._id));
-    expect(await reorderItems({ offeringId: w.offeringId, assessmentId: aid, 'ids[]': ids })).toEqual({
+    expect(await reorderItems({ assessmentId: aid, 'ids[]': ids })).toEqual({
       ok: true,
       data: undefined,
     });
     expect((await Assessment.findById(aid).lean())?.items.map((i) => String(i._id))).toEqual(ids);
     await started(w, aid);
     await signInAs(w.faculty);
-    expect(await reorderItems({ offeringId: w.offeringId, assessmentId: aid, 'ids[]': ids.reverse() })).toMatchObject({
+    expect(await reorderItems({ assessmentId: aid, 'ids[]': ids.reverse() })).toMatchObject({
       code: 'CONFLICT',
       message: 'Questions cannot change after students have started.',
     });
     // Only the title and dates change now; the time limit stays.
     expect(
       await updateAssessmentSettings({
-        offeringId: w.offeringId,
         assessmentId: aid,
         title: 'Renamed',
         opensAt: istLocal(-60),
@@ -349,7 +347,7 @@ describe('building an assessment (T4)', () => {
       items: [q.pick, { ...q.num, coIds: [] }],
       maxMarks: 5,
     });
-    const ref = { offeringId: w.offeringId, assessmentId: String(a._id) };
+    const ref = { assessmentId: String(a._id) };
     await signInAs(w.faculty);
     expect(await publishAssessment(ref)).toMatchObject({
       code: 'VALIDATION',
@@ -370,9 +368,9 @@ describe('building an assessment (T4)', () => {
     const w = await world();
     const { aid } = await quiz(w);
     await signInAs(w.faculty);
-    expect(await deleteAssessment({ offeringId: w.offeringId, assessmentId: aid })).toMatchObject({ code: 'CONFLICT' });
+    expect(await deleteAssessment({ assessmentId: aid })).toMatchObject({ code: 'CONFLICT' });
     await Assessment.updateOne({ _id: aid }, { $set: { status: 'draft' } });
-    await expect(deleteAssessment({ offeringId: w.offeringId, assessmentId: aid })).rejects.toMatchObject(
+    await expect(deleteAssessment({ assessmentId: aid })).rejects.toMatchObject(
       redirectsTo(`/courses/${w.offeringId}/assessments`),
     );
     expect(await Assessment.exists({ _id: aid })).toBeNull();
@@ -391,8 +389,8 @@ describe('secrecy (09 §10, AC-M04-02)', () => {
     // The correct option is one of the options, so its id is there; nothing marks it.
     expect(dto).toContain(String(right));
     await started(w, aid);
-    const attempt = JSON.stringify(await getAttemptForStudent(w.offeringId, aid));
-    const page = JSON.stringify(await getAssessmentPage(w.offeringId, aid));
+    const attempt = JSON.stringify(await getAttemptForStudent(aid));
+    const page = JSON.stringify(await getAssessmentPage(aid));
     const list = JSON.stringify(await listOfferingAssessments(w.offeringId, {}, 1));
     for (const text of [attempt, page, list]) for (const key of keys.slice(1)) expect(text).not.toContain(key);
   });
@@ -402,17 +400,16 @@ describe('secrecy (09 §10, AC-M04-02)', () => {
     const { aid } = await quiz(w);
     const submissionId = await started(w, aid);
     await signInAs(w.second);
-    expect(await getAttemptForStudent(w.offeringId, aid)).toBeNull();
+    expect(await getAttemptForStudent(aid)).toBeNull();
     expect(
       await saveAnswer({
-        offeringId: w.offeringId,
         submissionId,
         itemId: String(newId()),
         answer: { type: 'numeric', value: 1 },
       }),
     ).toMatchObject({ code: 'NOT_FOUND' });
-    await expect(getSubmissionForGrading(w.offeringId, aid, submissionId)).rejects.toThrow(NOT_FOUND);
-    await expect(listSubmissions(w.offeringId, aid, {}, 1)).rejects.toThrow(NOT_FOUND);
+    await expect(getSubmissionForGrading(aid, submissionId)).rejects.toThrow(NOT_FOUND);
+    await expect(listSubmissions(aid, {}, 1)).rejects.toThrow(NOT_FOUND);
     await signInAs(w.outsider);
     await expect(listOfferingAssessments(w.offeringId, {}, 1)).rejects.toThrow(NOT_FOUND);
   });
@@ -457,11 +454,11 @@ describe('attempting (T5)', () => {
       opensAt: new Date(Date.now() - 2 * 60 * MIN),
       closesAt: new Date(Date.now() - 60 * MIN),
     });
-    expect(await startAttempt({ offeringId: w.offeringId, assessmentId: closed.aid })).toMatchObject({
+    expect(await startAttempt({ assessmentId: closed.aid })).toMatchObject({
       code: 'CLOSED',
     });
     await signInAs(w.faculty);
-    expect(await startAttempt({ offeringId: w.offeringId, assessmentId: aid })).toMatchObject({ code: 'FORBIDDEN' });
+    expect(await startAttempt({ assessmentId: aid })).toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('saves an answer per question and checks its options', async () => {
@@ -471,7 +468,7 @@ describe('attempting (T5)', () => {
     const save = (
       itemId: Types.ObjectId,
       answer: Parameters<typeof saveAnswer>[0] extends infer I ? (I extends { answer: infer A } ? A : never) : never,
-    ) => saveAnswer({ offeringId: w.offeringId, submissionId, itemId: String(itemId), answer });
+    ) => saveAnswer({ submissionId, itemId: String(itemId), answer });
     expect(await save(pick._id, { type: 'mcq', optionId: String(right) })).toMatchObject({ ok: true });
     expect(await save(pick._id, { type: 'mcq', optionId: String(newId()) })).toMatchObject({ code: 'VALIDATION' });
     expect(await save(pick._id, { type: 'numeric', value: 1 })).toMatchObject({ code: 'VALIDATION' });
@@ -487,7 +484,6 @@ describe('attempting (T5)', () => {
     const { aid, pick, right } = await quiz(w);
     const submissionId = await started(w, aid);
     await saveAnswer({
-      offeringId: w.offeringId,
       submissionId,
       itemId: String(pick._id),
       answer: { type: 'mcq', optionId: String(right) },
@@ -496,7 +492,6 @@ describe('attempting (T5)', () => {
     await Submission.updateOne({ _id: submissionId }, { $set: { deadlineAt: deadline } });
     expect(
       await saveAnswer({
-        offeringId: w.offeringId,
         submissionId,
         itemId: String(pick._id),
         answer: { type: 'mcq', optionId: null },
@@ -512,20 +507,18 @@ describe('attempting (T5)', () => {
     const { aid, pick, num, essay, right } = await quiz(w);
     const submissionId = await started(w, aid);
     await saveAnswer({
-      offeringId: w.offeringId,
       submissionId,
       itemId: String(pick._id),
       answer: { type: 'mcq', optionId: String(right) },
     });
     await saveAnswer({
-      offeringId: w.offeringId,
       submissionId,
       itemId: String(num._id),
       answer: { type: 'numeric', value: 271829.2 },
     });
     const summary = `/courses/${w.offeringId}/assessments/${aid}`;
-    await expect(submitAttempt({ offeringId: w.offeringId, submissionId })).rejects.toMatchObject(redirectsTo(summary));
-    await expect(submitAttempt({ offeringId: w.offeringId, submissionId })).rejects.toMatchObject(redirectsTo(summary));
+    await expect(submitAttempt({ submissionId })).rejects.toMatchObject(redirectsTo(summary));
+    await expect(submitAttempt({ submissionId })).rejects.toMatchObject(redirectsTo(summary));
     const attempt = await Submission.findById(submissionId).lean();
     expect(attempt).toMatchObject({ status: 'submitted', total: null, autoSubmitted: false, late: false });
     expect(attempt?.scores?.[String(pick._id)]?.marks).toBe(2);
@@ -541,7 +534,7 @@ describe('attempting (T5)', () => {
     const objective = questions([w.coId]);
     const only = await makeAssessment({ offeringId: w.offering._id, items: [objective.pick], maxMarks: 2 });
     const second = await started(w, String(only._id));
-    await expect(submitAttempt({ offeringId: w.offeringId, submissionId: second })).rejects.toMatchObject(
+    await expect(submitAttempt({ submissionId: second })).rejects.toMatchObject(
       redirectsTo(`/courses/${w.offeringId}/assessments/${only._id}`),
     );
     expect(await Submission.findById(second).lean()).toMatchObject({ status: 'graded', total: 0 });
@@ -571,7 +564,6 @@ describe('attempting (T5)', () => {
     const files = [{ key: ticket.data.key, fileName: 'page 1.pdf', contentType: 'application/pdf', size: 24_000_000 }];
     const save = (f: typeof files) =>
       saveAnswer({
-        offeringId: w.offeringId,
         submissionId,
         itemId: String(file._id),
         answer: { type: 'file', files: f },
@@ -618,7 +610,6 @@ describe('grading and results (T6)', () => {
     comment = '',
   ) =>
     gradeSubmission({
-      offeringId: w.offeringId,
       submissionId: s.submissionId,
       'item[]': [s.pick, s.num, s.essay].map((i) => String(i._id)),
       'marks[]': marks,
@@ -659,7 +650,7 @@ describe('grading and results (T6)', () => {
     // Saving the same marks again changes nothing and writes no entry.
     await grade(w, s, ['2', '0', ''], ['3', '1'], 'Name the loop counter.');
     expect(await AuditLog.countDocuments({ action: 'submission.graded', entityId: s.submissionId })).toBe(1);
-    const view = await getSubmissionForGrading(w.offeringId, s.aid, s.submissionId);
+    const view = await getSubmissionForGrading(s.aid, s.submissionId);
     expect(view.assessment.items[0].key).toEqual({ optionIds: [String(s.right)] });
   });
 
@@ -677,7 +668,7 @@ describe('grading and results (T6)', () => {
       startedAt: new Date(Date.now() - 40 * MIN),
       deadlineAt: new Date(Date.now() - 20 * MIN),
     });
-    const ref = { offeringId: w.offeringId, assessmentId: s.aid };
+    const ref = { assessmentId: s.aid };
     await signInAs(w.faculty);
     expect(await publishResults(ref)).toMatchObject({ code: 'CLOSED' });
     await Assessment.updateOne({ _id: s.a._id }, { $set: { closesAt: new Date(Date.now() - MIN) } });
@@ -704,7 +695,7 @@ describe('grading and results (T6)', () => {
       await AuditLog.find({ action: 'submission.graded', entityId: s.submissionId }).sort({ at: 1 }).lean(),
     ).toHaveLength(2);
     await signInAs(w.student);
-    const page = await getAssessmentPage(w.offeringId, s.aid);
+    const page = await getAssessmentPage(s.aid);
     expect(page).toMatchObject({ view: 'student', result: { total: 9 } });
     if (page.view !== 'student' || !page.result) throw new Error('no result');
     expect(page.result.items[2]).toMatchObject({
@@ -722,7 +713,7 @@ describe('grading and results (T6)', () => {
     await Offering.updateOne({ _id: w.offering._id }, { $set: { lockedAt: new Date() } });
     await signInAs(w.faculty);
     expect(await grade(w, s, ['2', '0', ''], ['4', '2'])).toMatchObject({ code: 'LOCKED' });
-    expect(await publishResults({ offeringId: w.offeringId, assessmentId: s.aid })).toMatchObject({ code: 'LOCKED' });
+    expect(await publishResults({ assessmentId: s.aid })).toMatchObject({ code: 'LOCKED' });
   });
 
   it('lists hand-ins, the oldest first, and finds the next to grade', async () => {
@@ -740,15 +731,13 @@ describe('grading and results (T6)', () => {
       late: true,
     });
     await signInAs(w.faculty);
-    const list = await listSubmissions(w.offeringId, s.aid, {}, 1);
+    const list = await listSubmissions(s.aid, {}, 1);
     expect(list.rows.map((r) => r.id)).toEqual([s.submissionId, String(later._id)]);
     expect(list.counts).toMatchObject({ enrolled: 2, handedIn: 2, toGrade: 2, late: 1 });
-    expect((await listSubmissions(w.offeringId, s.aid, { late: true }, 1)).rows.map((r) => r.id)).toEqual([
-      String(later._id),
-    ]);
-    expect((await getSubmissionForGrading(w.offeringId, s.aid, s.submissionId)).nextToGradeId).toBe(String(later._id));
+    expect((await listSubmissions(s.aid, { late: true }, 1)).rows.map((r) => r.id)).toEqual([String(later._id)]);
+    expect((await getSubmissionForGrading(s.aid, s.submissionId)).nextToGradeId).toBe(String(later._id));
     await signInAs(w.hod);
-    expect((await getSubmissionForGrading(w.offeringId, s.aid, s.submissionId)).canGrade).toBe(false);
+    expect((await getSubmissionForGrading(s.aid, s.submissionId)).canGrade).toBe(false);
   });
 });
 
