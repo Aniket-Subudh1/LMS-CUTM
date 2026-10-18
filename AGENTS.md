@@ -53,7 +53,7 @@ Every Server Action, Route Handler and DAL function verifies the session and the
 - Locked marks are immutable. Unlocking is an admin action with a mandatory reason.
 
 ### 8 · Vendors stay behind adapters
-Only `lib/integrations/<name>.ts` may import a vendor SDK or call a vendor API (LiveKit, Judge0, GitHub, SMTP, S3, Anthropic, the university exam system). If a vendor quirk forces a change anywhere else, the adapter interface is wrong — **stop and report it** rather than special-casing.
+Only `lib/integrations/<name>.ts` may import a vendor SDK or call a vendor API (LiveKit, Judge0, GitHub, SMTP, S3, OpenAI, the university exam system). If a vendor quirk forces a change anywhere else, the adapter interface is wrong — **stop and report it** rather than special-casing.
 
 ---
 

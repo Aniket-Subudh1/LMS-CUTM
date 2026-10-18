@@ -153,30 +153,27 @@ pushInternal(rows: InternalMarksRow[]): Promise<{ accepted: number; rejected: { 
 ```
 `EndSemRow` and `InternalMarksRow` are the same row types the CSV path uses (§8.3, §8.4), so M08's CSV import/export and a future API share all downstream code.
 
-### 4.7 AI — `ai.ts` (M04b, M09; `@anthropic-ai/sdk` 0.133.0)
+### 4.7 AI — `ai.ts` (M04b, M09; `openai` 7.27.0)
 ```ts
-aiConfigured(): boolean // ANTHROPIC_API_KEY is set (M04b)
-draftQuestions(input: { topic: string; count: number; type: 'mcq' | 'msq' | 'true_false' | 'numeric' | 'text'; level: 'mixed' | 'easy' | 'medium' | 'hard'; cos: { code: string; statement: string }[] }): Promise<AiDraft[] | null> // M04b, TP-10: AiDrafts in lib/schemas/bank.ts; effort medium, 16,000 tokens
+aiConfigured(): boolean // OPENAI_API_KEY is set (M04b)
+draftQuestions(input: { topic: string; count: number; type: 'mcq' | 'msq' | 'true_false' | 'numeric' | 'text'; level: 'mixed' | 'easy' | 'medium' | 'hard'; cos: { code: string; statement: string }[] }): Promise<AiDraft[] | null> // M04b, TP-10: AiDrafts in lib/schemas/bank.ts; 16,000 output tokens
 suggestItemTags(input: { promptText: string; cos: { code: string; statement: string }[] }): Promise<{ coCodes: string[]; bloomLevel: BloomLevel; rationale: string } | null>
 suggestCoMap(input: { cos: { code: string; statement: string }[]; outcomes: { code: string; title: string }[] }): Promise<{ co: string; outcome: string; level: 1 | 2 | 3; rationale: string }[] | null>
 explainEngagement(input: { metrics: Record<string, number>; band: string; trend: string }): Promise<string | null>
 ```
-Reference call shape (type-checked against SDK 0.133.0):
+Reference call shape (type-checked against SDK 7.27.0; OpenAI replaced Anthropic on 18 Oct 2026, Aniket's choice for cost):
 ```ts
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import OpenAI from 'openai';
+import { zodTextFormat } from 'openai/helpers/zod';
 
-const res = await client().beta.messages.parse({
-  model: 'claude-opus-5-5',
-  max_tokens: 2000,
-  betas: ['server-side-fallback-2026-07-01'],
-  fallbacks: 'default',
-  output_config: { effort: 'low', format: betaZodOutputFormat(ItemTagSuggestion) },
-  system: SYSTEM_PROMPT,
-  messages: [{ role: 'user', content: userContent }],
+const res = await client().responses.parse({
+  model: env().OPENAI_MODEL, // default 'gpt-5.4-mini'
+  instructions: SYSTEM_PROMPT,
+  input: userContent,
+  max_output_tokens: 2000,
+  text: { format: zodTextFormat(ItemTagSuggestion, 'item_tags') },
 });
-if (res.stop_reason === 'refusal') return null;
-return res.parsed_output; // already validated against the Zod schema; null if parsing failed
+return res.output_parsed; // validated against the Zod schema; null for a refusal or an answer that does not fit
 ```
 Rules: never send names, roll numbers, emails or answers — only question text, a topic a teacher typed, CO statements, outcome titles and numeric metrics. Without the key every call is `AppError('CONFLICT', 'AI suggestions are not set up.')`; a failed request is `AppError('INTEGRATION', …)`, logged. A draft's fields are plain (structured output carries no transforms) and are checked afterwards as a CSV row is (§8.6). `null` means "no suggestion" and the UI says so. Rate-limited (09 §4). The server-side refusal fallback is enabled (`fallbacks: 'default'`).
 
@@ -284,7 +281,7 @@ Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schem
 | `projects` | `lastMinuteHours` (48), `hugeCommitLines` (1000), `messageStopWords` (["update","fix","changes","commit","wip","test","minor","asdf","."]) | 07 §12 | proposed |
 | `examIntegration` | `mode` ("csv") | M08 | `api` blocked on Q-04 |
 
-Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token, GitHub App key, Anthropic key, S3 keys live in env (11 §2).
+Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token, GitHub App key, OpenAI key, S3 keys live in env (11 §2).
 
 ## 8. CSV formats
 

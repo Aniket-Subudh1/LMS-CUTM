@@ -164,7 +164,7 @@ Never put answer text, file contents, passwords, tokens or secrets in an audit e
 - All secrets are server environment variables (11 §2). There are **no `NEXT_PUBLIC_` variables** in this project.
 - `lib/env.ts` is `server-only`. Client components receive only what a server component passes as props.
 - `lib/log.ts` must never be given a secret, a password, a session cookie, a token, or an answer. Log ids, not content.
-- CI runs `scripts/check-bundle.ts` after `next build`: it fails if any value of a secret env var, or the string `SESSION_PASSWORD`, `S3_SECRET`, `PRIVATE_KEY`, `ANTHROPIC_API_KEY`, appears anywhere under `.next/static`.
+- CI runs `scripts/check-bundle.ts` after `next build`: it fails if any value of a secret env var, or the string `SESSION_PASSWORD`, `S3_SECRET`, `PRIVATE_KEY`, `OPENAI_API_KEY`, appears anywhere under `.next/static`.
 
 ## 8. HTTP security headers (`next.config.ts` → `headers()`)
 
@@ -211,4 +211,4 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Sent to the model: question text, a topic a teacher types for drafts (M04b, TP-10), CO statements and Bloom levels, PO/PSO titles, and numeric engagement metrics with labels.
 - Never sent: student names, roll numbers, emails, answers, submissions, marks of identifiable students, faculty names.
 - AI output is a suggestion rendered for a human; nothing is written to records until a human submits the normal form. M04b: drafts are saved to the bank as AI drafts, which no test uses until a teacher saves each in its dialog.
-- The API key is server-only (`ANTHROPIC_API_KEY`).
+- The API key is server-only (`OPENAI_API_KEY`). The AI is OpenAI's (since 18 Oct 2026).

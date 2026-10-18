@@ -33,7 +33,6 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.133.0",
     "@aws-sdk/client-s3": "3.1149.0",
     "@aws-sdk/s3-request-presigner": "3.1149.0",
     "@codemirror/lang-cpp": "6.0.3",
@@ -62,6 +61,7 @@
     "mongoose": "9.11.1",
     "next": "16.4.0",
     "nodemailer": "10.1.0",
+    "openai": "7.27.0",
     "papaparse": "5.7.0",
     "pdfkit": "0.17.2",
     "qrcode": "1.5.4",

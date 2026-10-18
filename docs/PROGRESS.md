@@ -263,7 +263,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-M04b-50 | A draft is checked as an imported CSV row is; one that fails is dropped, outcome codes the teacher did not pick are dropped, and the notice says how many were kept | M04b | — |
 | A-M04b-51 | Saving an AI draft in its dialog is its review and accepts it; a draft is discarded with ⋮ Delete. Drafts count toward the bank's 5,000 but not toward its other counts | M04b | — |
 | A-M04b-52 | A draft request is tried once, never retried by itself, so drafts are never saved twice; the teacher is told how it went, a failure included | M04b | — |
-| A-M04b-53 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it; the model is `claude-opus-5-5` at medium effort with the server-side fallback (06 §4.7) | M04b | — |
+| A-M04b-53 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it. The AI is OpenAI's (Aniket, 18 Oct 2026, for cost); the model is the `OPENAI_MODEL` setting, by default `gpt-5.4-mini` | M04b | — |
 
 ## 5. Log
 
@@ -1990,4 +1990,25 @@ Phase E's last part (TP-10) of `docs/milestones/M04b-test-platform.md`, on branc
 - `npm run build` → exit 0; `npm run check:bundle` → "119 files scanned … clean".
 - `npx playwright test` (all 20) → `16 passed`, `4 failed`: `admin-structure` (2), `content` (the course plan), `live` (no LiveKit here), as in E2.
 - A scripted walk at 1440 px and 390 px on the e2e data with three drafts in CUTM1602's bank: the bank, the Draft with AI dialog and a draft's review dialog. No error page, and no page wider than the screen. They match mock-up C2, with outcomes as checkboxes as in the question dialog.
+
+### 2026-10-18 · M04b/E3 follow-up: the AI is OpenAI's, and the test server · Claude Code, at Aniket's request
+
+Aniket asked for ChatGPT rather than Anthropic, because of the cost.
+
+**Changed**
+- `lib/integrations/ai.ts` now uses `openai` 7.27.0, the newest release more than two weeks old, through `responses.parse` with `zodTextFormat(AiDrafts)`; `@anthropic-ai/sdk` is removed.
+- The settings are `OPENAI_API_KEY` (optional, as before) and `OPENAI_MODEL` (default `gpt-5.4-mini`, a small, inexpensive model).
+- Every Anthropic reference is replaced: `lib/env.ts`, `.env.example`, `scripts/check-bundle.ts` (it now scans for `OPENAI_API_KEY`), AGENTS.md's vendor list, 02, 03, 06 §4.7, 09, 11, and the M04b and M09 milestone files.
+- Nothing else changes: the job, the checks on drafts, the screens and the tests are as in E3.
+
+**Found while checking "no test or assessment option"**
+- The test server (lms.devsomeware.com) runs the pushed release (its `/v/<code>` page answers).
+- The local dev server on port 3000 runs from the main folder, still at `9648e6a`, from before M04, so it has no Tests or Assessments until that folder is pulled.
+- An admin finds Tests in the sidebar's Menu group (not under Administration), and a course's Assessments tab under My courses.
+
+**Not done**
+- Still no live call to the AI: no key on this machine. Typecheck passes against SDK 7.27.0, and the format helper was run once on a Zod 4 schema shaped like `AiDrafts` (a strict JSON schema came out).
+
+**Verification**
+- `npm run check` → exit 0; `npm run test:integration` → exit 0 (the AI drafts tests stub the adapter, which is unchanged in shape); `npm run build` → exit 0; `npm run check:bundle` → clean.
 

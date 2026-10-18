@@ -5,7 +5,7 @@
 | Depends on | M04 (the assessment engine) |
 | Requirements | CE-03, CE-04, CE-05, CE-08, ASG-01–ASG-04, LAB-01–LAB-05 (from M05), CPP-05, CPP-06, COM-03; owner requests TP-01–TP-12 below |
 | Release | R1 pilot (with M04) |
-| Packages to add (each with its reason in 03 §3, in the commit that first uses it) | `@uiw/react-codemirror` 4.25.12 and its C, C++, Java and Python languages (pinned for M05 already); `@anthropic-ai/sdk` 0.133.0 (pinned for M09 already); a PDF library for scorecards, certificates and attempt reports; an Excel writer for exports; a QR-code generator for share links |
+| Packages to add (each with its reason in 03 §3, in the commit that first uses it) | `@uiw/react-codemirror` 4.25.12 and its C, C++, Java and Python languages (pinned for M05 already); `openai` 7.27.0 (replacing `@anthropic-ai/sdk`, pinned for M09, on 18 Oct 2026); a PDF library for scorecards, certificates and attempt reports; an Excel writer for exports; a QR-code generator for share links |
 | Collections | `assessments` and `submissions` (extended); new `questionBank`, `testLinks`, `testGrants`, `otps` |
 | Infrastructure | A Judge0 CE 1.13.1 server (as the recruitment portal uses) for coding questions |
 
@@ -91,6 +91,6 @@ Each phase runs database → server → screens → tests, and ends in a commit 
 | ID | Question | Default until answered |
 |---|---|---|
 | Judge0 | Which Judge0 server and token should coding questions use (the recruitment portal's)? | Answered 18 Oct 2026 (Aniket): Judge0's free public server for now; the university's own server and key before going public (Q-55) |
-| AI key | An Anthropic API key for the AI helpers? | The helpers say "AI suggestions are not set up" |
+| AI key | An OpenAI API key for the AI helpers (OpenAI since 18 Oct 2026)? | The helpers say "AI suggestions are not set up" |
 | Certificates | The certificate's design, signatory and wording? | A clean design with the university lockup and the test owner's name |
 | Guests | How long are guest accounts and their attempts kept? | Kept, like any submission (05 §8) |

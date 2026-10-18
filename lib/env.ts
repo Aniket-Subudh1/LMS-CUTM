@@ -29,8 +29,10 @@ const Env = z.object({
   // which needs no token; students' code is sent to it (Q-55).
   CODE_RUNNER_URL: z.url().default('https://ce.judge0.com'),
   CODE_RUNNER_TOKEN: z.string().min(1).optional(),
-  // M04b (TP-10, 06 §4.7): the AI's key. Without it the AI helpers say they are not set up; nothing else needs it.
-  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  // M04b (TP-10, 06 §4.7): OpenAI's key and model. Without the key the AI helpers say they are not set up; nothing else
+  // needs it. The default model is a small, inexpensive one.
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

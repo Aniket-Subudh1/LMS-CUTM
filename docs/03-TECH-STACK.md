@@ -67,7 +67,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `@codemirror/lang-cpp` | 6.0.3 | M04b (from M05) | C/C++ highlighting | `components/code-editor.tsx` | — |
 | `@codemirror/lang-java` | 6.0.2 | M04b (from M05) | Java highlighting | `components/code-editor.tsx` | — |
 | `octokit` | 5.0.5 | M07 | GitHub App, OAuth, webhooks | `lib/integrations/github.ts` | `new App({ appId, privateKey, oauth, webhooks })`; `app.getInstallationOctokit(id)`; `app.webhooks.verifyAndReceive(...)` |
-| `@anthropic-ai/sdk` | 0.133.0 | M04b (installed for TP-10's question drafts; pinned for M09) | Question drafts for the bank (M04b); CO/Bloom suggestions, CO-PO suggestions, engagement explanation (M09) | `lib/integrations/ai.ts` | Use `client.beta.messages.parse` + `betaZodOutputFormat` from `@anthropic-ai/sdk/helpers/beta/zod` (type-checked; pattern in 06 §4.7) |
+| `openai` | 7.27.0 | M04b (replaces `@anthropic-ai/sdk`, Aniket's choice of 18 Oct 2026: ChatGPT costs less) | Question drafts for the bank (M04b); CO/Bloom suggestions, CO-PO suggestions, engagement explanation (M09). Its peers (`zod` and the AWS, `undici`, `ws` ones) are optional; only `zod` is used | `lib/integrations/ai.ts` | `await client.responses.parse({ model, instructions, input, max_output_tokens, text: { format: zodTextFormat(Schema, name) } })` → `res.output_parsed` (null when the answer does not fit), with `zodTextFormat` from `openai/helpers/zod` (works with Zod 4; checked by converting `AiDrafts`). The model comes from `OPENAI_MODEL`; no reasoning option is sent, so a model without one also works |
 
 ### Dev dependencies
 

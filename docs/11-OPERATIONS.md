@@ -37,7 +37,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | M04b | `http://judge0:2358`, token | Judge0 `AUTHN_TOKEN`. Unset, the URL is Judge0's free public server (`https://ce.judge0.com`, no token): fine for development and the pilot, but students' code goes to a third party and its rate limits are not ours — set the university's own server before going public (Q-55). The e2e run uses `tests/e2e/fake-runner.ts` on port 2358 |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` | M07 | | PEM with `\n` escapes |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET` | M07 | | The App's OAuth credentials and webhook secret |
-| `ANTHROPIC_API_KEY` | M04b, M09 | | Optional: unset, the AI helpers (the bank's Draft with AI) say "AI suggestions are not set up" and nothing is sent |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | M04b, M09 | `sk-…`, `gpt-5.4-mini` | Optional: without the key the AI helpers (the bank's Draft with AI) say "AI suggestions are not set up" and nothing is sent. `OPENAI_MODEL` defaults to `gpt-5.4-mini`, a small, inexpensive model; any model that supports structured outputs works |
 
 `.env.example` lists every variable with a safe placeholder. `.env*` files other than `.env.example` are git-ignored (already in `.gitignore`).
 
@@ -123,7 +123,7 @@ Internet ─► Load balancer (TLS; overwrites X-Forwarded-For) ─► web × N 
 Browsers ─► LiveKit nodes (self-hosted; WebRTC UDP 50000–60000, TCP 7881, TURN/TLS 443) ─► webhooks ─► web
 Browsers ─► Cloudflare R2 (presigned PUT/GET; zero egress)
 web × N, worker × M ─► MongoDB replica set (3 nodes) · Redis (AOF) · R2
-worker ─► SMTP relay · GitHub API · Anthropic API · Judge0 (private network) · exam system (Q-04)
+worker ─► SMTP relay · GitHub API · OpenAI API · Judge0 (private network) · exam system (Q-04)
 ```
 
 Sizing to start (adjust after the M11 load test): web 2 × (2 vCPU, 2 GB); worker 1 × (2 vCPU, 4 GB — transcodes); MongoDB 3 × (4 vCPU, 16 GB, SSD); Redis 1 × 2 GB; LiveKit 2 nodes to start (measure with `lk load-test` before launch; a room must fit on one node, nodes add rooms — LiveKit's benchmark guide); Judge0 sized for 600 concurrent test-takers with `runCooldownSec` 3 s.

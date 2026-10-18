@@ -10,7 +10,7 @@ const SECRET_VARS = [
   'S3_SECRET_ACCESS_KEY',
   'LIVEKIT_API_SECRET',
 ];
-const FORBIDDEN_NAMES = ['SESSION_PASSWORD', 'S3_SECRET', 'PRIVATE_KEY', 'ANTHROPIC_API_KEY'];
+const FORBIDDEN_NAMES = ['SESSION_PASSWORD', 'S3_SECRET', 'PRIVATE_KEY', 'OPENAI_API_KEY'];
 
 const values = SECRET_VARS.flatMap((name) => {
   const value = process.env[name];

@@ -1,24 +1,25 @@
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import OpenAI from 'openai';
+import { zodTextFormat } from 'openai/helpers/zod';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { log } from '@/lib/log';
 import { AiDrafts, type AiDraft } from '@/lib/schemas/bank';
 
-// 06 §4.7. Only this file talks to the AI. It is sent what a teacher types for it and the course's outcome statements,
-// never anything about a student (09 §12); what comes back is a suggestion a person reviews before it is used.
+// 06 §4.7. Only this file talks to the AI (OpenAI, Aniket's choice of 18 Oct 2026 for cost). It is sent what a teacher
+// types for it and the course's outcome statements, never anything about a student (09 §12); what comes back is a
+// suggestion a person reviews before it is used. The model is the OPENAI_MODEL setting.
 
-let client: Anthropic | undefined;
+let client: OpenAI | undefined;
 
 export function aiConfigured(): boolean {
-  return Boolean(env().ANTHROPIC_API_KEY);
+  return Boolean(env().OPENAI_API_KEY);
 }
 
-function anthropic(): Anthropic {
-  const apiKey = env().ANTHROPIC_API_KEY;
+function openai(): OpenAI {
+  const apiKey = env().OPENAI_API_KEY;
   if (!apiKey) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
-  client ??= new Anthropic({ apiKey });
+  client ??= new OpenAI({ apiKey });
   return client;
 }
 
@@ -43,7 +44,8 @@ above" or "none of the above". Wrong options are plausible mistakes. Write plain
 question its difficulty, its Bloom level, and the codes of the course outcomes it assesses (only from the list given;
 none when no list is given). A teacher reviews every draft before anyone sees it.`;
 
-// TP-10: `count` drafts of one type on a topic. Null when the AI declines; an AppError when it cannot be reached.
+// TP-10: `count` drafts of one type on a topic. Null when the AI declines or its answer does not fit the format; an
+// AppError when it cannot be reached.
 export async function draftQuestions(input: {
   topic: string;
   count: number;
@@ -61,17 +63,14 @@ export async function draftQuestions(input: {
     'Each explanation says in one or two sentences why the answer is right.',
   ].join('\n\n');
   try {
-    const res = await anthropic().beta.messages.parse({
-      model: 'claude-opus-5-5',
-      max_tokens: 16_000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'medium', format: betaZodOutputFormat(AiDrafts) },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: brief }],
+    const res = await openai().responses.parse({
+      model: env().OPENAI_MODEL,
+      instructions: SYSTEM,
+      input: brief,
+      max_output_tokens: 16_000,
+      text: { format: zodTextFormat(AiDrafts, 'drafts') },
     });
-    if (res.stop_reason === 'refusal') return null;
-    return res.parsed_output?.questions ?? null;
+    return res.output_parsed?.questions ?? null;
   } catch (error) {
     if (error instanceof AppError) throw error;
     log.error('ai request failed', { operation: 'draftQuestions', error });

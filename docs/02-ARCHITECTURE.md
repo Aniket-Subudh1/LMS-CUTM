@@ -21,7 +21,7 @@
     │                                                      │   │   └► SMTP
     └► Code runner (Judge0 ref.) ◄─ run code (sync)        │   └────► GitHub API
                                                            └────────► Exam system (CSV now, API later)
-    web + worker ──► Anthropic API (suggestions only)
+    web + worker ──► OpenAI API (suggestions only)
 ```
 
 ## 2. Processes and services
@@ -236,7 +236,7 @@ Each external system sits behind one file in `lib/integrations/` exposing a type
 | Code runner | `code-runner.ts` | Judge0 CE 1.13.1 HTTP API (Judge0's free public server, 1.14.0, until the university runs its own — **Q-55**) | M04b (from M05) — same caveat (**Q-25**) |
 | GitHub | `github.ts` | `octokit` App (installation token) + OAuth (identity link) | M07 |
 | Exam system | `exam-api.ts` | — | **Blocked on Q-04**. CSV import/export ships in M08 without an adapter |
-| AI | `ai.ts` | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output | M04b (bank drafts), M09 |
+| AI | `ai.ts` | `openai` (Responses API), model `OPENAI_MODEL` (default `gpt-5.4-mini`), structured output | M04b (bank drafts), M09 |
 | CUTM courseware | `courseware.ts` | `fetch` + `happy-dom` (scripts off); read only | M01b |
 
 ## 10. Conventions

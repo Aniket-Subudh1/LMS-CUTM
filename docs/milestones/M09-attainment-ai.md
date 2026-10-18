@@ -7,8 +7,8 @@
 | Depends on | M04, M08 |
 | Requirements | CPP-07, CPP-08, CPP-09, CPP-10 (configurable thresholds only), EXM-06, DSH-06 |
 | Release | part of R4 |
-| Packages added | `@anthropic-ai/sdk` |
-| Env vars added | `ANTHROPIC_API_KEY` |
+| Packages added | none (`openai` came with M04b) |
+| Env vars added | none (`OPENAI_API_KEY`, `OPENAI_MODEL` came with M04b) |
 | Collections | `attainments` |
 
 ## Goal
@@ -45,8 +45,8 @@ Route: `/courses/[offeringId]/outcomes` (ugc; teach/oversee; add the tab).
 Route: `/reports/attainment` (hod, admin; add to the reports `TabNav`): choose program, batch and terms → "Compute" (enqueues the program job) → course × outcome matrix of the latest offering values, the program value per outcome and its comparison with `defaultTargetLevel`.
 
 ### T5 · AI adapter (CPP-07)
-Files: `lib/env.ts` (+ `ANTHROPIC_API_KEY`), `.env.example`, `tests/setup.ts`, `lib/integrations/ai.ts`, `lib/schemas/ai.ts`.
-- Use exactly the type-checked call shape in 06 §4.7 (`client.beta.messages.parse`, model `claude-opus-5-5`, `betaZodOutputFormat`, `output_config.effort: 'low'`, `fallbacks: 'default'` with beta `server-side-fallback-2026-07-01`); `stop_reason === 'refusal'` → `null`; SDK errors → log + `null` (the UI says "No suggestion available right now").
+Files: `tests/setup.ts`, `lib/integrations/ai.ts` (M04b made it, with `draftQuestions`), `lib/schemas/ai.ts`.
+- Use exactly the type-checked call shape in 06 §4.7 (`client.responses.parse`, model `env().OPENAI_MODEL`, `zodTextFormat`); `output_parsed === null` → `null`; SDK errors → log + `null` (the UI says "No suggestion available right now").
 - `ItemTagSuggestion = { coCodes: string[] (1–2), bloomLevel: BLOOM_LEVELS, rationale: string ≤ 300 }`; after parsing, drop codes not in the course's COs; none left → `null`.
 - `CoMapSuggestion = { cells: { co, outcome, level: 1|2|3, rationale ≤ 200 }[] }`; drop unknown codes and duplicates.
 - System prompts (constants in `ai.ts`):
