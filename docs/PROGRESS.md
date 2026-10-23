@@ -29,7 +29,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
-| M07 Projects | In progress — T0: decisions written, mock-ups next | | Decisions 23 Oct 2026 in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
+| M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
@@ -273,6 +273,8 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-167 | The lab-record average beside Record is the mean of the student's published lab records (a missed one 0), shown for the teacher's reference and never entered for them | M06 | — |
 | A-168 | The CE report opens on the current term (else the newest by code) and lists credit offerings that are not drafts; its average internal is over students whose marks are complete | M06 | — |
 | A-169 | A head of department whose account has no department sees an empty CE report | M06 | — |
+| A-170 | Only students see the GitHub card on their profile: commits count for team members, and teachers neither commit to team repositories nor need an account linked | M07 | — |
+| A-171 | The Integrations page lists each queue's latest 20 jobs that ran out of tries; older ones stay in Redis until BullMQ removes them | M07 | — |
 
 ## 5. Log
 
@@ -2217,3 +2219,71 @@ Request: the terminal output of `npm run dev`, which exited after "Upgrade: Next
 - `npx next dev -p 3200` in the same clone → `GET /login 200`; `AGENTS.md` unchanged.
 - Not run: integration and e2e tests.
 
+### 2026-10-23 · M07 Projects (T1–T10) · Claude Code, at Aniket's request
+
+Built to decisions 1–3 and the mock-up picks (P2 A, P3 A; P1, P4 and P5 as drawn), all in `docs/milestones/M07-projects.md`. Commits on main, not pushed: `d300399` foundation, `d64e1ba` server, `128a384` screens, and this report.
+
+**Created**
+- **Data and rules** (05 §6, 07 §2, §12, §13):
+  - `lib/integrations/github.ts` (`octokit` 5.0.5) and the six optional `GITHUB_*` variables.
+  - `lib/models/{project,project-task,commit,project-review}.ts`, `lib/schemas/projects.ts`, `scripts/sync-indexes.ts`.
+  - `lib/domain/commits.ts` (`computeCommitMetrics`, `goodMessage`), `lib/domain/tracker.ts` (`computeTrackerMetrics`, `canMoveTask`) and `reviewAverages` in `lib/domain/evaluation.ts`, with every 07 vector.
+  - The `projects` setting, the `task.assigned` notification, the `github` token purpose; `liveSessions.reviewId` and `kind: 'review'`.
+- **Server:**
+  - `lib/data/projects.ts` (`listProjects`, `getProject`, `getReviewSheet`), `lib/data/integrations.ts`, `getGithubLink` in `lib/data/users.ts`.
+  - The worker's `githubProject` and `githubNightly` jobs (`worker/jobs/github.ts`), debounced as `gh-<projectId>` (`queueGithubSync`); a review's live class takes no attendance.
+  - The project internal from the reviews' averages in `recomputeInternalMarks`; `saveRubricMarks` refuses the project rubric.
+  - Actions: `saveProject`, `linkRepository`, `requestGithubSync`, `saveTask`, `moveTask`, `deleteTask`, `saveReview`, `deleteReview`, `saveReviewMarks` (`projects/actions.ts`); `startGithubLink`, `unlinkGithub` (profile); `retryJob` (admin integrations).
+  - Routes: `/api/auth/github/callback`, `/api/webhooks/github`.
+- **Screens:**
+  - `projects/page.tsx` (P1) and its `ProjectDialog`; `projects/[projectId]/page.tsx` (P2 A, P3 A, the reviews) and its task, review and repository forms; `projects/[projectId]/reviews/[reviewId]/page.tsx` (P4).
+  - The Projects tab when the course has project credits; the Marks tab's project rubric says it is the reviews' average and links to Projects.
+  - The profile's GitHub card and `/admin/integrations` (P5), with Integrations in the admin sidebar.
+- **Tests:**
+  - Unit: 36 new.
+  - Integration: `tests/integration/projects.test.ts`, 10 cases (GitHub mocked).
+  - E2E: `tests/e2e/projects.spec.ts` (task tracker only, decision 3); the e2e seed gains CUTM1014 · 2026-ODD · A on the tracker, taught by faculty2.
+- **Docs:** 02 §8, 05, 06 §4.5, §6–7, 07 §2, 08 (routes, `DataTable`), 09, 10 (the e2e fixtures), 11, the M06 and M07 files.
+
+**Acceptance criteria**
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC-M07-01 | Pass against a mocked GitHub | Integration: a repository without the App is refused with the install hint; a linked one is kept in GitHub's spelling, once in the LMS |
+| AC-M07-02 | Pass against a mocked GitHub; not timed with a real App | Integration: a sync upserts commits once and attributes them by GitHub id, then login; a signed `push` to a linked repository queues its sync; a bad signature gets 401. The nightly scheduler is wired |
+| AC-M07-03 | Pass | Unit: 07 §12's member and message vectors. Screen: the table shows every part of the score with the formula under it; reviews are marked by the teacher |
+| AC-M07-04 | Pass | Unit: 07 §13's table and all 16 moves per actor. Integration: another member cannot move a task; the assignee cannot mark it done. E2E: the student has no Mark done; after the teacher's, Deadlines reads 2 assigned, 1 done, 1 on time, 0 overdue, 100% |
+| AC-M07-05 | Pass | Integration: review marks become the project internal, audited (`project.review_marked`), refused while locked. E2E: the student's Marks tab shows "Project · 40.5 of 50" within the 30 s wait |
+
+**Changed beyond the tasks (found while building)**
+- The projects list showed every project on one page, against law 5. It now shows ten a page, and reads reviews only for that page's projects.
+- `DataTable` (08 §5.2): a short table with a fixed cap (a team's members, a review's rows, the integrations lists) leaves out the five paging props and has no "Showing 1–3 of 3" footer.
+- The latest ten commits, not 20: 20 made the page long on a phone, and the picked mock-up shows a short list. T6 now says ten.
+
+**Not done**
+- GitHub with a real App: linking an account and a repository, three pushes attributed within a minute (T10's manual check). It waits on Aniket's test App credentials, and on CUTM's organisation (Q-22) after that.
+- The human validation checklist: one CSE team for a week, one non-CSE project on the board, and one review held in the live room.
+- A review held as a live class is built and tested at the integration level only. The live e2e needs LiveKit, and PRJ-10 waits on Q-03.
+- On phones, the member and Deadlines tables scroll sideways inside their cards with no cue, as M06's tables do.
+
+**Assumptions** — A-170, A-171 (§4).
+
+**Open questions** — none new; Q-22 and Q-03 stay open.
+
+**Verification**
+- `npm run check` → `Test Files 37 passed (37)`, `Tests 574 passed (574)`.
+- `npm run test:integration` (local replica set and Redis) → `Test Files 25 passed (25)`, `Tests 302 passed (302)`.
+- `npm run build` → exit 0 on the first try. `npm run check:bundle` → "141 files scanned for 4 names and 6 secret values; clean".
+- `npx playwright test` (all 22) → 15 passed, 7 failed:
+  - `projects.spec.ts` passed. Its first run failed on a race in the spec, not in the app: the spec read the teacher's address before the project page had opened. It now waits for the page.
+  - These also passed: admin-structure (4), assessments, auth (4 of 5), catalog, code, marks, people and proctoring.
+  - The seven failures all need a service that is not installed here:
+    - Mailpit: auth's invitation, content's plan, tests' guest code (`fetch failed`).
+    - RustFS: content's video upload, results' certificate.
+    - LiveKit: live.
+    - bank: the local `.env` AI key, as in the M06 entry.
+- A scripted walk of the real screens at 1440 px and 390 px:
+  - On a second server with placeholder GitHub settings and a demo GitHub project of 38 commits, removed afterwards.
+  - As faculty1 (the GitHub list, project, review grid, the review and edit dialogs), faculty2 (the tracker list, the board after adding an overdue task, the task dialog, the read-only project rubric), student01 (Your project, the board, their GitHub project, the profile linked), student04 (the profile unlinked, `?github=taken`) and admin (Integrations, the course tabs).
+  - No error page, and nothing wider than the screen. The fixes it led to: the pager on capped tables, the commit list's length, and a doubled space on the board's cards.
+- `npx prettier --check` also flags three files unchanged since before M07 (`app/(app)/admin/offerings/actions.ts`, `lib/domain/proctoring.test.ts`, `lib/integrations/code-runner.ts`); left as they are.
