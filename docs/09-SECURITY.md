@@ -165,10 +165,10 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `project.repo_linked` (M07) | the repository before and after |
 | `user.github_linked`, `user.github_unlinked` (M07) | the GitHub login linked or removed |
 | `job.retried` (M07) | the queue and job an admin tried again |
-| `marks.locked`, `marks.unlocked` (reason required) | lock state |
-| `endsem.imported` | rows applied, syncRunId |
-| `ce.exported` | offerings, syncRunId |
-| `gradesheet.published` | term, count |
+| `marks.locked` (M08; the reason when a student's marks are incomplete), `marks.unlocked` (reason required) | `lockedAt` before and after |
+| `endsem.imported` (M08) | the term, the batch, rows applied, syncRunId |
+| `ce.exported` (M08) | the term, the batch, offerings, rows, syncRunId |
+| `gradesheet.published`, `gradesheet.unpublished` (M08; reason required to unpublish) | the term, the batch, the number of sheets |
 | `lesson.deleted` | title |
 
 Never put answer text, file contents, passwords, tokens or secrets in an audit entry.

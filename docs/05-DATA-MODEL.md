@@ -141,7 +141,7 @@ There is no collection: the evaluation policy is the settings key `evaluation` (
 | lastPushedAt | D? | last CE export/push |
 
 Indexes: `{ courseId: 1, termId: 1, batchId: 1, section: 1 }` unique · `{ facultyIds: 1, status: 1 }` · `{ departmentId: 1, termId: 1 }` · `{ batchId: 1, termId: 1 }` · `{ termId: 1, status: 1 }` · `{ status: 1, _id: -1 }` (the admin list filtered by status alone) · text `{ title: 'text' }` (the admin list's search, 17 Oct 2026).
-Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, evaluation copy or internal mark for this offering. The course must be in the batch programme's curriculum when the offering is created. End-sem marks are imported after the lock and freeze when the student's grade sheet is published (M08).
+Invariants: students see only `active`/`completed` offerings. While `lockedAt` is set, no action may change a submission score, assessment result state, enrollment, evaluation copy or internal mark for this offering. The course must be in the batch programme's curriculum when the offering is created. Attendance may still be corrected (audited, Q-51); it reaches the internal marks only after an unlock. End-sem marks are imported for locked or unlocked offerings and freeze when the student's grade sheet is published; unlocking is refused while a published grade sheet includes the offering (M08).
 
 ### 3.9 `enrollments`
 `offeringId` Id · `studentId` Id · `status` `active|dropped` · `engagement` `{ score: N?, band: S?, trend: S, signals: { attendance, video, timeliness, practice, activity: N? }, computedAt: D }?` (nightly snapshot, M10).
@@ -377,12 +377,14 @@ Indexes: `{ offeringId: 1, studentId: 1, component: 1 }` unique (the Marks tab a
 Invariants: only for a component the offering has (credits above 0). Since M07 only `practice` is saved here: the project internal comes from the project reviews (§6.3a, M07 decision 2). Every save is audited (`marks.rubric_saved`, the criteria before and after). Refused while the offering is locked. External practice and project marks are never stored here: they come from the exam section with the end-semester marks (M08).
 
 ### 5.4 `endSemMarks`
-`offeringId` Id · `studentId` Id · `marks` N? · `maxMarks` N · `absent` B · `source` `csv|api` · `syncRunId` Id · `importedAt` D.
-Indexes: `{ offeringId: 1, studentId: 1 }` unique. Re-import replaces (upsert) and is audited.
+The external marks of one student in one credit offering, from the exam section (M08 decision 1, 06 §8.3). `offeringId` Id · `studentId` Id · `externals` `[{ component: S, marks: N?, max: N, absent: B }]` — one entry per component the offering has (`theory` · `practice` · `project`); `marks` 0…`max`, two decimals, null exactly when `absent`; `max` from the offering's evaluation copy (07 §6) · `source` `csv|api` · `syncRunId` Id · `importedAt` D.
+Indexes: `{ offeringId: 1, studentId: 1 }` unique.
+Invariants: a re-import replaces the row (upsert) and is audited. Refused for a student whose grade sheet for the term is published. Writing a student's row turns their draft grade sheet to `incomplete` in the same transaction.
 
 ### 5.5 `gradeSheets`
-`termId` Id · `studentId` Id · `programId` Id · `rows` `[{ offeringId, courseCode, courseTitle, credits: { theory, practice, project }, components: [{ component, internal, internalMax, external, externalMax, marks }], pct, grade, gradePoint }]` (max 20; 07 §6) · `credits` N · `sgpa` N? · `status` `draft|published` · `publishedAt` D? · `publishedBy` Id?
-Indexes: `{ termId: 1, studentId: 1 }` unique · `{ termId: 1, status: 1 }`.
+`termId` Id · `studentId` Id · `programId` Id · `batchId` Id (the student's, M08) · `rows` `[{ offeringId, courseCode, courseTitle, credits: { theory, practice, project }, components: [{ component, internal, internalMax, external: N?, externalMax, absent: B, marks }], pct, grade, gradePoint }]` (max 20; 07 §6; empty while `incomplete`) · `credits` N · `sgpa` N? · `status` `incomplete|draft|published` · `missing` [S] (max 20, ≤ 200 each: what keeps an `incomplete` sheet from being worked out, e.g. "CUTM1014: theory internal missing (attendance)"; empty otherwise) · `computedAt` D · `publishedAt` D? · `publishedBy` Id?
+Indexes: `{ termId: 1, studentId: 1 }` unique · `{ termId: 1, batchId: 1, status: 1 }` (a batch's sheets and their counts) · `{ 'rows.offeringId': 1, status: 1 }` (unlocking checks for a published sheet and turns drafts `incomplete`).
+Invariants: written by the `compute/gradeSheets` job (06 §6), which never touches a `published` sheet. A student gets a `draft` only when every credit offering of theirs in the term is locked, their internal components are all non-null and their end-sem row is present (M08 decision 2); otherwise `incomplete`. Unlocking an offering or importing a student's end-sem marks turns affected drafts `incomplete`. Students see only their own `published` sheets.
 
 ### 5.6 `attainments` (latest result per scope)
 `scope` `offering|program` · `offeringId` Id? · `programId` Id · `batchId` Id? · `termIds` [Id] · `config` (snapshot of `attainment` settings used) · `cos` `[{ coId, code, cie: { assessed: N, attained: N, pct: N, level: N }?, see: { … }?, value: N?, target: N, met: B? }]` · `outcomes` `[{ code: S, value: N? }]` · `warnings` [S] (max 50) · `computedAt` D · `computedBy` Id?
@@ -424,9 +426,9 @@ Indexes: `{ userId: 1, readAt: 1, createdAt: -1 }` · TTL `{ expiresAt: 1 }`.
 The shape and defaults of every key are Zod schemas in `lib/schemas/settings.ts` (06 §7). A missing document means "defaults".
 
 ### 7.4 `syncRuns`
-`kind` `courseware|exam_pull_csv|exam_push_csv|exam_pull_api|exam_push_api|github` · `mode` `new|all|one`? (courseware) · `offeringId` Id? · `termId` Id? · `projectId` Id? · `status` `running|succeeded|partial|failed` · `actorId` Id? · `startedAt` D · `listedAt` D? (a listing is complete; until then `stats.rows` grows) · `finishedAt` D? · `stats` `{ rows: N?, applied: N, skipped: N, failed: N }` · `failures` `[{ row: N?, key: S?, message: S }]` (max 500; not `errors`, which Mongoose keeps for validation).
-A courseware run is finished once `listedAt` is set and applied + skipped + failed = rows; a run left `running` with no update for 2 hours counts as stopped, and one courseware run runs at a time.
-Indexes: `{ kind: 1, startedAt: -1 }` · `{ offeringId: 1, startedAt: -1 }`.
+`kind` `courseware|exam_pull_csv|exam_push_csv|exam_pull_api|exam_push_api|github|marks_lock|grade_sheets` (the last two M08: locking several offerings, working out a batch's grade sheets) · `mode` `new|all|one`? (courseware) · `offeringId` Id? · `termId` Id? · `batchId` Id? (M08) · `projectId` Id? · `status` `running|succeeded|partial|failed` · `actorId` Id? · `startedAt` D · `listedAt` D? (a listing is complete; until then `stats.rows` grows) · `finishedAt` D? · `stats` `{ rows: N?, applied: N, skipped: N, failed: N }` · `failures` `[{ row: N?, key: S?, message: S }]` (max 500; not `errors`, which Mongoose keeps for validation).
+A courseware or `marks_lock` run is finished once `listedAt` is set (courseware) and applied + skipped + failed = rows; a run left `running` with no update for 2 hours counts as stopped, and one courseware run runs at a time.
+Indexes: `{ kind: 1, startedAt: -1 }` · `{ offeringId: 1, startedAt: -1 }` · `{ batchId: 1, termId: 1, startedAt: -1 }` (a batch's last export, import, lock and grade-sheet runs, M08).
 
 ### 7.5 `auditLogs` (append-only, no `updatedAt`)
 `at` D · `actorId` Id · `action` S (`entity.verb`) · `entity` S · `entityId` Id · `offeringId` Id? · `reason` S? · `before` Mixed? · `after` Mixed?

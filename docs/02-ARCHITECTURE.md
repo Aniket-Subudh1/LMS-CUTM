@@ -202,7 +202,7 @@ Two checks, always both:
 | Queue | Job names | Concurrency / instance | Producers |
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
-| `compute` | `internalMarks`, `internalMarksNightly` (M06), `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
+| `compute` | `internalMarks`, `internalMarksNightly` (M06), `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `proctorRetention`, `lockOffering`, `gradeSheets` (M08) | 4 | actions, schedulers, webhooks |
 | `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 

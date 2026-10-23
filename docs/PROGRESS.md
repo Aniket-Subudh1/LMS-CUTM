@@ -30,7 +30,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
-| M08 Exam integration & grade sheet | Not started | | API: Q-04 |
+| M08 Exam integration & grade sheet | T0 — decisions recorded 23 Oct 2026; mock-ups next | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
@@ -2287,3 +2287,32 @@ Built to decisions 1–3 and the mock-up picks (P2 A, P3 A; P1, P4 and P5 as dra
   - As faculty1 (the GitHub list, project, review grid, the review and edit dialogs), faculty2 (the tracker list, the board after adding an overdue task, the task dialog, the read-only project rubric), student01 (Your project, the board, their GitHub project, the profile linked), student04 (the profile unlinked, `?github=taken`) and admin (Integrations, the course tabs).
   - No error page, and nothing wider than the screen. The fixes it led to: the pager on capped tables, the commit list's length, and a doubled space on the board's cards.
 - `npx prettier --check` also flags three files unchanged since before M07 (`app/(app)/admin/offerings/actions.ts`, `lib/domain/proctoring.test.ts`, `lib/integrations/code-runner.ts`); left as they are.
+
+### 2026-10-23 · Decision: M08 exam integration and grade sheets · Claude Code, at Aniket's request
+
+Request: "continue and plan next milestone". M07's seven commits were pushed to `origin main` first (`3c2105e..b8e93ae`, a fast-forward), at Aniket's choice. Aniket chose the recommended option on each of three points (`docs/milestones/M08-exam-integration-grades.md`, decisions 1–3):
+1. The exam section fills in the LMS's internal-marks file (three empty external columns: a number, `AB`, or blank where the course lacks the component) and uploads the same file back.
+2. No mark is guessed: a lock over incomplete internal marks needs a reason, and those students get no grade sheet. They are listed with what is missing until the course is unlocked, fixed and locked again.
+3. `AB` in any external part makes the course grade Ab, 0 points, its credits counted in the SGPA.
+
+**Dev consequences** (in the milestone file)
+- A batch and a term are the unit of work: an exported file must import whole, and a department's term (about 18,000 rows) would not. The end-sem import takes up to 10,000 rows.
+- Locking several courses and working out a batch's grade sheets run in the worker (`compute/lockOffering`, `compute/gradeSheets`). Locking one course and publishing a batch stay in the request.
+- Unlocking, or importing a student's end-sem marks, turns their draft sheets `incomplete`, so a stale draft cannot be published.
+- T2 is mostly built since M04, M06 and M07. Two gaps remain: the sweep's release-by-rule, and deleting an assessment whose results are published.
+- `examIntegration` waits for T7 (Q-04).
+
+**Changed docs**
+- The M08 file: decisions, consequences, lock semantics, the mock-up list (E1–E6), and tasks T1–T9 rewritten. T9's 07 §6 vector now reads O, A, B+ and SGPA 8.58; the file still had A, B, A+ and 7.56, from before M01b.
+- 05 §3.8, §5.4 (per-component `externals`), §5.5 (`batchId`, `incomplete`, `missing`, indexes), §7.4 (`marks_lock`, `grade_sheets`, `batchId`).
+- 06 §3, §6 (two jobs), §7 (`grading` rules; `examIntegration` waits), §8.3 and §8.4 rewritten. 06 §8.3 no longer says "non-locked".
+- 07 §6 (decisions 2 and 3, `externalMaxima`, the `AB` vector computed by script: 72.2 → 73, Ab; SGPA 53 / 12 = 4.42).
+- 02 §8; 08 §2–3; 09 §6.
+
+**Not done** — T0's mock-ups (next), T1–T9.
+
+**Assumptions** — none yet in §4 (they arrive with the code that needs them).
+
+**Open questions** — none new. Q-04, Q-21, Q-39, Q-40 and Q-58 stay open. Q-58 now affects grade sheets: an in-person course with no classes recorded in the LMS leaves every student `incomplete` (decision 2).
+
+**Verification** — Docs only. The two vectors were computed by script (`python3`). A search of `docs/` for the old CSV columns, "non-locked", `departmentId=` and the old 7.56 vector finds them only in this log.

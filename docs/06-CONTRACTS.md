@@ -69,7 +69,7 @@ Pure helpers used by these (`parseIstLocal`, `istDayKey`, `roundHalfUp`) live in
 | `/api/webhooks/live` | POST | Live engine | engine signature | raw body + `Authorization` | `200`; `401` bad signature | Normalizes to `LiveEvent`; appends presence; on `room_finished` enqueues `compute/finalizeLiveSession`. M03c: a join by a removed student is removed again and not recorded; a student's join while any of `studentsMay` is off gets `setRights` |
 | `/api/webhooks/github` | POST | GitHub App | `X-Hub-Signature-256` | raw body + `X-GitHub-Event`, `X-GitHub-Delivery` | `200`; `401` | On `push` for a linked repo: enqueue `sync/githubProject` (debounced by job id) |
 | `/api/auth/github/callback` | GET | GitHub OAuth redirect | session + `state` | `code`, `state` | `302` to `/profile` | Verifies `state`, exchanges `code`, stores `users.github` |
-| `/api/exports/internal-marks` | GET | Admin's browser (file download) | session, admin | `termId`, `departmentId?` | `200 text/csv` attachment | 06 §8.4; the only UI-facing route handler, because a generated file download cannot be a Server Action (M08) |
+| `/api/exports/internal-marks` | GET | Admin's browser (file download) | session, admin | `termId`, `batchId` | `200 text/csv` attachment, streamed; `400` over 10,000 rows; `404` | §8.4: one batch's locked offerings in the term; an `exam_push_csv` run, `offerings.lastPushedAt`, audit `ce.exported`. The only UI-facing route handler, because a generated file download cannot be a Server Action (M08) |
 
 ```ts
 // Beacon payload
@@ -235,6 +235,8 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | `sync/githubNightly` | `{}` (M07) | scheduler | queues `sync/githubProject` for every active GitHub project with a repository | safety net |
 | `sync/coursewareList` | `CoursewareListJob { syncRunId, mode: 'new'\|'all', page }` (M01b) | `cw-list-<syncRunId>-<page>` | counts the page's courses into `stats.rows` before queueing them; `new` skips pages already bound to a course | reads one listing page, queues a `coursewarePage` per course, then the next listing page; the last one sets `listedAt` |
 | `sync/coursewarePage` | `CoursewarePageJob { syncRunId, coursewareId, force }` (M01b) | `cw-<syncRunId>-<coursewareId>` | `source.lastRunId` counts a page once; a failure is recorded once per page | fetch → normalise → match (bound page, code, unique title) → bind atomically → write in one transaction with `course.imported` (05 §3.6). Concurrency 2: a page takes 30–60 s |
+| `compute/lockOffering` | `LockOfferingJob { offeringId, syncRunId, actorId }` (M08) | `lock-<syncRunId>-<offeringId>` | a locked offering counts as applied and is not locked again; the run's counters move once per offering | `recomputeInternalMarks`, then the lock with audit `marks.locked` in one transaction when every active student is `complete`; otherwise a failure naming how many students are incomplete (a lock with a reason is done one offering at a time) |
+| `compute/gradeSheets` | `GradeSheetsJob { termId, batchId, syncRunId, actorId }` (M08) | `gs-<termId>-<batchId>`; asking again while one waits does nothing | upserts every non-published sheet of the batch whole, so a repeat writes the same | 07 §6: `draft` or `incomplete` per student (05 §5.5), then the run's figures (students, ready, incomplete) |
 | `sync/examPull`, `sync/examPush` | `{ offeringId, syncRunId }` | `exam-<pull\|push>-<syncRunId>` | **blocked on Q-04** | M08 |
 
 `<minuteBucket>` = `Math.floor(now / 60000)`: repeated triggers inside one minute collapse into one job.
@@ -277,12 +279,12 @@ Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schem
 | `attendance` (M03) | `liveThresholdPct` (75) | 07 §10; read by the finalize job | proposed — confirm Q-17 |
 | `ceTrend` (M06) | `window` (6; 3–12 results), `minPoints` (3; 2–12, at most `window`), `slopeThreshold` (2; 0.5–20 points in steps of 0.5) | 07 §3; the recompute reads it | proposed |
 | `attainment` | `targetPct` (60), `level3Pct` (70), `level2Pct` (60), `level1Pct` (50), `cieWeight` (0.5), `seeWeight` (0.5), `defaultTargetLevel` (2) | 07 §4 | proposed — confirm Q-07 |
-| `grading` | `scale` (O ≥ 90 → 10, A+ ≥ 80 → 9, A ≥ 70 → 8, B+ ≥ 60 → 7, B ≥ 50 → 6, C ≥ 45 → 5, P ≥ 40 → 4, F < 40 → 0), `absentGrade` ("Ab", 0), `showSgpa` (true) | 07 §6 | proposed (UGC CBCS letter grades) — confirm Q-19, Q-21 |
+| `grading` (M08) | `scale` (O ≥ 90 → 10, A+ ≥ 80 → 9, A ≥ 70 → 8, B+ ≥ 60 → 7, B ≥ 50 → 6, C ≥ 45 → 5, P ≥ 40 → 4, F ≥ 0 → 0; 2–12 entries, the form posts lines of `grade \| from % \| points`), `absentGrade` ("Ab"), `absentPoints` (0), `showSgpa` (true) | 07 §6; the `gradeSheets` job reads it | proposed (UGC CBCS letter grades) — confirm Q-19, Q-21, Q-40. Rules: grades unique, ≤ 4 characters; `from %` strictly falling and the last 0; points 0–10 and not rising |
 | `engagement` | `windowDays` (28), weights `attendance` 30 · `video` 20 · `timeliness` 25 · `practice` 15 · `activity` 10, `highBand` (70), `mediumBand` (40), `trendDelta` (10) | 07 §7 | proposed — confirm Q-26 |
 | `proctoring` (M04b) | `snapshotRetentionDays` (90; 7–365) | 05 §8; the daily `proctorRetention` job reads it | proposed — confirm Q-24 |
 | `codeRunner` (M04b) | `languages` ([{ key: 'c', label: 'C (GCC 9.2.0)', runnerId: 50 }, { key: 'cpp', label: 'C++ (GCC 9.2.0)', runnerId: 54 }, { key: 'java', label: 'Java (OpenJDK 13.0.1)', runnerId: 62 }]; 1–10, keys lower-case and unique; the form posts lines of `key \| label \| runner id`), `runCooldownSec` (3; 1–60) | TP-09: the code question dialog, `runCode`, the `gradeCode` job | defaults verified against Judge0 CE source and the free public server; the settings page lists the runner's own languages. Python (71) is configuration, not a default (LAB-06) |
 | `projects` (M07) | `lastMinuteHours` (48; 1–168), `hugeCommitLines` (1000; 100–100,000), `messageStopWords` (["update","fix","changes","commit","wip","test","minor","asdf","."]; up to 50, typed one a line or with commas, kept lower-case) | 07 §12 | proposed |
-| `examIntegration` | `mode` ("csv") | M08 | `api` blocked on Q-04 |
+| `examIntegration` | `mode` ("csv") | M08 T7 | not built until Q-04: CSV is the only mode until the API exists |
 
 Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token, GitHub App key, OpenAI key, S3 keys live in env (11 §2).
 
@@ -323,14 +325,20 @@ All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (
 | `cos` | no | the course's CO codes separated by `|` (a personal bank has none) |
 | `negative` | no | marks taken off when wrong, ≤ marks |
 
-### 8.3 End-semester marks — `/admin/exams/import` (M08)
-`rollno,coursecode,termcode,endsemmarks,endsemmax,absent`
-- `absent` ∈ `Y, N`; when `Y`, `endsemmarks` must be empty.
-- `endsemmarks` 0…`endsemmax`, ≤ 2 decimals.
-- Every (`rollno`, `coursecode`, `termcode`) must match an active enrollment in a non-locked offering; unmatched rows are errors (mismatch report, EXM-07).
+### 8.3 End-semester marks — "Bring back the marks" on `/admin/exams/<batchId>` (M08 decision 1)
+The §8.4 export with its three external columns filled in by the exam section. `parseEndSemCsv` and `checkEndSemRow` (`lib/domain/csv.ts`). At most **10,000 rows** (a batch's file; about 100 bytes a row).
+- Needed columns: `rollno`, `coursecode`, `termcode`, `theoryexternal`, `practiceexternal`, `projectexternal`. Any other column (`name`, the internal columns) is ignored.
+- Each external value is a number from 0 to its maximum with ≤ 2 decimals (theory end-semester 60, practice 50, project 50, from the offering's evaluation copy, 07 §6), `AB` (any case) for absent, or blank. It is blank exactly where the course has no such component (credits 0): a blank for a component the course has, or a value for one it lacks, is a row error.
+- A (`rollno`, `coursecode`, `termcode`) appears once in a file.
+- Every row must match one active enrolment of a student of the page's batch in a credit offering of that course in the page's term. Locked or not, it does not matter. Unmatched rows are errors: the mismatch report (EXM-07). So are rows of a student whose grade sheet for the term is published.
+- All or nothing (§8): one transaction upserts `endSemMarks` (05 §5.4), turns the students' draft sheets `incomplete` and finishes the `exam_pull_csv` run; audit `endsem.imported`.
 
-### 8.4 Internal marks export — `/admin/exams/export` (M08)
-`rollno,name,coursecode,termcode` followed by the internal marks of each component the offering's credits copy has (`theoryinternal` of 40, `practiceinternal` of 50, `projectinternal` of 50 under the evaluation policy; the exact columns wait for Q-04 and Q-41). Exported only for locked offerings (CE-11, CE-12).
+### 8.4 Internal marks export — "Send to the exam section" on `/admin/exams/<batchId>` (M08)
+`rollno,name,coursecode,termcode,theoryinternal,practiceinternal,projectinternal,theoryexternal,practiceexternal,projectexternal` — the same header for every course, so one batch's file is one table. `buildInternalMarksCsv`, `papaparse.unparse`.
+- One row per active enrolment in the batch's **locked** credit offerings of the term (CE-11, CE-12), sorted by course code and roll number.
+- An internal column holds the student's internal marks for that component (out of 40, 50 and 50 under the evaluation policy) at 2 dp, and is blank where the course has no such component or the mark is missing. A mark can be missing only where the lock was given a reason; that student gets no grade sheet (M08 decision 2).
+- The three external columns are empty, for the exam section to fill in (§8.3).
+- At most 10,000 rows (the import's limit); a larger batch is refused with a message.
 
 ## 9. Notification kinds
 

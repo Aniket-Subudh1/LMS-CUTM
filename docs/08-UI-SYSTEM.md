@@ -60,7 +60,7 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/courses/[offeringId]/outcomes` | F H A | M09 | CO attainment, PO/PSO values, AI tag suggestions |
 | `/courses/[offeringId]/people` | F H A | M01, M03b, M10 | Round 4 (M03b): "Students" with number tiles (enrolled, active, dropped, and on a credit course those below the minimum attendance), a toolbar (search roll number, name or email; any/active/dropped), the roster by roll number (`DataTable`: student with email, roll number, live attendance or the skill columns, status, and for F, A a ⋮ to drop or add again); F, A: "Add student" (`?new=student`, roll number or email) and "Upload CSV" (`?new=csv`); then "Teaching staff" (the coordinator marked). Engagement column (M10) |
 | `/courses/[offeringId]/people/[studentId]` | F H A | M10 | Student drill-down (ENG-02) |
-| `/results` | S | M08 | Own grade sheets |
+| `/results` | S | M08 | Own published grade sheets by term, newest first (mock-up E5); a print stylesheet |
 | `/reports/ce` | H A | M06 | Continuous evaluation (mock-up M5): a term's credit offerings (the current term first; an admin also picks the department, a HoD sees their own): tiles (courses, students, average internal, dropping), then ten offerings a page with their faculty, students, average internal (a bar), % complete, the number dropping and a link to the Marks tab. "Reports" in the sidebar for H and A; no tabs until M09 adds the second report |
 | `/reports/attainment` | H A | M09 | Program/batch attainment |
 | `/reports/engagement` | H A | M10 | Engagement across offerings; skill-course traceability |
@@ -71,7 +71,8 @@ Access: S student · F faculty (teach) · H hod (oversee, read-only) · A admin 
 | `/admin/imports`, `/admin/imports/[runId]` | A | M01b | Imports: the course-list upload with its columns and recent uploads; courseware runs (only new pages, all again, one page), their progress and the pages that failed. GitHub's syncs are on `/admin/integrations` (M07 T9), with every queue's failed jobs |
 | `/admin/users`, `/admin/users/[id]` | A P | M01 | Users; "New user" and "Import CSV" dialogs (admin). P may only view and send a reset link |
 | `/admin/settings`, `/admin/settings/[key]` | A | M02, M01b | Settings registry (06 §7); M01b adds the evaluation policy form with a worked example; M04b how long proctoring's camera snapshots are kept, and the code questions' languages and wait between runs beside the code runner's own list |
-| `/admin/exams` | A | M08 | End-sem import, CE export, locks, grade sheets |
+| `/admin/exams` | A | M08 | Exams: a term's batches, ten a page, each with its progress (courses locked, end-sem marks, sheets ready, incomplete, published) |
+| `/admin/exams/[batchId]` | A | M08 | One batch in a term (mock-ups E1–E4): its credit courses with completeness and lock (lock, bulk lock, unlock), "Send to the exam section" (the CSV), "Bring back the marks" (the upload, the last import and its mismatch report), and the grade sheets (work out, Ready · Incomplete · Published, publish, unpublish) |
 | `/admin/integrations` | A | M07, M08 | Integrations (mock-up P5): GitHub — set up or not, the repositories linked, "Install on a repository", the projects whose last sync failed with Sync now, and how the last 50 syncs went; "Failed background jobs" — each queue's latest 20 that ran out of tries, with why, tries, when, and Retry. "Integrations" in the sidebar for admins |
 | `/admin/audit` | A | M01 | Audit log search |
 
@@ -91,7 +92,7 @@ The nav lists only routes that exist, in groups; each milestone adds its own ite
 | Menu | Results (M08) | student |
 | Menu | Reports (M06) | hod, admin |
 | Administration | Structure (`/admin`; also owns departments, programmes, terms) with sub-items Departments, Programmes, Terms | admin |
-| Administration | Offerings, Imports (M01b), Settings, Audit log | admin |
+| Administration | Offerings, Imports (M01b), Exams (M08), Settings, Integrations (M07), Audit log | admin |
 | Administration | Users (`/admin/users`) | admin, support |
 | Account (the sidebar's fixed footer) | Profile, then Sign out, under a hairline rule; they stay in view while a long menu (an admin's on a laptop) scrolls above them (Aniket, 23 Oct 2026) | all |
 

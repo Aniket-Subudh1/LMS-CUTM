@@ -190,12 +190,14 @@ For program P, batch B and a set of terms: take the latest offering-scope attain
 ## 6. Grade sheet (EXM-05) — `lib/domain/grades.ts`
 
 For each **credit** offering of the student in the term (non-credit offerings have no grade):
-- Each component the offering's credits snapshot has (credits > 0) gets its mark out of 100: theory = locked internal (out of 40) + end-semester (out of 60); practice and project = internal (out of 50) + external (out of 50). An absent end-semester counts 0 and the grade is `absentGrade`.
+- A sheet is worked out only when every such offering is locked, the student's internal components are all non-null and their end-sem row is present (M08 decision 2). Otherwise the sheet is `incomplete` and lists what is missing; no mark is guessed and nothing counts as 0.
+- `externalMaxima(policy)`: theory `theoryEndSem` (60); practice 100 − the practice rubric's total (50); project the external project rubric's total (50).
+- Each component the offering's credits snapshot has (credits > 0) gets its mark out of 100, kept unrounded: theory = locked internal (out of 40) + end-semester (out of 60); practice and project = internal (out of 50) + external (out of 50). An `AB` part counts 0.
 - `pct = coursePercentage(credits, marks)` (§2: credit-weighted, rounded up once).
-- Grade = the first scale entry (sorted by `minPct` descending) with `pct ≥ minPct`. End-sem absent → "Ab", grade point 0.
-- `SGPA = roundHalfUp(Σ credits × gradePoint / Σ credits, 2)` over rows with credits > 0; `null` if no credits or `showSgpa` is false.
+- Grade = the first scale entry (sorted by `minPct` descending) with `pct ≥ minPct`. **`AB` in any external part → `absentGrade` ("Ab"), `absentPoints` (0)** (M08 decision 3); the % is still shown.
+- `SGPA = roundHalfUp(Σ credits × gradePoint / Σ credits, 2)` over rows with credits > 0, Ab rows included; `null` if no credits or `showSgpa` is false.
 
-Default scale (06 §7): O ≥ 90 (10) · A+ ≥ 80 (9) · A ≥ 70 (8) · B+ ≥ 60 (7) · B ≥ 50 (6) · C ≥ 45 (5) · P ≥ 40 (4) · F (0). Only O ≥ 90 is confirmed by the policy; the rest is Q-40.
+Default scale (06 §7): O ≥ 90 (10) · A+ ≥ 80 (9) · A ≥ 70 (8) · B+ ≥ 60 (7) · B ≥ 50 (6) · C ≥ 45 (5) · P ≥ 40 (4) · F ≥ 0 (0). Only O ≥ 90 is confirmed by the policy; the rest is Q-40.
 
 | Course | T-P-Pj | Credits | Marks | pct | Grade | GP |
 |---|---|---|---|---|---|---|
@@ -206,7 +208,11 @@ Default scale (06 §7): O ≥ 90 (10) · A+ ≥ 80 (9) · A ≥ 70 (8) · B+ ≥
 
 (Computed with `coursePercentage` by script, 15 Oct 2026.)
 
-Boundary vectors: pct 90 → O; 89 → A+; 39 → F; end-sem absent → Ab, GP 0, counted in the SGPA denominator.
+Boundary vectors: pct 90 → O; 89 → A+; 39 → F; 0 → F.
+
+`AB` vector (M08 decision 3): DECT0901, 1-2-2, with T 87, P internal 45 and external `AB` (P = 45), and Pj 92. Raw 72.2 → 73 %, grade Ab, GP 0. With the other two rows above, the SGPA is (5 × 0 + 4 × 8 + 3 × 7) / 12 = 53 / 12 = **4.42**: the Ab row's credits stay in the denominator.
+
+A student whose CUTM1014 internal has no attendance part (null) gets no sheet: `incomplete`, "CUTM1014: theory internal missing".
 
 ## 7. Engagement score (ENG-01/02) — `lib/domain/engagement.ts`
 
