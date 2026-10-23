@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -140,6 +141,19 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Nav />
           </Suspense>
         </SidebarContent>
+        {/* Profile and Sign out stay in view however long the menu above them is (an admin's scrolls on a laptop). */}
+        <SidebarFooter className="p-0 [--radius:0.75rem]">
+          <Suspense
+            fallback={
+              <SidebarMenu className="px-3 pt-2 pb-4">
+                <SidebarMenuSkeleton showIcon />
+                <SidebarMenuSkeleton showIcon />
+              </SidebarMenu>
+            }
+          >
+            <AppNav roles={[]} foot />
+          </Suspense>
+        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
       <SidebarInset className="bg-sidebar">

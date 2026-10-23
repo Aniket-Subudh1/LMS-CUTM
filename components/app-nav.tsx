@@ -25,7 +25,7 @@ type Leaf = { href: string; label: string; icon?: PageIconName };
 type Item = Leaf & { icon: PageIconName; roles?: Role[]; children?: Leaf[] };
 
 // Groups and items by role (08 §3); a user with several roles sees the union. `roles` absent means everyone.
-// The `foot` group sits at the bottom of the sidebar, unlabelled, above Sign out.
+// The `foot` group is the sidebar's fixed footer, unlabelled, with Sign out: it stays in view while the menu scrolls.
 const NAV: { label: string; foot?: true; items: Item[] }[] = [
   {
     label: 'Menu',
@@ -101,17 +101,20 @@ function SignOut() {
   );
 }
 
-export function AppNav({ roles }: { roles: Role[] }) {
-  const groups = NAV.map((g) => ({
-    ...g,
-    items: g.items.filter((item) => !item.roles || item.roles.some((r) => roles.includes(r))),
-  })).filter((g) => g.items.length > 0);
+// `foot` renders only the footer group (Profile and Sign out); without it, the menu groups above it.
+export function AppNav({ roles, foot = false }: { roles: Role[]; foot?: boolean }) {
+  const groups = NAV.filter((g) => Boolean(g.foot) === foot)
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((item) => !item.roles || item.roles.some((r) => roles.includes(r))),
+    }))
+    .filter((g) => g.items.length > 0);
   const current = useCurrent(groups);
   const { setOpenMobile } = useSidebar();
   return groups.map((group) => (
     <SidebarGroup
       key={group.label}
-      className={cn('px-3 group-data-[collapsible=icon]:px-2', group.foot && 'mt-auto pb-4')}
+      className={cn('px-3 group-data-[collapsible=icon]:px-2', group.foot && 'pt-2 pb-4')}
     >
       {!group.foot && (
         <SidebarGroupLabel className="text-sidebar-foreground/75 mb-1 px-1 text-sm font-medium">

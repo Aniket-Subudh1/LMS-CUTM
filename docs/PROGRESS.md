@@ -2157,3 +2157,25 @@ Built to decisions 1–4 (Q-41) and the mock-up picks (M1 A, M2 A, M3–M5, the 
   - As faculty1 (Marks tab, "Work them out again", the rubric grid filled and saved, New assessment, the builder and its Settings), student01 (their marks), the HoD and admin (the CE report), and admin (offerings, the trend setting, the Marks tab).
   - No error page, and nothing wider than the screen after two fixes found on the way: the tab row widened the page at 1440 px (fixed by inline-size containment), and the rubric grid hid its Total column (long headings now wrap).
 
+### 2026-10-23 · The sidebar's Profile and Sign out stay in view · Claude Code, at Aniket's request
+
+Request: "the sidebar is getting short in many screens based on the screenshot … profile and settings should be fixed, not scrollable".
+
+**Found**
+- In a real window the sidebar is fixed and full height while the page scrolls. Measured at 1440 × 768 and × 900, scrolled to the bottom, as admin and faculty1: it spans the window each time.
+- The short white strip in the earlier screenshots comes from full-page captures, which draw fixed elements once, at the top. From now on the screen walks report the window as well.
+- What was wrong: Profile and Sign out were the last group inside the scrolling menu. An admin's menu (one item longer with Reports) is taller than its space even at 900 px, so they scrolled with it. At 768 px they sat below the window: their bottoms were at 852 and 898 px.
+
+**Changed**
+- `components/app-nav.tsx`: `AppNav({ roles, foot })`, where `foot` renders only the Account group.
+- `app/(app)/layout.tsx`: that group and Sign out sit in a `SidebarFooter` (inside `<Suspense>`, as `usePathname` needs), below the scrolling menu. The sidebar keeps its look.
+- 08 §3 and §5.2.
+
+**Not done** — An admin's menu still scrolls under the footer on a laptop-height window (Settings, Audit log and Users at 768 px), with no cue that it continues.
+
+**Verification**
+- Measured again: Profile's and Sign out's bottoms are at 706 and 752 px in a 768 px window, and 838 and 884 px at 900 px, for admin and faculty, scrolled or not.
+- The phone sheet (390 px) shows both pinned under the menu.
+- `npm run check` → `Tests 538 passed (538)`. `npm run build` → exit 0.
+- `npx playwright test tests/e2e/admin-structure.spec.ts tests/e2e/marks.spec.ts tests/e2e/people.spec.ts` → `6 passed`.
+
