@@ -31,7 +31,45 @@ Since M01b the marking follows CUTM's Examination Policy (2020), held as the set
 | Practice | 50 | 50 (external examiner) | rubric: concept 5 · planning and execution 10 · result and interpretation 10 · record 10 · conduct 5 · viva 10 (the external examiner uses the same rubric) |
 | Project | 50 | 50 | internal rubric: relevance 5 · literature 5 · methodology 10 · analysis and results 10 · interpretation 10 · report 10; external: relevance 10 · report 20 · defence 20 |
 
-How assessments feed these parts (which mid-term is which assessment, who enters the external marks) is **Q-41**; M06 computes the internal parts only after it is answered.
+**Internal marks (M06; Q-41 answered by Aniket, 23 Oct 2026)** — `lib/domain/evaluation.ts`, maxima from the offering's evaluation copy:
+- Each assessment of a credit course with theory credits counts toward one theory part (`countsToward`: Mid-term I, Mid-term II, Assignment) or none. A presentation for Mid-term II is an assignment with a rubric.
+- `partMarks(max, results)` — over the part's assessments with published results (A-20), each `{ counted, max }` with `counted` from `countedScore` (§14; a missed one counts 0, A-14): `max × mean(counted / maxMarks)`, so each assessment counts equally. `null` when none counts toward the part yet.
+- The attendance part is `attendancePoints(attendancePct(attended, held), bands)` over the student's finalized live classes (A-72); `null` while none is held.
+- `theoryInternal(parts)` — the four parts added up (out of 40 by default); `null` while any is `null`.
+- `rubricInternal(criteria, maxima)` — the practice or project rubric the teacher filled, added up (out of 50 by default); `null` while any criterion is blank.
+- `complete` — every component the course has (credits above 0) has its internal marks. `internalPct` = `roundHalfUp(100 × Σ internals / Σ maxima, 2)` once complete, else `null`.
+- Everything is kept unrounded and shown at 2 dp (§1); the course percentage, with the external marks, rounds once in M08.
+- External marks — the end-semester 60, the practice examiner's 50 and the project's external 50 — come from the exam section's CSV with the end-semester marks (M08). Teachers never type them.
+
+| Part max | Results (counted / max) | Marks (2 dp) |
+|---|---|---|
+| 15 | 34/50 | 10.2 |
+| 15 | 16/20 | 12 |
+| 15 | 7/9 | 11.67 |
+| 5 | 8/10, 30/50 | 3.5 |
+| 5 | 8/10, 30/50, missed (0/10) | 2.33 |
+| 5 | 10/10, 10/10 | 5 |
+| 15 | 0/20 | 0 |
+| 15 | none | null |
+
+| Rubric (maxima 5, 10, 10, 10, 5, 10) | Internal |
+|---|---|
+| 4, 8, 7.5, 9, 4, 8 | 40.5 |
+| 5, 10, 10, 10, 5, 10 | 50 |
+| 4, 8, blank, 9, 4, 8 | null |
+
+**Worked example** (computed by script), a 3-1-0 course on the default policy:
+
+| Part | Inputs | Marks |
+|---|---|---|
+| Mid-term I | one online test, 34/50 | 10.2 / 15 |
+| Mid-term II | a presentation (assignment with a rubric), 16/20 | 12 / 15 |
+| Assignment | 8/10, 30/50 and one missed (0/10) | 2.33 / 5 (46.67 %) |
+| Attendance | 17 of 20 classes, 85 % | 4 / 5 |
+| A quiz not counted | 9/10 | — (in the trend only) |
+| **Theory internal** | | **28.53 / 40** (28.5333…) |
+| **Practice internal** | rubric 4, 8, 7.5, 9, 4, 8 | **40.5 / 50** |
+| Complete, internal % | 100 × 69.0333… / 90 | **76.7** |
 
 **`coursePercentage(credits, marks)`** — the credit-weighted average of the component marks, rounded up once:
 

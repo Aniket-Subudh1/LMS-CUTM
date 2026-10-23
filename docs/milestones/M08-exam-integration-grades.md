@@ -2,6 +2,8 @@
 
 > **Changed by M01b.** The export has columns per component the offering has (theory internal /40, practice internal /50, project internal /50) instead of scheme components, and the import takes the matching external marks (theory end-semester /60, practice and project external /50). The grade sheet follows 07 §6: each component out of 100, `coursePercentage` credit-weighted and rounded up once; non-credit offerings get no grade. `assertUnlocked` guards "refresh evaluation copy" instead of `rebindScheme`. The full grade table and pass rules are Q-40.
 
+> **Q-41, answered 23 Oct 2026 (Aniket).** External marks all come from the exam section's CSV with the end-semester marks: theory end-semester /60, practice external /50 (the examiner, on the practice rubric) and project external /50 (relevance 10, report 20, defence 20). Teachers never type them in the LMS. Internal marks are M06's `internalMarks.components`.
+
 | | |
 |---|---|
 | Depends on | M06 |

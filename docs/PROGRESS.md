@@ -28,7 +28,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
-| M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
+| M06 Continuous evaluation | In progress — T0: decisions written, mock-ups shown; waiting for Aniket's picks | | Q-41 answered 23 Oct 2026. CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
@@ -80,7 +80,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-38 | Is the Examination Policy university-wide? CUTM AP's ASAG 1101 course file shows Theory 80 / Practice 20 with other parts | @client | One policy, copied onto each offering | M06 | Open |
 | Q-39 | Does "round up" mean ceiling (89.2 → 90) or nearest? Are component marks rounded too? | @client | Ceiling, once, at the course percentage | M08 | Open |
 | Q-40 | The full grade table and pass rules (the rest of Q-19) | @client | 06 §7 scale | M08 | Open |
-| Q-41 | How do assessments map to the policy's parts — Mid-term I (online), Mid-term II (presentation), assignment, attendance points from M03, the practice and project rubrics — and who enters the external practice and project marks? | @client / @dev | — | **M06** | Open |
+| Q-41 | How do assessments map to the policy's parts — Mid-term I (online), Mid-term II (presentation), assignment, attendance points from M03, the practice and project rubrics — and who enters the external practice and project marks? | @client / @dev | — | — | Answered 23 Oct 2026 (Aniket, M06): each assessment picks the theory part it counts toward; several in one part count by the mean of their percentages; the teacher fills the practice and project rubrics on the Marks tab; external marks come from the exam section's CSV (M08). 07 §2 |
 | Q-42 | What must the LMS do with the 75 % attendance minimum: show it, or produce an eligibility list? | @client | Stored only | M06, M08 | Open |
 | Q-43 | Programmes with fewer than 12 POs (MBA, BBA, M.Sc): may codes stay unused? Who supplies non-engineering PO titles? (Agriculture pages carry their own) | @client | An untitled code shows the code itself | M09 | Open |
 | Q-44 | Who maintains the course-list CSV after the first load, and how do the repository's "programme + stream" values map to LMS programmes? The 2021 repository spells one programme several ways (BTech / B.Tech / B Tech; M.Sc / MSc; B.Sc / B.Sc. / B.SC) and lists courses open to all under "All", "CUTM" and "MOOC"; converted as written it gives 39 programmes | @client | Converted once by the developer; admins keep that CSV | — | Open |

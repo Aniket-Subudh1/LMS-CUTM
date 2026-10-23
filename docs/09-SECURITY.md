@@ -44,6 +44,10 @@
 | Grade, publish results | ◐ view after publish | ✔ | ○ | ✔ | — |
 | Submissions: view answers and files | ◐ | ✔ | ○ | ✔ | status only |
 | Internal marks & trend | ◐ | ✔ | ○ | ✔ | — |
+| An assessment's "Counts toward" (M06) | — | ✔ | ○ | ✔ | — |
+| Practice and project rubric marks (M06) | ◐ own | ✔ | ○ | ✔ | — |
+| Refresh an offering's evaluation policy (M06) | — | — | — | ✔ | — |
+| CE report (M06) | — | — | ○ own department | ✔ | — |
 | Lock marks | — | — | — | ✔ | — |
 | Unlock marks (reason required) | — | — | — | ✔ | — |
 | End-sem import, CE export, grade-sheet publish | — | — | — | ✔ | — |
@@ -151,6 +155,9 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `assessment.time_added` (M04b, the live monitor) | minutes and the number of attempts given them; entity the attempt, or the test for everyone |
 | `submission.ended` (M04b) | status before, `endedBy: teacher` after |
 | `submission.penalty_waived`, `submission.penalty_restored` (M04b) | `waived` and `total` before/after |
+| `assessment.counts_toward` (M06) | the part before and after |
+| `marks.rubric_saved` (M06) | per student, the component and the criteria before and after |
+| `offering.evaluation_refreshed` (M06) | the evaluation copy before and after |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |
 | `endsem.imported` | rows applied, syncRunId |
 | `ce.exported` | offerings, syncRunId |

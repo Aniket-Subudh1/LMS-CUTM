@@ -26,7 +26,7 @@ terms ────────────────────────�
                                              ├─ lessons ── lessonProgress
                                              ├─ liveSessions ── attendance
                                              ├─ assessments (items, rubrics, CO tags) ── submissions
-                                             ├─ internalMarks · endSemMarks
+                                             ├─ internalMarks · rubricMarks (M06) · endSemMarks
                                              ├─ projects ── projectTasks · commits
                                              ├─ attainments
                                              └─ engagementDaily
@@ -231,6 +231,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | offeringId | Id? | null for a **standalone test** (M04b, TP-02): it belongs to its owners, has no CO tags and never feeds CE or attainment |
 | ownerIds | [Id] | standalone tests: who made it (they and admins manage it); empty on a course's assessment |
 | mode | S | one of the modes above |
+| countsToward | S? | M06 (Q-41): the theory part the assessment's marks count toward — `midTerm1` · `midTerm2` · `assignment` — or null (not counted; it still shows in the trend). Only on an assessment of a credit offering with theory credits, never on a standalone test. Changed while the offering is unlocked; audited (`assessment.counts_toward`) |
 | title | S | ≤ 160 |
 | instructions | RichText? | |
 | items | [Item] | 0–100 while a draft, 1–100 to publish (see below) |
@@ -354,9 +355,26 @@ Indexes: `{ assessmentId: 1, userId: 1 }` unique · `{ userId: 1, grantedAt: -1 
 Indexes: `{ email: 1, linkId: 1 }` unique (a new request replaces the code) · `{ expiresAt: 1 }` TTL 0.
 
 ### 5.3 `internalMarks`
-`offeringId` Id · `studentId` Id · `components` `[{ key: S, pct: N?, marks: N, counted: N }]` (keyed by the evaluation policy's parts; how assessments feed them is Q-41) · `total` N · `complete` B (every component has ≥ the required assessments) · `trend` `rising|dropping|steady|insufficient` · `slope` N? · `points` [N] (max 6) · `computedAt` D.
+One row per active student of a credit offering (M06, 07 §2).
+
+| Field | Type | Rules |
+|---|---|---|
+| offeringId, studentId | Id | |
+| parts | `[{ key: S, marks: N?, max: N, count: N }]` | theory only (empty without theory credits): `midTerm1`, `midTerm2`, `assignment`, `attendance`, in that order. `max` from the offering's evaluation copy; `count` is how many assessments count toward the part (for `attendance`, the classes held for this student); `marks` null while `count` is 0. Unrounded |
+| attendancePct | N? | the student's live attendance % behind the attendance part (07 §10); null while no class is held |
+| components | `{ theory: N?, practice: N?, project: N? }` | each component's internal marks (out of 40, 50 and 50 by default), unrounded; a component the course lacks is absent; null while one of its parts or criteria has none |
+| internalPct | N? | `100 × Σ internals / Σ maxima` at 2 dp, once `complete` (the CE report's average) |
+| complete | B | every component the course has has its internal marks |
+| trend, slope, points | S, N?, [N] | 07 §3: `rising` · `dropping` · `steady` · `insufficient`; `points` the last six published assessments' percentages, oldest first |
+| computedAt | D | |
+
 Indexes: `{ offeringId: 1, studentId: 1 }` unique.
-Invariants: written only by `recomputeInternalMarks` (07 §2). Never edited by hand. Not recomputed while the offering is locked.
+Invariants: written only by `recomputeInternalMarks` (07 §2), whole, for every active student at once; a row of a student no longer active is deleted. Never edited by hand. Not recomputed while the offering is locked.
+
+### 5.3a `rubricMarks` (M06, Q-41)
+The practice and project internal rubrics a teacher fills on the Marks tab, per student. `offeringId` Id · `studentId` Id · `component` S (`practice` · `project`) · `criteria` `{ <policy key>: N }` — the criteria filled so far, keyed as in the evaluation policy (`practiceConcept` … `practiceViva`, `projectRelevance` … `projectReport`), each 0 to its maximum in the offering's copy, two decimals · `updatedBy` Id · timestamps.
+Indexes: `{ offeringId: 1, studentId: 1, component: 1 }` unique (the Marks tab and the recompute read an offering's rows by its prefix).
+Invariants: only for a component the offering has (credits above 0). Every save is audited (`marks.rubric_saved`, the criteria before and after). Refused while the offering is locked. External practice and project marks are never stored here: they come from the exam section with the end-semester marks (M08).
 
 ### 5.4 `endSemMarks`
 `offeringId` Id · `studentId` Id · `marks` N? · `maxMarks` N · `absent` B · `source` `csv|api` · `syncRunId` Id · `importedAt` D.

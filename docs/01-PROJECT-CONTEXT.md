@@ -111,7 +111,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | REC-01 | Theory courses keep a learning record per student | Must | M04 | Build |
 | REC-02 | Practice courses keep a lab record per student | Must | M04 | Build |
 | REC-03 | Students submit an annual learning record through the platform | Must | M04 | Build |
-| REC-04 | Faculty review and evaluate records; marks flow into CE | Should | M04, M06 | Build |
+| REC-04 | Faculty review and evaluate records; marks flow into CE | Should | M04, M06 | Build — a learning record may count toward a theory part; lab records' average shows beside the practice rubric's Record criterion for the teacher (M06) |
 | ASG-01 | Assignment submission as scanned upload (images / PDF) | Must | M04 | Build |
 | ASG-02 | Assignment written directly on the platform (rich-text editor) | Must | M04 | Build |
 | ASG-03 | Every assignment question tagged with one or more COs | Must | M04 | Build |
@@ -125,11 +125,11 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | CE-03 | Modes: quiz, written test, coding test, lab test, coding competition, assignment, learning/lab records, project reviews — "all modes that are possible" | Must | M04, M04b (the coding modes, from M05), M07 | Build |
 | CE-04 | Quizzes configurable (questions, timing, attempts) and may be proctored | Must | M04, M05 | Build |
 | CE-05 | Faculty define the evaluation rubric | Must | M04 | Build |
-| CE-06 | Component scores mapped to the internal maximum (e.g. out of 50) | Must | M06 | Build |
+| CE-06 | Component scores mapped to the internal maximum (e.g. out of 50) | Must | M06 | Build — Q-41 (23 Oct 2026): each assessment counts toward Mid-term I, Mid-term II or Assignment, scaled to the part by the mean of its percentages; practice and project internals from the policy's rubrics, filled by the teacher (07 §2) |
 | CE-07 | Evaluation system dynamic, configured by admin per subject type and component combination (total internal and component weights) | Must | M01b (config), M06 (compute) | Build — since M01b one evaluation policy in Settings, from CUTM's Examination Policy (each component out of 100), copied onto each offering when it is created |
 | CE-08 | CE results entered by faculty or recorded automatically; kept as a complete record | Must | M04 | Build |
 | CE-09 | Dashboards show whether each student's performance is dropping or rising | Must | M06 | Build |
-| CE-10 | Mark entry supports the CE workflow (to be detailed by the client) | Must | M06 | Build the faculty marks view; specifics **Blocked on Q-06** |
+| CE-10 | Mark entry supports the CE workflow (to be detailed by the client) | Must | M06 | Build the faculty marks view and the rubric entry the policy needs (Q-41); further specifics **Blocked on Q-06** |
 | CE-11 | CE data pushed to the exam section through the API | Must | M08 | Build (CSV now; API **Blocked on Q-04**) |
 | CE-12 | Marks locked after submission to the exam section, with audit trail | Could | M08 | Build — required anyway by NFR-03 (audit trail for marks) and so pushed marks cannot drift |
 
