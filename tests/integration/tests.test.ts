@@ -429,7 +429,7 @@ describe('a standalone test, start to finish', () => {
     const candidate = await makeUser({ roles: ['candidate'], email: `c${newId().toHexString()}@gmail.com` });
     await TestGrant.create({ assessmentId: aid, userId: candidate._id, linkId: newId(), grantedAt: new Date() });
     await signInAs(candidate);
-    await expect(startAttempt({ assessmentId: aid })).rejects.toMatchObject(redirectsTo(`/tests/${aid}/attempt`));
+    await expect(startAttempt({ assessmentId: aid, agree: 'true' })).rejects.toMatchObject(redirectsTo(`/tests/${aid}/attempt`));
     const attempt = await Submission.findOne({ assessmentId: aid, studentId: candidate._id }).lean();
     expect(attempt).toMatchObject({ offeringId: null, status: 'in_progress' });
     const submissionId = String(attempt?._id);

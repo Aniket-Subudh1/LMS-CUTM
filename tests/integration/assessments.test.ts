@@ -166,7 +166,7 @@ async function quiz(w: World, over: Record<string, unknown> = {}) {
 
 async function started(w: World, aid: string, who = w.student) {
   await signInAs(who);
-  await expect(startAttempt({ assessmentId: aid })).rejects.toMatchObject(
+  await expect(startAttempt({ assessmentId: aid, agree: 'true' })).rejects.toMatchObject(
     redirectsTo(`/courses/${w.offeringId}/assessments/${aid}/attempt`),
   );
   const attempt = await Submission.findOne({ assessmentId: aid, studentId: who._id, status: 'in_progress' }).lean();
@@ -454,11 +454,11 @@ describe('attempting (T5)', () => {
       opensAt: new Date(Date.now() - 2 * 60 * MIN),
       closesAt: new Date(Date.now() - 60 * MIN),
     });
-    expect(await startAttempt({ assessmentId: closed.aid })).toMatchObject({
+    expect(await startAttempt({ assessmentId: closed.aid, agree: 'true' })).toMatchObject({
       code: 'CLOSED',
     });
     await signInAs(w.faculty);
-    expect(await startAttempt({ assessmentId: aid })).toMatchObject({ code: 'FORBIDDEN' });
+    expect(await startAttempt({ assessmentId: aid, agree: 'true' })).toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('saves an answer per question and checks its options', async () => {

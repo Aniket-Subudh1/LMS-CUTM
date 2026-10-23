@@ -103,7 +103,7 @@ async function bankQuestion(w: World, difficulty: 'easy' | 'medium' | 'hard', to
 }
 
 async function started(aid: string) {
-  await expect(startAttempt({ assessmentId: aid })).rejects.toMatchObject({
+  await expect(startAttempt({ assessmentId: aid, agree: 'true' })).rejects.toMatchObject({
     digest: expect.stringContaining('/attempt'),
   });
 }

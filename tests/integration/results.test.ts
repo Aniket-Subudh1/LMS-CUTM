@@ -145,7 +145,7 @@ async function take(
   written: number,
 ) {
   await signInAs(who);
-  await expect(startAttempt({ assessmentId: w.aid })).rejects.toMatchObject({
+  await expect(startAttempt({ assessmentId: w.aid, agree: 'true' })).rejects.toMatchObject({
     digest: expect.stringContaining('/attempt'),
   });
   const sid = String((await Submission.findOne({ assessmentId: w.aid, studentId: who._id }).lean())?._id);

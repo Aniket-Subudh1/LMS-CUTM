@@ -31,6 +31,7 @@ import { distinctPapers } from '@/lib/domain/papers';
 import { difficultyLabel, discriminationLabel } from '@/lib/domain/results';
 import { docOf } from '@/lib/domain/rich-text';
 import { GAP_MS, proctorPenalty } from '@/lib/domain/proctoring';
+import { roundHalfUp } from '@/lib/domain/round';
 import { seededShuffle } from '@/lib/domain/shuffle';
 import { earnsCertificate } from '@/lib/domain/test-files';
 import { assessmentPath } from '@/lib/domain/test-links';
@@ -1015,7 +1016,15 @@ export type HandInFilter = { status?: 'to_grade' | 'graded' | 'in_progress'; lat
 export type HandIns = {
   canTeach: boolean;
   path: string;
-  assessment: { id: string; title: string; maxMarks: number; state: DisplayState; status: AssessmentDoc['status'] };
+  assessment: {
+    id: string;
+    title: string;
+    maxMarks: number;
+    // The code questions' marks together, or null when it has none.
+    codeMarks: number | null;
+    state: DisplayState;
+    status: AssessmentDoc['status'];
+  };
   rows: {
     id: string;
     student: { name: string; email: string; rollNo: string };
@@ -1030,6 +1039,9 @@ export type HandIns = {
     // TP-11: an answer alike another hand-in's.
     similar: boolean;
     total: number | null;
+    // M05 T6 (LAB-03), on an assessment with code questions: runs of the sample tests, each question's best run added
+    // up, and the code questions' marks once all are marked.
+    code: { runs: number; best: { passed: number; total: number } | null; marks: number | null } | null;
   }[];
   total: number;
   counts: { enrolled: number; handedIn: number; graded: number; toGrade: number; late: number; inProgress: number };
@@ -1037,12 +1049,41 @@ export type HandIns = {
 
 const STATUS_OF = { to_grade: ['submitted'], graded: ['graded'], in_progress: ['in_progress'] } as const;
 
+// M05 T6: a hand-in's runs of the sample tests, each code question's best run, and the code questions' marks (null
+// until the gradeCode job or a grader has marked them all).
+function codeActivity(
+  items: { _id: Types.ObjectId }[],
+  runs: { itemId: Types.ObjectId; passed: number; total: number }[],
+  scores: SubmissionDoc['scores'] | undefined,
+): NonNullable<HandIns['rows'][number]['code']> {
+  const best = items.flatMap((item) => {
+    const mine = runs.filter((run) => run.itemId.equals(item._id));
+    return mine.length === 0 ? [] : [mine.reduce((top, run) => (run.passed > top.passed ? run : top))];
+  });
+  const marks = items.map((item) => scores?.[String(item._id)]?.marks);
+  return {
+    runs: runs.length,
+    best:
+      best.length === 0
+        ? null
+        : { passed: best.reduce((n, run) => n + run.passed, 0), total: best.reduce((n, run) => n + run.total, 0) },
+    marks: marks.some((m) => m === undefined)
+      ? null
+      : roundHalfUp(
+          marks.reduce<number>((n, m) => n + (m ?? 0), 0),
+          2,
+        ),
+  };
+}
+
 // T6: the hand-ins of one assessment, the oldest first, for whoever teaches or oversees the class.
 export async function listSubmissions(assessmentId: string, filter: HandInFilter, page: number): Promise<HandIns> {
   const { access, offeringId } = await testAccess(assessmentId);
   if (access === 'take') notFound();
   await db();
   const doc = await readAssessment(assessmentId);
+  // Code questions are the assessment's own: a section draws only automatically marked types from the bank.
+  const codeItems = doc.items.filter((item) => item.type === 'code');
   const q = filter.q?.trim();
   const students = q
     ? await User.find(
@@ -1076,6 +1117,7 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
       endedBy: 1,
       total: 1,
       similar: 1,
+      ...(codeItems.length > 0 ? { runs: 1, scores: 1 } : {}),
     })
       .sort({ submittedAt: 1, _id: 1 })
       .skip((page - 1) * pageSize)
@@ -1108,6 +1150,13 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
       id: String(doc._id),
       title: doc.title,
       maxMarks: doc.maxMarks,
+      codeMarks:
+        codeItems.length > 0
+          ? roundHalfUp(
+              codeItems.reduce((n, item) => n + item.maxMarks, 0),
+              2,
+            )
+          : null,
       state: stateOf(doc, new Date()),
       status: doc.status,
     },
@@ -1125,6 +1174,7 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
         warnings: warningsOf.get(String(d._id)) ?? 0,
         similar: d.similar.length > 0,
         total: d.total ?? null,
+        code: codeItems.length > 0 ? codeActivity(codeItems, d.runs ?? [], d.scores) : null,
       };
     }),
     total,
@@ -1150,6 +1200,8 @@ export type GradingView = {
     id: string;
     attemptNo: number;
     status: 'in_progress' | 'submitted' | 'graded';
+    // M05 T6 (LAB-03): with submittedAt, how long the attempt took.
+    startedAt: Date;
     submittedAt: Date | null;
     late: boolean;
     autoSubmitted: boolean;
@@ -1252,6 +1304,7 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
       id: String(attempt._id),
       attemptNo: attempt.attemptNo,
       status: attempt.status,
+      startedAt: attempt.startedAt,
       submittedAt: attempt.submittedAt ?? null,
       late: attempt.late,
       autoSubmitted: attempt.autoSubmitted,

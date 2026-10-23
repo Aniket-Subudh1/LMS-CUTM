@@ -200,6 +200,40 @@ export async function HandInsView({
                 </span>
               ),
             },
+            // M05 T6 (LAB-03): what each person did with the code questions.
+            ...(a.codeMarks === null
+              ? []
+              : [
+                  {
+                    header: 'Sample runs',
+                    cell: (row: HandIns['rows'][number]) =>
+                      row.code?.best ? (
+                        <span className="grid tabular-nums">
+                          <span className="whitespace-nowrap">
+                            {row.code.runs} run{row.code.runs === 1 ? '' : 's'}
+                          </span>
+                          <span className="text-muted-foreground text-xs whitespace-nowrap">
+                            best {row.code.best.passed} of {row.code.best.total} passed
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Never ran</span>
+                      ),
+                  },
+                  {
+                    header: 'Code marks',
+                    cell: (row: HandIns['rows'][number]) => {
+                      const marks = row.code?.marks ?? null;
+                      return marks === null ? (
+                        <span className="text-muted-foreground">{row.status === 'in_progress' ? '—' : 'Marking…'}</span>
+                      ) : (
+                        <span className="whitespace-nowrap tabular-nums">
+                          {marks} / {a.codeMarks}
+                        </span>
+                      );
+                    },
+                  },
+                ]),
             {
               header: 'Status',
               cell: (row) => <Badge variant={statusTone(STATUS[row.status].tone)}>{STATUS[row.status].label}</Badge>,

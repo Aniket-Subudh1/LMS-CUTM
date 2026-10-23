@@ -102,7 +102,11 @@ export async function GradingPage({
           </h1>
           <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-[0.8125rem]">
             {a.title} · attempt {s.attemptNo} ·{' '}
-            {s.submittedAt ? `handed in ${formatDateTime(s.submittedAt)}` : 'still writing'}
+            {s.submittedAt
+              ? `handed in ${formatDateTime(s.submittedAt)}, ${formatDuration(
+                  Math.max(0, Math.round((s.submittedAt.getTime() - s.startedAt.getTime()) / 1000)),
+                )} after starting`
+              : 'still writing'}
             {s.late && <Badge variant="warning">Late</Badge>}
             {s.autoSubmitted && <Badge variant="secondary">By the timer</Badge>}
             {s.endedBy && (
@@ -406,6 +410,18 @@ function AnswerView({ item, answer, view }: { item: TeacherItem; answer: AnswerV
             ? 'never ran the sample tests'
             : `ran the sample tests ${runs.length} time${runs.length === 1 ? '' : 's'}, best ${best} of ${runs[0].total} passed`}
         </p>
+        {runs.length > 0 && (
+          <details className="text-xs">
+            <summary className="text-muted-foreground cursor-pointer">Every run</summary>
+            <ol className="text-muted-foreground mt-1 grid gap-0.5 tabular-nums">
+              {runs.map((run, i) => (
+                <li key={i}>
+                  {formatDateTime(run.at)} · {run.passed} of {run.total} passed
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
         <ol className="grid gap-1">
           {(item.tests ?? []).map((test, i) => {
             const result = results.find((r) => r.testCaseId === test.id);

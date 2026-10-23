@@ -114,7 +114,7 @@ type World = Awaited<ReturnType<typeof world>>;
 // Starts an attempt as `who` and returns its id.
 async function start(w: World, who: { _id: Types.ObjectId; sessionVersion: number }) {
   await signInAs(who);
-  await expect(startAttempt({ assessmentId: w.aid })).rejects.toMatchObject({
+  await expect(startAttempt({ assessmentId: w.aid, agree: 'true' })).rejects.toMatchObject({
     digest: expect.stringContaining('/attempt'),
   });
   const attempt = await Submission.findOne({ assessmentId: w.aid, studentId: who._id }).lean();
@@ -166,6 +166,22 @@ describe('proctoring settings (TP-08)', () => {
     await signInAs(w.student);
     const page = await getAssessmentPage(w.aid);
     expect(page.view === 'student' && page.assessment.proctoring).toMatchObject({ hardLimit: 3, penaltyEach: 1 });
+  });
+
+  it('start nothing until the taker ticks that they read them (AC-M05-06)', async () => {
+    const w = await world();
+    await signInAs(w.student);
+    expect(await startAttempt({ assessmentId: w.aid })).toMatchObject({
+      code: 'VALIDATION',
+      message: 'Tick that you have read the rules, then start.',
+    });
+    expect(await Submission.countDocuments({ assessmentId: w.aid })).toBe(0);
+    await start(w, w.student);
+    // Continuing the running attempt asks nothing.
+    await expect(startAttempt({ assessmentId: w.aid })).rejects.toMatchObject({
+      digest: expect.stringContaining('/attempt'),
+    });
+    expect(await Submission.countDocuments({ assessmentId: w.aid })).toBe(1);
   });
 });
 

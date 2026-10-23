@@ -14,7 +14,7 @@ import {
   startAttempt,
   submitAttempt,
 } from '@/app/(attempt)/courses/[offeringId]/assessments/[aid]/attempt/actions';
-import { getAttemptForStudent, getSubmissionForGrading } from '@/lib/data/assessments';
+import { getAttemptForStudent, getSubmissionForGrading, listSubmissions } from '@/lib/data/assessments';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import type { RunJob, RunResult } from '@/lib/integrations/code-runner';
@@ -118,7 +118,7 @@ type World = Awaited<ReturnType<typeof world>>;
 
 async function start(w: World, who: { _id: Types.ObjectId; sessionVersion: number }) {
   await signInAs(who);
-  await expect(startAttempt({ assessmentId: w.aid })).rejects.toMatchObject({
+  await expect(startAttempt({ assessmentId: w.aid, agree: 'true' })).rejects.toMatchObject({
     digest: expect.stringContaining('/attempt'),
   });
   return String((await Submission.findOne({ assessmentId: w.aid, studentId: who._id }).lean())?._id);
@@ -269,6 +269,11 @@ describe('grading code (TP-09, LAB-05, 07 §14)', () => {
     const w = await world();
     const sid = await start(w, w.student);
     await saveAnswer({ submissionId: sid, itemId: w.itemId, answer: { type: 'code', language: 'c', source: 'five' } });
+    // Two earlier runs of the sample test, kept with the attempt as runCode keeps them.
+    await Submission.updateOne(
+      { _id: sid },
+      { $push: { runs: { $each: [0, 1].map((passed) => ({ itemId: w.itemId, at: new Date(), passed, total: 1 })) } } },
+    );
     runBatch.mockClear();
     await handIn(sid);
     // `five` passes the visible test (weight 1 of 4): 8 × 1/4 = 2.
@@ -282,6 +287,10 @@ describe('grading code (TP-09, LAB-05, 07 §14)', () => {
     await signInAs(w.faculty);
     const view = await getSubmissionForGrading(w.aid, sid);
     expect(view.submission.results[w.itemId]).toHaveLength(3);
+    // M05 T6: the hand-ins list shows the runs, the best one and the code marks.
+    const list = await listSubmissions(w.aid, {}, 1);
+    expect(list.assessment.codeMarks).toBe(8);
+    expect(list.rows).toMatchObject([{ code: { runs: 2, best: { passed: 1, total: 1 }, marks: 2 } }]);
     expect(view.items.find((item) => item.id === w.itemId)?.tests).toHaveLength(3);
     // An empty code mark keeps the tests' mark; the written answer is marked by hand.
     await gradeSubmission({

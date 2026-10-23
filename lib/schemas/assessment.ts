@@ -173,6 +173,9 @@ export const SaveInstructions = z.object({ assessmentId: objectId, instructions:
 
 // M04b: an assessment is found by its own id; access comes from it (its course or its owners), never from a posted course.
 export const AssessmentRef = z.object({ assessmentId: objectId });
+// AC-M05-06 (09 §11): a new attempt starts only once the taker has ticked that they read the rules — on a proctored
+// test, exactly what is watched. Continuing an attempt asks nothing.
+export const StartAttempt = AssessmentRef.extend({ agree: z.stringbool().default(false) });
 export const ItemRef = z.object({ ...AssessmentRef.shape, itemId: objectId });
 // A drag or a Move menu sends the whole new order (lib/domain/order.ts).
 export const ReorderItems = z.object({

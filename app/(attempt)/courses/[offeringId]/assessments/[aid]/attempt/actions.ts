@@ -24,13 +24,13 @@ import { Submission } from '@/lib/models/submission';
 import { limit } from '@/lib/rate-limit';
 import {
   AddSnapshot,
-  AssessmentRef,
   EnterSection,
   FlagItem,
   PROCTOR_LIMITS,
   ProctorBeat,
   RunCode,
   SaveAnswer,
+  StartAttempt,
   SubmissionRef,
   type ProctorEvent,
 } from '@/lib/schemas/assessment';
@@ -52,7 +52,7 @@ const isExpired = (attempt: { deadlineAt: Date }, now: Date) =>
 // T5. An attempt left running past its deadline is handed in first; a second tab starting at the same moment finds the
 // unique attempt number taken and resumes the first one. M04b: the attempt keeps its own paper (drawn from the bank
 // where sections say so), opens the first section, and gets the person's extra time.
-export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, async ({ assessmentId }, viewer) => {
+export const startAttempt = action({ input: StartAttempt, roles: TAKERS }, async ({ assessmentId, agree }, viewer) => {
   const offeringId = await requireTake(viewer, assessmentId);
   const assessment = await Assessment.findOne(
     { _id: assessmentId, status: { $ne: 'draft' } },
@@ -97,6 +97,7 @@ export const startAttempt = action({ input: AssessmentRef, roles: TAKERS }, asyn
     throw new AppError('CLOSED', `This closed on ${formatDateTime(lateUntil ?? assessment.closesAt)}.`);
   if (check === 'no_attempts_left') throw new AppError('CONFLICT', 'You have used all your attempts.');
   if (check === 'start') {
+    if (!agree) throw new AppError('VALIDATION', 'Tick that you have read the rules, then start.');
     const _id = new Types.ObjectId();
     const { paper, drawn } = await buildPaper(assessment, String(_id));
     const first = assessment.sections[0];
@@ -404,7 +405,8 @@ export const proctorBeat = action({ input: ProctorBeat, roles: TAKERS }, async (
     };
     const tab = input.sessionId.slice(0, 8);
     if (blocked) {
-      if (!attempt.proctor?.events.some((e) => e.type === 'second_device' && e.detail === tab)) note('second_device', tab);
+      if (!attempt.proctor?.events.some((e) => e.type === 'second_device' && e.detail === tab))
+        note('second_device', tab);
     } else {
       const gap = connectionGap(held.lastBeatAt, now);
       if (gap !== null) note('connection_gap', `${gap} s`);
