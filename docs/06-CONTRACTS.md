@@ -140,7 +140,8 @@ Built in M04b (TP-09). The adapter runs code and never compares outputs (07 §14
 installUrl(): string
 oauthAuthorizeUrl(state: string): string
 exchangeOAuthCode(code: string): Promise<{ id: number; login: string }>
-resolveRepo(owner: string, name: string): Promise<{ installationId: number; defaultBranch: string }>   // NOT_FOUND if the App is not installed on it
+resolveRepo(owner: string, name: string): Promise<{ installationId: number; owner: string; name: string; defaultBranch: string }>   // GitHub's own spelling of owner/name; NOT_FOUND if the App is not installed on it
+githubConfigured(): boolean   // all six GITHUB_* settings present (M07)
 listCommits(input: { installationId: number; owner: string; name: string; since: Date | null }): Promise<{ sha: string; authorLogin: string | null; authorId: number | null; committedAt: Date; message: string; parents: number }[]>
 commitStats(input: { installationId: number; owner: string; name: string; sha: string }): Promise<{ additions: number; deletions: number }>
 verifyWebhook(rawBody: string, signature: string): Promise<void>   // app.webhooks.verify → false → AppError('FORBIDDEN'); the route then parses the JSON with Zod

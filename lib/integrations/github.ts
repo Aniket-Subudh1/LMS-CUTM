@@ -6,7 +6,14 @@ import { AppError } from '@/lib/errors';
 // 06 §4.5 (M07). Only this file talks to GitHub: the App reads repositories it is installed on, links a student's account
 // through OAuth, and verifies webhooks. Until the App's settings are present, GitHub projects say it is not set up.
 
-type Settings = { appId: string; slug: string; privateKey: string; clientId: string; clientSecret: string; secret: string };
+type Settings = {
+  appId: string;
+  slug: string;
+  privateKey: string;
+  clientId: string;
+  clientSecret: string;
+  secret: string;
+};
 
 function settings(): Settings | null {
   const e = env();
@@ -73,7 +80,11 @@ export async function exchangeOAuthCode(code: string): Promise<{ id: number; log
   return { id: Number(data.id), login: data.login };
 }
 
-export async function resolveRepo(owner: string, name: string): Promise<{ installationId: number; defaultBranch: string }> {
+// The repository as GitHub spells it, so a webhook's `owner/name` always matches the link.
+export async function resolveRepo(
+  owner: string,
+  name: string,
+): Promise<{ installationId: number; owner: string; name: string; defaultBranch: string }> {
   const { app: gh } = github();
   try {
     const { data: installation } = await gh.octokit.request('GET /repos/{owner}/{repo}/installation', {
@@ -82,7 +93,12 @@ export async function resolveRepo(owner: string, name: string): Promise<{ instal
     });
     const octokit = await gh.getInstallationOctokit(installation.id);
     const { data: repo } = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo: name });
-    return { installationId: installation.id, defaultBranch: repo.default_branch };
+    return {
+      installationId: installation.id,
+      owner: repo.owner.login,
+      name: repo.name,
+      defaultBranch: repo.default_branch,
+    };
   } catch (error) {
     if (status(error) === 404) {
       throw new AppError('NOT_FOUND', 'Install the CUTM LMS GitHub App on this repository first.');

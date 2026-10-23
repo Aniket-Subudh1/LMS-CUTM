@@ -92,10 +92,11 @@ async function finalizeLiveSession({ sessionId }: FinalizeLiveJob): Promise<void
     const live = await LiveSession.findOneAndUpdate(
       { _id: sessionId, status: 'ended', finalizedAt: null },
       { $set: { finalizedAt: new Date() } },
-      { session, projection: { offeringId: 1, startedAt: 1, endedAt: 1, attendanceMode: 1 } },
+      { session, projection: { offeringId: 1, kind: 1, startedAt: 1, endedAt: 1, attendanceMode: 1 } },
     ).lean();
-    // Already finalized, or a class that never started: no attendance.
-    if (!live?.startedAt || !live.endedAt) return { students: 0, offeringId: null };
+    // Already finalized, or a class that never started: no attendance. A project review's class (M07) is one team's, so
+    // it is finalized without attendance rows that would count against the rest of the class.
+    if (!live?.startedAt || !live.endedAt || live.kind === 'review') return { students: 0, offeringId: null };
     const { startedAt, endedAt, offeringId, attendanceMode } = live;
     const [enrolled, rows] = await Promise.all([
       Enrollment.distinct('studentId', { offeringId, status: 'active' }).session(session),

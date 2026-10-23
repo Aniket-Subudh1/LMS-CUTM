@@ -14,9 +14,11 @@ import { SyncRun } from '@/lib/models/sync-run';
 import { User } from '@/lib/models/user';
 import { syncQueue } from '@/lib/queue';
 import { CATALOG_LIMITS } from '@/lib/schemas/structure';
-import { CoursewareListJob, CoursewarePageJob } from '@/lib/schemas/jobs';
+import { CoursewareListJob, CoursewarePageJob, GithubNightlyJob, GithubProjectJob } from '@/lib/schemas/jobs';
+import { githubNightly, githubProject } from './github';
 
-type SyncJob = Job<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
+type SyncData = CoursewareListJob | CoursewarePageJob | GithubProjectJob | GithubNightlyJob;
+type SyncJob = Job<SyncData, void, 'coursewareList' | 'coursewarePage' | 'githubProject' | 'githubNightly'>;
 type Outcome = 'applied' | 'skipped';
 
 const MAX_FAILURES = 500;
@@ -310,16 +312,19 @@ async function giveUp(job: SyncJob, message: string): Promise<void> {
 
 async function run(job: SyncJob): Promise<void> {
   if (job.name === 'coursewareList') return listPage(CoursewareListJob.parse(job.data));
+  if (job.name === 'githubProject') return githubProject(GithubProjectJob.parse(job.data));
+  if (job.name === 'githubNightly') {
+    GithubNightlyJob.parse(job.data);
+    return githubNightly();
+  }
   return importPage(CoursewarePageJob.parse(job.data));
 }
 
 // Two pages at a time, and at most one new page a second: on 16 Oct 2026 the courseware server answered in under a
 // second and then stopped answering for minutes after ~270 pages in 90 s. When it is slow (30–60 s a page) a full
 // import runs for hours in the background.
-export function startSyncWorker(
-  redisUrl: string,
-): Worker<CoursewareListJob | CoursewarePageJob, void, SyncJob['name']> {
-  const worker = new Worker<CoursewareListJob | CoursewarePageJob, void, SyncJob['name']>('sync', run, {
+export function startSyncWorker(redisUrl: string): Worker<SyncData, void, SyncJob['name']> {
+  const worker = new Worker<SyncData, void, SyncJob['name']>('sync', run, {
     connection: new Redis(redisUrl, { maxRetriesPerRequest: null }),
     concurrency: 2,
     limiter: { max: 1, duration: 1000 },

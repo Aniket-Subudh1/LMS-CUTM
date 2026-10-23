@@ -2,18 +2,19 @@ import 'server-only';
 import { Types } from 'mongoose';
 import { db } from '@/lib/db';
 import { countedScore } from '@/lib/domain/attempts';
-import { computeInternalMarks, type RubricCriteria } from '@/lib/domain/evaluation';
+import { computeInternalMarks, reviewAverages, type RubricCriteria } from '@/lib/domain/evaluation';
 import { computeTrend } from '@/lib/domain/trend';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { InternalMark } from '@/lib/models/internal-mark';
 import { Offering } from '@/lib/models/offering';
+import { ProjectReview } from '@/lib/models/project-review';
 import { RubricMark } from '@/lib/models/rubric-mark';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { ASSESSMENT_LIMITS, type AttemptPolicy, type CountsToward } from '@/lib/schemas/assessment';
-import type { RubricComponent } from '@/lib/schemas/marks';
+import { PROJECT_LIMITS } from '@/lib/schemas/projects';
 import { SETTINGS, type SettingsKey, type SettingsValue } from '@/lib/schemas/settings';
 import { MAX_ENROLLMENTS } from '@/lib/schemas/structure';
 
@@ -87,7 +88,7 @@ export async function recomputeInternalMarks(
   if (offering.category === 'skill') return { skipped: 'skill' };
   // 05 §3.8: nothing moves while marks are locked.
   if (offering.lockedAt) return { skipped: 'locked' };
-  const [policy, trendSettings, assessments, enrolments, rubricRows, classes] = await Promise.all([
+  const [policy, trendSettings, assessments, enrolments, practiceRows, reviews, classes] = await Promise.all([
     policyOf(offering.evaluation),
     stored('ceTrend').then((value) => SETTINGS.ceTrend.schema.parse(value)),
     Assessment.find(
@@ -98,17 +99,22 @@ export async function recomputeInternalMarks(
       .limit(ASSESSMENT_LIMITS.perOffering)
       .lean(),
     Enrollment.find({ offeringId, status: 'active' }, { studentId: 1 }).limit(MAX_ENROLLMENTS).lean(),
-    RubricMark.find({ offeringId }, { studentId: 1, component: 1, criteria: 1 })
-      .limit(2 * MAX_ENROLLMENTS)
+    // M07 decision 2: only the practice rubric is typed; the project internal comes from the project reviews.
+    RubricMark.find({ offeringId, component: 'practice' }, { studentId: 1, criteria: 1 }).limit(MAX_ENROLLMENTS).lean(),
+    ProjectReview.find({ offeringId }, { marks: 1 })
+      .limit(PROJECT_LIMITS.perOffering * PROJECT_LIMITS.reviews)
       .lean(),
     classesOf(offeringId),
   ]);
   const studentIds = enrolments.map((e) => e.studentId);
   const attempts = await gradedAttempts(assessments, studentIds);
-  const rubricsOf = new Map<string, Partial<Record<RubricComponent, RubricCriteria>>>();
-  for (const row of rubricRows) {
-    const key = String(row.studentId);
-    rubricsOf.set(key, { ...rubricsOf.get(key), [row.component]: row.criteria });
+  const practiceOf = new Map(practiceRows.map((row) => [String(row.studentId), row.criteria]));
+  const reviewsOf = new Map<string, RubricCriteria[]>();
+  for (const review of reviews) {
+    for (const mark of review.marks) {
+      const key = String(mark.studentId);
+      reviewsOf.set(key, [...(reviewsOf.get(key) ?? []), mark.criteria ?? {}]);
+    }
   }
   const writes = studentIds.map((studentId) => {
     const key = String(studentId);
@@ -123,7 +129,7 @@ export async function recomputeInternalMarks(
         assessment.countsToward ? [{ part: assessment.countsToward, counted, maxMarks: assessment.maxMarks }] : [],
       ),
       attendance: classes.get(key) ?? { attended: 0, held: 0 },
-      rubrics: rubricsOf.get(key) ?? {},
+      rubrics: { practice: practiceOf.get(key) ?? {}, project: reviewAverages(reviewsOf.get(key) ?? []) },
     });
     // Every published assessment, counted toward a part or not, oldest first (07 §3).
     const points = scores.map(({ assessment, counted }) => (100 * counted) / assessment.maxMarks);

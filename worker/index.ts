@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import { log } from '@/lib/log';
-import { computeQueue } from '@/lib/queue';
+import { computeQueue, syncQueue } from '@/lib/queue';
 import { startComputeWorker } from './jobs/compute';
 import { startMailWorker } from './jobs/mail';
 import { startMediaWorker } from './jobs/media';
@@ -36,6 +36,11 @@ await computeQueue().upsertJobScheduler(
   'internalMarksNightly',
   { pattern: '0 2 * * *', tz: 'Asia/Kolkata' },
   { name: 'internalMarksNightly', data: {} },
+);
+await syncQueue().upsertJobScheduler(
+  'githubNightly',
+  { pattern: '30 1 * * *', tz: 'Asia/Kolkata' },
+  { name: 'githubNightly', data: {} },
 );
 log.info('worker started', { queues: workers.map((w) => w.name) });
 

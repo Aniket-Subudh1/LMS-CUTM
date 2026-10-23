@@ -7,13 +7,14 @@ import { escapeRegex } from '@/lib/data/courses';
 import { classesOf, gradedAttempts, policyOf } from '@/lib/data/internal-marks';
 import { db } from '@/lib/db';
 import { countedAttempt } from '@/lib/domain/attempts';
-import { RUBRICS, rubricMax } from '@/lib/domain/evaluation';
+import { RUBRICS, reviewAverages, rubricMax, type RubricCriteria } from '@/lib/domain/evaluation';
 import { CRITERION_LABEL, PART_LABEL } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
 import { InternalMark, type InternalMarkDoc } from '@/lib/models/internal-mark';
 import { Offering, type OfferingDoc } from '@/lib/models/offering';
+import { ProjectReview } from '@/lib/models/project-review';
 import { RubricMark } from '@/lib/models/rubric-mark';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
@@ -73,6 +74,22 @@ async function studentPage(offeringId: string, ids: Types.ObjectId[], q: string 
     User.countDocuments(filter),
   ]);
   return { students, total };
+}
+
+// M07 decision 2: each student's project criteria, averaged over their project reviews (07 §2).
+async function reviewCriteriaOf(
+  offeringId: string,
+  studentIds: Types.ObjectId[],
+): Promise<Map<string, RubricCriteria>> {
+  const reviews = await ProjectReview.find({ offeringId, 'marks.studentId': { $in: studentIds } }, { marks: 1 }).lean();
+  const byStudent = new Map<string, RubricCriteria[]>();
+  for (const review of reviews) {
+    for (const mark of review.marks) {
+      const key = String(mark.studentId);
+      byStudent.set(key, [...(byStudent.get(key) ?? []), mark.criteria ?? {}]);
+    }
+  }
+  return new Map([...byStudent].map(([key, list]) => [key, reviewAverages(list)]));
 }
 
 const activeIds = (offeringId: string) =>
@@ -212,6 +229,8 @@ export async function getMarksSheet(offeringId: string, filter: MarksFilter, pag
 
 export type RubricSheet = {
   canEdit: boolean;
+  // M07 decision 2: the project rubric is the reviews' average, read only here.
+  fromReviews: boolean;
   locked: boolean;
   component: RubricComponent;
   criteria: { key: (typeof RUBRICS)[RubricComponent][number]; label: string; max: number }[];
@@ -242,8 +261,13 @@ export async function getRubricSheet(
   if (offering.credits[component] === 0) notFound();
   const { students, total } = await studentPage(offeringId, await activeIds(offeringId), q, page);
   const studentIds = students.map((s) => s._id);
+  const fromReviews = component === 'project';
   const [stored, labRecords] = await Promise.all([
-    RubricMark.find({ offeringId, component, studentId: { $in: studentIds } }, { studentId: 1, criteria: 1 }).lean(),
+    fromReviews
+      ? reviewCriteriaOf(offeringId, studentIds)
+      : RubricMark.find({ offeringId, component, studentId: { $in: studentIds } }, { studentId: 1, criteria: 1 })
+          .lean()
+          .then((rows) => new Map(rows.map((row) => [String(row.studentId), row.criteria]))),
     component === 'practice'
       ? Assessment.find(
           { offeringId, mode: 'lab_record', status: 'results_published' },
@@ -254,9 +278,9 @@ export async function getRubricSheet(
       : [],
   ]);
   const attempts = await gradedAttempts(labRecords, studentIds);
-  const marksOf = new Map(stored.map((row) => [String(row.studentId), row.criteria]));
   return {
-    canEdit: (access === 'teach' || viewer.roles.includes('admin')) && !offering.lockedAt,
+    canEdit: !fromReviews && (access === 'teach' || viewer.roles.includes('admin')) && !offering.lockedAt,
+    fromReviews,
     locked: Boolean(offering.lockedAt),
     component,
     criteria: RUBRICS[component].map((key) => ({ key, label: CRITERION_LABEL[key], max: policy[key] })),
@@ -272,7 +296,7 @@ export async function getRubricSheet(
         id: key,
         name: student.name,
         rollNo: student.rollNo ?? '—',
-        marks: marksOf.get(key) ?? {},
+        marks: stored.get(key) ?? {},
         labRecordPct: pcts.length > 0 ? pcts.reduce((sum, p) => sum + p, 0) / pcts.length : null,
       };
     }),
@@ -315,9 +339,10 @@ export async function getMyMarks(offeringId: string): Promise<MyMarks> {
       .sort({ closesAt: 1, _id: 1 })
       .limit(ASSESSMENT_LIMITS.perOffering)
       .lean(),
-    RubricMark.find({ offeringId, studentId: me }, { component: 1, criteria: 1 }).lean(),
+    RubricMark.find({ offeringId, studentId: me, component: 'practice' }, { criteria: 1 }).lean(),
     classesOf(offeringId),
   ]);
+  const projectCriteria = (await reviewCriteriaOf(offeringId, [me])).get(viewer.id) ?? {};
   const attempts = await gradedAttempts(published, [me]);
   const counted = (a: { _id: Types.ObjectId; attemptPolicy: AttemptPolicy }) =>
     countedAttempt(attempts.get(`${String(a._id)}:${viewer.id}`) ?? [], a.attemptPolicy)?.total ?? null;
@@ -342,7 +367,7 @@ export async function getMyMarks(offeringId: string): Promise<MyMarks> {
     rubrics: (['practice', 'project'] as const)
       .filter((component) => offering.credits[component] > 0)
       .map((component) => {
-        const criteria = rubrics.find((r) => r.component === component)?.criteria ?? {};
+        const criteria = component === 'project' ? projectCriteria : (rubrics[0]?.criteria ?? {});
         return {
           component,
           criteria: RUBRICS[component].map((key) => ({

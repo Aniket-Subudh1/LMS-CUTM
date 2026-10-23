@@ -8,6 +8,8 @@ import type {
   CoursewarePageJob,
   DraftQuestionsJob,
   FinalizeLiveJob,
+  GithubNightlyJob,
+  GithubProjectJob,
   GradeCodeJob,
   InternalMarksJob,
   InternalMarksNightlyJob,
@@ -23,7 +25,9 @@ import type {
 
 type MailQueue = Queue<MailSend | MailJob, void, 'send' | 'fanout'>;
 type MediaQueue = Queue<MediaJob, void, 'transcodeLesson'>;
-type SyncQueue = Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>;
+type SyncData = CoursewareListJob | CoursewarePageJob | GithubProjectJob | GithubNightlyJob;
+type SyncName = 'coursewareList' | 'coursewarePage' | 'githubProject' | 'githubNightly';
+type SyncQueue = Queue<SyncData, void, SyncName>;
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -88,20 +92,17 @@ export function mediaQueue(): MediaQueue {
   return globalForQueue.media;
 }
 
-// Imports from other systems (02 §8): the courseware import now, the exam system and GitHub later.
+// Imports from other systems (02 §8): the courseware import, GitHub (M07), the exam system later.
 export function syncQueue(): SyncQueue {
-  globalForQueue.sync ??= new Queue<CoursewareListJob | CoursewarePageJob, void, 'coursewareList' | 'coursewarePage'>(
-    'sync',
-    {
-      connection: redis(),
-      defaultJobOptions: {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 60_000 },
-        removeOnComplete: 2000,
-        removeOnFail: 5000,
-      },
+  globalForQueue.sync ??= new Queue<SyncData, void, SyncName>('sync', {
+    connection: redis(),
+    defaultJobOptions: {
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 60_000 },
+      removeOnComplete: 2000,
+      removeOnFail: 5000,
     },
-  );
+  });
   return globalForQueue.sync;
 }
 
@@ -150,27 +151,45 @@ export async function queueGradeCode(submissionId: string, again = false): Promi
 // so nothing is added; a finished one is removed and added anew; one already running may have read too early, so
 // another follows it. The short delay gathers a burst of changes into one run.
 async function queueRecompute(
-  job: { name: 'testStats'; data: TestStatsJob } | { name: 'internalMarks'; data: InternalMarksJob },
+  add: (jobId: string, delay: number) => Promise<unknown>,
+  queue: ComputeQueue | SyncQueue,
   jobId: string,
 ): Promise<void> {
-  const existing = await computeQueue().getJob(jobId);
+  const existing = await queue.getJob(jobId);
   const state = existing ? await existing.getState() : null;
   if (state === 'waiting' || state === 'delayed' || state === 'prioritized') return;
   if (existing && state !== 'active') await existing.remove();
-  await computeQueue().add(job.name, job.data, {
-    jobId: state === 'active' ? `${jobId}-${Date.now()}` : jobId,
-    delay: 5_000,
-  });
+  await add(state === 'active' ? `${jobId}-${Date.now()}` : jobId, 5_000);
 }
 
 // TP-11: a test's ranks, item analysis and leaderboard.
 export async function queueTestStats(assessmentId: string): Promise<void> {
-  await queueRecompute({ name: 'testStats', data: { assessmentId } }, `stats-${assessmentId}`);
+  const data: TestStatsJob = { assessmentId };
+  await queueRecompute(
+    (jobId, delay) => computeQueue().add('testStats', data, { jobId, delay }),
+    computeQueue(),
+    `stats-${assessmentId}`,
+  );
 }
 
 // M06 (07 §2–3): a credit offering's internal marks.
 export async function queueInternalMarks(offeringId: string): Promise<void> {
-  await queueRecompute({ name: 'internalMarks', data: { offeringId } }, `ce-${offeringId}`);
+  const data: InternalMarksJob = { offeringId };
+  await queueRecompute(
+    (jobId, delay) => computeQueue().add('internalMarks', data, { jobId, delay }),
+    computeQueue(),
+    `ce-${offeringId}`,
+  );
+}
+
+// M07 (06 §6): a GitHub project's new commits, after a push, a link or "Sync now".
+export async function queueGithubSync(projectId: string): Promise<void> {
+  const data: GithubProjectJob = { projectId };
+  await queueRecompute(
+    (jobId, delay) => syncQueue().add('githubProject', data, { jobId, delay }),
+    syncQueue(),
+    `gh-${projectId}`,
+  );
 }
 
 // 06 §6 (TP-12): make one file asked for from a test's results. Each request is its own job; asking again while one

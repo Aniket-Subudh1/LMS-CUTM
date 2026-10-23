@@ -27,6 +27,10 @@ const sameCriteria = (a: Partial<Record<string, number>>, b: Partial<Record<stri
 export const saveRubricMarks = action({ input: SaveRubricMarks, roles: TEACH }, async (input, viewer) => {
   const { offeringId, component } = input;
   await requireTeach(viewer, offeringId);
+  // M07 decision 2: the project internal is the project reviews' average, marked on the Projects tab.
+  if (component === 'project') {
+    throw new AppError('VALIDATION', 'Project marks come from the project reviews, on the Projects tab.');
+  }
   await db();
   const offering = await Offering.findById(offeringId, { category: 1, credits: 1, evaluation: 1 }).lean();
   if (!offering || offering.category !== 'ugc' || offering.credits[component] === 0) {

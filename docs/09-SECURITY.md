@@ -163,6 +163,8 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `offering.evaluation_refreshed` (M06) | the evaluation copy before and after |
 | `project.review_marked` (M07) | per member, the criteria before and after |
 | `project.repo_linked` (M07) | the repository before and after |
+| `user.github_linked`, `user.github_unlinked` (M07) | the GitHub login linked or removed |
+| `job.retried` (M07) | the queue and job an admin tried again |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |
 | `endsem.imported` | rows applied, syncRunId |
 | `ce.exported` | offerings, syncRunId |
