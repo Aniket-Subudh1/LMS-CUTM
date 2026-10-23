@@ -28,7 +28,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
-| M06 Continuous evaluation | In progress — T0: decisions written, mock-ups shown; waiting for Aniket's picks | | Q-41 answered 23 Oct 2026. CE-10 specifics: Q-06 |
+| M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
@@ -97,6 +97,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-56 | TP-10 asks the AI to "suggest a mark band for written and code answers", which means sending students' answers (without names, roll numbers or emails) to the AI; 09 §12 says answers are never sent. Should anonymous answer text be sent for these suggestions? | @client | Not built: the AI only drafts questions (no student data) | TP-10's mark-band suggestion | Open |
 | Q-55 | Code questions run on Judge0's free public server (ce.judge0.com) until the university has its own: students' code goes to a third party, and its rate limits are not ours. Before going public, which Judge0 server and token (or a paid key) should be used? | @client | The free public server (Aniket, 18 Oct 2026) | Going public | Open |
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
+| Q-58 | Most CUTM classes are in person. Should the theory attendance part (5 marks) come only from attendance recorded in the LMS — live classes, and in-person classes a teacher records as manual-attendance classes — or will attendance come from another system? | @client | LMS attendance only (A-162) | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -264,6 +265,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-159 | Saving an AI draft in its dialog is its review and accepts it; a draft is discarded with ⋮ Delete. Drafts count toward the bank's 5,000 but not toward its other counts | M04b | — |
 | A-160 | A draft request is tried once, never retried by itself, so drafts are never saved twice; the teacher is told how it went, a failure included | M04b | — |
 | A-161 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it. The AI is OpenAI's (Aniket, 18 Oct 2026, for cost); the model is the `OPENAI_MODEL` setting, by default `gpt-5.4-mini` | M04b | — |
+| A-162 | The theory attendance part comes from the student's finalized LMS live classes only (A-72); an in-person class counts when its teacher records it as a manual-attendance class | M06 | Q-58 |
+| A-163 | A theory part with nothing counting toward it, or attendance with no class held, leaves the theory internal open (null), never 0; only a missed assessment counts 0 (A-14) | M06 | Q-41 |
+| A-164 | The trend runs over every published result of the offering, whether it counts toward a part or not, so practice quizzes show in it | M06 | — |
+| A-165 | A new assessment counts toward nothing until the teacher picks a part; the choice stays open after students start, until marks are locked | M06 | — |
+| A-166 | Rubric criteria take up to two decimals; a blank box leaves that criterion, and so the component, open | M06 | — |
+| A-167 | The lab-record average beside Record is the mean of the student's published lab records (a missed one 0), shown for the teacher's reference and never entered for them | M06 | — |
+| A-168 | The CE report opens on the current term (else the newest by code) and lists credit offerings that are not drafts; its average internal is over students whose marks are complete | M06 | — |
+| A-169 | A head of department whose account has no department sees an empty CE report | M06 | — |
 
 ## 5. Log
 
@@ -2080,4 +2089,71 @@ Aniket answered Q-41 by choosing the recommended option on each of its four poin
 **Open questions** — none new. Found while drawing the mock-ups: a teacher's course tabs are 1212 px wide in a 1104 px row at 1440 px, so People is already scrolled out of view, and Marks makes the row longer. Asked in the mock-up round.
 
 **Verification** — 18 mock-ups drawn inside the real app (the e2e build on port 3100, faculty1, student05, the HoD and admin on CUTM1602), static content in place of the new screens, compiled by Tailwind's browser build with the app's theme: M1 A/B, M2 A/B, M3, M4 (dialog and builder card), M5 (HoD and admin), each at 1440 px and 390 px, none wider than the screen. Shown to Aniket on one page: https://claude.ai/artifact/L5ejrmQXhWfAriP3QPH2Rb (private).
+
+### 2026-10-23 · M06 Continuous evaluation (T1–T5) · Claude Code, at Aniket's request
+
+Built to decisions 1–4 (Q-41) and the mock-up picks (M1 A, M2 A, M3–M5, the tab row scrolling with a fade), all in `docs/milestones/M06-continuous-evaluation.md`. Commits on main, not pushed: `85efaf3` foundation, `a5e57b4` server, `3096ba4` screens, and this report.
+
+**Created**
+- **Data and rules** (05 §5.1, §5.3, §5.3a; 07 §2–3):
+  - `lib/models/internal-mark.ts`, `lib/models/rubric-mark.ts`, `assessments.countsToward`; `lib/schemas/marks.ts`; `scripts/sync-indexes.ts`.
+  - `lib/domain/evaluation.ts` (`partMarks`, `addedUp`, `computeInternalMarks`) and `lib/domain/trend.ts` (`computeTrend`), with every 07 vector and the worked example.
+  - The `ceTrend` setting and its form; `InternalMarksJob`, `InternalMarksNightlyJob`.
+- **Server:**
+  - `lib/data/internal-marks.ts` (`recomputeInternalMarks`, worker-safe).
+  - `lib/data/marks.ts` (`getMarksSheet`, `getRubricSheet`, `getMyMarks`, `getCeReport`).
+  - `queueInternalMarks` sharing one debounced helper with `queueTestStats` (`lib/queue.ts`).
+  - The worker's `internalMarks` and `internalMarksNightly` jobs, and its scheduler.
+  - `assertUnlocked` in `lib/data/offerings.ts`.
+  - Recompute triggers on releasing results, regrading and waiving after publication, `gradeCode`, finalizing and marking attendance, enrolment changes, "Counts toward", rubric saves and a policy refresh.
+  - Actions: `saveRubricMarks`, `requestRecompute` (`marks/actions.ts`), `refreshEvaluation` (admin offerings), and `countsToward` on `createAssessment` and `updateAssessmentSettings`.
+- **Screens:**
+  - `marks/page.tsx` (teacher, HoD and admin; and the student's own); `marks/[component]/page.tsx` (the rubric grid); `reports/ce/page.tsx` with Reports in the sidebar.
+  - "Counts toward" (`CountsTowardField`) in the New assessment dialog and the builder's settings; the admin offering's ⋮ Refresh the evaluation policy.
+  - `TabNav`: scrolls to the current tab, fades where there are more, never widens the page.
+  - `PART_LABEL`, `CRITERION_LABEL`, `TREND_LABEL`, `formatMarks` in `lib/format.ts`; the settings page reads its rubric labels from there.
+- **Tests:**
+  - Unit: 23 new.
+  - Integration: `tests/integration/internal-marks.test.ts`, 11 cases.
+  - E2E: `tests/e2e/marks.spec.ts`.
+- **Docs:** 01, 02 §8, 05, 06 §6–7, 07 §2, 08 (routes, `TabNav`, `NewAssessmentDialog`, `TrendChart`), 09, the M06 and M08 files.
+
+**Acceptance criteria**
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC-M06-01 | Pass | Integration: the worked example as real records stores theory 28.53 (28.5333…), practice 40.5 and 76.7 % |
+| AC-M06-02 | Pass for releasing results and saving a rubric; the other triggers are wired and not each tested | Integration: releasing results queues one `ce-<id>` job that the real worker runs, and a change seconds later joins it. E2E: from an empty `internalMarks`, a rubric save reaches the page through the worker within the 30 s wait |
+| AC-M06-03 | Pass | Unit: 07 §3's table (80, 70, 60, 50 → dropping; 90, 40 → insufficient) |
+| AC-M06-04 | Pass | Integration: a changed Settings policy moves nothing; an admin's refresh does, audited with before and after; a teacher is refused |
+| AC-M06-05 | Pass | Integration: another department's HoD gets 404 and an empty report; a student reads only their own row (no classmate's id in the response). E2E: the HoD's report lists the class; the student's page shows only their breakdown |
+| AC-M06-06 | Pass | Integration: "Counts toward" and rubric saves are refused while locked; each change is audited (`assessment.counts_toward`, `marks.rubric_saved`) |
+
+**Changed beyond the tasks (found while building)**
+- "What counts" lists drafts as well, marked "draft". Otherwise it said nothing counted toward a part right after a teacher chose one.
+- The builder's Settings dialog says "what it counts toward" can still change once students have started.
+- Refresh the evaluation policy lives in the row's ⋮ menu: a button on every row of the offerings list was clutter.
+
+**Not done**
+- The human validation checklist: five students against a hand-made spreadsheet, Q-06 with the client, the 10-second "dropping" check, and Mid-term II as a presentation with the client.
+- External marks: M08, by the exam section's CSV (decision 4).
+- CE-10 beyond the rubric entry waits on Q-06.
+- On phones, wide tables (the Marks tab's included) still scroll sideways with no cue (P2 of the mock-up round; not picked).
+- `TrendChart` is drawn inside the Marks route until M10 gives it a second route (08 §5.2).
+
+**Assumptions** — A-162 to A-169 (§4).
+
+**Open questions** — Q-58 (§3).
+
+**Verification**
+- `npm run check` → `Test Files 34 passed (34)`, `Tests 538 passed (538)`.
+- `npm run test:integration` (local replica set and Redis) → `Test Files 24 passed (24)`, `Tests 292 passed (292)`.
+- `npm run build` → exit 0, after the same Next.js 16.4.0 `SecurityFatalError` notice stops every other build (M05 entry). `npm run check:bundle` → "139 files scanned … clean".
+- `npx playwright test` of admin-structure, assessments, bank, catalog, code, marks, people and proctoring → 10 passed, 1 failed:
+  - `bank.spec.ts` fails because the local e2e server has an AI key. Next copies `.env`, which holds the real `OPENAI_API_KEY` since 18 Oct, into `.next/standalone`, and the spec expects no key. It is unrelated to M06 and does not happen in CI.
+  - `marks.spec.ts` also passed again from an empty `internalMarks` (20 rows written by the worker).
+  - Not run here: auth, content, results and tests (Mailpit and RustFS are not installed), and live (LiveKit).
+- A scripted walk of the real screens on the e2e data, at 1440 px and 390 px:
+  - As faculty1 (Marks tab, "Work them out again", the rubric grid filled and saved, New assessment, the builder and its Settings), student01 (their marks), the HoD and admin (the CE report), and admin (offerings, the trend setting, the Marks tab).
+  - No error page, and nothing wider than the screen after two fixes found on the way: the tab row widened the page at 1440 px (fixed by inline-size containment), and the rubric grid hid its Total column (long headings now wrap).
 

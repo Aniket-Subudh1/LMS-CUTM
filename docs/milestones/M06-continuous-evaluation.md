@@ -83,7 +83,7 @@ Reads for the screens are in `lib/data/marks.ts` (built with T2): `getMarksSheet
   - teach and oversee: tiles (students, complete, dropping, average internal %); "What counts" — each theory part's assessments, and a warning for a part that has none; the student list (ten a page, A-79; search; filters dropping and incomplete) with each part, each component's internal, the trend badge and a `TrendChart` sparkline; "Worked out <time>" and, for teachers, "Work them out again".
   - practice and project rubric entry (teach edits; oversee reads), in the picked form, with each student's lab-record average beside Record (REC-04, for reference only).
   - learn: their own parts with `Progress` bars, the assessments that count with their counted marks, their own rubric marks and trend.
-- **`TrendChart`** (`components/trend-chart.tsx`, client): the shadcn chart, with a sentence for screen readers.
+- **`TrendChart`**: an SVG line with a sentence for screen readers, drawn in the Marks route's own file until M10 gives it a second route (law 4); a few points need no Recharts.
 - **"Counts toward"** in the New assessment dialog and the builder's settings card, on a credit course with theory credits.
 - **CE report** `/reports/ce` (HoD, admin) and a Reports entry in the sidebar: term (the active term by default), department (admins; a HoD sees their own); offerings ten a page with students, average internal %, % complete and the number dropping, each linking to its Marks tab. One `$group` over `internalMarks` for the page's offerings. No `TabNav` until M09 adds a second report.
 - **Admin offerings:** the row action "Refresh the evaluation policy", which asks first.
