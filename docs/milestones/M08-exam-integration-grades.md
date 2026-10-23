@@ -27,7 +27,7 @@ Earlier: M01b set the components (theory internal 40 + end-semester 60; practice
 - **Imports go to locked or unlocked courses alike.** The lock freezes internal marks. End-sem marks freeze when the student's grade sheet is published. 06 §8.3's "non-locked offering" was wrong and is removed.
 - **A stale draft cannot be published.** Unlocking a course, or importing end-sem marks for a student, turns their draft sheets back to `incomplete`, saying why, in the same transaction. They are worked out again before publishing.
 - **The `examIntegration` setting waits for T7.** Until the API exists, CSV is the only mode, and a setting with one choice would be filler (law 3).
-- **T2 is mostly built.** `assertUnlocked` (`lib/data/offerings.ts`) has refused, since M04, M06 and M07: grading, publishing results, waiving a penalty, running code again, moving `countsToward`, saving rubric and review marks, changing enrolments, and refreshing the evaluation copy. The recompute skips locked courses. Two gaps remain: the hourly sweep still publishes results by rule, and an assessment with published results can still be deleted.
+- **T2 is mostly built.** `assertUnlocked` (`lib/data/offerings.ts`) has refused, since M04, M06 and M07: grading, publishing results, waiving a penalty, running code again, moving `countsToward`, saving rubric and review marks, changing enrolments, and refreshing the evaluation copy. The recompute skips locked courses, and `deleteAssessment` deletes only drafts, which have no results. One gap remains: the hourly sweep still publishes results by rule.
 
 ## Lock semantics (05 §3.8)
 
@@ -47,7 +47,12 @@ Drawn inside the real app at 1440 px and 390 px; two variants where there is a r
 | E5 | The student's Results | A · a mark sheet, one table row per course · B · a card per course with its components · both with a print view |
 | E6 | Grading settings, and the exam runs on Integrations | one |
 
-Drawn on 23 Oct 2026 as admin and student01 on the e2e data and shown to Aniket on one page: https://claude.ai/artifact/TLMeWHfZFN2VXqcycpz42m (private). Also drawn: the term's list of batches (`/admin/exams`), the same for E1 A and B. **Picks:** pending.
+Drawn on 23 Oct 2026 as admin and student01 on the e2e data and shown to Aniket on one page: https://claude.ai/artifact/TLMeWHfZFN2VXqcycpz42m (private). Also drawn: the term's list of batches (`/admin/exams`), the same for E1 A and B.
+
+**Picks (Aniket, 23 Oct 2026):**
+- E1 **B** · one page with four numbered steps (lock, send, bring back, publish), each saying what is done and what it waits for.
+- E5 **B** · a card per course: the grade large, each component as a bar with its internal and external marks.
+- E2–E4 and E6 as drawn. The Exams tables scroll sideways on a phone, as the Marks and Projects tables do; admins use a laptop.
 
 ## Tasks
 
@@ -58,10 +63,9 @@ Files: `lib/models/end-sem-mark.ts`, `lib/models/grade-sheet.ts` (05 §5.4–5.5
 - `parseEndSemCsv(text)` — 06 §8.3: the six needed columns; values a number with ≤ 2 decimals, `AB` or blank; a duplicate (roll no, course, term) → row error; ≤ 10,000 rows. `checkEndSemRow(row, course)` — blank exactly where the course has no such component, and 0 to its maximum.
 - `buildInternalMarksCsv(rows)` — 06 §8.4 columns with `papaparse.unparse`; test the header and a row of each credit pattern.
 
-### T2 · Close the lock's two gaps
+### T2 · Close the lock's gap
 - The hourly sweep (`compute/assessmentSweep`) leaves alone the results of a locked course's tests; they go out by their rule after an unlock.
-- `deleteAssessment` refuses an assessment with published results while the course is locked.
-- Integration: every guarded action returns LOCKED on a locked course (grading, publishing results, waiving, running code again, `countsToward`, rubric marks, review marks, enrolments, evaluation refresh, deleting a published assessment); the sweep publishes nothing for a locked course.
+- Integration: every guarded action returns LOCKED on a locked course (grading, publishing results, waiving, running code again, `countsToward`, rubric marks, review marks, enrolments, evaluation refresh); the sweep publishes nothing for a locked course.
 
 ### T3 · The Exams page and locking (CE-12; mock-ups E1, E2)
 Route `/admin/exams` (admin; "Exams" in the admin menu): a term's batches, each with its progress (courses locked of total, students with end-sem marks, sheets ready, incomplete and published), ten a page. `/admin/exams/[batchId]?term=` is one batch's page (E1's pick).

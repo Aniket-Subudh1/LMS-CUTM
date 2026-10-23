@@ -30,7 +30,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
-| M08 Exam integration & grade sheet | T0 — decisions recorded and mock-ups drawn 23 Oct 2026; waiting for the picks (E1, E5) | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
+| M08 Exam integration & grade sheet | In progress — T0 done (picks E1 B, E5 B); T1–T9 being built | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
