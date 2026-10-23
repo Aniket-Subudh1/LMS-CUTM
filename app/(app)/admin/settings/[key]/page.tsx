@@ -11,9 +11,11 @@ import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
 import { coursePercentage, RUBRICS } from '@/lib/domain/evaluation';
+import { gradeFor } from '@/lib/domain/grades';
 import { CRITERION_LABEL, formatDateTime, formatPct } from '@/lib/format';
 import { settingsKey } from '@/lib/schemas/settings';
 
@@ -28,7 +30,7 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
 }
 
 // Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
-// `codeRunner` and `proctoring`, M06's `ceTrend`, M07's `projects`.
+// `codeRunner` and `proctoring`, M06's `ceTrend`, M07's `projects`, M08's `grading`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -47,6 +49,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <CeTrend page={await getSettingsPage('ceTrend')} />;
     case 'projects':
       return <Projects page={await getSettingsPage('projects')} />;
+    case 'grading':
+      return <Grading page={await getSettingsPage('grading')} />;
   }
 }
 
@@ -203,6 +207,99 @@ function CodeRunner({
               ))}
             </ul>
           )}
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M08 (07 §6, mock-up E6): the grade scale typed a grade a line, the absent grade, and whether the SGPA shows; beside
+// them, the policy's example graded by the saved scale.
+function Grading({ page }: { page: SettingsPage<'grading'> }) {
+  const examples = [
+    {
+      code: 'DECT0901',
+      credits: { theory: 1, practice: 2, project: 2 },
+      marks: { theory: 87, practice: 89, project: 92 },
+    },
+    { code: 'CUTM1535', credits: { theory: 3, practice: 0, project: 1 }, marks: { theory: 74, project: 80 } },
+  ];
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="diploma" />} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Section icon={<PageIcon name="diploma" className="size-8" />} title="Grades" description={changed(page)}>
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Grade sheets worked out from now follow this."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            <Field name="scale" label="Grade scale" hint={page.fieldHelp.scale}>
+              <Textarea
+                name="scale"
+                required
+                rows={9}
+                className="max-w-72 font-mono text-[0.8125rem]"
+                defaultValue={page.value.scale.map((g) => `${g.grade} | ${g.minPct} | ${g.points}`).join('\n')}
+              />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field
+                name="absentGrade"
+                label="Grade when absent"
+                hint={`${page.fieldHelp.absentGrade} Recommended: ${page.defaults.absentGrade}.`}
+              >
+                <Input name="absentGrade" required maxLength={4} defaultValue={page.value.absentGrade} />
+              </Field>
+              <Field
+                name="absentPoints"
+                label="Points when absent"
+                hint={`Recommended: ${page.defaults.absentPoints}.`}
+              >
+                <Input
+                  name="absentPoints"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  required
+                  defaultValue={page.value.absentPoints}
+                  className="tabular-nums"
+                />
+              </Field>
+              <Field name="showSgpa" label="SGPA" hint={page.fieldHelp.showSgpa}>
+                <NativeSelect name="showSgpa" defaultValue={page.value.showSgpa ? 'yes' : 'no'}>
+                  <NativeSelectOption value="yes">Show it</NativeSelectOption>
+                  <NativeSelectOption value="no">Hide it</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+            </div>
+          </ActionForm>
+        </Section>
+        <Section
+          icon={<PageIcon name="diploma" className="size-8" />}
+          title="Worked example"
+          description="Graded by the saved scale."
+        >
+          <ul className="grid gap-2 text-[0.8125rem]">
+            {examples.map((example) => {
+              const pct = coursePercentage(example.credits, example.marks);
+              const grade = pct === null ? null : gradeFor(pct, page.value.scale);
+              return (
+                <li key={example.code}>
+                  {example.code}: {Object.values(example.marks).join(', ')} →{' '}
+                  <b>{pct === null ? '—' : formatPct(pct)}</b> →{' '}
+                  <b>{grade ? `${grade.grade}, ${grade.points} points` : '—'}</b>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-muted-foreground text-xs">
+            Only O from 90 % is in CUTM’s Examination Policy; the rest is the UGC scale until the university confirms
+            it.
+          </p>
         </Section>
       </div>
     </>

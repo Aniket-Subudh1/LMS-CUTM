@@ -37,6 +37,8 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
       // M04b (TP-02): standalone tests, and those a share link let anyone into (a candidate's whole LMS).
       { href: '/tests', label: 'Tests', icon: 'evaluation' },
+      // M08 (DSH-07): a student's published grade sheets.
+      { href: '/results', label: 'Results', icon: 'diploma', roles: ['student'] },
       { href: '/notifications', label: 'Notifications', icon: 'notifications' },
     ],
   },
@@ -56,6 +58,8 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       },
       { href: '/admin/offerings', label: 'Offerings', icon: 'offerings', roles: ['admin'] },
       { href: '/admin/imports', label: 'Imports', icon: 'imports', roles: ['admin'] },
+      // M08: locks, the exam section's file and grade sheets, a batch at a time.
+      { href: '/admin/exams', label: 'Exams', icon: 'diploma', roles: ['admin'] },
       { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
       // M07 T9: GitHub's state and every queue's failed jobs.
       { href: '/admin/integrations', label: 'Integrations', icon: 'globe', roles: ['admin'] },

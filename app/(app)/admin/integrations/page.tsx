@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
-import { getIntegrations } from '@/lib/data/integrations';
+import { getIntegrations, type IntegrationsView } from '@/lib/data/integrations';
 import { formatDateTime } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Integrations' };
@@ -91,6 +91,38 @@ async function Integrations() {
           </p>
         </Section>
         <Section
+          icon={<PageIcon name="diploma" className="size-8" />}
+          title="Exam section"
+          description="Files exchanged with the exam section, locks and grade sheets. Until the university’s exam system has an API, it is a CSV file each way."
+        >
+          <DataTable
+            bare
+            columns={[
+              { header: 'What', cell: (r) => <span className="font-medium">{RUN_LABEL[r.kind]}</span> },
+              { header: 'Batch', cell: (r) => r.batch?.name ?? '—' },
+              {
+                header: 'When',
+                cell: (r) => <span className="text-xs whitespace-nowrap">{formatDateTime(r.at)}</span>,
+              },
+              { header: 'By', cell: (r) => r.by },
+              { header: 'Result', className: 'whitespace-normal', cell: (r) => <RunResult run={r} /> },
+              {
+                header: '',
+                className: 'w-20',
+                cell: (r) =>
+                  r.batch && (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/admin/exams/${r.batch.id}${r.termId ? `?term=${r.termId}` : ''}`}>Open</Link>
+                    </Button>
+                  ),
+              },
+            ]}
+            rows={view.examRuns}
+            rowKey={(r) => r.id}
+            empty="Nothing has been exchanged with the exam section yet."
+          />
+        </Section>
+        <Section
           icon={<PageIcon name="settings" className="size-8" />}
           title="Failed background jobs"
           description="Each queue’s latest 20 jobs that ran out of tries. Fix the cause, then try them again."
@@ -135,5 +167,44 @@ async function Integrations() {
         </Section>
       </div>
     </>
+  );
+}
+
+type ExamRun = IntegrationsView['examRuns'][number];
+
+const RUN_LABEL: Record<ExamRun['kind'], string> = {
+  exam_push_csv: 'Sent internal marks',
+  exam_pull_csv: 'Brought back marks',
+  exam_push_api: 'Sent internal marks (API)',
+  exam_pull_api: 'Brought back marks (API)',
+  marks_lock: 'Locked courses',
+  grade_sheets: 'Worked out grade sheets',
+};
+
+// M08 T8 (mock-up E6): what a run did, in the words of the batch page.
+function RunResult({ run }: { run: ExamRun }) {
+  const { rows, applied, failed } = run.stats;
+  if (run.status === 'running') return <span className="text-muted-foreground text-xs">Running…</span>;
+  if (run.status === 'stopped') return <span className="text-destructive text-xs">Stopped before it finished</span>;
+  if (run.kind === 'marks_lock') {
+    return (
+      <span className={failed > 0 ? 'text-warning text-xs' : 'text-xs'}>
+        {applied} of {rows ?? 0} locked
+      </span>
+    );
+  }
+  if (run.kind === 'grade_sheets') {
+    return run.status === 'failed' ? (
+      <span className="text-destructive text-xs">Failed</span>
+    ) : (
+      <span className="text-xs">
+        {applied} ready · {failed} incomplete
+      </span>
+    );
+  }
+  return run.status === 'failed' ? (
+    <span className="text-destructive text-xs">Nothing saved: {failed} rows need fixing</span>
+  ) : (
+    <span className="text-xs">{applied} rows</span>
   );
 }

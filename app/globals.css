@@ -243,3 +243,19 @@
 .prose-lms hr {
   border-color: var(--border);
 }
+
+/* M08 (DSH-07): a grade sheet prints alone. The shell's sidebar and header stay off paper; on screen nothing changes. */
+@media print {
+  [data-slot='sidebar-gap'],
+  [data-slot='sidebar-container'],
+  [data-slot='sidebar-inset'] > header {
+    display: none !important;
+  }
+
+  body,
+  [data-slot='sidebar-wrapper'],
+  [data-slot='sidebar-inset'],
+  [data-slot='sidebar-inset'] > div {
+    background: white;
+  }
+}

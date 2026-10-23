@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import mongoose, { Types } from 'mongoose';
 import { hashPassword } from '@/lib/auth/password';
+import { recomputeInternalMarks } from '@/lib/data/internal-marks';
 import { db } from '@/lib/db';
 import { DEFAULT_OUTCOME_TITLES, mergeCos } from '@/lib/domain/catalog';
 import { normalizeCourseware } from '@/lib/domain/courseware';
@@ -10,9 +11,13 @@ import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
+import { EndSemMark } from '@/lib/models/end-sem-mark';
 import { Enrollment } from '@/lib/models/enrollment';
+import { GradeSheet } from '@/lib/models/grade-sheet';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { RubricMark } from '@/lib/models/rubric-mark';
+import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { Password } from '@/lib/schemas/auth';
@@ -396,6 +401,90 @@ await Enrollment.bulkWrite(
   ),
 );
 
+// M08 (tests/e2e/exams.spec.ts): a closed term with one practice-only course, so its grade sheets hold nothing else;
+// every student's practice rubric is filled. Each e2e seed starts this term's lock, marks and sheets over.
+if (e2e) {
+  const past = found(
+    await upsert(
+      Term,
+      { code: '2025-EVEN' },
+      {
+        code: '2025-EVEN',
+        name: 'Even semester 2025-26',
+        academicYear: '2025-26',
+        startsOn: new Date('2026-01-05T00:00:00+05:30'),
+        endsOn: new Date('2026-05-30T00:00:00+05:30'),
+        status: 'closed',
+      },
+    ),
+    'term 2025-EVEN',
+  );
+  const lab = found(
+    await upsert(
+      Course,
+      { code: 'LAB0201' },
+      { code: 'LAB0201', title: 'Programming Lab', credits: { theory: 0, practice: 2, project: 0 }, status: 'active' },
+    ),
+    'course LAB0201',
+  );
+  const labOffering = found(
+    await upsert(
+      Offering,
+      { courseId: lab._id, termId: past._id, batchId: batch._id, section: 'A' },
+      {
+        courseId: lab._id,
+        termId: past._id,
+        batchId: batch._id,
+        section: 'A',
+        programId: program._id,
+        departmentId: department._id,
+        category: 'ugc',
+        credits: lab.credits,
+        evaluation: SETTINGS.evaluation.schema.parse({}),
+        title: 'LAB0201 · Programming Lab · 2025-EVEN · A',
+        facultyIds: [faculty1._id],
+        modules: [],
+        status: 'completed',
+      },
+    ),
+    'offering LAB0201 A',
+  );
+  await Promise.all([
+    Offering.updateOne({ _id: labOffering._id }, { $unset: { lockedAt: 1, lockedBy: 1, lastPushedAt: 1 } }),
+    EndSemMark.deleteMany({ offeringId: labOffering._id }),
+    GradeSheet.deleteMany({ termId: past._id }),
+    SyncRun.deleteMany({ termId: past._id }),
+  ]);
+  const criteria = {
+    practiceConcept: 4,
+    practicePlanning: 8,
+    practiceResult: 7.5,
+    practiceRecord: 9,
+    practiceConduct: 4,
+    practiceViva: 8,
+  };
+  await Enrollment.bulkWrite(
+    enrolled.map((s) => ({
+      updateOne: {
+        filter: { offeringId: labOffering._id, studentId: s._id },
+        update: { $setOnInsert: { offeringId: labOffering._id, studentId: s._id, status: 'active' } },
+        upsert: true,
+      },
+    })),
+  );
+  await RubricMark.bulkWrite(
+    enrolled.map((s) => ({
+      updateOne: {
+        filter: { offeringId: labOffering._id, studentId: s._id, component: 'practice' },
+        update: { $set: { criteria, updatedBy: faculty1._id } },
+        upsert: true,
+      },
+    })),
+  );
+  // As saving the rubric would, so the batch page reads complete marks.
+  await recomputeInternalMarks(String(labOffering._id), new Date());
+}
+
 const hod = found(await User.findOne({ email: 'hod@seed.cutm.test' }, { _id: 1 }).lean(), 'hod');
 const csePages = e2e
   ? []
@@ -484,6 +573,7 @@ const cseNote = csePages.length ? ` and the ${csePages.length} CSE courses from 
 console.log(
   `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, ${5 + csePages.length} courses, ` +
     `${3 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602, CUTM1014${cseNote}` +
+    `${e2e ? '; the exams term 2025-EVEN with LAB0201' : ''}` +
     `${passwordHash ? '; every account signs in with the seed password' : ''}.`,
 );
 await mongoose.disconnect();
