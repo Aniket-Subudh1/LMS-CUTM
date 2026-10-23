@@ -33,7 +33,11 @@ Drawn inside the real app at 1440 px and 390 px; two variants where there is a r
 | P4 | Marking a review | one (the M2 A grid, six criteria per member, with each member's GitHub or tracker figures beside) |
 | P5 | Linking GitHub on the profile, and the admin's Integrations page | one |
 
-Picks: *waiting for Aniket.*
+**Picks (Aniket, 23 Oct 2026):**
+- P2 **A** · a member table with the metrics and the suggested score as a bar, then one team chart of commits per week and the latest commits.
+- P3 **A** · four columns, a card per task with its move buttons (one column on a phone).
+- P1, P4 and P5 as drawn.
+- Found while drawing: when the course's tab row is scrolled, its underline stops short of the last tabs. `TabNav`'s list grows with its tabs so the rule runs under all of them (fixed with T3).
 
 ## Tasks
 
