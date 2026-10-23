@@ -183,7 +183,8 @@ test('the course plan is written, its sessions added, edited and deleted, and pu
   await faculty.getByRole('button', { name: /^Publish (plan|version \d+)$/ }).click();
   const confirm = faculty.getByRole('alertdialog');
   await confirm.getByRole('button', { name: /^Publish/ }).click();
-  await expect(faculty.getByText('Published. Students are being notified.')).toBeVisible();
+  // Once published, the publish bar gives way to the version line (M03b).
+  await expect(faculty.getByText(/^Version \d+ was published /)).toBeVisible();
   // AC-M02-04: the student's copy arrives with the calendar, syllabus, objectives, COs and POs.
   let id: string | undefined;
   await expect

@@ -29,6 +29,9 @@ test('admin adds a department, finds a user and opens a course workspace', async
 
   const code = `T${String(run).slice(-8)}`;
   await page.goto('/admin/departments');
+  // Ten a page and earlier runs leave departments behind, so the new one shows in the list's total.
+  const showing = page.getByText(/^Showing \d+–\d+ of \d+$/);
+  const before = Number((await showing.textContent())?.split(' of ')[1]);
   await page.getByRole('button', { name: 'Add department' }).click();
   const dialog = page.getByRole('dialog', { name: 'Add a department' });
   await dialog.getByLabel('Code', { exact: true }).fill(code);
@@ -36,7 +39,7 @@ test('admin adds a department, finds a user and opens a course workspace', async
   await dialog.getByRole('button', { name: 'Add department' }).click();
   await expect(dialog.getByText('Department added.')).toBeVisible();
   await expect(dialog).toBeHidden();
-  await expect(page.getByText(code, { exact: true }).filter({ visible: true })).toBeVisible();
+  await expect(showing).toHaveText(new RegExp(` of ${before + 1}$`));
 
   await page.goto('/admin/users');
   await field(page, 'Search users').fill('Student 05');
@@ -49,8 +52,10 @@ test('admin adds a department, finds a user and opens a course workspace', async
   await page.goto('/courses');
   await findCourse(page, 'CUTM1602 · Programming in C · 2026-ODD · A');
   await page.getByRole('link', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' }).click();
-  await expect(page.getByRole('heading', { name: 'CUTM1602 · Programming in C · 2026-ODD · A' })).toBeVisible();
-  await expect(page.getByText('Explain the basic constructs of C.')).toBeVisible();
+  // M03b: the header names the course; its outcomes and their mapping have a tab of their own.
+  await expect(page.getByRole('heading', { name: 'Programming in C', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Outcomes' }).click();
+  await expect(page.getByText('Explain the basic constructs of C.').first()).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'PSO3' })).toBeVisible();
   await page.getByRole('tab', { name: 'People' }).click();
   await expect(page.getByRole('cell', { name: '2501CSE001' })).toBeVisible();
@@ -112,7 +117,8 @@ test('admin offers a course to two sections at once and a student of one sees it
   await expect(page.getByRole('link', { name: new RegExp(`${term} · B`) })).toHaveCount(0);
 });
 
-test('faculty drops and re-adds a student from the roster', async ({ page }) => {
+// The CSV path; dropping and adding one student from a row is people.spec.ts.
+test('faculty drops and re-adds a student with a CSV of changes', async ({ page }) => {
   await signIn(page, 'faculty1@seed.cutm.test');
   await page.getByRole('link', { name: 'My courses', exact: true }).click();
   await expect(page).toHaveURL(/\/courses$/);
@@ -121,9 +127,9 @@ test('faculty drops and re-adds a student from the roster', async ({ page }) => 
   await page.getByRole('tab', { name: 'People' }).click();
 
   const row = page.getByRole('row', { name: /2501CSE003/ });
-  const dialog = page.getByRole('dialog', { name: 'Change enrolment' });
+  const dialog = page.getByRole('dialog', { name: 'Upload a list of changes' });
   const upload = async (csv: string) => {
-    await page.getByRole('button', { name: 'Change enrolment' }).click();
+    await page.getByRole('link', { name: 'Upload CSV' }).click();
     await dialog.locator('input[type=file]').setInputFiles({
       name: 'enrolment.csv',
       mimeType: 'text/csv',
