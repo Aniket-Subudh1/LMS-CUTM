@@ -30,7 +30,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
-| M08 Exam integration & grade sheet | In progress — T0 done (picks E1 B, E5 B); T1–T9 being built | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
+| M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
@@ -98,6 +98,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-55 | Code questions run on Judge0's free public server (ce.judge0.com) until the university has its own: students' code goes to a third party, and its rate limits are not ours. Before going public, which Judge0 server and token (or a paid key) should be used? | @client | The free public server (Aniket, 18 Oct 2026) | Going public | Open |
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
 | Q-58 | Most CUTM classes are in person. Should the theory attendance part (5 marks) come only from attendance recorded in the LMS — live classes, and in-person classes a teacher records as manual-attendance classes — or will attendance come from another system? | @client | LMS attendance only (A-162) | — | Open |
+| Q-59 | The file for the exam section shows internal marks at 2 dp (28.53), but a grade sheet adds the unrounded internal (28.5333…) to the external mark, since 07 §1 rounds only once, at the course percentage. A component total can then differ from the exam section's own sum in the second decimal. Should grade sheets use the 2 dp internal the exam section saw? | @client / @dev | Unrounded (07 §1) | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -275,6 +276,12 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-169 | A head of department whose account has no department sees an empty CE report | M06 | — |
 | A-170 | Only students see the GitHub card on their profile: commits count for team members, and teachers neither commit to team repositories nor need an account linked | M07 | — |
 | A-171 | The Integrations page lists each queue's latest 20 jobs that ran out of tries; older ones stay in Redis until BullMQ removes them | M07 | — |
+| A-172 | A student of another batch enrolled in a batch's course travels in that batch's file (rows are matched through the course's batch); their grade sheet is worked out with their own batch and holds every credit course they take that term | M08 | — |
+| A-173 | "Lock the complete courses" sends every unlocked credit course of the batch (at most 50) to the worker, which locks those whose marks prove complete and lists the rest; nothing is picked by hand | M08 | — |
+| A-174 | Unpublishing tells students nothing; their Results simply stop showing the sheet | M08 | — |
+| A-175 | A student with no credit course in the term gets no grade sheet; working the sheets out again removes an earlier unpublished one | M08 | — |
+| A-176 | The batch page counts complete students from the internal marks last worked out; a course whose marks were never worked out shows everyone incomplete until locking works them out | M08 | — |
+| A-177 | The internal-marks export rounds each internal to 2 dp; grade sheets use the unrounded value | M08 | Q-59 |
 
 ## 5. Log
 
@@ -2344,3 +2351,72 @@ The student's sheet was worked out by script with 07 §6: 83, 76, 83 and 71 % gi
 - the upload's failures became a list, since a table squeezed the problem column on a phone.
 
 Shown to Aniket on one page: https://claude.ai/artifact/TLMeWHfZFN2VXqcycpz42m (private).
+
+### 2026-10-23 · M08 Exam integration and grade sheets (T1–T9) · Claude Code, at Aniket's request
+
+Built to decisions 1–3 and the mock-up picks (E1 B, E5 B; E2–E4 and E6 as drawn), all in `docs/milestones/M08-exam-integration-grades.md`. Commits on main, not pushed: `ba00e0f` foundation, `12d269c` server, `6312990` screens, and this report.
+
+**Created**
+- **Data and rules** (05 §5.4–5.5, §7.4; 06 §7–8; 07 §6):
+  - `lib/models/{end-sem-mark,grade-sheet}.ts`; `syncRuns` gains `marks_lock`, `grade_sheets` and `batchId`; the `grading` setting; the `gradeSheet.published` notification; `lib/schemas/exams.ts`; two job payloads.
+  - `lib/domain/grades.ts` (`gradeSheetRow`, `gradeSheet`, `sgpa`, `gradeFor`, the maxima) with 07 §6's table, boundaries, the `AB` vector and the incomplete cases.
+  - `parseEndSemCsv`, `checkEndSemRow` and `buildInternalMarksCsv` (formulae escaped) in `lib/domain/csv.ts`; `readCsv` takes a row limit.
+- **Server:**
+  - `lib/data/locks.ts`: the lock with its reason rule, and the bulk job's count that finishes its run in one pipeline update.
+  - `lib/data/grade-sheets.ts`: the `gradeSheets` job, 200 students at a time.
+  - `lib/data/exams.ts`: the page reads, and a student's own published sheets.
+  - `recomputeInternalMarks` takes the lock it closes (`lockedAt`), so locking works the marks out once more straight after the lock.
+  - Actions `lockOffering`, `lockCompleteCourses`, `unlockOffering`, `importEndSem`, `computeGradeSheets`, `publishGradeSheets`, `unpublishGradeSheets` (`app/(app)/admin/exams/actions.ts`); the route `/api/exports/internal-marks`.
+  - The hourly sweep leaves a locked course's results alone (T2); Integrations reads the exam runs.
+- **Screens:**
+  - `/admin/exams` (the term's batches) and `/admin/exams/[batchId]` (E1 B: four steps; E2 the lock and unlock dialogs; E3 the upload and its failures; E4 the sheets).
+  - `/admin/exams/[batchId]/[studentId]`; `/results` (E5 B) with print rules in `globals.css`.
+  - Settings › Grading with a worked example; Integrations › Exam section; Exams and Results in the menus.
+  - `GradeSheetCard` and `PrintButton` in the 08 §5.2 inventory.
+- **Tests:**
+  - Unit: 34 new.
+  - Integration: `tests/integration/exams.test.ts`, 9 cases, through the real compute worker.
+  - E2E: `tests/e2e/exams.spec.ts`. The e2e seed gains a closed term 2025-EVEN with one practice course, LAB0201, whose lock, marks and sheets each seed starts over.
+- **Docs:** 05, 06 (§3, §6, §7, §8.3–8.4), 07 §6, 02 §8, 08, 09, 10, the M08 file.
+
+**Acceptance criteria**
+
+| AC | Result | Evidence |
+|---|---|---|
+| AC-M08-01 | Pass | Integration: a lock over incomplete marks needs a reason (audited with it); locked, `refreshEvaluation` returns LOCKED (grading, results, `countsToward`, rubric and review marks and enrolments are already tested since M04–M07); the sweep publishes nothing for a locked course until it is unlocked; unlocking needs a reason, is audited, and is refused while a published sheet includes the course |
+| AC-M08-02 | Pass; not opened in Excel | Integration: only locked courses, one row per enrolment, the shared header, internals at 2 dp, three empty external columns. E2E: the downloaded file has 20 rows. Nobody has opened it in a spreadsheet program yet |
+| AC-M08-03 | Pass | Integration: a file with one unknown roll number saves nothing and names row 4; a value for a component the course lacks is a row error; the filled-in export imports fully. E2E: the downloaded file, filled in, uploads |
+| AC-M08-04 | Pass | Unit and integration: 07 §6 gives B+, A, O and SGPA 8.58; `AB` in practice gives Ab, 0 points, SGPA 4.42; a missing attendance part leaves the student incomplete, listed. Integration and e2e: students see only their own published sheets; publishing tells only the students published |
+| AC-M08-05 | Pass (reworded) | Integration: audit entries for lock, unlock, export, import, publish and unpublish; `syncRuns` for export, import, bulk lock and grade sheets, listed on Integrations. Publishing is audited, not a run, so the mock-up's "Published grade sheets" row on Integrations was not built; the AC now says so |
+
+**Changed beyond the tasks (found while building)**
+- T2 had one gap, not two: `deleteAssessment` only ever deleted drafts.
+- The sweep reads closed tests with a cursor, and a locked course's tests do not count toward its 100 a run, so they cannot hold others back.
+- Locking runs the recompute twice (before the check, and straight after the lock for the lock it closes). A grade saved between the check and the lock would otherwise never reach the internal marks.
+- The import matches rows through the batch's courses, not the student's batch (A-172). The grade-sheet job is named after its run.
+- The `Badge` dot variants capitalise; the Exams badges keep sentence case.
+
+**Not done**
+- T7, the exam-system API: Q-04.
+- The human validation checklist: agreeing the file with the exam section, confirming the grade table (Q-19, Q-39, Q-40) and the SGPA (Q-21), and a dry run of one real batch.
+- A batch whose file would pass 10,000 rows is refused; there is no split by section.
+- The lock dialog names at most 20 incomplete students ("and N more").
+- On phones, the Exams tables scroll sideways inside their card, as chosen.
+- EXM-06 (grade sheets triggering attainment) is M09. Grade-sheet notices are in-app only (06 §6).
+
+**Assumptions** — A-172 to A-177 (§4).
+
+**Open questions** — Q-59 (§3): the 2 dp export against unrounded grade sheets. Q-58 now matters here: an in-person course with no LMS attendance leaves every student incomplete.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 608 passed (608)`.
+- `npm run test:integration` (local replica set and Redis) → `Test Files 26 passed (26)`, `Tests 311 passed (311)`.
+- `npm run build` → exit 0. `npm run check:bundle` → "144 files scanned for 4 names and 6 secret values; clean".
+- `npx playwright test` (all 23) → 16 passed, 7 failed:
+  - `exams.spec.ts` passed. Its first runs failed on the fixture, not the app: the seed filled the rubric without working the marks out, which saving a rubric does. Then on Home's course card, kept mounted by Next and matching the same text. The seed now works the marks out, and the spec matches exactly.
+  - The seven failures are M07's seven, each needing a service not installed here: Mailpit (auth, the course plan, a guest's code), RustFS (a video upload, a certificate), LiveKit (live), and the local `.env` AI key (bank).
+- A scripted walk of the real screens at 1440 px and 390 px, as admin and student01, after the spec ran:
+  - The pages: both terms' batch lists, both batch pages, the lock and unlock dialogs, a student's sheet, Grading, Integrations, Results, Results printed, and Notifications.
+  - No error page, and nothing wider than the screen.
+  - Fixes it led to: "All 1 course are locked"; the sheet tabs now start with Ready; the badges' case; on phones, a part's marks line ran over its total and now wraps; printing left the page panel grey.
+- The print view, emulated after the panel's 0.5 s transition and as a PDF: the sheet alone on white, under the university's name, bars and grade kept.
