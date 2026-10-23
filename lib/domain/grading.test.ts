@@ -109,7 +109,7 @@ describe('attemptTotal (07 §14)', () => {
   it('is null while a question is unscored', () => {
     expect(attemptTotal(['a', 'b'], { a: { marks: 2 } })).toBeNull();
   });
-  it('never goes below 0 however many negative marks (A-M04b-9)', () => {
+  it('never goes below 0 however many negative marks (A-117)', () => {
     expect(attemptTotal(['a', 'b'], { a: { marks: -0.5 }, b: { marks: -0.5 } })).toBe(0);
     expect(attemptTotal(['a', 'b'], { a: { marks: 2 }, b: { marks: -0.5 } })).toBe(1.5);
   });

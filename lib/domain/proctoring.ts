@@ -34,7 +34,7 @@ export function proctorPenalty(hard: number, penaltyEach: number, waived: boolea
   return waived ? 0 : roundHalfUp(hard * penaltyEach, 2);
 }
 
-// The penalty comes off the attempt's total, which never goes below 0 (A-M04b-9); null while anything is unmarked.
+// The penalty comes off the attempt's total, which never goes below 0 (A-117); null while anything is unmarked.
 export function withPenalty(total: number | null, penalty: number): number | null {
   return total === null ? null : Math.max(0, roundHalfUp(total - penalty, 2));
 }

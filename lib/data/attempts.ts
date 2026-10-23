@@ -71,7 +71,7 @@ export function totalOf(
 // monitor's "End attempt" (`endedBy`). Objective questions are marked at once from the attempt's own paper (07 §14);
 // when every question is marked the attempt is graded. Code questions are run and marked by the gradeCode job, queued
 // once the hand-in is written (TP-09). An attempt handed in at or after its deadline is the timer's:
-// its time is the deadline, so a sweep that comes later does not make it late (A-M04-3). Late means after the closing
+// its time is the deadline, so a sweep that comes later does not make it late (A-104). Late means after the closing
 // time plus the person's extra time and the minutes the monitor added. The change is written only while the attempt
 // is still in progress, together with its engagement counters, so a second run changes nothing. The worker calls this
 // too, so the file imports nothing from next/* or the session.

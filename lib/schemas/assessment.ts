@@ -60,7 +60,7 @@ export const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 // The typical settings of each mode (the milestone's table): the New assessment dialog asks only for the type, title and
-// window, and the builder's Settings change the rest (A-M04-6).
+// window, and the builder's Settings change the rest (A-107).
 export const MODE_DEFAULTS: Record<
   AssessmentMode,
   { durationMin: number | null; attemptsAllowed: number; shuffleItems: boolean; shuffleOptions: boolean }
@@ -80,7 +80,7 @@ export const SUBMISSION_STATUSES = ['in_progress', 'submitted', 'graded'] as con
 export const ATTEMPT_POLICIES = ['best', 'last'] as const;
 export type AttemptPolicy = (typeof ATTEMPT_POLICIES)[number];
 
-// 05 §5.1–5.2 bounds. An offering holds at most MAX_ASSESSMENTS (A-M04-1), so its lists are single bounded reads.
+// 05 §5.1–5.2 bounds. An offering holds at most MAX_ASSESSMENTS (A-102), so its lists are single bounded reads.
 export const ASSESSMENT_LIMITS = {
   perOffering: 200,
   items: 100,

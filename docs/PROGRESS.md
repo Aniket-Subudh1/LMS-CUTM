@@ -23,10 +23,10 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M02 Content, plan, announcements, skill progress | Done — awaiting human validation | | Entry 2026-10-15 · M02. Cursor built most of it; reviewed, corrected and completed by Claude Code. CI e2e job (with RustFS) not yet run on GitHub |
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
-| M03b Course workspace redesign | Built (T0–T8), not committed — awaiting Aniket's walk of the acceptance criteria and his go-ahead to commit (a push to main deploys) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 built, not committed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
-| M04 Assessment engine | Done — awaiting human validation. On branch `m04-assessments` (local commits, not merged or pushed) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Assumption ids `A-M04-n` are renumbered at the merge |
-| M04b Test platform | Built — T0 picked; phases A (access), B (build), C (integrity), D (code) and E (results, files, AI drafts) committed locally on branch `m04-assessments`, not pushed; awaiting Aniket's walk-through and merge. Open: Q-54–Q-57 |
+| M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
+| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
+| M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
@@ -204,66 +204,66 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-99 | Layout, pins and the view options are the viewer's own and last as long as the tab; nothing is remembered | M03c | — |
 | A-100 | At most 100 people can be removed from one class (`MAX_REMOVED`), so the removed list stays a bounded read | M03c | — |
 | A-101 | The join sound rings for hosts by default and for students only if they turn it on (a late student joining should not ring through a lecture); at most once in 2 s; the choice lasts as long as the tab | M03c | — |
-| A-M04-1 | An offering holds at most 200 assessments (`createAssessment` refuses the 201st), so its lists and the Records grid are bounded reads | M04 | — |
-| A-M04-2 | Results are published only after the assessment closes (`lateUntil ?? closesAt`), when every running attempt has expired; `publishResults` hands those in first | M04 | — |
-| A-M04-3 | An attempt the system hands in (time up, the sweep) gets `submittedAt = deadlineAt`, so a sweep that runs later does not flag it late | M04 | — |
-| A-M04-4 | Home's "Due soon" lists assessments open now, closing within seven days, that the student has not handed in (at most five) | M04 | — |
-| A-M04-5 | A skill course's "Quiz average %" is the mean of each published quiz's counted percentage, a quiz not attempted counting as 0 | M04 | Q-02 |
-| A-M04-6 | The New assessment dialog asks only for the type, title and window; time limit, attempts and shuffling start from the type's typical settings and are changed in the builder | M04 | — |
-| A-M04-7 | A question's options get new ids each time it is saved, which is allowed only before any student starts | M04 | — |
-| A-M04b-1 | Guests take only standalone tests. A course's assessment has only "this class" links, which take enrolled students to it and let no one else in | M04b | — |
-| A-M04b-2 | Someone a link let in keeps their way back through it after it is turned off, expires or fills up, and after the test closes (to finish or read results); a returning guest asks for a new code on the link's page | M04b | — |
-| A-M04b-3 | An email that belongs to an LMS account cannot register as a guest or sign in by code; it signs in with its password on the link's page | M04b | — |
-| A-M04b-4 | A link someone joined through is never deleted, only turned off (it records how they got in); a draft's links go with the draft | M04b | — |
-| A-M04b-5 | Until proctoring (phase C) the lobby checks the browser (cookies) and the connection (under 600 ms good; slower warns but does not stop Start) | M04b | — |
-| A-M04b-6 | Accepting the rules is a required checkbox in the Start form, checked by the browser and not stored; phase C records it with the proctoring consent | M04b | — |
-| A-M04b-7 | Faculty and admins make standalone tests; a head of department has no view of a colleague's standalone tests | M04b | — |
-| A-M04b-8 | A link's access code is kept readable so its owner can pass it on again; it is compared in constant time | M04b | — |
-| A-M04b-9 | Negative marks never take an attempt's total below 0 (a question's own score can be negative) | M04b | — |
-| A-M04b-10 | A section draws only automatically marked questions from the bank, each worth the section's marks (a rubric could not follow a changed mark) | M04b | — |
-| A-M04b-11 | A course's bank belongs to the catalogue course: every offering and term shares it; whoever teaches any offering of it edits it, a head of department reads it. A standalone test draws from its owners' own banks | M04b | — |
-| A-M04b-12 | A bank holds at most 5,000 questions; a CSV adds at most 500 and carries one answer, several answers, true or false, number and written answer (the other types are added in the dialog) | M04b | — |
-| A-M04b-13 | "Time per question" (TP-07) is the time spent on each question, recorded in whole seconds and shown to graders; there is no time limit per question | M04b | — |
-| A-M04b-14 | Extra time is per test and per person (by email or roll number, at most 200 people), lengthens both the time limit and the end of hand-ins, and reaches a running attempt at once | M04b | — |
-| A-M04b-15 | A matching question pairs each left side with one right side; an ordering question never moved is unanswered (0 marks); a fill-in-the-blank ignores case and extra spaces | M04b | — |
-| A-M04b-16 | Explanations are kept with questions and shown to graders now; takers see them with results once phase E's release rules allow | M04b | — |
-| A-M04b-17 | The N-th serious warning hands the attempt in (mock-up B4: "warning 2 of 3 … at the third"), not violation N + 1 as 07 §15 said for M05; 0 only records | M04b | — |
-| A-M04b-18 | Serious: leaving full screen, leaving the page (hidden, or the window losing focus — not to a file chooser), a second tab or device. Minor: copy, paste, right-click, print, developer-tools keys, a lost connection, the camera off. Two serious ones within 3 s are one act and count once | M04b | Q-09 |
-| A-M04b-19 | A second tab or device is refused while the first was heard from in the last 45 s, recorded once per refused tab, and takes over after 45 s of silence. A reload keeps its tab's id; a browser's "Duplicate tab" copies it, so a duplicated tab is not caught | M04b | — |
-| A-M04b-20 | A lost connection is more than 60 s between beats; it is minor and recorded with its length | M04b | — |
-| A-M04b-21 | The penalty is per counted serious warning and comes off the total (never below 0) when it is handed in, graded or waived; proctoring is fixed once anyone has started, so it never changes under a hand-in | M04b | — |
-| A-M04b-22 | Every attempt beats every 15 s, proctored or not, so the monitor's last seen, added time and messages work for every test. The monitor lists running attempts in the order they started, a page at a time, and refreshes every 15 s | M04b | — |
-| A-M04b-23 | Snapshots are 320 × 240 JPEG stills at the test's interval, at most 240 an attempt; the taker sees their camera in a corner; one that fails to upload is skipped, not retried | M04b | Q-24 |
-| A-M04b-24 | "Late" means after the closing time plus the person's extra time and the minutes the monitor added (phase B counted only the closing time, so a hand-in inside extra time showed as late) | M04b | — |
-| A-M04b-25 | Monitor messages reach running attempts only; each keeps the newest 20, and the runner shows the newest unread one until the taker presses OK (remembered on that device) | M04b | — |
-| A-M04b-26 | With full screen required, a browser that cannot go full screen (Safari on iPhone) cannot take the test; the lobby's device check and the runner say so | M04b | — |
-| A-M04b-27 | The snapshot retention setting accepts 7–365 days | M04b | Q-24 |
-| A-M04b-28 | Code questions belong to the coding modes: a coding test (objective, written and code), a lab test (also uploads) and a coding competition (code only). Quizzes and written tests keep their types, as code is marked after hand-in | M04b | — |
-| A-M04b-29 | Until the university runs its own Judge0, code runs on Judge0's free public server (Aniket's choice, 18 Oct 2026); the e2e run uses a stand-in so CI never depends on it | M04b | Q-55 |
-| A-M04b-30 | The default languages are C, C++ and Java (LAB-02); Python and others are added in the codeRunner setting (LAB-06 is a "Could") | M04b | — |
-| A-M04b-31 | A question's run limit counts runs of its visible tests in one attempt (1–30, 10 by default), on top of the 3 s wait and 200 runs an hour; untouched starter code is not an answer | M04b | — |
-| A-M04b-32 | A hand-in with code questions shows "To grade" until the gradeCode job marks them, in seconds. A grader's own mark on a code question stays when the tests run again, and an empty mark box keeps the tests' mark | M04b | — |
-| A-M04b-33 | "Run sample tests" waits for the runner in the request (a few seconds), as M05 planned; the full marking runs in the worker | M04b | — |
-| A-M04b-34 | Tests are stored with \n line ends; memory is asked in MB and stored as MB × 1000 KB, as Judge0 takes it | M04b | — |
-| A-M04b-35 | Results are worked out over each taker's counted attempt; ranks are competition ranks (1, 2, 2, 4); the percentile is those below plus half of those level | M04b | — |
-| A-M04b-36 | Results go out by hand (the default, as M04), by themselves within the hour after the test closes once nobody is writing and all is marked, or each person's at once when marked (ranks wait for the published results). The rule changes no mark, so it can change at any time; an automatic release is audited in the name of whoever saved the rule | M04b | — |
-| A-M04b-37 | Item analysis: "correct" is the share who earned full marks; discrimination is the upper-minus-lower 27 % index, shown only with 10 or more takers; a question is "to look at" when under 20 % or over 90 % correct, or its discrimination is under 0.2 | M04b | — |
-| A-M04b-38 | Alike answers: the test's own written and code questions only, at most 600 answers each, 20 tokens or more, three-token shingles with Jaccard ≥ 0.85; a flag for a teacher, never a mark (Q-09) | M04b | Q-09 |
-| A-M04b-39 | The leaderboard is off by default; on, it names the first 10 to everyone who took the test | M04b | — |
-| A-M04b-40 | Ranks and analysis are worked out when results go out, again after a regrade, waived penalty or code re-run, and on request — not live while people write | M04b | — |
-| A-M04b-41 | Certificates are opt-in per test, from a percentage the teacher sets in the Results dialog; one is earned by a counted attempt at or above it and states that attempt's percentage, the rating band and, once results are published, the rank | M04b | Q-57 |
-| A-M04b-42 | The PDFs use the built-in Helvetica and Times, so text outside Windows-1252 prints as "?" (a name in Odia or Devanagari script would); student records hold names in Latin script. Printing other scripts needs an embedded Unicode font | M04b | — |
-| A-M04b-43 | A taker's scorecard or certificate is current while it was asked for after the attempt, the test and (once published) the ranks last changed; otherwise the page offers to make it again. The staff's files stay downloadable with the time they were made, and the staff make them again by hand | M04b | — |
-| A-M04b-44 | TP-12 says "emailed or downloaded": the files are downloaded from the page; nothing is emailed (the mail adapter sends no attachments) | M04b | — |
-| A-M04b-45 | The Excel export has one row per taker — their counted attempt, or their latest unmarked one when none is marked — ranked as 07 §19, with section totals and a column per question of the test's own (drawn bank questions count only in section totals); times are IST text. Its Questions sheet appears once the analysis has been worked out | M04b | — |
-| A-M04b-46 | The reports PDF has a report for every hand-in (every attempt), by name, with no size cap (the worker streams it); heads of department may make both staff files, as they read the results | M04b | — |
-| A-M04b-47 | A person may ask for 10 files an hour; a file still being made after 10 minutes may be asked for again | M04b | — |
-| A-M04b-48 | The certificate check `/v/<code>` shows the record as it is now, and says "No longer valid" when a later regrade took the result below the threshold | M04b | — |
-| A-M04b-49 | The AI drafts bank questions from a topic, how many (1–20), one of the five types a CSV row can carry, a level and the course's outcomes the teacher picks, with keys and explanations; each draft is worth 1 mark with no negative marks until the teacher changes it | M04b | — |
-| A-M04b-50 | A draft is checked as an imported CSV row is; one that fails is dropped, outcome codes the teacher did not pick are dropped, and the notice says how many were kept | M04b | — |
-| A-M04b-51 | Saving an AI draft in its dialog is its review and accepts it; a draft is discarded with ⋮ Delete. Drafts count toward the bank's 5,000 but not toward its other counts | M04b | — |
-| A-M04b-52 | A draft request is tried once, never retried by itself, so drafts are never saved twice; the teacher is told how it went, a failure included | M04b | — |
-| A-M04b-53 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it. The AI is OpenAI's (Aniket, 18 Oct 2026, for cost); the model is the `OPENAI_MODEL` setting, by default `gpt-5.4-mini` | M04b | — |
+| A-102 | An offering holds at most 200 assessments (`createAssessment` refuses the 201st), so its lists and the Records grid are bounded reads | M04 | — |
+| A-103 | Results are published only after the assessment closes (`lateUntil ?? closesAt`), when every running attempt has expired; `publishResults` hands those in first | M04 | — |
+| A-104 | An attempt the system hands in (time up, the sweep) gets `submittedAt = deadlineAt`, so a sweep that runs later does not flag it late | M04 | — |
+| A-105 | Home's "Due soon" lists assessments open now, closing within seven days, that the student has not handed in (at most five) | M04 | — |
+| A-106 | A skill course's "Quiz average %" is the mean of each published quiz's counted percentage, a quiz not attempted counting as 0 | M04 | Q-02 |
+| A-107 | The New assessment dialog asks only for the type, title and window; time limit, attempts and shuffling start from the type's typical settings and are changed in the builder | M04 | — |
+| A-108 | A question's options get new ids each time it is saved, which is allowed only before any student starts | M04 | — |
+| A-109 | Guests take only standalone tests. A course's assessment has only "this class" links, which take enrolled students to it and let no one else in | M04b | — |
+| A-110 | Someone a link let in keeps their way back through it after it is turned off, expires or fills up, and after the test closes (to finish or read results); a returning guest asks for a new code on the link's page | M04b | — |
+| A-111 | An email that belongs to an LMS account cannot register as a guest or sign in by code; it signs in with its password on the link's page | M04b | — |
+| A-112 | A link someone joined through is never deleted, only turned off (it records how they got in); a draft's links go with the draft | M04b | — |
+| A-113 | Until proctoring (phase C) the lobby checks the browser (cookies) and the connection (under 600 ms good; slower warns but does not stop Start) | M04b | — |
+| A-114 | Accepting the rules is a required checkbox in the Start form, checked by the browser and not stored; phase C records it with the proctoring consent | M04b | — |
+| A-115 | Faculty and admins make standalone tests; a head of department has no view of a colleague's standalone tests | M04b | — |
+| A-116 | A link's access code is kept readable so its owner can pass it on again; it is compared in constant time | M04b | — |
+| A-117 | Negative marks never take an attempt's total below 0 (a question's own score can be negative) | M04b | — |
+| A-118 | A section draws only automatically marked questions from the bank, each worth the section's marks (a rubric could not follow a changed mark) | M04b | — |
+| A-119 | A course's bank belongs to the catalogue course: every offering and term shares it; whoever teaches any offering of it edits it, a head of department reads it. A standalone test draws from its owners' own banks | M04b | — |
+| A-120 | A bank holds at most 5,000 questions; a CSV adds at most 500 and carries one answer, several answers, true or false, number and written answer (the other types are added in the dialog) | M04b | — |
+| A-121 | "Time per question" (TP-07) is the time spent on each question, recorded in whole seconds and shown to graders; there is no time limit per question | M04b | — |
+| A-122 | Extra time is per test and per person (by email or roll number, at most 200 people), lengthens both the time limit and the end of hand-ins, and reaches a running attempt at once | M04b | — |
+| A-123 | A matching question pairs each left side with one right side; an ordering question never moved is unanswered (0 marks); a fill-in-the-blank ignores case and extra spaces | M04b | — |
+| A-124 | Explanations are kept with questions and shown to graders now; takers see them with results once phase E's release rules allow | M04b | — |
+| A-125 | The N-th serious warning hands the attempt in (mock-up B4: "warning 2 of 3 … at the third"), not violation N + 1 as 07 §15 said for M05; 0 only records | M04b | — |
+| A-126 | Serious: leaving full screen, leaving the page (hidden, or the window losing focus — not to a file chooser), a second tab or device. Minor: copy, paste, right-click, print, developer-tools keys, a lost connection, the camera off. Two serious ones within 3 s are one act and count once | M04b | Q-09 |
+| A-127 | A second tab or device is refused while the first was heard from in the last 45 s, recorded once per refused tab, and takes over after 45 s of silence. A reload keeps its tab's id; a browser's "Duplicate tab" copies it, so a duplicated tab is not caught | M04b | — |
+| A-128 | A lost connection is more than 60 s between beats; it is minor and recorded with its length | M04b | — |
+| A-129 | The penalty is per counted serious warning and comes off the total (never below 0) when it is handed in, graded or waived; proctoring is fixed once anyone has started, so it never changes under a hand-in | M04b | — |
+| A-130 | Every attempt beats every 15 s, proctored or not, so the monitor's last seen, added time and messages work for every test. The monitor lists running attempts in the order they started, a page at a time, and refreshes every 15 s | M04b | — |
+| A-131 | Snapshots are 320 × 240 JPEG stills at the test's interval, at most 240 an attempt; the taker sees their camera in a corner; one that fails to upload is skipped, not retried | M04b | Q-24 |
+| A-132 | "Late" means after the closing time plus the person's extra time and the minutes the monitor added (phase B counted only the closing time, so a hand-in inside extra time showed as late) | M04b | — |
+| A-133 | Monitor messages reach running attempts only; each keeps the newest 20, and the runner shows the newest unread one until the taker presses OK (remembered on that device) | M04b | — |
+| A-134 | With full screen required, a browser that cannot go full screen (Safari on iPhone) cannot take the test; the lobby's device check and the runner say so | M04b | — |
+| A-135 | The snapshot retention setting accepts 7–365 days | M04b | Q-24 |
+| A-136 | Code questions belong to the coding modes: a coding test (objective, written and code), a lab test (also uploads) and a coding competition (code only). Quizzes and written tests keep their types, as code is marked after hand-in | M04b | — |
+| A-137 | Until the university runs its own Judge0, code runs on Judge0's free public server (Aniket's choice, 18 Oct 2026); the e2e run uses a stand-in so CI never depends on it | M04b | Q-55 |
+| A-138 | The default languages are C, C++ and Java (LAB-02); Python and others are added in the codeRunner setting (LAB-06 is a "Could") | M04b | — |
+| A-139 | A question's run limit counts runs of its visible tests in one attempt (1–30, 10 by default), on top of the 3 s wait and 200 runs an hour; untouched starter code is not an answer | M04b | — |
+| A-140 | A hand-in with code questions shows "To grade" until the gradeCode job marks them, in seconds. A grader's own mark on a code question stays when the tests run again, and an empty mark box keeps the tests' mark | M04b | — |
+| A-141 | "Run sample tests" waits for the runner in the request (a few seconds), as M05 planned; the full marking runs in the worker | M04b | — |
+| A-142 | Tests are stored with \n line ends; memory is asked in MB and stored as MB × 1000 KB, as Judge0 takes it | M04b | — |
+| A-143 | Results are worked out over each taker's counted attempt; ranks are competition ranks (1, 2, 2, 4); the percentile is those below plus half of those level | M04b | — |
+| A-144 | Results go out by hand (the default, as M04), by themselves within the hour after the test closes once nobody is writing and all is marked, or each person's at once when marked (ranks wait for the published results). The rule changes no mark, so it can change at any time; an automatic release is audited in the name of whoever saved the rule | M04b | — |
+| A-145 | Item analysis: "correct" is the share who earned full marks; discrimination is the upper-minus-lower 27 % index, shown only with 10 or more takers; a question is "to look at" when under 20 % or over 90 % correct, or its discrimination is under 0.2 | M04b | — |
+| A-146 | Alike answers: the test's own written and code questions only, at most 600 answers each, 20 tokens or more, three-token shingles with Jaccard ≥ 0.85; a flag for a teacher, never a mark (Q-09) | M04b | Q-09 |
+| A-147 | The leaderboard is off by default; on, it names the first 10 to everyone who took the test | M04b | — |
+| A-148 | Ranks and analysis are worked out when results go out, again after a regrade, waived penalty or code re-run, and on request — not live while people write | M04b | — |
+| A-149 | Certificates are opt-in per test, from a percentage the teacher sets in the Results dialog; one is earned by a counted attempt at or above it and states that attempt's percentage, the rating band and, once results are published, the rank | M04b | Q-57 |
+| A-150 | The PDFs use the built-in Helvetica and Times, so text outside Windows-1252 prints as "?" (a name in Odia or Devanagari script would); student records hold names in Latin script. Printing other scripts needs an embedded Unicode font | M04b | — |
+| A-151 | A taker's scorecard or certificate is current while it was asked for after the attempt, the test and (once published) the ranks last changed; otherwise the page offers to make it again. The staff's files stay downloadable with the time they were made, and the staff make them again by hand | M04b | — |
+| A-152 | TP-12 says "emailed or downloaded": the files are downloaded from the page; nothing is emailed (the mail adapter sends no attachments) | M04b | — |
+| A-153 | The Excel export has one row per taker — their counted attempt, or their latest unmarked one when none is marked — ranked as 07 §19, with section totals and a column per question of the test's own (drawn bank questions count only in section totals); times are IST text. Its Questions sheet appears once the analysis has been worked out | M04b | — |
+| A-154 | The reports PDF has a report for every hand-in (every attempt), by name, with no size cap (the worker streams it); heads of department may make both staff files, as they read the results | M04b | — |
+| A-155 | A person may ask for 10 files an hour; a file still being made after 10 minutes may be asked for again | M04b | — |
+| A-156 | The certificate check `/v/<code>` shows the record as it is now, and says "No longer valid" when a later regrade took the result below the threshold | M04b | — |
+| A-157 | The AI drafts bank questions from a topic, how many (1–20), one of the five types a CSV row can carry, a level and the course's outcomes the teacher picks, with keys and explanations; each draft is worth 1 mark with no negative marks until the teacher changes it | M04b | — |
+| A-158 | A draft is checked as an imported CSV row is; one that fails is dropped, outcome codes the teacher did not pick are dropped, and the notice says how many were kept | M04b | — |
+| A-159 | Saving an AI draft in its dialog is its review and accepts it; a draft is discarded with ⋮ Delete. Drafts count toward the bank's 5,000 but not toward its other counts | M04b | — |
+| A-160 | A draft request is tried once, never retried by itself, so drafts are never saved twice; the teacher is told how it went, a failure included | M04b | — |
+| A-161 | "Mixed" asks for about 30 % easy, 45 % medium and 25 % hard (mock-up C2), and each draft keeps the level the AI gave it. The AI is OpenAI's (Aniket, 18 Oct 2026, for cost); the model is the `OPENAI_MODEL` setting, by default `gpt-5.4-mini` | M04b | — |
 
 ## 5. Log
 
@@ -1475,7 +1475,7 @@ Built on branch `m04-assessments` in a worktree while M03c was being built on ma
   - The milestone file: decisions 1–6, the mock-up rounds, and the task text.
   - 02 §8; 05 §5.1–5.2; 06 §2 and §6; 07 §4 and §14; 09 §10.
   - 08 §2, §6 and §5.2 (`ActionForm`, `RichTextEditor`, `FileUpload`, `AssessmentRunner`, `PageIcon`).
-  - §4: A-M04-1 to A-M04-7, and A-85.
+  - §4: A-102 to A-108, and A-85.
 
 **Acceptance criteria**
 
@@ -1498,7 +1498,7 @@ Built on branch `m04-assessments` in a worktree while M03c was being built on ma
   - The other does not find a new department's code on the ten-a-page list.
 - CI has not run (nothing is pushed).
 
-**Assumptions** — A-M04-1 to A-M04-7 (§4).
+**Assumptions** — A-102 to A-108 (§4).
 
 **Open questions** — none new. Q-41 (how assessments map to the policy's parts) still waits for M06.
 
@@ -1594,7 +1594,7 @@ Phase A of `docs/milestones/M04b-test-platform.md` (TP-01–TP-04), on branch `m
 - `/login` has no `next` parameter. A deep link opened while signed out lands on Home after sign-in; a share link avoids this because it signs in on its own page.
 - Nothing was checked on a real phone.
 
-**Assumptions** — A-M04b-1 to A-M04b-8 (§4).
+**Assumptions** — A-109 to A-116 (§4).
 
 **Open questions** — none new; the milestone's four still stand (Judge0, AI key, certificates, guest retention).
 
@@ -1663,7 +1663,7 @@ Phase B of `docs/milestones/M04b-test-platform.md` (TP-05, TP-06, TP-07), on bra
 - The offline backup was not tested with a real lost connection, only through reloads in the e2e walk.
 - Nothing was checked on a real phone.
 
-**Assumptions** — A-M04b-9 to A-M04b-16 (§4).
+**Assumptions** — A-117 to A-124 (§4).
 
 **Open questions** — none new.
 
@@ -1712,7 +1712,7 @@ Phase C of `docs/milestones/M04b-test-platform.md` (TP-08), on branch `m04-asses
   - `/api/files` serves `proctor-snapshot` keys to the test's staff only.
   - The daily `proctorRetention` job (03:30 IST) deletes them `snapshotRetentionDays` after results.
   - The admin setting is "Proctoring" on `/admin/settings`.
-- **Fixed from phase B.** "Late" now allows for the person's extra time (A-M04b-24).
+- **Fixed from phase B.** "Late" now allows for the person's extra time (A-132).
 - **Helpers.** `PROCTOR_EVENT_LABEL`, `ordinal` (`Intl.PluralRules`), `formatTimeSeconds` and `formatClock` (moved from `test-lobby.tsx`) in `lib/format.ts`.
 - **Tests.**
   - Unit: 24 vectors in `lib/domain/proctoring.test.ts`.
@@ -1725,12 +1725,12 @@ Phase C of `docs/milestones/M04b-test-platform.md` (TP-08), on branch `m04-asses
   - RustFS was not running: the integration tests mock storage.
   - The visual walk used Chromium's fake camera, and its uploads could not land.
   - So the PUT to the bucket and the thumbnails on the grading page are unverified.
-- Nothing was checked on a real phone or in Safari or Firefox; full screen on iPhone is expected to be unavailable (A-M04b-26).
-- Developer tools opened from the browser's menu are not noticed; only the keys are stopped. A browser's "Duplicate tab" is not caught as a second tab (A-M04b-19).
+- Nothing was checked on a real phone or in Safari or Firefox; full screen on iPhone is expected to be unavailable (A-134).
+- Developer tools opened from the browser's menu are not noticed; only the keys are stopped. A browser's "Duplicate tab" is not caught as a second tab (A-127).
 - "Proctored · n warnings" is hidden below 1024 px; phones see the banner for each serious warning instead.
 - AI "cheating" verdicts stay out (Q-09).
 
-**Assumptions** — A-M04b-17 to A-M04b-27 (§4).
+**Assumptions** — A-125 to A-135 (§4).
 
 **Open questions** — Q-54 (snapshots of a test whose results are never published).
 
@@ -1791,7 +1791,7 @@ Phase D of `docs/milestones/M04b-test-platform.md` (TP-09; CE-03's coding modes 
 - No real class used the free server; how it behaves with 50 students pressing Run at once is unknown (M05's validation checklist).
 - Nothing was checked on a real phone; typing code there was not tried.
 
-**Assumptions** — A-M04b-28 to A-M04b-34 (§4).
+**Assumptions** — A-136 to A-142 (§4).
 
 **Open questions** — Q-55 (the code runner before going public); Q-25 (b) answered for now.
 
@@ -1841,7 +1841,7 @@ Phase E's first part (TP-11) of `docs/milestones/M04b-test-platform.md`, on bran
 - The results page has no filter for "your answers" (mock-up C5's "All questions" picker); every question shows.
 - The Assessments list still shows "Handed in" until results are published, even when the "at once" rule shows the marks on the test's page.
 
-**Assumptions** — A-M04b-35 to A-M04b-40 (§4).
+**Assumptions** — A-143 to A-148 (§4).
 
 **Open questions** — Q-56.
 
@@ -1906,8 +1906,8 @@ Phase E's second part (TP-12) of `docs/milestones/M04b-test-platform.md`, on bra
 
 **Not done**
 - E3 (the AI helpers, TP-10). The mark-band suggestion waits on Q-56.
-- Nothing is emailed (A-M04b-44).
-- Names in a non-Latin script print as "?" (A-M04b-42).
+- Nothing is emailed (A-152).
+- Names in a non-Latin script print as "?" (A-150).
 - A long table carries on to the next page without repeating its header, and pages are not numbered.
 - **Four e2e tests outside M04b fail on this branch.** None touches code this phase changed:
   - `admin-structure.spec.ts` (2): it waits for a workspace heading in the old "CUTM1602 · … · A" form and a "Change enrolment" button, which no longer exist.
@@ -1915,7 +1915,7 @@ Phase E's second part (TP-12) of `docs/milestones/M04b-test-platform.md`, on bra
   - The heading, the button and the publish bar all changed in the 17 Oct "fix" commits, so these specs need updating.
   - `live.spec.ts`: no LiveKit server runs on this machine ("fetch failed" on `closeRoom`), so the student never gets into the room.
 
-**Assumptions** — A-M04b-41 to A-M04b-48 (§4).
+**Assumptions** — A-149 to A-156 (§4).
 
 **Open questions** — Q-57.
 
@@ -1980,7 +1980,7 @@ Phase E's last part (TP-10) of `docs/milestones/M04b-test-platform.md`, on branc
 - The submit button says "Draft the questions", not "Draft 10 questions" as in mock-up C2: the label does not follow the number typed.
 - The same four e2e tests outside M04b still fail (E2 entry). The walk left three AI drafts in CUTM1602's bank on the e2e database, to review in the walk-through.
 
-**Assumptions** — A-M04b-49 to A-M04b-53 (§4).
+**Assumptions** — A-157 to A-161 (§4).
 
 **Open questions** — none new; Q-56 stands.
 

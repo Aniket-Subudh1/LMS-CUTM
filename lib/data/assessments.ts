@@ -145,7 +145,7 @@ function summaryOf(a: SummaryRow, now: Date): AssessmentSummary {
   };
 }
 
-// The Assessments tab's state filter on the indexed { offeringId, status, closesAt } (A-M04-1 bounds the rest).
+// The Assessments tab's state filter on the indexed { offeringId, status, closesAt } (A-102 bounds the rest).
 function stateFilter(state: AssessmentState | undefined, now: Date): QueryFilter<AssessmentDoc> {
   const ends = { $or: [{ lateUntil: null, closesAt: { $gt: now } }, { lateUntil: { $gt: now } }] };
   if (state === 'draft') return { status: 'draft' };
@@ -1570,7 +1570,7 @@ export type RecordsGrid = {
 };
 
 // T7 (REC-01–REC-04): active students by roll number × the class's published record assessments. An offering holds at
-// most MAX_ENROLLMENTS students and 200 assessments (A-83, A-M04-1), so both sides are bounded reads; a cell is the
+// most MAX_ENROLLMENTS students and 200 assessments (A-83, A-102), so both sides are bounded reads; a cell is the
 // student's latest attempt.
 export async function getRecordsGrid(offeringId: string, page: number, q?: string): Promise<RecordsGrid> {
   const { access, canTeach } = await viewerAccess(offeringId);
@@ -1662,7 +1662,7 @@ export type DueSoonRow = {
   started: boolean;
 };
 
-// Home (M04 decision 1, A-M04-4): open assessments of the student's courses closing within seven days that they have not
+// Home (M04 decision 1, A-105): open assessments of the student's courses closing within seven days that they have not
 // handed in, soonest first.
 export async function listDueSoon(): Promise<DueSoonRow[]> {
   const viewer = await requireViewer(['student']);

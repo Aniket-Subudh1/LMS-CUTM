@@ -10,7 +10,7 @@ const testFileSchema = new Schema(
     kind: { type: String, enum: TEST_FILE_KINDS, required: true },
     submissionId: { type: Schema.Types.ObjectId, default: null },
     requestedBy: { type: Schema.Types.ObjectId, required: true },
-    // The job reads the results after this moment, so a file is current when nothing changed since (A-M04b-43).
+    // The job reads the results after this moment, so a file is current when nothing changed since (A-151).
     requestedAt: { type: Date, required: true },
     status: { type: String, enum: TEST_FILE_STATUSES, required: true },
     key: { type: String, default: null },

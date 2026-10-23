@@ -264,7 +264,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | partialCredit | B | M04b; msq, fill_blank, matching, ordering only |
 | explanation | RichText? | M04b; shown to graders now, to takers with results when the release rules say so (phase E) |
 | sectionId | Id? | M04b; the section it belongs to (all of them once any section exists) |
-| options | `[{ _id: Id, text: S }]?` | mcq/msq/ordering: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-M04-7) |
+| options | `[{ _id: Id, text: S }]?` | mcq/msq/ordering: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-108) |
 | answer | `{ optionId? , optionIds?, value?, tolerance?, truth? }?` | mcq: optionId; msq: optionIds; ordering: optionIds in the right order; numeric: value + tolerance ≥ 0; true_false: truth. **Never sent to students** |
 | template, blanks | S?, `[{ _id, accepted: [S] }]?` | fill_blank: the sentence with `___` per blank (≤ 10 blanks); what each blank accepts (≤ 10 answers). **`accepted` never sent to students** |
 | pairs | `[{ _id, rightId: Id, left: S, right: S }]?` | matching, 2–10: `_id` names the left side and `rightId` the right one, so a page can list both without saying which go together |
@@ -273,10 +273,10 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 
 `observation` items have no student answer — faculty score them (project reviews, viva). `text`/`file` items are what records and written assignments are made of.
 
-**Section** (embedded, M04b): `title` S ≤ 80 · `durationMin` N? (1–600; its own clock from when an attempt first opens it) · `locked` B ("no going back": closes when left; later sections open only after it) · `passage` RichText? (shown beside each of its questions) · `draw` `{ count: 1–100, easy, medium, hard: % (0 or adding to 100), coIds: [Id], topics: [S], marksEach: N, negativeEach: N }?` — questions drawn from the bank for each attempt (only automatically marked types, A-M04b-10), each worth `marksEach`.
+**Section** (embedded, M04b): `title` S ≤ 80 · `durationMin` N? (1–600; its own clock from when an attempt first opens it) · `locked` B ("no going back": closes when left; later sections open only after it) · `passage` RichText? (shown beside each of its questions) · `draw` `{ count: 1–100, easy, medium, hard: % (0 or adding to 100), coIds: [Id], topics: [S], marksEach: N, negativeEach: N }?` — questions drawn from the bank for each attempt (only automatically marked types, A-118), each worth `marksEach`.
 
 Indexes: `{ offeringId: 1, status: 1, closesAt: 1 }` (also an admin's list of every standalone test, `offeringId: null`) · `{ offeringId: 1, mode: 1 }` · `{ status: 1, closesAt: 1 }` · `{ 'items.coIds': 1 }` · `{ ownerIds: 1, closesAt: -1, _id: -1 }` (the Tests page, M04b) · `{ 'proctoring.camera': 1, snapshotsDeletedAt: 1, resultsPublishedAt: 1 }` (the daily snapshot clean-up, M04b) · `{ 'results.release': 1, status: 1, closesAt: 1 }` (the sweep's automatic releases, M04b).
-Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-M04-1), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-M04-2).
+Invariants: once any submission exists, `items` cannot change (only `title`, `instructions`, dates may). Hard delete only while `draft` (its share links go with it; nobody can have joined a draft). An offering holds at most 200 assessments (`createAssessment` refuses the 201st, A-102), so its lists are bounded reads. Results are published only after the window closes (`lateUntil ?? closesAt`, A-103).
 
 ### 5.2 `submissions` (one document per attempt)
 | Field | Type | Rules |
@@ -289,7 +289,7 @@ Invariants: once any submission exists, `items` cannot change (only `title`, `in
 | deadlineAt | D | min(startedAt + duration, lateUntil ?? closesAt), both lengthened by the person's extra time; the live monitor adds minutes to it (M04b) |
 | submittedAt | D? | |
 | late | B | submittedAt > closesAt + the person's extra time + `proctor.addedMin` (M04b) |
-| autoSubmitted | B | time ran out; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-M04-3) |
+| autoSubmitted | B | time ran out; such an attempt's `submittedAt` is its `deadlineAt`, so a sweep that hands it in later does not make it late (A-104) |
 | endedBy | S? | M04b (TP-08): `warnings` (the serious-warning limit) · `teacher` (the live monitor's End attempt); null otherwise |
 | paper | [Item + `sectionId`, `bankItemId`?] | M04b (TP-05): the questions this attempt was given, frozen at its start — the assessment's own and those its sections drew from the bank (`bankItemId`, worth the section's marks) — in this attempt's order, options in this attempt's order (an ordering question's steps never start in the right order). Grading and results read only this; ≤ 100 items. Keys included: **never sent to students** as stored |
 | flags | [Id] | M04b (TP-07): questions flagged for review |

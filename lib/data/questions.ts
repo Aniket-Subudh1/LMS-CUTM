@@ -7,7 +7,7 @@ import type { BankCsvRow } from '@/lib/schemas/bank';
 import type { RichTextDoc } from '@/lib/schemas/common';
 
 // One question as stored (05 §5.1), from its dialog or a CSV row: options, criteria, blanks, pairs and tests get new ids
-// (A-M04-7), the key names options by id, and marks are rounded once. Shared by an assessment's questions and the
+// (A-108), the key names options by id, and marks are rounded once. Shared by an assessment's questions and the
 // bank (M04b). A rubric must add up to the question's marks.
 export function storedItem(input: ItemInput) {
   const maxMarks = roundHalfUp(input.maxMarks, 2);

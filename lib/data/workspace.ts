@@ -590,7 +590,7 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
       ])
     : [];
   const statsById = new Map(stats.map((row) => [String(row._id), row]));
-  // M04 T9: the class's quizzes (at most 200, A-M04-1) and this page's attempts at them.
+  // M04 T9: the class's quizzes (at most 200, A-102) and this page's attempts at them.
   const quizzes = skill
     ? await Assessment.find(
         { offeringId, mode: 'quiz', status: { $ne: 'draft' } },

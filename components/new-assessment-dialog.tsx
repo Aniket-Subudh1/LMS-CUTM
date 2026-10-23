@@ -34,7 +34,7 @@ const MODE_HINT: Record<AssessmentMode, string> = {
 // What datetime-local shows for a time: its IST wall clock (06 §2).
 export const istLocal = (date: Date) => `${istDayKey(date)}T${istTimeOfDay(date)}`;
 
-// M04 decision 2 (A-M04-6): the type, a title and the window; the builder changes the rest. Opened from the URL
+// M04 decision 2 (A-107): the type, a title and the window; the builder changes the rest. Opened from the URL
 // (`?new=<mode>`) on the Assessments and Records tabs, with that type chosen; without a course, on Tests (M04b, TP-02).
 export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string | null; mode: AssessmentMode }) {
   // The next whole hour, and an hour later for a timed one or a week later for work done at home.

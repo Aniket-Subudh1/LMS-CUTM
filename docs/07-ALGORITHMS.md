@@ -357,7 +357,7 @@ Per assignee: `assigned`; `done`; `doneOnTime` (`doneAt ≤ dueAt`); `overdue` (
 | ordering 4 steps, 4 marks, partial | last two swapped | 2 |
 | ordering | never moved (no answer saved) | 0 |
 
-Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never take a total below 0 (A-M04b-9). Results can be published only when every submitted attempt has every item scored. Since M04b every mark is read from the attempt's own paper (05 §5.2), never from the assessment.
+Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never take a total below 0 (A-117). Results can be published only when every submitted attempt has every item scored. Since M04b every mark is read from the attempt's own paper (05 §5.2), never from the assessment.
 
 **Drawing a paper (M04b, TP-05)** — `lib/domain/papers.ts`. A section draws `count` questions; with a mix (easy/medium/hard %, adding to 100) each level gets `count × % / 100`, whole questions handed out by the largest remainder, ties to the easier level; with no mix (all 0) any level will do. `drawQuestions` shuffles each level's pool with `seededShuffle(seed:level)` and takes the first n, so the same attempt id always draws the same paper. `shortfall` names what a pool lacks (publishing and the builder refuse or warn). `distinctPapers` is Π over sections and levels of C(have, need), capped at 1,000,000.
 
@@ -379,7 +379,7 @@ Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never ta
 | 1: 6 graded, 2: submitted, not graded | last | 6 |
 | none | best | 0 |
 
-**Quiz average** — `quizAveragePct(quizzes)` in `lib/domain/grading.ts` (SKL-02, M04: the People tab of a skill course). Over the offering's quizzes whose results are published, the mean of each quiz's `100 × counted / maxMarks`, with a quiz the student did not attempt counted as 0; `roundHalfUp(…, 2)`; `null` when no quiz has published results (A-M04-5).
+**Quiz average** — `quizAveragePct(quizzes)` in `lib/domain/grading.ts` (SKL-02, M04: the People tab of a skill course). Over the offering's quizzes whose results are published, the mean of each quiz's `100 × counted / maxMarks`, with a quiz the student did not attempt counted as 0; `roundHalfUp(…, 2)`; `null` when no quiz has published results (A-106).
 
 | Quizzes (counted / max) | Result |
 |---|---|

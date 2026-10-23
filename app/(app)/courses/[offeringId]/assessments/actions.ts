@@ -160,7 +160,7 @@ async function requireCourseCos(
   }
 }
 
-// A-M04-6: the type, title and window come from the dialog; the rest from the type's typical settings.
+// A-107: the type, title and window come from the dialog; the rest from the type's typical settings.
 export const createAssessment = action({ input: CreateAssessment, roles: TEACH }, async (input, viewer) => {
   await requireTeach(viewer, input.offeringId);
   await db();
@@ -245,7 +245,7 @@ export const saveItem = action({ input: SaveItem, roles: TEACH }, async (input, 
   }
   const current = assessment.items.find((i) => String(i._id) === input.itemId);
   const sectionId = input.sectionId ?? (current?.sectionId ? String(current.sectionId) : sectionIds[0]) ?? null;
-  // A-M04-7: the options get new ids; no attempt refers to them yet.
+  // A-108: the options get new ids; no attempt refers to them yet.
   const item = { ...storedItem(input), sectionId };
   if (input.itemId) {
     const written = await Assessment.updateOne(
@@ -924,7 +924,7 @@ export const rerunCode = action({ input: SubmissionRef, roles: TEACH }, async (i
   refresh();
 });
 
-// T6: AC-M04-06. Results go out once the window has closed (A-M04-2) and every hand-in is marked; attempts still
+// T6: AC-M04-06. Results go out once the window has closed (A-103) and every hand-in is marked; attempts still
 // running have expired by then and are handed in first. Only students who handed something in are told.
 export const publishResults = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);

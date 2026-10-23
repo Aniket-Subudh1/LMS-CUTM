@@ -595,7 +595,7 @@ function ContinueLearning({ rows }: { rows: ContinueRow[] }) {
 }
 
 // CRS-06, T10: active offerings the faculty member teaches without a published course plan.
-// M04 decision 1 (A-M04-4): open assessments closing within a week that the student has not handed in.
+// M04 decision 1 (A-105): open assessments closing within a week that the student has not handed in.
 function DueSoon({ rows }: { rows: DueSoonRow[] }) {
   const now = new Date();
   return (

@@ -51,7 +51,7 @@ async function bankScope(source: { offeringId?: Types.ObjectId | null; ownerIds:
 }
 
 // The bank questions each drawing section can choose from: objective questions of a type the test's mode allows
-// (a drawn question is worth the section's marks, which a rubric could not follow, A-M04b-10), matching its
+// (a drawn question is worth the section's marks, which a rubric could not follow, A-118), matching its
 // outcomes and topics. Bounded by BANK_LIMITS.perBank.
 export async function sectionPools(
   source: Pick<PaperSource<SourceItem>, 'offeringId' | 'ownerIds' | 'mode' | 'sections'>,

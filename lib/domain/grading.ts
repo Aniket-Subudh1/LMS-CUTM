@@ -119,7 +119,7 @@ export function rubricTotal(criteriaMarks: readonly number[]): number {
 }
 
 // The attempt's total, or null while any question is unscored (07 §14). Negative marks never take it below 0
-// (A-M04b-9).
+// (A-117).
 export function attemptTotal(
   itemIds: readonly string[],
   scores: Readonly<Record<string, { marks: number } | undefined>>,

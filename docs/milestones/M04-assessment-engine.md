@@ -24,7 +24,7 @@ Asked while planning; each one changes a project rule or fills a gap in this fil
 3. **Each question is edited in its own dialog** ("Builder A"): questions are rows that drag to reorder, with ⋮ Edit / move / delete, as lessons, COs and plan sessions are since M03b. The milestone's `moveItem` is `reorderItems`, which `SortableList` and the `RowMenu` moves both send.
 4. **The attempt runner is a focused page of its own** ("Runner B"), outside the sidebar and course header like the live room: a top bar with the timer, the save status and Submit, and a question map. It lives in the `(attempt)` route group at the same URL (`/courses/[offeringId]/assessments/[aid]/attempt`).
 5. **Grading one hand-in has "Next to grade"** and "Save and open the next", so a teacher works down the ungraded hand-ins without returning to the list.
-6. **Results are published only after the assessment closes** (`lateUntil ?? closesAt`), when every attempt still running has expired; `publishResults` then hands those in first (A-M04-2).
+6. **Results are published only after the assessment closes** (`lateUntil ?? closesAt`), when every attempt still running has expired; `publishResults` then hands those in first (A-103).
 
 Standing preference: every screen is shown first as static mock-ups and Aniket picks before it is built.
 
