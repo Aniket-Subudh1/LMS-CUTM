@@ -2194,3 +2194,26 @@ Request: "continue". With M06 done, Aniket chose (`docs/milestones/M07-projects.
 
 **Dev consequence** — A review is its own record (`projectReviews`), not a `project_review` assessment: students hand nothing in, and the engine expects attempts.
 
+### 2026-10-23 · Next.js 16.4.0 → 16.4.3, a security upgrade · Claude Code, at Aniket's request
+
+Request: the terminal output of `npm run dev`, which exited after "Upgrade: Next.js 16.4.0 → 16.4.3 … No supported coding agent found". Aniket chose "Upgrade now".
+
+**Found**
+- `next dev` was not crashing. Next's default upgrade policy (`experimental.agentUpgrade: 'security'`) found 16.4.0 affected and offered a menu in the terminal; choosing Update stopped the server to hand the upgrade to a coding agent, found none, and exited.
+- `npm audit` on 16.4.0: GHSA-2464-fhr4-w9xw (critical, unauthenticated RCE in the Image Optimization API with SVG), GHSA-673q-mjm6-r5xr (critical, unauthenticated RCE in `use cache` functions returning typed arrays) and GHSA-p3m5-59mp-jv5r (high, DoS in App Router Server Actions), all `>=16.0.0 <=16.4.0`. The app uses `cacheComponents` and Server Actions.
+
+**Changed**
+- `package.json`, `package-lock.json`: `next` and `eslint-config-next` 16.4.3, exact. Only the `next`, `@next/*` and `eslint-config-next` entries of the lockfile changed.
+- 03 §2 and the `@next/playwright` row: 16.4.3.
+
+**Not done**
+- `experimental.agentUpgrade` is not written into `next.config.ts`, although Next's upgrade prompt asks for it: `'security'` is already its default (`node_modules/next/dist/server/config-shared.js`), so the line would change nothing (04 §1).
+- No pull request: work goes on `main`, and the `gh` CLI is not installed, so open PRs were not checked for duplicate work. Local branches and history had none.
+
+**Verification**
+- `npx next --version` → `Next.js v16.4.3`. `npm audit` → `found 0 vulnerabilities`. Next's own assessment for 16.4.3 → `affected: false`.
+- `npm run check` → exit 0, `Tests 538 passed (538)`.
+- `npx next build` → exit 0, 64 pages. Run in an APFS clone of the checkout, because another session's e2e server was serving `.next/standalone` from this one.
+- `npx next dev -p 3200` in the same clone → `GET /login 200`; `AGENTS.md` unchanged.
+- Not run: integration and e2e tests.
+

@@ -20,12 +20,12 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 
 | Package | Version | Purpose |
 |---|---|---|
-| `next` | 16.4.0 | Framework. Bundled docs: `node_modules/next/dist/docs/` |
+| `next` | 16.4.3 | Framework. Bundled docs: `node_modules/next/dist/docs/`. Raised from 16.4.0 on 23 Oct 2026 for the advisories GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr (critical) and GHSA-p3m5-59mp-jv5r (high) |
 | `react`, `react-dom` | 19.3.0 | UI |
 | `typescript` | ^5 | Types (`strict: true`) |
 | `tailwindcss` | ^4 | Styling, via the `@tailwindcss/turbopack` loader configured in `next.config.ts` (no PostCSS config) |
 | `@tailwindcss/turbopack` | ^4 (4.3.3 installed) | Tailwind loader for Turbopack |
-| `eslint`, `eslint-config-next` | ^9, 16.4.0 | Linting (`npm run lint` runs `eslint`) |
+| `eslint`, `eslint-config-next` | ^9, 16.4.3 | Linting (`npm run lint` runs `eslint`) |
 | `@types/react`, `@types/react-dom` | ^19 | Types |
 | `@types/node` | **change to 24.19.2** | Vitest 5 rejects `@types/node@20` (peer `^22 \|\| >=24`) — verified |
 
@@ -77,7 +77,7 @@ Every version below was checked against the npm registry or Docker Hub on 12 Oct
 | `mongodb-memory-server` | 11.3.0 | M00 | Ephemeral MongoDB replica set for integration tests (downloads `mongod` on first run; set `TEST_MONGODB_URI` to use a real replica set instead) |
 | `tsx` | 4.23.15 | M00 | Run `worker/index.ts` and `scripts/*.ts` |
 | `@playwright/test` | 1.64.0 | M00 | End-to-end tests |
-| `@next/playwright` | 16.4.0 | when the first `instant()` test is written | `instant()` helper for navigation assertions (optional use) |
+| `@next/playwright` | 16.4.3 | when the first `instant()` test is written | `instant()` helper for navigation assertions (optional use) |
 | `prettier` | 3.9.10 | M00 | Formatting |
 | `prettier-plugin-tailwindcss` | 0.8.1 | M00 | Class ordering |
 | `@types/nodemailer` | 8.0.2 | M00 | Types |
