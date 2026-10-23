@@ -210,7 +210,7 @@ Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone 
 
 | Scheduler id | Pattern | Job |
 |---|---|---|
-| `github-nightly` | `30 1 * * *` | enqueue `sync/githubProject` for every active GitHub project |
+| `githubNightly` (M07) | `30 1 * * *` | `sync/githubNightly`: enqueue `sync/githubProject` for every active GitHub project with a repository |
 | `internalMarksNightly` (M06) | `0 2 * * *` | `compute/internalMarksNightly`: enqueue `compute/internalMarks` for every active credit offering (safety net) |
 | `liveSweep` (M03) | `5 * * * *` | `compute/liveSweep`: end live sessions still open 30 min after their scheduled end and finalize ended sessions left unfinalized (M03) |
 | `assessmentSweep` (M04; BullMQ names a scheduler after its job) | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) + publish the results of tests whose rule says so (M04b) |

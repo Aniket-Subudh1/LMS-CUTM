@@ -54,6 +54,9 @@
 | Grade sheet | ◐ (published) | — | — | ✔ | — |
 | Projects: create, assign members/tasks, mark done | — | ✔ | ○ | ✔ | — |
 | Projects: move own tasks, link repo | ◐ (member) | ✔ | — | — | — |
+| Project reviews: schedule, mark (M07) | ◐ own marks | ✔ | ○ | ✔ | — |
+| Link a GitHub account (M07) | ✔ own | ✔ own | — | — | — |
+| Integrations page (M07) | — | — | — | ✔ | — |
 | Attainment: compute, view | — | ✔ | ○ | ✔ | — |
 | AI suggestions | — | ✔ | — | ✔ | — |
 | Engagement scores & drill-down | — | ✔ | ○ | ✔ | — |
@@ -158,6 +161,8 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `assessment.counts_toward` (M06) | the part before and after |
 | `marks.rubric_saved` (M06) | per student, the component and the criteria before and after |
 | `offering.evaluation_refreshed` (M06) | the evaluation copy before and after |
+| `project.review_marked` (M07) | per member, the criteria before and after |
+| `project.repo_linked` (M07) | the repository before and after |
 | `marks.locked`, `marks.unlocked` (reason required) | lock state |
 | `endsem.imported` | rows applied, syncRunId |
 | `ce.exported` | offerings, syncRunId |

@@ -374,7 +374,7 @@ Invariants: written only by `recomputeInternalMarks` (07 §2), whole, for every 
 ### 5.3a `rubricMarks` (M06, Q-41)
 The practice and project internal rubrics a teacher fills on the Marks tab, per student. `offeringId` Id · `studentId` Id · `component` S (`practice` · `project`) · `criteria` `{ <policy key>: N }` — the criteria filled so far, keyed as in the evaluation policy (`practiceConcept` … `practiceViva`, `projectRelevance` … `projectReport`), each 0 to its maximum in the offering's copy, two decimals · `updatedBy` Id · timestamps.
 Indexes: `{ offeringId: 1, studentId: 1, component: 1 }` unique (the Marks tab and the recompute read an offering's rows by its prefix).
-Invariants: only for a component the offering has (credits above 0). Every save is audited (`marks.rubric_saved`, the criteria before and after). Refused while the offering is locked. External practice and project marks are never stored here: they come from the exam section with the end-semester marks (M08).
+Invariants: only for a component the offering has (credits above 0). Since M07 only `practice` is saved here: the project internal comes from the project reviews (§6.3a, M07 decision 2). Every save is audited (`marks.rubric_saved`, the criteria before and after). Refused while the offering is locked. External practice and project marks are never stored here: they come from the exam section with the end-semester marks (M08).
 
 ### 5.4 `endSemMarks`
 `offeringId` Id · `studentId` Id · `marks` N? · `maxMarks` N · `absent` B · `source` `csv|api` · `syncRunId` Id · `importedAt` D.
@@ -398,6 +398,11 @@ Indexes: `{ offeringId: 1 }` · `{ memberIds: 1 }` · `{ 'repo.owner': 1, 'repo.
 `projectId` Id · `offeringId` Id (*denorm*) · `title` S (≤ 160) · `description` RichText? · `assigneeId` Id (a project member) · `status` `backlog|in_progress|review|done` · `dueAt` D · `doneAt` D? · `createdBy` Id · `history` `[{ status, at, by }]` (max 50).
 Indexes: `{ projectId: 1, status: 1 }` · `{ assigneeId: 1, status: 1 }` · `{ offeringId: 1, dueAt: 1 }`.
 Invariants: only faculty move a task to `done` or back from `review`; students move their own tasks `backlog → in_progress → review` (PRJ-06, PRJ-08).
+
+### 6.3a `projectReviews` (M07 decision 2)
+A review of one project, marked on the evaluation policy's six internal project criteria for each member. `offeringId` Id (*denorm*) · `projectId` Id · `title` S (≤ 120) · `heldOn` D · `sessionId` Id? (its live class, `kind: 'review'`) · `marks` `[{ studentId: Id, criteria: { <policy key>: N } }]` (members only; each criterion 0 to its maximum in the offering's copy, two decimals; blank criteria absent) · `createdBy`, `updatedBy` Id · timestamps.
+Indexes: `{ projectId: 1, heldOn: 1 }` · `{ offeringId: 1 }` (the recompute reads an offering's reviews).
+Invariants: at most 20 reviews per project. Marks change only while the offering is unlocked, each change audited (`project.review_marked`). A review is deleted only while it has no marks. A student's project internal is the reviews' average per criterion (07 §2).
 
 ### 6.3 `commits`
 `projectId` Id · `sha` S · `authorLogin` S? · `studentId` Id? (matched by `users.github.id`/login) · `committedAt` D · `message` S (≤ 500) · `additions` N · `deletions` N · `isMerge` B.

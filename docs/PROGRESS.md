@@ -29,7 +29,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
-| M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
+| M07 Projects | In progress — T0: decisions written, mock-ups next | | Decisions 23 Oct 2026 in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
@@ -62,7 +62,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-19 | Grading scale, grade points and pass rules (e.g. minimum end-sem %) | @client | UGC CBCS letters (06 §7); no separate pass rule | Grade-sheet sign-off | Answered in part 15 Oct 2026: O from 90 % (policy example DECT0901); the rest is Q-40 |
 | Q-20 | A course shared by several programs: acceptable to create it once per program (A-12)? | @client | One course per program | — | Answered 15 Oct 2026 (Aniket, M01b): one course per code, listed by many programmes (A-54) |
 | Q-21 | Should the LMS grade sheet show SGPA, or grades only? | @client | Show SGPA | — | Open |
-| Q-22 | Does CUTM have a GitHub organization for student repos; private repos allowed? | @client | GitHub App installed on a CUTM org; private repos supported | M07 setup | Open |
+| Q-22 | Does CUTM have a GitHub organization for student repos; private repos allowed? | @client | GitHub App installed on a CUTM org; private repos supported. Meanwhile Aniket's test App on the test server (M07 decision 3, 23 Oct 2026) | M07 setup | Open |
 | Q-23 | Are excused absences (medical leave) from assessments needed? | @client | No; missed = 0 (A-14) | — | Open |
 | Q-24 | Retention period for proctoring snapshots | @client | 90 days after results (A-13) | — | Open |
 | Q-25 | (a) Live engine — **decided by dev 12 Oct 2026: self-hosted LiveKit** (ADR-18); confirm with the client that this satisfies LIV-02 "reuse the previous solution". (b) The recruitment platform's compiler service: technology and repository access | @dev (Aniket) | (a) LiveKit; (b) Judge0 CE reference adapter | M05 adapter choice | (a) Decided · (b) Answered for now 18 Oct 2026 (Aniket): Judge0, on its free public server until the university's own (Q-55) |
@@ -2180,4 +2180,17 @@ Request: "the sidebar is getting short in many screens based on the screenshot �
 - The phone sheet (390 px) shows both pinned under the menu.
 - `npm run check` → `Tests 538 passed (538)`. `npm run build` → exit 0.
 - `npx playwright test tests/e2e/admin-structure.spec.ts tests/e2e/marks.spec.ts tests/e2e/people.spec.ts` → `6 passed`.
+
+### 2026-10-23 · Decision: M07 projects · Claude Code, at Aniket's request
+
+Request: "continue". With M06 done, Aniket chose (`docs/milestones/M07-projects.md`, decisions 1–3):
+1. M07 before M08.
+2. Project reviews fill the project rubric: each review marks the policy's six criteria per member, and the project internal is their average criterion by criterion.
+3. GitHub is built now against mocks, with Aniket's test App for the test server until CUTM's organisation (Q-22).
+
+**Changed docs**
+- The M07 file: decisions, the mock-up list, the tasks rewritten.
+- 05 §5.3a, §6.3a; 07 §2 (the review averages, with vectors); 06 §6; 02 §8; 09; an M06 note on decision 3.
+
+**Dev consequence** — A review is its own record (`projectReviews`), not a `project_review` assessment: students hand nothing in, and the engine expects attempts.
 
