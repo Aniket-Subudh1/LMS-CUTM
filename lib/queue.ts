@@ -9,6 +9,8 @@ import type {
   DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
+  InternalMarksJob,
+  InternalMarksNightlyJob,
   LiveControlJob,
   LiveSweepJob,
   MailJob,
@@ -31,7 +33,9 @@ type ComputeData =
   | GradeCodeJob
   | TestStatsJob
   | MakeTestFileJob
-  | DraftQuestionsJob;
+  | DraftQuestionsJob
+  | InternalMarksJob
+  | InternalMarksNightlyJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -41,7 +45,9 @@ type ComputeName =
   | 'gradeCode'
   | 'testStats'
   | 'makeTestFile'
-  | 'draftQuestions';
+  | 'draftQuestions'
+  | 'internalMarks'
+  | 'internalMarksNightly';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -140,20 +146,31 @@ export async function queueGradeCode(submissionId: string, again = false): Promi
   await computeQueue().add('gradeCode', { submissionId }, { jobId });
 }
 
-// 06 §6 (TP-11): work a test's results out again. A job still waiting reads the change when it runs, so nothing is
-// added; a finished one is removed and added anew; one already running may have read too early, so another follows it.
-// The short delay gathers a burst of regrades into one run.
-export async function queueTestStats(assessmentId: string): Promise<void> {
-  const jobId = `stats-${assessmentId}`;
+// 06 §6: a job that works something out again from what is stored. A job still waiting reads the change when it runs,
+// so nothing is added; a finished one is removed and added anew; one already running may have read too early, so
+// another follows it. The short delay gathers a burst of changes into one run.
+async function queueRecompute(
+  job: { name: 'testStats'; data: TestStatsJob } | { name: 'internalMarks'; data: InternalMarksJob },
+  jobId: string,
+): Promise<void> {
   const existing = await computeQueue().getJob(jobId);
   const state = existing ? await existing.getState() : null;
   if (state === 'waiting' || state === 'delayed' || state === 'prioritized') return;
   if (existing && state !== 'active') await existing.remove();
-  await computeQueue().add(
-    'testStats',
-    { assessmentId },
-    { jobId: state === 'active' ? `${jobId}-${Date.now()}` : jobId, delay: 5_000 },
-  );
+  await computeQueue().add(job.name, job.data, {
+    jobId: state === 'active' ? `${jobId}-${Date.now()}` : jobId,
+    delay: 5_000,
+  });
+}
+
+// TP-11: a test's ranks, item analysis and leaderboard.
+export async function queueTestStats(assessmentId: string): Promise<void> {
+  await queueRecompute({ name: 'testStats', data: { assessmentId } }, `stats-${assessmentId}`);
+}
+
+// M06 (07 §2–3): a credit offering's internal marks.
+export async function queueInternalMarks(offeringId: string): Promise<void> {
+  await queueRecompute({ name: 'internalMarks', data: { offeringId } }, `ce-${offeringId}`);
 }
 
 // 06 §6 (TP-12): make one file asked for from a test's results. Each request is its own job; asking again while one

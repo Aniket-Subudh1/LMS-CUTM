@@ -5,6 +5,7 @@ import mongoose, { type Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { notify } from '@/lib/data/notify';
+import { assertUnlocked } from '@/lib/data/offerings';
 import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { courseMode } from '@/lib/domain/catalog';
@@ -17,6 +18,8 @@ import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
+import { queueInternalMarks } from '@/lib/queue';
+import { OfferingRef } from '@/lib/schemas/marks';
 import { CreateOfferings, MAX_ENROLLMENTS, SetOfferingStatus, UpdateOfferingFaculty } from '@/lib/schemas/structure';
 
 // The CSV import limit (06 §8): a section larger than this is enrolled by file, not in one request.
@@ -205,3 +208,32 @@ export const setOfferingStatus = action(
     refresh();
   },
 );
+
+// M06 (CE-07, AC-M06-04): an offering keeps the evaluation policy it was created with; an admin copies today's
+// Settings onto one offering, while its marks are unlocked. Audited with the copies before and after.
+export const refreshEvaluation = action({ input: OfferingRef, roles: ['admin'] }, async ({ offeringId }, viewer) => {
+  await db();
+  const offering = await Offering.findById(offeringId, { category: 1, evaluation: 1 }).lean();
+  if (!offering) throw new AppError('NOT_FOUND', 'Offering not found.');
+  if (offering.category !== 'ugc') throw new AppError('VALIDATION', 'A non-credit course has no evaluation policy.');
+  await assertUnlocked(offeringId);
+  const evaluation = await getSettings('evaluation');
+  await mongoose.connection.transaction(async (session) => {
+    await Offering.updateOne({ _id: offeringId }, { $set: { evaluation } }, { session });
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: 'offering.evaluation_refreshed',
+        entity: 'offering',
+        entityId: offeringId,
+        offeringId,
+        before: offering.evaluation ?? null,
+        after: evaluation,
+      },
+      session,
+    );
+  });
+  await queueInternalMarks(offeringId);
+  refresh();
+});
+

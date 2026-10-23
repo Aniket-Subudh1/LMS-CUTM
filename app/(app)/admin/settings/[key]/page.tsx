@@ -13,8 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
-import { coursePercentage } from '@/lib/domain/evaluation';
-import { formatDateTime, formatPct } from '@/lib/format';
+import { coursePercentage, RUBRICS } from '@/lib/domain/evaluation';
+import { CRITERION_LABEL, formatDateTime, formatPct } from '@/lib/format';
 import { settingsKey } from '@/lib/schemas/settings';
 
 export const metadata: Metadata = { title: 'Settings' };
@@ -385,22 +385,8 @@ const THEORY: Part[] = [
   ['theoryAttendance', 'Attendance'],
   ['theoryEndSem', 'End-semester examination'],
 ];
-const PRACTICE: Part[] = [
-  ['practiceConcept', 'Concept'],
-  ['practicePlanning', 'Planning and execution'],
-  ['practiceResult', 'Result and interpretation'],
-  ['practiceRecord', 'Record'],
-  ['practiceConduct', 'Conduct'],
-  ['practiceViva', 'Viva'],
-];
-const PROJECT_INTERNAL: Part[] = [
-  ['projectRelevance', 'Relevance'],
-  ['projectLiterature', 'Literature'],
-  ['projectMethodology', 'Methodology'],
-  ['projectAnalysis', 'Analysis and results'],
-  ['projectInterpretation', 'Interpretation'],
-  ['projectReport', 'Report'],
-];
+const PRACTICE: Part[] = RUBRICS.practice.map((key) => [key, CRITERION_LABEL[key]]);
+const PROJECT_INTERNAL: Part[] = RUBRICS.project.map((key) => [key, CRITERION_LABEL[key]]);
 const PROJECT_EXTERNAL: Part[] = [
   ['projectExtRelevance', 'Relevance'],
   ['projectExtReport', 'Report'],

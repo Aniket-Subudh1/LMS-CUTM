@@ -8,6 +8,7 @@ import { writeAudit } from '@/lib/audit';
 import { assessmentAccess, requireManage, requireTeach } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
+import { assertUnlocked } from '@/lib/data/offerings';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { requireOfferedLanguages } from '@/lib/data/code';
@@ -32,13 +33,14 @@ import { Submission } from '@/lib/models/submission';
 import { TestFile } from '@/lib/models/test-file';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
-import { queueGradeCode, queueTestFile, queueTestStats } from '@/lib/queue';
+import { queueGradeCode, queueInternalMarks, queueTestFile, queueTestStats } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
   AssessmentRef,
   CreateAssessment,
   ExtendAttempts,
+  type CountsToward,
   GradeSubmission,
   MessageTakers,
   MODE_DEFAULTS,
@@ -78,12 +80,19 @@ async function manageAssessment(viewer: Viewer, assessmentId: string) {
   return assessment;
 }
 
-// 05 §3.8: while marks are locked nothing may change a score or the state of results. A standalone test has no lock.
-async function requireUnlocked(offeringId: Types.ObjectId | null | undefined) {
-  if (!offeringId) return;
-  const offering = await Offering.findById(offeringId, { lockedAt: 1 }).lean();
-  if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
-  if (offering.lockedAt) throw new AppError('LOCKED', 'Marks for this course are locked.');
+// M06 (Q-41): what a form posted for "Counts toward" — undefined when it had no such field. Only a credit course with
+// theory credits counts its assessments toward the theory parts.
+async function countsTowardOf(
+  offeringId: Types.ObjectId | string | null | undefined,
+  posted: CountsToward | 'none' | undefined,
+): Promise<CountsToward | null | undefined> {
+  if (posted === undefined) return undefined;
+  const offering = offeringId ? await Offering.findById(offeringId, { category: 1, credits: 1 }).lean() : null;
+  if (!offering || offering.category !== 'ugc' || offering.credits.theory === 0) {
+    const message = 'Only an assessment of a course with theory credits counts toward the theory marks.';
+    throw new AppError('VALIDATION', message, { countsToward: [message] });
+  }
+  return posted === 'none' ? null : posted;
 }
 
 // 05 §5.1: the stored total follows every change to the questions and to the sections' draws (M04b).
@@ -167,10 +176,13 @@ export const createAssessment = action({ input: CreateAssessment, roles: TEACH }
   if ((await Assessment.countDocuments({ offeringId: input.offeringId })) >= ASSESSMENT_LIMITS.perOffering) {
     throw new AppError('CONFLICT', `This class already has ${ASSESSMENT_LIMITS.perOffering} assessments.`);
   }
+  // Nothing is published yet, so no mark moves and there is nothing to audit.
+  const countsToward = await countsTowardOf(input.offeringId, input.countsToward);
   const [created] = await Assessment.create([
     {
       offeringId: input.offeringId,
       mode: input.mode,
+      countsToward: countsToward ?? null,
       title: input.title,
       opensAt: parseIstLocal(input.opensAt),
       closesAt: parseIstLocal(input.closesAt),
@@ -193,21 +205,47 @@ export const updateAssessmentSettings = action(
       closesAt: parseIstLocal(input.closesAt),
       lateUntil: input.lateUntil ? parseIstLocal(input.lateUntil) : null,
     };
-    await Assessment.updateOne(
-      { _id: assessment._id },
-      {
-        $set: started
-          ? dates
-          : {
-              ...dates,
-              durationMin: input.durationMin ?? null,
-              attemptsAllowed: input.attemptsAllowed,
-              attemptPolicy: input.attemptPolicy,
-              shuffleItems: input.shuffleItems,
-              shuffleOptions: input.shuffleOptions,
-            },
-      },
-    );
+    // M06: what it counts toward may change after students start (it changes no answer), but moves internal marks.
+    const countsToward = await countsTowardOf(assessment.offeringId, input.countsToward);
+    const before = assessment.countsToward ?? null;
+    const moved = countsToward !== undefined && countsToward !== before;
+    if (moved) await assertUnlocked(assessment.offeringId);
+    await mongoose.connection.transaction(async (session) => {
+      await Assessment.updateOne(
+        { _id: assessment._id },
+        {
+          $set: {
+            ...dates,
+            ...(started
+              ? {}
+              : {
+                  durationMin: input.durationMin ?? null,
+                  attemptsAllowed: input.attemptsAllowed,
+                  attemptPolicy: input.attemptPolicy,
+                  shuffleItems: input.shuffleItems,
+                  shuffleOptions: input.shuffleOptions,
+                }),
+            ...(moved ? { countsToward } : {}),
+          },
+        },
+        { session },
+      );
+      if (moved) {
+        await writeAudit(
+          {
+            actorId: viewer.id,
+            action: 'assessment.counts_toward',
+            entity: 'assessment',
+            entityId: String(assessment._id),
+            offeringId: String(assessment.offeringId),
+            before: { countsToward: before },
+            after: { countsToward },
+          },
+          session,
+        );
+      }
+    });
+    if (moved && assessment.status === 'results_published') await queueInternalMarks(String(assessment.offeringId));
     refresh();
   },
 );
@@ -591,7 +629,7 @@ export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async 
   }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
-  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
+  await assertUnlocked(offeringId);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
   const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1, status: 1 }).lean();
   const hard = attempt.proctor?.hard ?? 0;
@@ -621,7 +659,10 @@ export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async 
       session,
     );
   });
-  if (rules.status === 'results_published') await queueTestStats(String(attempt.assessmentId));
+  if (rules.status === 'results_published') {
+    await queueTestStats(String(attempt.assessmentId));
+    if (offeringId) await queueInternalMarks(offeringId);
+  }
   refresh();
 });
 
@@ -704,7 +745,7 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
   }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
-  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
+  await assertUnlocked(offeringId);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
   const rules = await Assessment.findById(attempt.assessmentId, { proctoring: 1, status: 1 }).lean();
   // M04b: the questions this attempt was given.
@@ -819,8 +860,11 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
       );
     });
   }
-  // TP-11: marks changed after the results went out, so the ranks follow.
-  if (changed.length > 0 && rules?.status === 'results_published') await queueTestStats(String(attempt.assessmentId));
+  // TP-11, M06: marks changed after the results went out, so the ranks and the internal marks follow.
+  if (changed.length > 0 && rules?.status === 'results_published') {
+    await queueTestStats(String(attempt.assessmentId));
+    if (offeringId) await queueInternalMarks(offeringId);
+  }
   if (input.then === 'next') {
     // M04 decision 5: the next hand-in waiting for marks, else back to the list.
     const next = await Submission.findOne(
@@ -908,7 +952,7 @@ export const rerunCode = action({ input: SubmissionRef, roles: TEACH }, async (i
   const attempt = await Submission.findById(input.submissionId, { assessmentId: 1, status: 1, paper: 1 }).lean();
   if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
   const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
-  await requireUnlocked(offeringId ? new Types.ObjectId(offeringId) : null);
+  await assertUnlocked(offeringId);
   if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
   if (!attempt.paper.some((item) => item.type === 'code')) {
     throw new AppError('VALIDATION', 'This attempt has no code questions.');
@@ -928,7 +972,7 @@ export const rerunCode = action({ input: SubmissionRef, roles: TEACH }, async (i
 // running have expired by then and are handed in first. Only students who handed something in are told.
 export const publishResults = action({ input: AssessmentRef, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
-  await requireUnlocked(assessment.offeringId);
+  await assertUnlocked(assessment.offeringId);
   if (assessment.status === 'draft') throw new AppError('CONFLICT', 'Publish the assessment first.');
   if (assessment.status === 'results_published') throw new AppError('CONFLICT', 'Results are already published.');
   const now = new Date();

@@ -2,6 +2,7 @@ import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import mongoose, { type Types } from 'mongoose';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
+import { recomputeInternalMarks } from '@/lib/data/internal-marks';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
 import { csvItem, paragraph, storedItem } from '@/lib/data/questions';
@@ -32,7 +33,7 @@ import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
 import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
-import { queueLiveFinalize, queueTestStats } from '@/lib/queue';
+import { queueInternalMarks, queueLiveFinalize, queueTestStats } from '@/lib/queue';
 import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
 import { BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { RichTextDoc } from '@/lib/schemas/common';
@@ -41,6 +42,8 @@ import {
   DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
+  InternalMarksJob,
+  InternalMarksNightlyJob,
   LiveControlJob,
   LiveSweepJob,
   MakeTestFileJob,
@@ -60,7 +63,9 @@ type ComputeName =
   | 'gradeCode'
   | 'testStats'
   | 'makeTestFile'
-  | 'draftQuestions';
+  | 'draftQuestions'
+  | 'internalMarks'
+  | 'internalMarksNightly';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -70,7 +75,9 @@ type ComputeData =
   | GradeCodeJob
   | TestStatsJob
   | MakeTestFileJob
-  | DraftQuestionsJob;
+  | DraftQuestionsJob
+  | InternalMarksJob
+  | InternalMarksNightlyJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -81,14 +88,14 @@ async function finalizeLiveSession({ sessionId }: FinalizeLiveJob): Promise<void
   // getSettings is cached for the web process; the worker reads the key itself.
   const stored = await Setting.findById('attendance', { value: 1 }).lean();
   const { liveThresholdPct } = SETTINGS.attendance.schema.parse(stored?.value ?? {});
-  const students = await mongoose.connection.transaction(async (session) => {
+  const { students, offeringId } = await mongoose.connection.transaction(async (session) => {
     const live = await LiveSession.findOneAndUpdate(
       { _id: sessionId, status: 'ended', finalizedAt: null },
       { $set: { finalizedAt: new Date() } },
       { session, projection: { offeringId: 1, startedAt: 1, endedAt: 1, attendanceMode: 1 } },
     ).lean();
     // Already finalized, or a class that never started: no attendance.
-    if (!live?.startedAt || !live.endedAt) return 0;
+    if (!live?.startedAt || !live.endedAt) return { students: 0, offeringId: null };
     const { startedAt, endedAt, offeringId, attendanceMode } = live;
     const [enrolled, rows] = await Promise.all([
       Enrollment.distinct('studentId', { offeringId, status: 'active' }).session(session),
@@ -132,9 +139,11 @@ async function finalizeLiveSession({ sessionId }: FinalizeLiveJob): Promise<void
     // Ordered, so each student's row exists before its status is set.
     if (ops.length > 0) await Attendance.bulkWrite(ops, { session });
     await addEngagement(engagement, session);
-    return enrolled.length;
+    return { students: enrolled.length, offeringId };
   });
   log.info('live session finalized', { sessionId, students });
+  // The theory attendance part follows the finalized classes (07 §2).
+  if (offeringId) await queueInternalMarks(String(offeringId));
 }
 
 // The hourly scheduler `liveSweep` (02 §8): classes nobody ended, and ended classes whose finalize never ran.
@@ -376,6 +385,7 @@ async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
   for (let round = 0; round < 3; round++) {
     const current = await Submission.findById(submissionId, {
       assessmentId: 1,
+      offeringId: 1,
       status: 1,
       paper: 1,
       scores: 1,
@@ -408,7 +418,10 @@ async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
       log.info('code graded', { submissionId, runs: jobs.length });
       // Marks changed after the results went out: ranks follow.
       const test = await Assessment.findById(current.assessmentId, { status: 1 }).lean();
-      if (test?.status === 'results_published') await queueTestStats(String(current.assessmentId));
+      if (test?.status === 'results_published') {
+        await queueTestStats(String(current.assessmentId));
+        if (current.offeringId) await queueInternalMarks(String(current.offeringId));
+      }
       return;
     }
   }
@@ -717,6 +730,17 @@ async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
   log.info('bank drafts', { requested: job.count, returned: drafts?.length ?? 0, kept: kept.length });
 }
 
+// The nightly scheduler `internalMarksNightly` (02 §8): a safety net under the recomputes that changes queue.
+async function internalMarksNightly(): Promise<void> {
+  const offerings = Offering.find({ category: 'ugc', status: 'active', lockedAt: null }, { _id: 1 }).lean().cursor();
+  let queued = 0;
+  for await (const offering of offerings) {
+    await queueInternalMarks(String(offering._id));
+    queued += 1;
+  }
+  log.info('internal marks queued', { offerings: queued });
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
@@ -733,6 +757,16 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'proctorRetention') {
     ProctorRetentionJob.parse(job.data);
     return proctorRetention(new Date());
+  }
+  if (job.name === 'internalMarks') {
+    const { offeringId } = InternalMarksJob.parse(job.data);
+    const result = await recomputeInternalMarks(offeringId, new Date());
+    log.info('internal marks', { offeringId, ...result });
+    return;
+  }
+  if (job.name === 'internalMarksNightly') {
+    InternalMarksNightlyJob.parse(job.data);
+    return internalMarksNightly();
   }
   LiveSweepJob.parse(job.data);
   return liveSweep(new Date());

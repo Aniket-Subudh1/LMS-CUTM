@@ -15,7 +15,7 @@ import { Offering } from '@/lib/models/offering';
 import { Submission, type SubmissionDoc } from '@/lib/models/submission';
 import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
-import { queueTestStats } from '@/lib/queue';
+import { queueInternalMarks, queueTestStats } from '@/lib/queue';
 import type { ReleaseRule } from '@/lib/schemas/assessment';
 
 export type PaperItem = SubmissionDoc['paper'][number];
@@ -201,6 +201,8 @@ export async function releaseResults(
     href: assessmentPath(test.offeringId ? String(test.offeringId) : null, String(test._id)),
   });
   await queueTestStats(String(test._id));
+  // M06: a course's published results count toward its internal marks (A-20).
+  if (test.offeringId) await queueInternalMarks(String(test.offeringId));
   return true;
 }
 

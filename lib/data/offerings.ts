@@ -2,6 +2,7 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { AppError } from '@/lib/errors';
 import { formatCredits } from '@/lib/domain/catalog';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
@@ -13,6 +14,7 @@ import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
 import type { OFFERING_STATUSES } from '@/lib/schemas/structure';
+import type { Types } from 'mongoose';
 
 type Option = { id: string; label: string };
 
@@ -176,4 +178,14 @@ export async function listOfferings(
     })),
     total,
   };
+}
+
+// 05 §3.8: while an offering's marks are locked, nothing may change a score, the state of results, an enrolment, the
+// evaluation copy or what feeds the internal marks. A standalone test has no offering and no lock.
+export async function assertUnlocked(offeringId: Types.ObjectId | string | null | undefined): Promise<void> {
+  if (!offeringId) return;
+  await db();
+  const offering = await Offering.findById(offeringId, { lockedAt: 1 }).lean();
+  if (!offering) throw new AppError('NOT_FOUND', 'Course offering not found.');
+  if (offering.lockedAt) throw new AppError('LOCKED', 'Marks for this course are locked.');
 }

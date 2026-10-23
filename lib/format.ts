@@ -1,5 +1,7 @@
 import type { AssessmentMode, ItemType, ProctorEvent } from '@/lib/schemas/assessment';
 import type { Role } from '@/lib/schemas/common';
+import type { RUBRICS } from '@/lib/domain/evaluation';
+import type { RubricComponent, TheoryPart, Trend } from '@/lib/schemas/marks';
 import type { COURSE_TYPES } from '@/lib/schemas/structure';
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -181,6 +183,34 @@ export const keptBy = (coordinator: { name: string } | null) =>
   coordinator
     ? `Kept by ${coordinator.name}, the course coordinator.`
     : 'Kept by the administrators until the course has a coordinator.';
+
+// M06 (07 §2–3): the Examination Policy's theory parts, the internal rubrics' criteria, and a student's trend.
+export const PART_LABEL: Record<TheoryPart, string> = {
+  midTerm1: 'Mid-term I',
+  midTerm2: 'Mid-term II',
+  assignment: 'Assignment',
+  attendance: 'Attendance',
+};
+export const CRITERION_LABEL: Record<(typeof RUBRICS)[RubricComponent][number], string> = {
+  practiceConcept: 'Concept',
+  practicePlanning: 'Planning and execution',
+  practiceResult: 'Result and interpretation',
+  practiceRecord: 'Record',
+  practiceConduct: 'Conduct',
+  practiceViva: 'Viva',
+  projectRelevance: 'Relevance',
+  projectLiterature: 'Literature',
+  projectMethodology: 'Methodology',
+  projectAnalysis: 'Analysis and results',
+  projectInterpretation: 'Interpretation',
+  projectReport: 'Report',
+};
+export const TREND_LABEL: Record<Trend, string> = {
+  rising: 'Rising',
+  dropping: 'Dropping',
+  steady: 'Steady',
+  insufficient: 'Too few results',
+};
 
 export const MODE_LABEL: Record<AssessmentMode, string> = {
   quiz: 'Quiz',

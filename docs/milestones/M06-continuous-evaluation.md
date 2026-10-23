@@ -70,6 +70,8 @@ Triggers (each only for an assessment with an offering):
 
 Move `requireUnlocked` from the assessments actions to `lib/data/offerings.ts` as `assertUnlocked` (the name M08 T2 uses); its callers are the assessments actions and the new marks actions.
 
+Reads for the screens are in `lib/data/marks.ts` (built with T2): `getMarksSheet` (teach, oversee), `getRubricSheet` (teach edits, oversee reads), `getMyMarks` (learn: their own row only) and `getCeReport` (HoD: their department; admin: any). They reuse `policyOf`, `classesOf` and `gradedAttempts` from `lib/data/internal-marks.ts`. `queueInternalMarks` shares one debounced helper with `queueTestStats`.
+
 ### T3 · Actions
 - "Counts toward" is a field of `createAssessment` and `updateAssessmentSettings` (it stays editable after students start, outside the fields that freeze): only on a credit offering with theory credits, refused while locked, audited `assessment.counts_toward` when it changes, and it queues the recompute.
 - `saveRubricMarks` (`app/(app)/courses/[offeringId]/marks/actions.ts`; teach; unlocked; a component the offering has; a page of students, each criterion blank or 0 to its maximum in steps of 0.01): one `rubricMarks` upsert and one `marks.rubric_saved` audit entry per student whose criteria changed; queues the recompute.

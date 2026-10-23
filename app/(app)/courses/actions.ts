@@ -13,6 +13,7 @@ import { deleteObjects } from '@/lib/integrations/storage';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
+import { queueInternalMarks } from '@/lib/queue';
 import {
   AddStudent,
   ChangeEnrollments,
@@ -106,6 +107,8 @@ export const changeEnrollments = action(
           session,
         );
       });
+      // M06: the class's internal marks follow who is in it.
+      await queueInternalMarks(offeringId);
     }
     refresh();
     return { added, dropped };
@@ -195,6 +198,7 @@ export const addStudent = action({ input: AddStudent, roles: TEACH }, async ({ o
       session,
     );
   });
+  await queueInternalMarks(offeringId);
   refresh();
 });
 
@@ -228,6 +232,7 @@ export const setEnrollmentStatus = action(
         session,
       );
     });
+    await queueInternalMarks(offeringId);
     refresh();
   },
 );

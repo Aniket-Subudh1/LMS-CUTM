@@ -17,7 +17,7 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import type { NotificationKind } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
-import { queueLiveControl, queueLiveFinalize } from '@/lib/queue';
+import { queueInternalMarks, queueLiveControl, queueLiveFinalize } from '@/lib/queue';
 import {
   LowerHands,
   MarkAttendance,
@@ -343,6 +343,8 @@ export const markAttendance = action(
         txn,
       );
     });
+    // The theory attendance part follows (07 §2).
+    await queueInternalMarks(offeringId);
     refresh();
   },
 );
