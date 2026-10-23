@@ -177,7 +177,7 @@ const faculty2 = found(await User.findOne({ email: 'faculty2@seed.cutm.test' }, 
 
 const co = ['CO1', 'CO2', 'CO3'].map((code) => ({ _id: new Types.ObjectId(), code }));
 const cutm1535 = normalizeCourseware(parseCoursePage(readFileSync('tests/fixtures/courseware/836.html', 'utf8')));
-const [cutm1602, , , , sk01] = await Promise.all([
+const [cutm1602, , cutm1014, , sk01] = await Promise.all([
   upsert(
     Course,
     { code: 'CUTM1602' },
@@ -292,6 +292,7 @@ const [cutm1602, , , , sk01] = await Promise.all([
   ),
 ]);
 const programming = found(cutm1602, 'course CUTM1602');
+const ethics = found(cutm1014, 'course CUTM1014');
 const excel = found(sk01, 'course SK01');
 const byCode = new Map(
   (
@@ -357,15 +358,42 @@ await upsert(
   },
 );
 
+// M07: a project course on the task tracker (projects.spec.ts), to section A as well.
+const tracker = found(
+  await upsert(
+    Offering,
+    { courseId: ethics._id, termId: term._id, batchId: batch._id, section: 'A' },
+    {
+      courseId: ethics._id,
+      termId: term._id,
+      batchId: batch._id,
+      section: 'A',
+      programId: program._id,
+      departmentId: department._id,
+      category: 'ugc',
+      credits: ethics.credits,
+      evaluation: SETTINGS.evaluation.schema.parse({}),
+      title: 'CUTM1014 · Gender, Human Rights and Ethics · 2026-ODD · A',
+      facultyIds: [faculty2._id],
+      projectMode: 'tracker',
+      modules: [],
+      status: 'active',
+    },
+  ),
+  'offering CUTM1014 A',
+);
+
 const enrolled = await User.find({ batchId: batch._id, section: 'A', roles: 'student' }, { _id: 1 }).lean();
 await Enrollment.bulkWrite(
-  enrolled.map((s) => ({
-    updateOne: {
-      filter: { offeringId: offering._id, studentId: s._id },
-      update: { $setOnInsert: { offeringId: offering._id, studentId: s._id, status: 'active' } },
-      upsert: true,
-    },
-  })),
+  [offering, tracker].flatMap(({ _id: offeringId }) =>
+    enrolled.map((s) => ({
+      updateOne: {
+        filter: { offeringId, studentId: s._id },
+        update: { $setOnInsert: { offeringId, studentId: s._id, status: 'active' } },
+        upsert: true,
+      },
+    })),
+  ),
 );
 
 const hod = found(await User.findOne({ email: 'hod@seed.cutm.test' }, { _id: 1 }).lean(), 'hod');
@@ -455,7 +483,7 @@ for (const { page, facultyIds, projectMode } of csePages) {
 const cseNote = csePages.length ? ` and the ${csePages.length} CSE courses from courseware` : '';
 console.log(
   `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, ${5 + csePages.length} courses, ` +
-    `${2 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602${cseNote}` +
+    `${3 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602, CUTM1014${cseNote}` +
     `${passwordHash ? '; every account signs in with the seed password' : ''}.`,
 );
 await mongoose.disconnect();

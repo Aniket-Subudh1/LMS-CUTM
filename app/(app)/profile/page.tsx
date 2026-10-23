@@ -1,31 +1,45 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { LockKeyIcon } from '@phosphor-icons/react/ssr';
+import { z } from 'zod';
 import Loading from '../loading';
-import { changePassword, signOutEverywhere } from './actions';
+import { changePassword, signOutEverywhere, startGithubLink, unlinkGithub } from './actions';
 import { ActionForm, Field } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
 import { PasswordInput } from '@/components/password-input';
 import { Section } from '@/components/section';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { requireViewer } from '@/lib/auth/session';
-import { initials, ROLE_LABEL } from '@/lib/format';
+import { getGithubLink } from '@/lib/data/users';
+import { formatDate, initials, ROLE_LABEL } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Profile' };
 
-export default function ProfilePage() {
+const Search = z.object({ github: z.enum(['linked', 'taken', 'failed']).optional().catch(undefined) });
+
+// What came back from GitHub after "Link GitHub account" (/api/auth/github/callback).
+const GITHUB_RESULT = {
+  linked: 'GitHub linked. Your commits in project repositories now count as yours.',
+  taken: 'That GitHub account is already linked to another LMS user. Sign in to GitHub as yourself and try again.',
+  failed: 'GitHub did not confirm the link. Try again.',
+} as const;
+
+export default function ProfilePage({ searchParams }: PageProps<'/profile'>) {
   return (
     <Suspense fallback={<Loading />}>
-      <Profile />
+      <Profile searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Profile() {
+async function Profile({ searchParams }: { searchParams: PageProps<'/profile'>['searchParams'] }) {
   const viewer = await requireViewer();
+  const { github: result } = Search.parse(await searchParams);
+  const github = viewer.roles.includes('student') ? await getGithubLink() : null;
   return (
     <>
       <PageHeader
@@ -56,6 +70,46 @@ async function Profile() {
             </div>
           </div>
         </section>
+
+        {github && (github.ready || github.login) && (
+          <Section
+            icon={<PageIcon name="code" className="size-8" />}
+            title="GitHub"
+            description="Link your GitHub account so your commits in project repositories count as yours."
+          >
+            {result && (
+              <Alert variant={result === 'linked' ? 'default' : 'destructive'}>
+                <AlertDescription>{GITHUB_RESULT[result]}</AlertDescription>
+              </Alert>
+            )}
+            {github.login ? (
+              <div className="ring-border/70 flex flex-wrap items-center justify-between gap-3 rounded-md p-3 ring-1">
+                <span className="grid">
+                  <b className="text-[0.8125rem]">Linked as {github.login}</b>
+                  {github.linkedAt && (
+                    <span className="text-muted-foreground text-xs">Since {formatDate(github.linkedAt)}</span>
+                  )}
+                </span>
+                <ActionForm
+                  action={unlinkGithub}
+                  submitLabel="Unlink"
+                  submitVariant="outline"
+                  submitSize="sm"
+                  confirm={{
+                    title: 'Unlink GitHub?',
+                    message: 'Your new commits stop counting as yours until you link an account again.',
+                  }}
+                />
+              </div>
+            ) : (
+              <ActionForm action={startGithubLink} submitLabel="Link GitHub account" submitSize="sm" />
+            )}
+            <p className="text-muted-foreground text-xs">
+              “Link GitHub account” takes you to GitHub to confirm, then back here. The LMS reads only your username and
+              id.
+            </p>
+          </Section>
+        )}
 
         <Section
           icon={<PageIcon name="signin" className="size-8" />}

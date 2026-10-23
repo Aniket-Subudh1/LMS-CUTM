@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { isValidObjectId } from 'mongoose';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { githubConfigured } from '@/lib/integrations/github';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
@@ -146,4 +147,14 @@ export async function getUserFormOptions(): Promise<UserFormOptions> {
       sections: b.sections,
     })),
   };
+}
+
+export type GithubLink = { ready: boolean; login: string | null; linkedAt: Date | null };
+
+// M07 T4 (P5): the viewer's linked GitHub account, by which their commits in a project repository count as theirs.
+export async function getGithubLink(): Promise<GithubLink> {
+  const viewer = await requireViewer();
+  await db();
+  const user = await User.findById(viewer.id, { github: 1 }).lean();
+  return { ready: githubConfigured(), login: user?.github?.login ?? null, linkedAt: user?.github?.linkedAt ?? null };
 }

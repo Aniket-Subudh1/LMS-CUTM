@@ -45,6 +45,10 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
       : []),
     // M06 (CE-09, DSH-02): internal marks, for a credit course.
     ...(workspace.category === 'ugc' ? [{ href: `${base}/marks`, label: 'Marks', icon: mark('chart') }] : []),
+    // M07 (PRJ-01): the class's teams, for a course with project credits.
+    ...(workspace.category === 'ugc' && workspace.credits.project > 0
+      ? [{ href: `${base}/projects`, label: 'Projects', icon: mark('course') }]
+      : []),
     ...(learn ? [] : [{ href: `${base}/people`, label: 'People', icon: mark('people') }]),
   ];
   return (

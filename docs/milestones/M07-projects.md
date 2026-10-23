@@ -71,7 +71,7 @@ Route: `/courses/[offeringId]/projects` (a tab when the course has project credi
 - Scheduler `githubNightly` (02 §8).
 
 ### T6 · A GitHub project (PRJ-04, DSH-03; mock-up P2)
-Repository and last sync ("Sync now" for teach, once a minute); per member: commits, active weeks of total, last-minute share, message quality, lines and share, huge commits, the **suggested score** (07 §12) with each part explained, weekly commits; commits not attributed (authors without a linked account) with a hint; the 20 latest commits.
+Repository and last sync ("Sync now" for teach, once a minute); per member: commits, active weeks of total, last-minute share, message quality, lines and share, huge commits, the **suggested score** (07 §12) with each part explained, weekly commits; commits not attributed (authors without a linked account) with a hint; the latest ten commits (20 made the page long on a phone; the picked mock-up shows a short list).
 
 ### T7 · A tracker project (PRJ-05 … PRJ-08, DSH-04; mock-up P3)
 Tasks in Backlog, In progress, Review and Done, each with its assignee, due date and an overdue flag, and a button per allowed move (`canMoveTask`), no drag and drop.

@@ -49,7 +49,8 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
   }, [pathname]);
   return (
     <div className="relative mb-5 min-w-0 lg:mb-6">
-      {/* The row's own width never widens the page: it scrolls (inline-size containment, M06: 11 teacher tabs). */}
+      {/* The row's own width never widens the page: it scrolls (inline-size containment, M06: 11 teacher tabs). The list
+          is as wide as its tabs, so its underline runs under every tab when the row scrolls. */}
       <Tabs
         ref={scroller}
         onScroll={measure}
@@ -59,7 +60,7 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
         <TabsList
           aria-label="Sections"
           variant="line"
-          className="w-full justify-start gap-6 border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto"
+          className="w-max min-w-full justify-start gap-6 border-b p-0 group-data-[orientation=horizontal]/tabs:h-auto"
         >
           {tabs.map((tab) => (
             <TabsTrigger

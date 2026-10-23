@@ -73,6 +73,15 @@ async function Rubric({
           submitLabel="Search"
           search={{ name: 'q', label: 'Search students', placeholder: 'Search roll number or name', defaultValue: q }}
         />
+        {sheet.fromReviews && (
+          <p className="text-muted-foreground text-[0.8125rem]">
+            Each criterion is the average of the student’s project reviews. Mark a review on the{' '}
+            <Link href={`/courses/${offeringId}/projects`} className="text-primary font-medium hover:underline">
+              Projects
+            </Link>{' '}
+            tab.
+          </p>
+        )}
         {sheet.locked && (
           <p className="text-muted-foreground flex items-center gap-1.5 text-[0.8125rem]">
             <LockSimpleIcon className="size-4" /> The marks of this class are locked, so the rubric cannot change.

@@ -19,7 +19,7 @@ import { Project, type ProjectDoc } from '@/lib/models/project';
 import { ProjectReview } from '@/lib/models/project-review';
 import { ProjectTask } from '@/lib/models/project-task';
 import { User } from '@/lib/models/user';
-import type { RichTextDoc } from '@/lib/schemas/common';
+import { pageSize, type RichTextDoc } from '@/lib/schemas/common';
 import { PROJECT_LIMITS, type TaskStatus } from '@/lib/schemas/projects';
 import { MAX_ENROLLMENTS } from '@/lib/schemas/structure';
 
@@ -70,18 +70,22 @@ export type ProjectRow = {
 };
 
 export type ProjectsView = {
+  // A student, who sees only their own project.
+  learn: boolean;
   canTeach: boolean;
   mode: 'github' | 'tracker';
   githubReady: boolean;
   counts: { projects: number; inTeams: number; students: number; reviews: number };
+  // The page's projects, ten a page by title.
   rows: ProjectRow[];
   // For the project dialog: the class's active students (with their team, if any) and its faculty.
   students: (Person & { projectId: string | null })[];
   faculty: { id: string; name: string }[];
 };
 
-// M07 T3 (P1): a class's projects for whoever teaches or oversees it; a student sees their own.
-export async function listProjects(offeringId: string): Promise<ProjectsView> {
+// M07 T3 (P1): a class's projects for whoever teaches or oversees it; a student sees their own. All of them are read
+// (at most 200) for the counts and for who is already in a team; the reviews only for the page's.
+export async function listProjects(offeringId: string, page = 1): Promise<ProjectsView> {
   const viewer = await requireViewer();
   const { access, offering, canTeach, mode } = await projectOffering(viewer, offeringId);
   const learn = access === 'learn';
@@ -89,12 +93,14 @@ export async function listProjects(offeringId: string): Promise<ProjectsView> {
     .sort({ title: 1, _id: 1 })
     .limit(PROJECT_LIMITS.perOffering)
     .lean();
-  const projectIds = projects.map((p) => p._id);
-  const [reviews, enrolled] = await Promise.all([
-    ProjectReview.find({ projectId: { $in: projectIds } }, { projectId: 1, title: 1, heldOn: 1 })
+  const shownProjects = projects.slice((page - 1) * pageSize, page * pageSize);
+  const now = Date.now();
+  const [reviews, held, enrolled] = await Promise.all([
+    ProjectReview.find({ projectId: { $in: shownProjects.map((p) => p._id) } }, { projectId: 1, title: 1, heldOn: 1 })
       .sort({ heldOn: 1 })
-      .limit(PROJECT_LIMITS.perOffering * PROJECT_LIMITS.reviews)
+      .limit(pageSize * PROJECT_LIMITS.reviews)
       .lean(),
+    learn ? 0 : ProjectReview.countDocuments({ offeringId, heldOn: { $lte: new Date(now) } }),
     learn
       ? []
       : Enrollment.find({ offeringId, status: 'active' }, { studentId: 1 })
@@ -108,8 +114,8 @@ export async function listProjects(offeringId: string): Promise<ProjectsView> {
     ...offering.facultyIds,
   ]);
   const teamOf = new Map(projects.flatMap((p) => p.memberIds.map((m) => [String(m), String(p._id)])));
-  const now = Date.now();
   return {
+    learn,
     canTeach,
     mode,
     githubReady: githubConfigured(),
@@ -117,9 +123,9 @@ export async function listProjects(offeringId: string): Promise<ProjectsView> {
       projects: projects.length,
       inTeams: enrolled.filter((id) => teamOf.has(String(id))).length,
       students: enrolled.length,
-      reviews: reviews.filter((r) => r.heldOn.getTime() <= now).length,
+      reviews: held,
     },
-    rows: projects.map((p) => {
+    rows: shownProjects.map((p) => {
       const mine = reviews.filter((r) => r.projectId.equals(p._id));
       const next = mine.find((r) => r.heldOn.getTime() + DAY_MS > now);
       const last = mine.at(-1);
@@ -252,7 +258,7 @@ export async function getProject(offeringId: string, projectId: string): Promise
       )
         .limit(MAX_COMMITS)
         .lean(),
-      Commit.find({ projectId }).sort({ committedAt: -1 }).limit(20).lean(),
+      Commit.find({ projectId }).sort({ committedAt: -1 }).limit(10).lean(),
       getSettings('projects'),
     ]);
     const metrics = computeCommitMetrics({

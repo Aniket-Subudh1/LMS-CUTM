@@ -15,7 +15,7 @@ import { GET as githubCallback } from '@/app/api/auth/github/callback/route';
 import { POST as githubWebhook } from '@/app/api/webhooks/github/route';
 import { createToken } from '@/lib/auth/tokens';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
-import { getProject } from '@/lib/data/projects';
+import { getProject, listProjects } from '@/lib/data/projects';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { AuditLog } from '@/lib/models/audit-log';
@@ -131,6 +131,50 @@ describe('projects and teams (T3)', () => {
     await expect(getProject(String(w.offering._id), id)).rejects.toMatchObject({ digest: NOT_FOUND });
     await signInAs(w.hod);
     expect((await getProject(String(w.offering._id), id)).canTeach).toBe(false);
+  });
+  it('list ten a page by title, with counts over every team, and a student sees only their own', async () => {
+    const w = await world('tracker');
+    const students = await Promise.all(Array.from({ length: 11 }, () => makeUser()));
+    await Promise.all(students.map((s) => enroll(w.offering._id, s._id)));
+    const projects = await Project.insertMany(
+      students.map((s, i) => ({
+        offeringId: w.offering._id,
+        title: `Team ${String(i + 1).padStart(2, '0')}`,
+        mode: 'tracker',
+        memberIds: [s._id],
+        guideId: w.faculty._id,
+        startsOn: new Date('2026-08-01'),
+        dueOn: new Date('2026-11-30'),
+      })),
+    );
+    await ProjectReview.create({
+      offeringId: w.offering._id,
+      projectId: projects[10]._id,
+      title: 'First review',
+      heldOn: new Date('2026-09-15T04:30:00Z'),
+      createdBy: w.faculty._id,
+      updatedBy: w.faculty._id,
+    });
+    const offeringId = String(w.offering._id);
+    await signInAs(w.faculty);
+    const first = await listProjects(offeringId, 1);
+    expect(first.rows.map((r) => r.title)).toEqual(
+      students.slice(0, 10).map((_, i) => `Team ${String(i + 1).padStart(2, '0')}`),
+    );
+    expect(first.counts).toEqual({ projects: 11, inTeams: 11, students: 14, reviews: 1 });
+    const second = await listProjects(offeringId, 2);
+    expect(second.rows).toHaveLength(1);
+    expect(second.rows[0]).toMatchObject({ title: 'Team 11', review: { title: 'First review', upcoming: false } });
+    expect(
+      second.students
+        .filter((s) => s.projectId === null)
+        .map((s) => s.id)
+        .sort(),
+    ).toEqual([w.a, w.b, w.c].map((s) => String(s._id)).sort());
+    await signInAs(students[4]);
+    const mine = await listProjects(offeringId);
+    expect(mine.learn).toBe(true);
+    expect(mine.rows.map((r) => r.title)).toEqual(['Team 05']);
   });
 });
 

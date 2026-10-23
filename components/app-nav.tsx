@@ -57,6 +57,8 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/admin/offerings', label: 'Offerings', icon: 'offerings', roles: ['admin'] },
       { href: '/admin/imports', label: 'Imports', icon: 'imports', roles: ['admin'] },
       { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
+      // M07 T9: GitHub's state and every queue's failed jobs.
+      { href: '/admin/integrations', label: 'Integrations', icon: 'globe', roles: ['admin'] },
       { href: '/admin/audit', label: 'Audit log', icon: 'audit', roles: ['admin'] },
       { href: '/admin/users', label: 'Users', icon: 'users', roles: ['admin', 'support'] },
     ],

@@ -9,31 +9,21 @@ import { cn } from '@/lib/cn';
 
 type Column<T> = { header: string; cell: (row: T) => ReactNode; className?: string };
 
-// Filters and sorting are GET parameters (04 §1): the links keep `query` and only change `page`.
-export function DataTable<T>({
-  columns,
-  rows,
-  rowKey,
-  total,
-  page,
-  pageSize,
-  query,
-  path,
-  empty,
-  bare = false,
-}: {
-  columns: Column<T>[];
-  rows: T[];
-  rowKey: (row: T) => string;
-  total: number;
-  page: number;
-  pageSize: number;
-  query: Record<string, string>;
-  path: string;
-  empty: string;
-  // Inside a PageHeader card, which already draws the card.
-  bare?: boolean;
-}) {
+type Paging = { total: number; page: number; pageSize: number; query: Record<string, string>; path: string };
+
+// Filters and sorting are GET parameters (04 §1): the links keep `query` and only change `page`. A short list with a
+// fixed cap (a team's members, at most 10) leaves the paging out and has no page links.
+export function DataTable<T>(
+  props: {
+    columns: Column<T>[];
+    rows: T[];
+    rowKey: (row: T) => string;
+    empty: string;
+    // Inside a PageHeader card, which already draws the card.
+    bare?: boolean;
+  } & (Paging | { [K in keyof Paging]?: undefined }),
+) {
+  const { columns, rows, rowKey, empty, bare = false } = props;
   if (rows.length === 0) return bare ? <EmptyMessage text={empty} /> : <EmptyState text={empty} />;
   return (
     <div className={cn('grid gap-3', !bare && 'surface p-3 sm:p-4')}>
@@ -69,15 +59,17 @@ export function DataTable<T>({
           ))}
         </TableBody>
       </Table>
-      <PageNav
-        shown={rows.length}
-        total={total}
-        page={page}
-        pageSize={pageSize}
-        query={query}
-        path={path}
-        className="border-t px-1 pt-3"
-      />
+      {props.total !== undefined && (
+        <PageNav
+          shown={rows.length}
+          total={props.total}
+          page={props.page}
+          pageSize={props.pageSize}
+          query={props.query}
+          path={props.path}
+          className="border-t px-1 pt-3"
+        />
+      )}
     </div>
   );
 }

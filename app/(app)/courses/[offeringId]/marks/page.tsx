@@ -338,7 +338,7 @@ const COMPONENT_LABEL = { theory: 'Theory', practice: 'Practice', project: 'Proj
 const EXTERNAL = {
   theory: 'The end-semester exam adds the rest from the exam section.',
   practice: 'Your teacher’s rubric. The examiner’s marks come from the exam section.',
-  project: 'Your teacher’s rubric. The external marks come from the exam section.',
+  project: 'The average of your project reviews. The external marks come from the exam section.',
 } as const;
 
 // M3: a student's own marks — each part with the assessments and classes behind it, the rubrics, the total so far and
