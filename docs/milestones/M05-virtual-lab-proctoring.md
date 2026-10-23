@@ -14,6 +14,24 @@
 
 Practicals run entirely in the browser: students write C, C++ or Java in a code editor, run it against the visible test cases, and submit; the server grades against all test cases (including hidden ones) and the result flows into CE. Faculty see every run, the time taken and the test-case results. Lab tests and quizzes can be proctored: consent, full-screen, tab-switch and paste detection, optional webcam snapshots, an event timeline, and auto-submission after a configurable number of violations.
 
+## Where it was built (23 Oct 2026)
+
+M04b pulled most of this milestone forward (its decision 2), in a design Aniket picked from mock-ups. **Where the tasks below and M04b differ, M04b's docs win.** The tasks are kept as the record of what was asked.
+
+| Task | Built in | What differs from the text below |
+|---|---|---|
+| T1 adapter and settings | M04b phase D (`lib/integrations/code-runner.ts`, the `codeRunner` setting) | — |
+| T2 pure functions | M04b phases C and D (`lib/domain/code.ts`, `lib/domain/proctoring.ts`) | `applyProctorEvent` is `recordEvent` (07 §15) |
+| T3 code items | M04b phase D | Python may be added in the setting (no highlighting); run limit per question (`runLimit`) |
+| T4 running code | M04b phase D (`runCode`) | — |
+| T5 grading code | M04b phase D (`compute/gradeCode`, "Run the tests again") | — |
+| T6 lab activity | M04b phase D (grading page); the rest on 23 Oct 2026 | The hand-ins list shows sample runs with the best run, and the code marks; the grading page shows the time from start to hand-in and every run |
+| T7 proctoring | M04b phase C (TP-08, mock-up B4) | Serious and minor warnings instead of a tab-switch count; the N-th serious warning hands the attempt in (07 §15); a penalty per warning a grader can waive; one tab or device; a live monitor. Consent is the lobby's "I have read the rules" tick, which `startAttempt` checks on the server since 23 Oct 2026 |
+| T8 snapshot retention | M04b phase C (`compute/proctorRetention`, 05 §8) | Snapshots go `snapshotRetentionDays` after results (Q-54) |
+| T9 tests | M04b phases C and D | The e2e specs are `code.spec.ts` (on `tests/e2e/fake-runner.ts`) and `proctoring.spec.ts`, not `lab.spec.ts` |
+
+AC-M05-05 below was reworded to match.
+
 ## Gate — compiler service (Q-25 b)
 
 The client asked for compilers "just like the recruitment platform". Before T1 read Q-25 (b) in `PROGRESS.md`.
@@ -82,7 +100,7 @@ File: `lib/domain/code.ts` (+ test).
 - **AC-M05-02** Hidden test cases and expected outputs never reach a student's browser.
 - **AC-M05-03** Submitting grades every code item against all cases with the weighted formula; faculty can override with an audited reason.
 - **AC-M05-04** Faculty see runs, time taken and per-case results for each student (LAB-03).
-- **AC-M05-05** With a tab-switch limit of 3, the 4th switch auto-submits and the timeline records all four.
+- **AC-M05-05** With a limit of 3, the 3rd serious warning hands the attempt in and the record lists every warning (07 §15; it was "the 4th tab switch" before M04b).
 - **AC-M05-06** Proctoring never starts without the student's explicit consent; snapshots are deleted after the retention window.
 - **AC-M05-07** A student cannot run code more often than the cooldown allows.
 

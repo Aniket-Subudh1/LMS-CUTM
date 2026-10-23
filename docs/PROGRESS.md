@@ -27,7 +27,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
-| M05 Virtual lab & proctoring | Mostly built early, in M04b phases C (proctoring) and D (code questions, the coding modes, Judge0) | | Left: the hand-ins list's runs and best-pass columns (M05 T6) and the human validation on the real runner; feature set: Q-09; runner: Q-55 |
+| M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Not started | | CE-10 specifics: Q-06 |
 | M07 Projects | Not started | | Q-22, PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Not started | | API: Q-04 |
@@ -2036,4 +2036,34 @@ Aniket said pages and modals were still missing the clay marks.
 **Open questions** — none.
 
 **Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied. On `next dev`, signed in as `admin@seed.cutm.test`: the course tabs each show a loaded mark; New assessment shows the eight type marks; the question bank’s ten type buttons and the fill-in-the-blanks dialog show marks; Course cover and Import users dialogs show marks. Hovering a home tile leaves the picture transparent (`rgba(0,0,0,0)`) and does not fill the chip with the primary colour.
+
+### 2026-10-23 · Housekeeping after the M04 merge, and M05 closed · Claude Code, at Aniket's request
+
+Request: "plan the next milestone properly based on the changes in the previous milestone and do it", then "what about m5". The plan: close M05 (M04b built most of it), tidy what the merge left, then M06 on Aniket's answer to Q-41 (next entry).
+
+**Created**
+- `893d6c3` M04b(report): the branch's last commit (the first live OpenAI call on the test server), cherry-picked onto main. The `m04-assessments` worktree and branch are removed; nothing else on them was missing from main.
+- `175585f` M04(docs): the provisional assumptions take their numbers, A-M04-1…7 → A-102…A-108 and A-M04b-1…53 → A-109…A-161, in §4 and wherever docs or code cite them. The status table says what is committed and pushed (M03b, M03c, M04, M04b).
+- `e88d820` M03b(e2e): `tests/e2e/admin-structure.spec.ts` follows the workspace header (the course title), the Outcomes tab, "Upload CSV" and the ten-a-page departments list; `tests/e2e/content.spec.ts` waits for the plan's "Version n was published" line.
+- `0dc0a1f` M05(lab):
+  - `lib/data/assessments.ts` (`listSubmissions`: `codeActivity`, `codeMarks`; the grading view's `startedAt`), `components/hand-ins.tsx` (Sample runs, Code marks), `components/grading-view.tsx` (time from start to hand-in; "Every run").
+  - `lib/schemas/assessment.ts` (`StartAttempt`), `app/(attempt)/…/attempt/actions.ts` (`startAttempt` refuses a new attempt without `agree`).
+  - Tests: `tests/integration/proctoring.test.ts` (a start without the tick is refused and makes no attempt; continuing asks nothing), `tests/integration/code.test.ts` (the hand-ins list's runs, best run and code marks), and `agree` in every other test that starts an attempt.
+- This commit: `docs/milestones/M05-virtual-lab-proctoring.md` (where each task was built, AC-M05-05 reworded to 07 §15), 06 (`startAttempt`), 08 (`HandInsView`, `GradingPage`), 09 §11.
+
+**Not done**
+- M05's human checklist: one real lab with three students on the real runner, a cheating walk, Q-09 with the client, 50 students pressing Run at once.
+- `tests/e2e/content.spec.ts`'s two tests were not run green here: the video upload needs RustFS and the plan email needs Mailpit, and neither is installed on this machine (no Docker). `live.spec.ts` needs LiveKit. The changed assertion matches the text at `app/(app)/courses/[offeringId]/plan/page.tsx:132`.
+
+**Assumptions** — none.
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → `Test Files 33 passed (33)`, `Tests 515 passed (515)`.
+- `npm run test:integration` (local replica set and Redis) → `Test Files 23 passed (23)`, `Tests 281 passed (281)`.
+- `npm run build` → exit 0. Next.js 16.4.0 stops every other build after compiling with a `SecurityFatalError` ("affected by a known security vulnerability", asking to run `next upgrade --agent=security`); the next run completes. Not acted on: the version is pinned in 03 and the upgrade is Aniket's call.
+- `npx playwright test tests/e2e/admin-structure.spec.ts` → `4 passed`.
+- `npx playwright test tests/e2e/assessments.spec.ts tests/e2e/proctoring.spec.ts tests/e2e/code.spec.ts` on the new build → `3 passed` (the lobby's tick posts `agree`).
+- A scripted look at a graded coding hand-in on the e2e data as faculty1, at 1440 px and 390 px: the hand-ins list ("1 run · best 1 of 1 passed", "5 / 5") and the grading page ("2 s after starting", Every run). No error page and nothing wider than the screen; the first layout pushed Open past the card at 1440 px, so the runs and the best run share one column.
 
