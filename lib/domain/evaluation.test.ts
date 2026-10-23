@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { addedUp, attendancePoints, computeInternalMarks, coursePercentage, partMarks } from './evaluation';
+import {
+  addedUp,
+  attendancePoints,
+  computeInternalMarks,
+  coursePercentage,
+  partMarks,
+  reviewAverages,
+} from './evaluation';
 import { roundHalfUp } from './round';
 import { SETTINGS } from '@/lib/schemas/settings';
 
@@ -136,5 +143,29 @@ describe('computeInternalMarks, the worked example', () => {
       rubrics: {},
     });
     expect(marks.parts.at(-1)).toMatchObject({ key: 'attendance', marks: 4 });
+  });
+});
+
+// 07 §2, the project internal from the reviews (M07 decision 2).
+const KEYS = [
+  'projectRelevance',
+  'projectLiterature',
+  'projectMethodology',
+  'projectAnalysis',
+  'projectInterpretation',
+  'projectReport',
+];
+const review = (...marks: (number | null)[]) =>
+  Object.fromEntries(KEYS.flatMap((key, i) => (marks[i] === null ? [] : [[key, marks[i]]])));
+describe('reviewAverages', () => {
+  it.each([
+    [[review(4, 4, 8, 8, 7, 8), review(5, 4, 9, 7, 8, 9)], [4.5, 4, 8.5, 7.5, 7.5, 8.5], 40.5],
+    [[review(4, null, 8, 8, 7, 8), review(5, 3, 9, 7, 8, 9)], [4.5, 3, 8.5, 7.5, 7.5, 8.5], 39.5],
+    [[review(4, null, 8, 8, 7, 8)], [4, undefined, 8, 8, 7, 8], null],
+    [[], [undefined, undefined, undefined, undefined, undefined, undefined], null],
+  ])('%o → %o, internal %s', (reviews, averages, internal) => {
+    const result = reviewAverages(reviews);
+    expect(KEYS.map((key) => result[key])).toEqual(averages);
+    expect(addedUp(KEYS.map((key) => result[key]))).toBe(internal);
   });
 });

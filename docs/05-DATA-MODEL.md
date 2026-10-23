@@ -191,7 +191,7 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 |---|---|---|
 | offeringId | Id | |
 | kind | S | `class` · `review` |
-| assessmentId | Id? | `review` sessions: the `project_review` assessment they serve |
+| reviewId | Id? | `review` sessions (M07): the project review they hold (§6.3a). Finalizing one writes no attendance: it is one team's, and the attendance part must not count it against the rest of the class |
 | title | S | ≤ 160 |
 | scheduledStart, scheduledEnd | D | start < end; duration ≤ 6 h |
 | startedAt, endedAt | D? | set by the faculty start/end actions or room webhooks |

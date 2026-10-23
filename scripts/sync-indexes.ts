@@ -5,6 +5,7 @@ import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { BankItem } from '@/lib/models/bank-item';
+import { Commit } from '@/lib/models/commit';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
@@ -19,6 +20,9 @@ import { Notification } from '@/lib/models/notification';
 import { Otp } from '@/lib/models/otp';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { Project } from '@/lib/models/project';
+import { ProjectReview } from '@/lib/models/project-review';
+import { ProjectTask } from '@/lib/models/project-task';
 import { RubricMark } from '@/lib/models/rubric-mark';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
@@ -50,6 +54,10 @@ const models = [
   Submission,
   InternalMark,
   RubricMark,
+  Project,
+  ProjectTask,
+  Commit,
+  ProjectReview,
   BankItem,
   TestLink,
   TestGrant,

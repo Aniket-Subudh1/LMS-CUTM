@@ -234,8 +234,54 @@ export const SETTINGS = {
         'How many percentage points a result must gain or lose on average, from one to the next, to count as rising or dropping.',
     },
   },
+  projects: {
+    // M07 (07 §12): proposed values for the commit metrics; the client has not set them. The stock commit messages are
+    // typed one a line (or with commas); a stored value is the list.
+    schema: z.object({
+      lastMinuteHours: z.coerce
+        .number({ error: 'Enter a number of hours.' })
+        .int('Use whole hours.')
+        .min(1, 'Use 1 to 168 hours.')
+        .max(168, 'Use 1 to 168 hours.')
+        .default(48),
+      hugeCommitLines: z.coerce
+        .number({ error: 'Enter a number of lines.' })
+        .int('Use whole lines.')
+        .min(100, 'Use 100 to 100,000 lines.')
+        .max(100_000, 'Use 100 to 100,000 lines.')
+        .default(1000),
+      messageStopWords: z
+        .preprocess(
+          (value) =>
+            typeof value === 'string'
+              ? value
+                  .split(/[\n,]/)
+                  .map((word) => word.trim().toLowerCase())
+                  .filter(Boolean)
+              : value,
+          z.array(z.string().max(40, 'Keep each one to 40 characters.')).max(50, 'Use at most 50.'),
+        )
+        .default(['update', 'fix', 'changes', 'commit', 'wip', 'test', 'minor', 'asdf', '.']),
+    }),
+    label: 'Project metrics',
+    description: "How a GitHub project's commits are read for the suggested score teachers see while marking a review.",
+    fieldHelp: {
+      lastMinuteHours: 'Commits this many hours before a project is due count as last-minute.',
+      hugeCommitLines: 'A commit that adds and removes more lines than this together is flagged as huge.',
+      messageStopWords:
+        'Commit messages that say nothing, one a line. A message that is one of these, or shorter than 10 characters, does not count as a good message.',
+    },
+  },
 } as const;
 
-export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'codeRunner', 'proctoring', 'ceTrend']);
+export const settingsKey = z.enum([
+  'lessons',
+  'evaluation',
+  'attendance',
+  'codeRunner',
+  'proctoring',
+  'ceTrend',
+  'projects',
+]);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

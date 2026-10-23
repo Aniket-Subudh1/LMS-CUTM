@@ -19,6 +19,7 @@ const ICON: Record<SettingsKey, PageIconName> = {
   codeRunner: 'evaluation',
   proctoring: 'devices',
   ceTrend: 'chart',
+  projects: 'code',
 };
 
 export default function SettingsPage() {

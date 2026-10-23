@@ -5,8 +5,8 @@ const liveSessionSchema = new Schema(
   {
     offeringId: { type: Schema.Types.ObjectId, required: true },
     kind: { type: String, enum: SESSION_KINDS, required: true, default: 'class' },
-    // `review` sessions (M07): the project_review assessment they serve.
-    assessmentId: { type: Schema.Types.ObjectId },
+    // `review` sessions (M07): the project review they hold. Their finalizing writes no attendance (it is one team's).
+    reviewId: { type: Schema.Types.ObjectId },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     scheduledStart: { type: Date, required: true },
     scheduledEnd: { type: Date, required: true },

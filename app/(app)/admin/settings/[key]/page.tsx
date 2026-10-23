@@ -28,7 +28,7 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
 }
 
 // Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
-// `codeRunner` and `proctoring`, M06's `ceTrend`.
+// `codeRunner` and `proctoring`, M06's `ceTrend`, M07's `projects`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -45,6 +45,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <Proctoring page={await getSettingsPage('proctoring')} />;
     case 'ceTrend':
       return <CeTrend page={await getSettingsPage('ceTrend')} />;
+    case 'projects':
+      return <Projects page={await getSettingsPage('projects')} />;
   }
 }
 
@@ -245,6 +247,70 @@ function Proctoring({ page }: { page: SettingsPage<'proctoring'> }) {
                   days
                 </span>
               </span>
+            </Field>
+          </ActionForm>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M07: how a GitHub project's commits are read for the suggested score (07 §12).
+function Projects({ page }: { page: SettingsPage<'projects'> }) {
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="code" />} />
+      <div className="max-w-3xl">
+        <Section
+          icon={<PageIcon name="code" className="size-8" />}
+          title="How are commits read?"
+          description={changed(page)}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Project pages follow this from now on."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            <Field
+              name="lastMinuteHours"
+              label="Last-minute window"
+              hint={`${page.fieldHelp.lastMinuteHours} Recommended: ${page.defaults.lastMinuteHours} hours.`}
+            >
+              <Input
+                name="lastMinuteHours"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={168}
+                required
+                defaultValue={page.value.lastMinuteHours}
+                className="w-40 tabular-nums"
+              />
+            </Field>
+            <Field
+              name="hugeCommitLines"
+              label="A huge commit"
+              hint={`${page.fieldHelp.hugeCommitLines} Recommended: ${page.defaults.hugeCommitLines} lines.`}
+            >
+              <Input
+                name="hugeCommitLines"
+                type="number"
+                inputMode="numeric"
+                min={100}
+                max={100000}
+                required
+                defaultValue={page.value.hugeCommitLines}
+                className="w-40 tabular-nums"
+              />
+            </Field>
+            <Field name="messageStopWords" label="Messages that say nothing" hint={page.fieldHelp.messageStopWords}>
+              <Textarea
+                name="messageStopWords"
+                rows={6}
+                defaultValue={page.value.messageStopWords.join('\n')}
+                className="max-w-xs font-mono text-[0.8125rem]"
+              />
             </Field>
           </ActionForm>
         </Section>

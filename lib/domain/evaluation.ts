@@ -147,3 +147,17 @@ export function computeInternalMarks(input: InternalMarksInput): InternalMarks {
     internalPct: complete && total !== null && max > 0 ? roundHalfUp((100 * total) / max, 2) : null,
   };
 }
+
+// M07 decision 2 (07 §2): a student's project criteria from their reviews — per criterion, the mean of the reviews that
+// marked it; a criterion no review marked stays out (so the project internal stays open).
+export function reviewAverages(reviews: readonly RubricCriteria[]): RubricCriteria {
+  const averages: RubricCriteria = {};
+  for (const key of RUBRICS.project) {
+    const marks = reviews.flatMap((review) => {
+      const mark = review[key];
+      return mark === undefined ? [] : [mark];
+    });
+    if (marks.length > 0) averages[key] = marks.reduce((sum, mark) => sum + mark, 0) / marks.length;
+  }
+  return averages;
+}

@@ -8,10 +8,11 @@ import { log } from '@/lib/log';
 import { User } from '@/lib/models/user';
 import { mailQueue } from '@/lib/queue';
 
-const TTL_SEC = { reset: 30 * 60, invite: 7 * 24 * 60 * 60 } as const;
+// M07: `github` is the 10-minute state of linking a GitHub account (T4).
+const TTL_SEC = { reset: 30 * 60, invite: 7 * 24 * 60 * 60, github: 10 * 60 } as const;
 export type TokenPurpose = keyof typeof TTL_SEC;
 
-const TokenData = z.object({ uid: z.string(), sv: z.number().int(), purpose: z.enum(['reset', 'invite']) });
+const TokenData = z.object({ uid: z.string(), sv: z.number().int(), purpose: z.enum(['reset', 'invite', 'github']) });
 export type TokenData = z.infer<typeof TokenData>;
 
 export function createToken(data: TokenData): Promise<string> {

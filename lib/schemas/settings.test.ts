@@ -98,3 +98,17 @@ describe('performance trend (07 §3, M06)', () => {
     expect(ceTrend.safeParse({ window: '4', minPoints: '5' }).error?.issues[0]).toMatchObject({ path: ['minPoints'] });
   });
 });
+
+describe('project metrics (07 §12, M07)', () => {
+  const projects = SETTINGS.projects.schema;
+  it('defaults to 48 hours, 1,000 lines and the stock messages, and reads the form’s lines', () => {
+    expect(projects.parse({})).toMatchObject({ lastMinuteHours: 48, hugeCommitLines: 1000 });
+    expect(projects.parse({}).messageStopWords).toContain('wip');
+    expect(projects.parse({ messageStopWords: 'Update\n  WIP , done\n' }).messageStopWords).toEqual([
+      'update',
+      'wip',
+      'done',
+    ]);
+    expect(projects.safeParse({ lastMinuteHours: '0' }).success).toBe(false);
+  });
+});

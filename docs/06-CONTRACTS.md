@@ -280,7 +280,7 @@ Every key has a Zod schema with `.default()`s; `getSettings(key)` returns `Schem
 | `engagement` | `windowDays` (28), weights `attendance` 30 · `video` 20 · `timeliness` 25 · `practice` 15 · `activity` 10, `highBand` (70), `mediumBand` (40), `trendDelta` (10) | 07 §7 | proposed — confirm Q-26 |
 | `proctoring` (M04b) | `snapshotRetentionDays` (90; 7–365) | 05 §8; the daily `proctorRetention` job reads it | proposed — confirm Q-24 |
 | `codeRunner` (M04b) | `languages` ([{ key: 'c', label: 'C (GCC 9.2.0)', runnerId: 50 }, { key: 'cpp', label: 'C++ (GCC 9.2.0)', runnerId: 54 }, { key: 'java', label: 'Java (OpenJDK 13.0.1)', runnerId: 62 }]; 1–10, keys lower-case and unique; the form posts lines of `key \| label \| runner id`), `runCooldownSec` (3; 1–60) | TP-09: the code question dialog, `runCode`, the `gradeCode` job | defaults verified against Judge0 CE source and the free public server; the settings page lists the runner's own languages. Python (71) is configuration, not a default (LAB-06) |
-| `projects` | `lastMinuteHours` (48), `hugeCommitLines` (1000), `messageStopWords` (["update","fix","changes","commit","wip","test","minor","asdf","."]) | 07 §12 | proposed |
+| `projects` (M07) | `lastMinuteHours` (48; 1–168), `hugeCommitLines` (1000; 100–100,000), `messageStopWords` (["update","fix","changes","commit","wip","test","minor","asdf","."]; up to 50, typed one a line or with commas, kept lower-case) | 07 §12 | proposed |
 | `examIntegration` | `mode` ("csv") | M08 | `api` blocked on Q-04 |
 
 Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token, GitHub App key, OpenAI key, S3 keys live in env (11 §2).

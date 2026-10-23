@@ -33,6 +33,14 @@ const Env = z.object({
   // needs it. The default model is a small, inexpensive one.
   OPENAI_API_KEY: z.string().min(1).optional(),
   OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
+  // M07 (06 §4.5): the GitHub App behind CSE projects. All optional: without them a GitHub project says GitHub is not set
+  // up. The private key may be pasted with "\n" for its line breaks.
+  GITHUB_APP_ID: z.string().min(1).optional(),
+  GITHUB_APP_SLUG: z.string().min(1).optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

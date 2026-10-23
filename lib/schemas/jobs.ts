@@ -74,6 +74,13 @@ export type InternalMarksJob = z.infer<typeof InternalMarksJob>;
 export const InternalMarksNightlyJob = z.object({});
 export type InternalMarksNightlyJob = z.infer<typeof InternalMarksNightlyJob>;
 
+// `sync/githubProject` (06 §6, M07): one project's new commits from its repository; and the nightly job that queues it
+// for every active GitHub project with a repository.
+export const GithubProjectJob = z.object({ projectId: objectId });
+export type GithubProjectJob = z.infer<typeof GithubProjectJob>;
+export const GithubNightlyJob = z.object({});
+export type GithubNightlyJob = z.infer<typeof GithubNightlyJob>;
+
 // `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;

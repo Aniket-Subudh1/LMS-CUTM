@@ -61,6 +61,7 @@
     "mongoose": "9.11.1",
     "next": "16.4.3",
     "nodemailer": "10.1.0",
+    "octokit": "5.0.5",
     "openai": "7.27.0",
     "papaparse": "5.7.0",
     "pdfkit": "0.17.2",
