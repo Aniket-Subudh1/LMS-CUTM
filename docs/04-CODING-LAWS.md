@@ -18,9 +18,9 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 - A page that only displays data is a Server Component with zero client JavaScript.
 - Filtering, sorting and pagination are a GET `<form>` and `searchParams`, not client state.
 - One feedback pattern for mutations: `ActionForm` showing `message` / `fieldErrors`. No toasts.
-- No modal dialogs for create/edit. Use a dedicated route (`…/new`, `…/[id]/edit`) or an inline `<details>` section.
-- No drag-and-drop. A `<select>` or two buttons change a status.
-- No optimistic UI unless a milestone asks for it.
+- Create and edit forms open in a `FormDialog` (08 §5.2) on the list or detail page they belong to. Fields lock while the action runs; on success the dialog shows its success state in place of the fields and closes itself. An action that creates a record the user should open next returns `{ next: '/path' }` instead of calling `redirect()`, and the dialog navigates there after closing. Large editors that are a page of their own (an assessment builder, the attempt runner) stay routes.
+- Drag-and-drop only to reorder a list, through `SortableList` (M03b; Aniket lifted the ban on 17 Oct 2026). It works from the keyboard too, and every sortable row's ⋮ menu also offers "Move to top / up / down / bottom", so nothing depends on dragging. A `<select>` or two buttons change a status.
+- No optimistic UI, with one exception: a dropped order shows at once (`useOptimistic` in `SortableList`) and returns to the saved order if the save fails.
 - No configuration for things nobody asked to configure. Constants live next to their only use.
 - No "generic" anything: no generic repository, generic CRUD factory, generic table builder, generic form builder.
 - Delete code that a change made unused, in the same commit.
@@ -68,7 +68,7 @@ These laws are enforced in review. A change that breaks one is rejected regardle
 
 | Thing | Convention | Example |
 |---|---|---|
-| Files | kebab-case | `evaluation-scheme.ts` |
+| Files | kebab-case | `curriculum-entry.ts` |
 | React components | PascalCase, one exported component per shared file | `ActionForm` in `components/action-form.tsx` |
 | Models | Singular PascalCase model, plural camelCase collection (Mongoose default) | `Offering` → `offerings` |
 | DAL functions | verb + noun, describing the result | `listOfferingAssessments`, `getGradeSheet` |
@@ -183,7 +183,7 @@ import { z } from 'zod';
 
 export const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 export const page = z.coerce.number().int().min(1).max(10_000).default(1);
-export const pageSize = 25;
+export const pageSize = 10;
 
 export const ROLES = ['admin', 'hod', 'faculty', 'student', 'support'] as const;
 export type Role = (typeof ROLES)[number];
@@ -297,12 +297,15 @@ export type OfferingAccess = 'teach' | 'learn' | 'oversee';
 export const offeringAccess = cache(async (viewer: Viewer, offeringId: string): Promise<OfferingAccess> => {
   if (!isValidObjectId(offeringId)) notFound();
   await db();
-  const offering = await Offering.findById(offeringId, { facultyIds: 1, departmentId: 1 }).lean();
+  const offering = await Offering.findById(offeringId, { facultyIds: 1, departmentId: 1, status: 1 }).lean();
   if (!offering) notFound();
   if (viewer.roles.includes('admin')) return 'oversee';
   if (offering.facultyIds.some((id) => id.equals(viewer.id))) return 'teach';
   if (viewer.roles.includes('hod') && viewer.departmentId !== null && offering.departmentId.equals(viewer.departmentId)) return 'oversee';
-  if (await Enrollment.exists({ offeringId, studentId: viewer.id, status: 'active' })) return 'learn';
+  // 09 §3: students see only active or completed offerings, though they are enrolled while it is still a draft.
+  if (offering.status !== 'draft' && (await Enrollment.exists({ offeringId, studentId: viewer.id, status: 'active' }))) {
+    return 'learn';
+  }
   notFound();
 });
 
@@ -347,12 +350,12 @@ export async function listMyOfferings(page: number): Promise<{ rows: OfferingRow
 Rules: exported DAL functions begin with `requireViewer()` and, for offering-scoped data, `offeringAccess()`. They return DTOs (string ids, no Mongoose documents, no `ObjectId`). Students' data is filtered by `studentId: viewer.id` when access is `'learn'`. When a function uses `use cache` (only those listed in 02 §5), the cached part is an unexported inner function taking ids:
 
 ```ts
-async function readSchemeVersion(id: string) {
+async function readCurriculumOptions(programId: string) {
   'use cache';
-  cacheLife('max');
-  cacheTag(`scheme:${id}`);
+  cacheLife('minutes');
+  cacheTag('catalog');
   await db();
-  return EvaluationScheme.findById(id, { /* projection */ }).lean();
+  return CurriculumEntry.find({ programId }, { /* projection */ }).limit(1000).lean();
 }
 ```
 
@@ -382,7 +385,9 @@ async function settle<R>(work: () => Promise<ActionResult<R>>): Promise<ActionRe
     return await work();
   } catch (error) {
     unstable_rethrow(error);
-    if (error instanceof AppError) return { ok: false, code: error.code, message: error.message };
+    if (error instanceof AppError) {
+      return { ok: false, code: error.code, message: error.message, fieldErrors: error.fieldErrors };
+    }
     const errorId = crypto.randomUUID();
     log.error('action failed', { errorId, error });
     return { ok: false, code: 'INTERNAL', message: `Something went wrong. Reference: ${errorId}` };
@@ -460,7 +465,7 @@ Rules:
 - `publicAction(input, run)` is only for the pre-sign-in actions in `app/(auth)/actions.ts` (login, password reset). Everything else uses `action()`.
 - Expected failures throw `AppError(code, message)`. Never return raw exception text.
 - `unstable_rethrow` lets `redirect()` / `notFound()` thrown inside `run` behave normally. The shared access helpers (`offeringAccess`, `requireTeach`) call `notFound()`, so a tampered or stale id ends in Next's not-found handling rather than an `ActionResult` — intended. Integration tests assert it with `await expect(act(input)).rejects.toThrow('NEXT_HTTP_ERROR_FALLBACK;404')` (verified).
-- Call `refresh()` after a successful mutation unless you `redirect()`.
+- Call `refresh()` after a successful mutation unless you `redirect()`. Actions submitted from a `FormDialog` do not `redirect()` (the success state would never show); a create returns `{ next }` (06 §1).
 
 ### 6.7 Page — `app/(app)/**/page.tsx` (+ `loading.tsx`)
 
@@ -521,7 +526,7 @@ export default async function CoursesPage({ searchParams }: PageProps<'/courses'
 }
 ```
 
-Rules: `PageProps<'/route'>` and `LayoutProps<'/route'>` are global types generated by Next (`next typegen` / `next dev` / `next build`); `params` and `searchParams` are Promises. Validate every param with Zod (an invalid `page` must not throw a 500 — use `.catch(1)` on the schema if a friendly fallback is wanted). In real pages, lists render through `DataTable` (08 §5).
+Rules: `PageProps<'/route'>` and `LayoutProps<'/route'>` are global types generated by Next (`next typegen` / `next dev` / `next build`); `params` and `searchParams` are Promises. Validate every param with Zod (an invalid `page` must not throw a 500 — use `.catch(1)` on the schema if a friendly fallback is wanted). In real pages, lists render through `DataTable` (08 §5). A page that reads the session, `cookies()`, `headers()`, `params`, `searchParams` or `connection()` does so in a child under `<Suspense>` in that page (02 §5). The shell `loading.tsx` does not cover a navigation between two pages under the same layout.
 
 ### 6.8 Client form — `components/action-form.tsx`
 
@@ -533,12 +538,14 @@ import {
   startTransition,
   use,
   useActionState,
+  useEffect,
   useRef,
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
+import { CheckCircleIcon, CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ConfirmSubmit } from '@/components/confirm-submit';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
@@ -553,6 +560,11 @@ export function ActionForm({
   successMessage,
   submitVariant = 'default',
   fullWidth = false,
+  confirm,
+  replaceOnSuccess = false,
+  onSuccess,
+  onPendingChange,
+  secondary,
   children,
 }: {
   action: (input: FormData) => Promise<ActionResult<unknown>>;
@@ -560,20 +572,43 @@ export function ActionForm({
   successMessage?: string;
   submitVariant?: 'default' | 'destructive';
   fullWidth?: boolean;
+  // Asks first: the submit button opens a dialog and only its confirm button submits the form.
+  confirm?: { title: string; message: string };
+  replaceOnSuccess?: boolean;
+  onSuccess?: (data: unknown) => void;
+  onPendingChange?: (pending: boolean) => void;
+  secondary?: ReactNode;
   children?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<Result, FormData>(async (_prev, fd) => {
     const result = await action(fd);
-    if (result.ok) form.current?.reset();
+    if (result.ok) {
+      form.current?.reset();
+      onSuccess?.(result.data);
+    }
     return result;
   }, null);
+  useEffect(() => onPendingChange?.(pending), [pending, onPendingChange]);
   // Before hydration onSubmit is not attached: a native submit would send the fields (a password) in the URL.
   // The button stays disabled until then, which also blocks Enter; method="post" keeps fields out of the URL regardless.
   const hydrated = useSyncExternalStore(
     noSubscription,
     () => true,
     () => false,
+  );
+  if (replaceOnSuccess && state?.ok) return <SuccessState message={successMessage ?? 'Saved.'} />;
+  const submit = (
+    <Button
+      type={confirm ? 'button' : 'submit'}
+      variant={submitVariant}
+      disabled={pending || !hydrated}
+      aria-busy={pending}
+      className={cn(fullWidth && 'h-12 w-full rounded-full text-[0.9375rem]')}
+    >
+      {pending && <CircleNotchIcon className="animate-spin" />}
+      {submitLabel}
+    </Button>
   );
   // `<form action>` would make React clear every field after each submit, including a failed one.
   return (
@@ -588,28 +623,56 @@ export function ActionForm({
       className="grid gap-5"
     >
       {state && !state.ok && (
-        <Alert variant="destructive">
-          <CircleAlert />
+        <Alert variant="destructive" className="border-destructive/25 bg-destructive/5">
+          <WarningCircleIcon weight="duotone" />
           <AlertDescription>{state.message}</AlertDescription>
         </Alert>
       )}
       {state?.ok && successMessage && (
-        <Alert role="status" className="border-success/30 text-success">
-          <CircleCheck />
+        <Alert role="status" className="border-success/25 bg-success/5 text-success">
+          <CheckCircleIcon weight="duotone" />
           <AlertDescription className="text-success">{successMessage}</AlertDescription>
         </Alert>
       )}
-      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>{children}</FormErrors>
-      <Button
-        type="submit"
-        variant={submitVariant}
-        disabled={pending || !hydrated}
-        className={cn(fullWidth ? 'w-full' : 'justify-self-start')}
-      >
-        {pending && <LoaderCircle className="animate-spin" />}
-        {submitLabel}
-      </Button>
+      <FormErrors value={state && !state.ok ? state.fieldErrors : undefined}>
+        <fieldset disabled={pending} className="grid min-w-0 gap-5 transition-opacity disabled:opacity-60">
+          {children}
+        </fieldset>
+      </FormErrors>
+      <div data-slot="form-footer" className={cn('flex flex-wrap items-center gap-2', secondary && 'justify-end')}>
+        {secondary}
+        {confirm ? (
+          <ConfirmSubmit {...confirm} confirmLabel={submitLabel} variant={submitVariant} pending={pending}>
+            {submit}
+          </ConfirmSubmit>
+        ) : (
+          submit
+        )}
+      </div>
     </form>
+  );
+}
+
+function SuccessState({ message }: { message: string }) {
+  return (
+    <div role="status" className="grid justify-items-center gap-4 py-8 text-center">
+      <svg viewBox="0 0 52 52" aria-hidden="true" className="text-success motion-safe:animate-success-pop size-16">
+        <circle cx="26" cy="26" r="25" fill="currentColor" opacity="0.12" />
+        <circle cx="26" cy="26" r="19" fill="currentColor" />
+        <path
+          d="M17 26.5l6 6 12-13"
+          fill="none"
+          stroke="white"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray={1}
+          className="motion-safe:animate-success-draw"
+        />
+      </svg>
+      <p className="max-w-sm text-base font-semibold text-balance">{message}</p>
+    </div>
   );
 }
 
@@ -631,7 +694,7 @@ export function Field({
         <span className="text-sm font-medium">{label}</span>
         {children}
       </label>
-      {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
+      {hint && <p className="text-muted-foreground text-xs leading-relaxed">{hint}</p>}
       {errors?.map((e) => (
         <p key={e} className="text-destructive text-sm">
           {e}
@@ -640,23 +703,42 @@ export function Field({
     </div>
   );
 }
+
+// For a group of controls that share one error list (a grid of rows), where `Field`'s single <label> does not fit.
+export function FieldErrors({ name }: { name: string }) {
+  const errors = use(FormErrors)?.[name];
+  return errors?.map((e) => (
+    <p key={e} className="text-destructive text-sm">
+      {e}
+    </p>
+  ));
+}
 ```
 
-Usage from a Server Component page (an action is passed straight through — no wrapper):
+Usage from a Server Component page (an action is passed straight through — no wrapper). A create or edit form lives in a `FormDialog` (08 §5.2), which supplies the trigger, header, Cancel button, success state and auto-close:
 
 ```tsx
-<ActionForm action={renameOffering} submitLabel="Rename" successMessage="Saved.">
+<FormDialog
+  trigger={<Button variant="outline" size="sm">Rename</Button>}
+  title="Rename offering"
+  description="Students see this title in their course list."
+  action={renameOffering}
+  submitLabel="Save"
+  successMessage="Offering renamed."
+>
   <input type="hidden" name="offeringId" value={offeringId} />
   <Field name="title" label="Title">
     <Input name="title" required />
   </Field>
-</ActionForm>
+</FormDialog>
 ```
 
-- Controls are shadcn primitives (`Input`, `Textarea`, `Select` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
+- Controls are shadcn primitives (`Input`, `Textarea`, `NativeSelect` from `components/ui/`); `Field` wraps the control in its `<label>` so no `id`/`htmlFor` pairing is needed, and puts the hint and field errors below it.
 - The form submits through `startTransition` in `onSubmit`, not `<form action>`: React clears every uncontrolled field after a `<form action>` completes, which wiped the email after a wrong password (verified). `ActionForm` resets the form itself, only after a successful result.
 - The submit button is disabled until hydration and the form is `method="post"`: before hydration `onSubmit` is not attached, and a native submit would have put the fields (a password) in the URL (found by e2e; regression test with JavaScript disabled).
-- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms.
+- While the action runs, the fields sit in a disabled `<fieldset>` and the submit button shows a spinner, so nothing can be edited or submitted twice.
+- `replaceOnSuccess` swaps the form for the success state (an animated check and `successMessage`); `FormDialog` always sets it, and the forgot-password page uses it directly. Without it, success is an inline `Alert` above the fields.
+- `submitVariant="destructive"` for irreversible actions; `fullWidth` on the narrow auth forms; `confirm` for a one-click action that needs an "are you sure" (`ConfirmSubmit`).
 
 ### 6.9 Jobs — `lib/queue.ts` (producer) and `worker/jobs/<queue>.ts` (consumer)
 
@@ -757,7 +839,7 @@ Rules:
 - **Job ids:** deterministic, built with `-` separators, never containing `:` and never a bare integer. BullMQ 6 rejects `:` in custom ids (except a legacy three-part form its source marks for removal) and rejects integer strings (verified).
 - A duplicate `jobId` is ignored; the *returned* job object echoes your new payload, but the stored job keeps the original (verified). Never rely on the returned payload.
 - An invalid payload fails the job with the Zod error as `failedReason` (verified) — it surfaces on the admin integrations page; it is not retried into success.
-- Schedulers: `queue.upsertJobScheduler(id, { pattern, tz: 'Asia/Kolkata' }, { name, data })` — idempotent, safe to call on every worker start (verified next-run computation in IST).
+- Schedulers: `queue.upsertJobScheduler(id, { pattern, tz: 'Asia/Kolkata' }, { name, data })` — idempotent, safe to call on every worker start (verified next-run computation in IST). BullMQ 6 types the scheduler `id` as one of the queue's job names, so a scheduler is named after the job it adds (`liveSweep`, M03).
 - `worker/` imports from `lib/` with the `@/` alias (`tsx` honours `tsconfig` paths). It must not import `next/*` or anything that does (`lib/auth/session.ts`, `lib/auth/access.ts`, `lib/action.ts`).
 
 ### 6.10 Pure domain function — `lib/domain/<area>.ts` + test
@@ -901,7 +983,7 @@ Rules: use a transaction only when two or more writes must commit together (lock
 - Never `catch` without rethrowing, converting to `AppError`, or returning a typed failure. Never `catch {}`.
 - User-facing messages are written in plain English for the person on screen; vendor or stack details go to `log.error` with an `errorId`.
 - Background jobs throw on failure (BullMQ retries); they never swallow.
-- Route handlers return precise status codes (`400` invalid, `401` no session, `403` bad signature, `404` not found, `409` conflict, `429` rate-limited).
+- Route handlers return precise status codes (`400` invalid, `401` no session or a bad webhook signature (06 §3), `404` not found, `409` conflict, `429` rate-limited).
 - `notFound()` for missing or inaccessible records (never `403`, which leaks existence).
 
 ## 8. Comments and documentation

@@ -1,5 +1,7 @@
 # M10 · Engagement scoring & dashboards
 
+> **Changed by M01b.** The ugc / skill filter means credit / non-credit offerings (derived from credits).
+
 | | |
 |---|---|
 | Depends on | M03, M04, M06 (and M09 for the AI adapter) |

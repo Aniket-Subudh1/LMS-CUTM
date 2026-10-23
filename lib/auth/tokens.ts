@@ -2,9 +2,11 @@ import 'server-only';
 import { sealData, unsealData } from 'iron-session';
 import { z } from 'zod';
 import { db } from '@/lib/db';
+import { resetEmail } from '@/lib/domain/email-templates';
 import { env } from '@/lib/env';
 import { log } from '@/lib/log';
 import { User } from '@/lib/models/user';
+import { mailQueue } from '@/lib/queue';
 
 const TTL_SEC = { reset: 30 * 60, invite: 7 * 24 * 60 * 60 } as const;
 export type TokenPurpose = keyof typeof TTL_SEC;
@@ -14,6 +16,21 @@ export type TokenData = z.infer<typeof TokenData>;
 
 export function createToken(data: TokenData): Promise<string> {
   return sealData(data, { password: env().SESSION_PASSWORD, ttl: TTL_SEC[data.purpose] });
+}
+
+// The page that sets a password accepts both token kinds, so an invitation and a reset share one link shape.
+export async function passwordLink(data: TokenData): Promise<string> {
+  const link = new URL('/reset-password', env().APP_URL);
+  link.searchParams.set('token', await createToken(data));
+  return link.href;
+}
+
+// Queues the reset email for one known user; callers decide who may ask and any rate limit.
+export async function queueResetLink(user: { id: string; name: string; email: string; sessionVersion: number }) {
+  const link = await passwordLink({ uid: user.id, sv: user.sessionVersion, purpose: 'reset' });
+  await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link }), {
+    jobId: `mail-reset-${user.id}-${Math.floor(Date.now() / 60_000)}`,
+  });
 }
 
 // An invalid, tampered or expired token is an expected outcome, reported as null.

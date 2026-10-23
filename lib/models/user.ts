@@ -36,6 +36,8 @@ userSchema.index({ employeeId: 1 }, { unique: true, partialFilterExpression: { e
 userSchema.index({ 'github.id': 1 }, { unique: true, partialFilterExpression: { 'github.id': { $type: 'number' } } });
 userSchema.index({ batchId: 1, section: 1 });
 userSchema.index({ roles: 1, status: 1 });
+// The faculty picker of the New offering dialog lists a department's faculty by name.
+userSchema.index({ departmentId: 1, roles: 1, name: 1 });
 userSchema.index({ name: 'text', email: 'text', rollNo: 'text' });
 
 export type UserDoc = InferSchemaType<typeof userSchema>;

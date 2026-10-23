@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Fixture passwords live only in .env.e2e (10 §3); the specs read E2E_PASSWORD from the environment.
+process.loadEnvFile('.env.e2e');
+// M04b (TP-09): the app and the worker run code on tests/e2e/fake-runner.ts, never on a server on the internet. The
+// environment wins over --env-file, so this applies to both.
+process.env.CODE_RUNNER_URL = 'http://localhost:2358';
+
 // Sandboxes with a preinstalled Chromium of another revision set PW_CHROMIUM_PATH.
 const executablePath = process.env.PW_CHROMIUM_PATH;
 // Each run gets its own client IP (clientIp() reads X-Forwarded-For), so repeated runs never share rate-limit counters.
@@ -15,10 +21,15 @@ export default defineConfig({
     baseURL: 'http://localhost:3100',
     trace: 'retain-on-failure',
     extraHTTPHeaders: { 'x-forwarded-for': runIp },
-    ...(executablePath ? { launchOptions: { executablePath } } : {}),
+    // M03: the live class asks for a camera and microphone; Chromium grants fake ones without a prompt.
+    launchOptions: {
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+      ...(executablePath ? { executablePath } : {}),
+    },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
+    { command: 'npx tsx tests/e2e/fake-runner.ts', url: 'http://localhost:2358/languages', timeout: 30_000 },
     {
       command: 'npm run start:e2e',
       url: 'http://localhost:3100/login',

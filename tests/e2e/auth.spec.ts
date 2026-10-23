@@ -63,7 +63,7 @@ async function setPassword(page: Page, link: string, password: string) {
 async function signIn(page: Page, email: string, password: string) {
   await page.goto('/login');
   await field(page, 'Email').fill(email);
-  await field(page, 'Password').fill(password);
+  await field(page, 'Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 }
 
@@ -97,10 +97,11 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   const invite = createAdmin(email, name);
   expect(await emailLink(email, 'Your CUTM LMS account')).toBe(invite);
   await page.goto(invite);
-  await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up your account' })).toBeVisible();
   await setPassword(page, invite, 'first-password-123');
-  await expect(page.getByRole('heading', { name: 'Welcome, Asha' })).toBeVisible();
-  await expect(page.getByText('Administrator')).toBeVisible();
+  // Setting the password signs the person in and lands on Home (the role chips left Home in the UI redesign).
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByRole('heading', { name: 'Hello, Asha' })).toBeVisible();
 
   await page.goto(invite);
   await expect(page.getByRole('heading', { name: 'Link not valid' })).toBeVisible();
@@ -110,7 +111,7 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   await signIn(page, email, 'wrong-password-1');
   await expect(page.getByText('Email or password is incorrect.')).toBeVisible();
   await expect(field(page, 'Email')).toHaveValue(email);
-  await field(page, 'Password').fill('first-password-123');
+  await field(page, 'Password', { exact: true }).fill('first-password-123');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/\/home$/);
   await signOut(page, name);
@@ -120,7 +121,7 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   await expect(page.getByRole('heading', { name: 'Forgot your password?' })).toBeVisible();
   await field(page, 'Email').fill(email);
   await page.getByRole('button', { name: 'Send link' }).click();
-  await expect(page.getByText('If that email is registered, a link has been sent.')).toBeVisible();
+  await expect(page.getByText('This email is registered. A reset link has been sent.')).toBeVisible();
   const reset = await emailLink(email, 'Reset your CUTM LMS password');
   await page.goto(reset);
   await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
@@ -143,18 +144,23 @@ test('changing the password and signing out everywhere end the other browser ses
   await expect(second).toHaveURL(/\/home$/);
 
   await first.goto('/profile');
-  await field(first, 'Current password').fill('first-password-123');
-  await field(first, 'New password', { exact: true }).fill('second-password-456');
-  await field(first, /^Repeat/).fill('second-password-456');
   await first.getByRole('button', { name: 'Change password' }).click();
+  const password = first.getByRole('dialog', { name: 'Change password' });
+  await password.getByLabel('Current password').fill('first-password-123');
+  await password.getByLabel('New password', { exact: true }).fill('second-password-456');
+  await password.getByLabel(/^Repeat/).fill('second-password-456');
+  await password.getByRole('button', { name: 'Change password' }).click();
   await expect(first.getByText('Your password has been changed.')).toBeVisible();
-  await expect(field(first, 'Current password')).toHaveValue('');
   await second.goto('/profile');
   await expect(second).toHaveURL(/\/login$/);
 
   await signIn(second, email, 'second-password-456');
   await expect(second).toHaveURL(/\/home$/);
   await first.getByRole('button', { name: 'Sign out everywhere' }).click();
+  await first
+    .getByRole('alertdialog', { name: 'Sign out everywhere?' })
+    .getByRole('button', { name: 'Sign out everywhere' })
+    .click();
   await expect(first).toHaveURL(/\/login$/);
   await second.goto('/home');
   await expect(second).toHaveURL(/\/login$/);
@@ -184,7 +190,7 @@ test('before hydration the sign-in form cannot submit, so fields never reach the
   await expect(page.locator('form')).toHaveAttribute('method', 'post');
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeDisabled();
   await field(page, 'Email').fill('someone@cutm.local');
-  await field(page, 'Password').fill('secret-password-1');
-  await field(page, 'Password').press('Enter');
+  await field(page, 'Password', { exact: true }).fill('secret-password-1');
+  await field(page, 'Password', { exact: true }).press('Enter');
   await expect(page).toHaveURL(/\/login$/);
 });

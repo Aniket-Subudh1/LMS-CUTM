@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 
-const geist = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
 export const metadata: Metadata = {
   title: { default: 'CUTM LMS', template: '%s · CUTM LMS' },
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={geist.variable}>
+    <html lang="en" className={inter.variable}>
       <body>{children}</body>
     </html>
   );

@@ -1,30 +1,25 @@
-import { GraduationCap } from 'lucide-react';
+import { AuthStage } from '@/components/auth-stage';
+import { UniversityLogo } from '@/components/university-logo';
 
 export default function AuthLayout({ children }: LayoutProps<'/'>) {
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
-      <div className="flex flex-col gap-6 p-6 md:p-10">
-        <p className="flex items-center gap-2 font-semibold">
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-lg">
-            <GraduationCap className="size-5" />
+    <div className="auth-wash grid min-h-dvh gap-3 p-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <main className="flex min-w-0 flex-col px-3 pt-3 pb-4 sm:px-10 sm:pt-6 lg:px-14 xl:px-20">
+        <span className="flex w-fit items-center gap-4">
+          <UniversityLogo priority sizes="48px" className="w-12" />
+          <span className="grid gap-0.5 leading-tight">
+            <span className="text-xl font-semibold tracking-tight">
+              Centurion <span className="text-primary font-bold">LMS</span>
+            </span>
+            <span className="text-muted-foreground text-sm">Learning Management System</span>
           </span>
-          CUTM LMS
-        </p>
-        <main className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">{children}</div>
-        </main>
-      </div>
-      <aside className="bg-sidebar text-sidebar-foreground relative hidden flex-col justify-end overflow-hidden p-10 lg:flex">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,var(--color-sidebar-accent),transparent_55%),radial-gradient(circle_at_80%_90%,color-mix(in_oklch,var(--color-gold)_35%,transparent),transparent_50%)]"
-        />
-        <div className="relative grid max-w-md gap-3">
-          <span className="bg-gold h-1 w-12 rounded-full" />
-          <p className="text-3xl font-semibold tracking-tight">Centurion University of Technology and Management</p>
-          <p className="text-sidebar-foreground/75">Learning Management System for students, faculty and staff.</p>
+        </span>
+        <div className="motion-safe:animate-in motion-safe:fade-in-0 mx-auto flex w-full max-w-[25rem] flex-1 flex-col justify-center py-12 motion-safe:duration-700">
+          {children}
         </div>
-      </aside>
+        <p className="text-muted-foreground text-xs">Centurion University of Technology and Management</p>
+      </main>
+      <AuthStage />
     </div>
   );
 }

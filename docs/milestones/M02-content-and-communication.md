@@ -1,5 +1,7 @@
 # M02 · Content, course plan, announcements, skill-course progress
 
+> **Changed by M01b.** The rich-text syllabus (`syllabusText`, T3) is replaced by the course's modules, practicals, projects and books on `/catalog/[id]`, kept by the course coordinator or an admin; the syllabus PDF stays (in the catalogue's syllabus dialog). Overview setup step 1 is "Catalogue course ready (n of m)"; the course plan can be filled from the course's session plan; the plan email lists modules, books, Bloom levels and the programme's outcome titles. The light skill mode applies to non-credit (0-0-0) offerings.
+
 | | |
 |---|---|
 | Depends on | M01 |
@@ -31,19 +33,19 @@ Files: `lib/schemas/uploads.ts`, `lib/domain/uploads.ts` (+ test), `app/(app)/ac
 - `lib/domain/uploads.ts`: `extFor(contentType)`, `buildKey(purpose, contextId, userId, uuid, contentType)`, `parseKey(key)` → `{ purpose, contextId, userId } | null`, `sanitizeFileName(name)` (strip `/ \ : * ? " < > |` and control chars, collapse spaces, ≤ 120). Vectors: `lesson-video` + `video/mp4` → `lesson-video/<ctx>/<uid>/<uuid>.mp4`; `../../etc/passwd` → `etcpasswd`; a 300-char name → 120 chars keeping the extension.
 - `createUpload` (`roles`: all; record check per purpose — `lesson-video`/`lesson-doc`: `requireTeach` on `contextId` = offering; `syllabus`: admin; other purposes → FORBIDDEN until their milestone): validates type and size, rate-limits (09 §4), returns `{ key, url }` from `presignUpload`. UUID via `crypto.randomUUID()`.
 - `/api/files/[...key]`: `parseKey`; authorize per 06 §5 "who may download" (lesson files: the lesson must be published for `learn`); `302` to `presignDownload(key, displayName)`; anything else `404`.
-- `FileUpload` (client, 08 §5): for each selected file → `createUpload` → `XMLHttpRequest` PUT with `Content-Type` and a progress bar → on success appends a hidden input `name[]` whose value is JSON `{ key, fileName, contentType, size, durationSec? }`. For `video/*` files it reads `durationSec` from a detached `<video>` element's `loadedmetadata` before uploading. Shows per-file errors with a Retry button.
+- `FileUpload` (client, 08 §5): for each selected file → `createUpload` → `XMLHttpRequest` PUT with `Content-Type` and a progress bar → on success appends a hidden input `name[]` whose value is JSON `{ key, fileName, contentType, size, durationSec? }`. For `video/*` files it reads `durationSec` from a detached `<video>` element's `loadedmetadata` before uploading (and refuses a video it cannot read). Shows per-file errors with a Retry button. The accepted types and size come from the purpose and are shown in words; the form cannot be submitted while a file is still uploading.
 
 ### T3 · Settings registry and page
 Files: `lib/schemas/settings.ts`, `lib/models/setting.ts` (05 §7.3; add to `scripts/sync-indexes.ts`), `lib/data/settings.ts`, `app/(app)/admin/settings/page.tsx`, `app/(app)/admin/settings/[key]/page.tsx`, `app/(app)/admin/settings/actions.ts`.
 - Registry: `{ key, schema, label, description, fieldHelp: Record<field, string> }` entries. This milestone adds **`lessons`** only; each later milestone adds its key(s) from 06 §7.
 - `getSettings(key)` (exported, server-only) → `Schema.parse(stored ?? {})`; the read is a `use cache` inner function (`cacheLife('minutes')`, tag `settings:<key>`).
-- Page: a `<textarea>` with the current value as formatted JSON, the defaults and a field-help table. `saveSettings` (admin): `JSON.parse` → schema parse → on failure `fieldErrors.value` with one line per Zod issue (`path: message`); on success upsert, audit `settings.updated` (changed fields), `updateTag('settings:<key>')`.
+- Page: a plain form for the key (changed 13 Oct 2026 at Aniket's request; the first draft was a JSON `<textarea>`): one labelled field per value with its help text and the recommended value, who changed it last, and where the rule applies. `saveSettings` (admin): the key's schema parses the posted fields → on failure field errors under the field names, nothing saved; on success upsert and audit `settings.updated` (changed fields) in one transaction, `updateTag('settings:<key>')`.
 
 ### T4 · Rich text
 Files: `lib/domain/rich-text.ts` (+ test), `lib/schemas/common.ts` (`richText`), `components/rich-text-editor.tsx`, `components/rich-text-view.tsx`.
-- `renderRichText(doc)` → HTML via `generateHTML` from `@tiptap/html/server` with `StarterKit` (throws on unknown nodes). `richText` schema: `z.json()` + size ≤ 100 KB + `renderRichText` succeeds (issue "Unsupported content").
+- `renderRichText(doc)` → HTML via `generateHTML` from `@tiptap/html/server` with `StarterKit` (throws on unknown nodes). `richText` schema (06 §2): the editor's JSON string, size ≤ 100 KB, then `RichTextDoc`, which accepts only StarterKit's node and mark types (issue "Unsupported content"; `lib/schemas` cannot import Tiptap, so the type list stands in for a test render); a document without text becomes `null`.
 - Tests (verified behaviour): text with `<script>` is escaped; a `javascript:` link renders with an empty `href`; an `image` node is rejected; a 101 KB document is rejected.
-- `RichTextEditor`: `useEditor({ extensions: [StarterKit], content: initial, immediatelyRender: false })`; a minimal toolbar (bold, italic, bullet list, ordered list, heading 2/3, link, undo/redo) using `.btn-sm`; on every update writes `JSON.stringify(editor.getJSON())` to a hidden input `name`.
+- `RichTextEditor`: `useEditor({ extensions: [StarterKit], content: initial, immediatelyRender: false })`; a minimal icon toolbar (bold, italic, bullet list, ordered list, heading 2/3, link, undo/redo; state read with `useEditorState`, since Tiptap 3 does not re-render on every transaction) and an inline link field; on every update writes `JSON.stringify(editor.getJSON())` to a hidden input `name`.
 - `RichTextView`: `<div className="prose-lms" dangerouslySetInnerHTML={{ __html: renderRichText(doc) }} />` (safe: output is generated from a schema, verified).
 
 ### T5 · Syllabus (CRS-05)
@@ -63,7 +65,7 @@ Routes: `/courses/[offeringId]/plan` (teach, admin). Workspace Overview shows th
 | Action | Rules |
 |---|---|
 | `savePlan` | `plan.doc` (`richText`); teach |
-| `saveCalendar` | rows `{ date: istDate, topic ≤ 200, coIds[] ⊂ course COs }`; the form shows existing rows plus 10 empty rows (blank rows ignored; to add more, save and the page shows 10 new blanks); ≤ 200 rows; sorted by date on save |
+| `saveCalendar` | rows `{ date: istDate, topic ≤ 200, coIds[] ⊂ course COs }` posted as `date_<i>`, `topic_<i>`, `cos_<i>[]` and `rows`; the form shows existing rows plus 10 empty rows (blank rows ignored; to add more, save and the page shows 10 new blanks); ≤ 200 rows; sorted by date on save; errors name the row's field |
 | `publishPlan` | requires `plan.doc` and ≥ 1 calendar row; `plan.version + 1`, `publishedAt`, `publishedBy`; enqueue `mail/fanout { kind: 'coursePlanPublished', offeringId, version }` with job id `plan-<offeringId>-<version>`; `notify` enrolled students `plan.published`; audit `plan.published` with recipient count |
 
 - Modify M01's `setOfferingStatus`: when an offering becomes `active` and `plan.publishedAt` is null → `notify` its faculty `plan.requested` ("Publish the course plan and calendar for <title>"). Faculty home lists active offerings without a published plan (the system "requests" the plan, CRS-06).
@@ -79,7 +81,7 @@ Actions (`app/(app)/courses/[offeringId]/content/actions.ts`, teach):
 |---|---|
 | `saveModule` | add/rename; ≤ 40 |
 | `moveModule`, `moveLesson` | up/down buttons (swap `order`) |
-| `createLesson` | kind `video`: one uploaded file of purpose `lesson-video` (key validated with `parseKey` against purpose/offering/viewer) + `durationSec`; `document`: purpose `lesson-doc`; `link`: `https://` URL; title; optional description; `published: false` |
+| `createLesson` | kind `video`: one uploaded file of purpose `lesson-video` in `video[]` (key validated with `parseKey` against purpose/offering/viewer) + `durationSec`; `document`: purpose `lesson-doc` in `document[]`; `link`: `https://` URL; title; optional description; `published: false`; at most 300 lessons per offering. A dialog on the content page (radio cards pick the type; CSS shows that type's field) |
 | `updateLesson` | title, description, module |
 | `setLessonPublished` | publish/unpublish |
 | `deleteLesson` | only if unpublished and no progress rows; deletes the object; audit `lesson.deleted` |
@@ -111,7 +113,7 @@ Student: "Continue learning" — up to 5 lessons with progress < 100 % ordered b
 
 ### T11 · Tests
 - Unit: uploads, rich text, ranges, email templates (vectors above).
-- Integration: `createUpload` authorization per purpose (student cannot get a `lesson-video` URL → 404); `/api/files` denies unpublished lesson files to students; `publishPlan` enqueues exactly one fan-out per version (second click same version → deduped) and notifies every enrolled student; beacon: unpublished lesson → 404 path, inflation rejected, two concurrent beacons both merged (optimistic retry), completion set once; `saveSettings` rejects invalid JSON with the Zod path.
+- Integration: `createUpload` authorization per purpose (student cannot get a `lesson-video` URL → 404); `/api/files` denies unpublished lesson files to students; `publishPlan` enqueues exactly one fan-out per version (second click same version → deduped) and notifies every enrolled student; beacon: unpublished lesson → 404 path, inflation rejected, two concurrent beacons both merged (optimistic retry), completion set once; `saveSettings` rejects an invalid value with the field's error and saves nothing.
 - E2E (`tests/e2e/content.spec.ts`): faculty creates a module, uploads a short MP4 (fixture under `tests/e2e/fixtures/`), publishes; student plays 5 s, reloads, sees progress > 0; faculty publishes the plan → the student's email appears in Mailpit with all five sections.
 
 ## Acceptance criteria
@@ -123,7 +125,7 @@ Student: "Continue learning" — up to 5 lessons with progress < 100 % ordered b
 - **AC-M02-05** An unpublished lesson's file URL returns 404 for a student and redirects for the teacher.
 - **AC-M02-06** For a skill offering, a student's attendance % equals completed / published lessons, and no manual attendance UI exists.
 - **AC-M02-07** Rich text containing `<script>` or `javascript:` links renders inert.
-- **AC-M02-08** An invalid settings JSON shows the failing path and nothing is saved.
+- **AC-M02-08** An invalid settings value shows which field failed and why, and nothing is saved.
 - **AC-M02-09** After upload, a 480p data-saver copy becomes available within minutes; on a phone the lesson starts in Data saver mode and can be switched to HD without losing the position.
 
 ## Validation checklist (human)

@@ -40,8 +40,10 @@ Never start a later task because an earlier one is "almost done". Never mark a c
 | M00 | Foundation: tooling, local stack, auth, app shell, audit, worker | — | 1 Core | — |
 | M01 | Academic structure & administration | M00 | 1 Core | — |
 | M02 | Content, course plan, announcements, skill-course progress | M01 | 1 Core | — |
-| M03 | Live classes & attendance | M02 | 1 Core | — |
-| M04 | Assessment engine: quizzes, tests, assignments, records, grading | M02 | 1 Core | **R1 pilot** |
+| M01b | Catalogue v2: CUTM's course repository, courseware import, evaluation policy | M02 | 1 Core | — |
+| M03 | Live classes & attendance | M01b | 1 Core | — |
+| M03b | Course workspace redesign: builder, player, outcomes and syllabus in the course, plan as a list | M03 | 1 Core | — |
+| M04 | Assessment engine: quizzes, tests, assignments, records, grading | M01b | 1 Core | **R1 pilot** |
 | M05 | Virtual lab (compilers) & proctoring | M04 | 2 Evaluation | — |
 | M06 | Continuous evaluation: internal marks, trends, dashboards | M04 (M05 for coding modes) | 2 Evaluation | **R2** |
 | M07 | Projects: GitHub analytics, task tracker, reviews | M03, M04 | 3 Projects & integration | — |
@@ -50,7 +52,7 @@ Never start a later task because an earlier one is "almost done". Never mark a c
 | M10 | Engagement scoring & dashboards | M03, M04, M06 | 4 Outcomes & AI | **R4** |
 | M11 | Hardening, load, security, backups, launch | all | all | **Launch** |
 
-M03 and M04 may proceed in parallel after M02 (different agents, different folders). M07 may start after M04 if M03 is done. Everything else is sequential.
+M01b redesigns M01's catalogue, schemes and offering creation after CUTM's real data (decision of 15 Oct 2026); it comes after M02 because M02 was already built. M03 and M04 may proceed in parallel after M01b (different agents, different folders). M07 may start after M04 if M03 is done. Everything else is sequential.
 
 A **release** (R1–R4) deploys to the staging environment for client UAT after its milestone passes the release gate in `10-TESTING-AND-VALIDATION.md` §6. R1 exists because the client must see a working core quickly or move to D2L (`01-PROJECT-CONTEXT.md` §1).
 

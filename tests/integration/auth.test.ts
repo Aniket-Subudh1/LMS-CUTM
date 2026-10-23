@@ -39,8 +39,8 @@ async function makeUser(email: string, fields: { status?: 'invited' | 'active' |
 
 async function queuedLink(to: string): Promise<string> {
   const jobs = await m.mailQueue().getJobs(['waiting', 'delayed', 'prioritized']);
-  const job = jobs.find((j) => j.data.to === to);
-  const link = job?.data.text.match(/http\S+/)?.[0];
+  const data = jobs.map((j) => j.data).find((d) => 'to' in d && d.to === to);
+  const link = data && 'text' in data ? data.text.match(/http\S+/)?.[0] : undefined;
   if (!link) throw new Error(`no email queued for ${to}`);
   return link;
 }
@@ -116,9 +116,13 @@ describe('login', () => {
 });
 
 describe('password reset', () => {
-  it('answers the same for unknown and known emails and queues one email for the known one', async () => {
+  it('says when the email is missing and queues one email when it is registered', async () => {
     await makeUser('reset.known@cutm.local', { password: 'correct-horse-1' });
-    expect(await m.requestPasswordReset(form({ email: 'reset.unknown@cutm.local' }))).toEqual({ ok: true });
+    expect(await m.requestPasswordReset(form({ email: 'reset.unknown@cutm.local' }))).toEqual({
+      ok: false,
+      code: 'NOT_FOUND',
+      message: 'This email does not exist in the database.',
+    });
     expect(await m.requestPasswordReset(form({ email: 'reset.known@cutm.local' }))).toEqual({ ok: true });
     expect(await queuedLink('reset.known@cutm.local')).toMatch(/^http:\/\/localhost:3000\/reset-password\?token=/);
     await expect(queuedLink('reset.unknown@cutm.local')).rejects.toThrow('no email queued');
@@ -126,7 +130,9 @@ describe('password reset', () => {
 
   it('limits requests to 3 per hour per email', async () => {
     for (let i = 0; i < 3; i++) {
-      expect(await m.requestPasswordReset(form({ email: 'reset.limit@cutm.local' }))).toEqual({ ok: true });
+      expect(await m.requestPasswordReset(form({ email: 'reset.limit@cutm.local' }))).toMatchObject({
+        code: 'NOT_FOUND',
+      });
     }
     expect(await m.requestPasswordReset(form({ email: 'reset.limit@cutm.local' }))).toMatchObject({
       code: 'RATE_LIMITED',

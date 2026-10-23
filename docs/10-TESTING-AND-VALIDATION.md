@@ -172,7 +172,7 @@ For each new DAL read: one test that a user with access gets the data and one th
 ## 3. End-to-end tests (Playwright)
 
 - `playwright.config.ts`: `testDir: 'tests/e2e'`, Chromium only, `baseURL: 'http://localhost:3100'`, `webServer.command: 'npm run start:e2e'` (builds nothing — CI builds first), `reuseExistingServer: !process.env.CI`.
-- `start:e2e` runs the standalone server with `.env.e2e` (database `lms_e2e`) after `scripts/seed.ts --e2e` creates deterministic fixtures: one admin, one HoD, two faculty, twenty students, one department, one ugc program with a batch, one skill program, one term, two offerings.
+- `start:e2e` runs the standalone server with `.env.e2e` (database `lms_e2e`) after `npm run db:indexes:e2e` and `npm run db:seed:e2e` (`scripts/seed.ts --e2e`, safe to repeat) creates deterministic fixtures (M01b): one admin, one HoD, two faculty, twenty students (B.Tech section A), departments CSE and MATH, programmes BTECH-CSE (NBA PO titles, baskets I, II and IV, batch 2025 with sections A and B) and MSC-MATH, one term, five real CUTM courses — CUTM1602 Programming in C 1-2-1 (fixture outcomes, mapping, two modules and six sessions; faculty1 coordinates it), CUTM1001 2-0-1, CUTM1014 1.5-0-1.5, CUTM1535 3-0-1 with its public courseware content read from `tests/fixtures/courseware/836.html`, and the non-credit SK01 0-0-0 — and two offerings (CUTM1602 section A with the twenty students; SK01 section B with nobody enrolled). All fixture users share the password `E2E_PASSWORD`; their emails are `admin@`, `hod@`, `faculty1@`, `faculty2@` and `student01@`…`student20@seed.cutm.test`.
 - Seeded e2e passwords exist only in `.env.e2e` (never committed with real values; CI generates them).
 - `.env.e2e` (gitignored; CI generates it) — M00 content:
   ```
@@ -186,10 +186,23 @@ For each new DAL read: one test that a user with access gets the data and one th
   SMTP_SECURE=false
   MAIL_FROM="CUTM LMS <lms@localhost>"
   LOG_LEVEL=info
+  E2E_PASSWORD=<openssl rand -hex 12>
+  S3_ENDPOINT=http://localhost:9000        # M02: the compose stack's RustFS
+  S3_REGION=us-east-1
+  S3_BUCKET=cutm-lms-e2e
+  S3_ACCESS_KEY_ID=lmsdev
+  S3_SECRET_ACCESS_KEY=lmsdev-secret-key
+  S3_FORCE_PATH_STYLE=true
+  LIVEKIT_URL=ws://localhost:7880           # M03: the development keys in livekit.yaml
+  LIVEKIT_API_URL=http://localhost:7880
+  LIVEKIT_API_KEY=lmsdevkey
+  LIVEKIT_API_SECRET=lms-dev-livekit-secret-at-least-32-chars
   ```
   `LOG_LEVEL` must be at least `info`: Playwright starts the worker (`npm run worker:e2e`) as a second `webServer` and waits for its `worker started` line.
-- The compose stack must be running (Mongo, Redis, Mailpit) and `npm run build` must have run. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
+- The compose stack must be running (Mongo, Redis, Mailpit, RustFS), `npm run s3:setup:e2e` must have created the e2e bucket with its CORS rule (M02), and `npm run build` must have run. The worker that Playwright starts transcodes uploaded lectures with the bundled ffmpeg. Tests read emails from Mailpit (`GET http://localhost:8025/api/v1/messages`, then `/api/v1/message/<ID>` → `Text`).
+- M03: a LiveKit server must be running with `livekit.yaml` (11 §3.1), whose webhooks reach the e2e build on port 3100; CI starts it with `docker run --network host`. `playwright.config.ts` launches Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`, so the room gets a fake camera and microphone without a permission prompt. `tests/e2e/live.spec.ts` runs a class end to end with two browser contexts (faculty and student).
 - Next keeps the previous page mounted but hidden after a client navigation, and `getByLabel` matches hidden elements: look fields up with `page.getByLabel(label).filter({ visible: true })` (the `field()` helper in `tests/e2e/auth.spec.ts`); `getByRole` already ignores hidden elements. Use `exact: true` when one label is a prefix of another ("New password" / "Repeat the new password"). After a click that navigates client-side, wait for the new page (`toHaveURL` or its heading) before filling: for a moment both forms are visible and a fill can bind to the old one as it is hidden (verified failure, with trace).
+- Courseware fixtures (`tests/fixtures/courseware/*.html`) are real public pages trimmed to their `<main>` (scripts and icons removed) with any contact details replaced by fake ones; never commit a page with a real phone number or email (A-60). The courseware import test serves them through a mocked adapter, so tests never call the real site.
 - Run `npx playwright install chromium` once. In a sandbox with a preinstalled Chromium of another revision, set `PW_CHROMIUM_PATH` to its executable; `playwright.config.ts` passes it as `launchOptions.executablePath` only when set.
 
 Journeys added per milestone are listed in each milestone file; together they form the release suite.
@@ -201,31 +214,35 @@ Journeys added per milestone are listed in each milestone file; together they fo
 | `dev` | `next dev` | Local web |
 | `build` | `next build` | Production build (standalone output) |
 | `start` | `node .next/standalone/server.js` | Production web (Docker copies `.next/static` — and `public/` once it has files — into the standalone folder) |
-| `start:local` | `cp -r .next/static .next/standalone/.next/ && node --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
-| `start:e2e` | `cp -r .next/static .next/standalone/.next/ && node --env-file=.env.e2e .next/standalone/server.js` (`.env.e2e` sets `PORT=3100`) | Playwright target |
-| `worker` | `tsx --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
-| `worker:dev` | `tsx watch --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
-| `db:indexes` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
-| `db:seed` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development / e2e fixtures |
-| `admin:create` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
-| `s3:setup` | `tsx --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
+| `start:local` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file-if-exists=.env --env-file-if-exists=.env.local .next/standalone/server.js` (add `cp -r public .next/standalone/` when `public/` gets its first file — git does not keep empty folders) | Run a production build locally (`next start` does not work with `output: 'standalone'` — verified warning) |
+| `start:e2e` | `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && node --env-file=.env.e2e .next/standalone/server.js` (`.env.e2e` sets `PORT=3100`) | Playwright target |
+| `worker` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Background worker |
+| `worker:dev` | `tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server worker/index.ts` | Worker with reload (verified) |
+| `db:indexes` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/sync-indexes.ts` | Create collections + indexes |
+| `db:seed` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/seed.ts` | Development data: the e2e fixture structure above plus four CSE courses whose code, credits and content are their courseware pages (`tests/fixtures/courseware/` 1137 CUCS1002, 750 CUTM1884, 334 CUTM1900, 461 CUTM1019), each offered to section A with the twenty students. Users stay invited (needs an existing administrator) unless `SEED_PASSWORD` is set: then every account is active with it and `admin@seed.cutm.test` is created. Only a local MongoDB is seeded unless `npm run db:seed -- --allow-remote` names a hosted development database; never with `NODE_ENV=production` |
+| `db:indexes:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/sync-indexes.ts` | Collections and indexes in the e2e database (the production server does not auto-create them) |
+| `db:seed:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/seed.ts --e2e` | e2e fixtures with passwords |
+| `db:migrate:catalog-v2` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/migrate-catalog-v2.ts` | One-off move of an M01/M02 database to catalogue v2 (11 §5.1); a second run changes nothing |
+| `s3:setup:e2e` | `tsx --env-file=.env.e2e --conditions=react-server scripts/s3-setup.ts` | The e2e bucket and its CORS rule (M02) |
+| `admin:create` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/create-admin.ts` | First admin account |
+| `s3:setup` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local --conditions=react-server scripts/s3-setup.ts` | Create bucket + CORS |
 | `lint` | `eslint` | |
 | `typecheck` | `next typegen && tsc --noEmit` | `typegen` generates `PageProps`/`LayoutProps` |
 | `test` | `vitest run --project unit` | |
 | `test:integration` | `vitest run --project integration` | |
 | `test:e2e` | `playwright test` | |
 | `check` | `npm run lint && npm run typecheck && npm run test` | Run after every task |
-| `check:bundle` | `tsx --env-file-if-exists=.env.local scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7): forbidden names always; the values of secret variables when they are set (locally, from `.env.local`) |
+| `check:bundle` | `tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-bundle.ts` | Secret scan of `.next/static` (09 §7): forbidden names always; the values of secret variables when they are set (locally, from `.env` or `.env.local`) |
 | `format` | `prettier --write .` | |
 
-`--env-file-if-exists` loads `.env.local` when present (Next.js loads it automatically for `next dev`; the worker and scripts do not). A missing variable fails loudly through `env()`.
+`--env-file-if-exists` loads `.env` and then `.env.local` when present, so `.env.local` wins — the same order `next dev` uses (Next.js loads them itself; the worker and scripts do not). A missing variable fails loudly through `env()`.
 
 ## 5. Continuous integration — `.github/workflows/ci.yml` (M00)
 
 On every push and pull request (two parallel jobs, Node 24, `npm ci`):
 1. **verify:** `npm run lint`, `npm run typecheck`, `npm run test`, then `npm run build` with **no** env (the build needs none — 02 §5) and `npm run check:bundle`.
 2. **integration:** a `redis:8.6` service container; `npm run test:integration` **without** `TEST_MONGODB_URI`, so `tests/setup.ts` starts a mongodb-memory-server replica set (GitHub service containers cannot pass `--replSet`). The `mongod` binary is cached at `/home/runner/.cache/mongodb-binaries` (`MONGOMS_DOWNLOAD_DIR`, an absolute path: Node does not expand `~`).
-3. From M01 (when `scripts/seed.ts` exists), on pull requests to `main`: start the stack, `npm run db:seed -- --e2e`, `npm run test:e2e`. Until then e2e runs locally (M00 T9).
+3. From M01 (when `scripts/seed.ts` exists), on pull requests to `main`: start the stack, `npm run db:indexes:e2e`, `npm run db:seed:e2e`, `npm run test:e2e`. Until then e2e runs locally (M00 T9).
 
 ## 6. Release gates
 

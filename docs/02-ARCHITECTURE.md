@@ -21,7 +21,7 @@
     │                                                      │   │   └► SMTP
     └► Code runner (Judge0 ref.) ◄─ run code (sync)        │   └────► GitHub API
                                                            └────────► Exam system (CSV now, API later)
-    web + worker ──► Anthropic API (suggestions only)
+    web + worker ──► OpenAI API (suggestions only)
 ```
 
 ## 2. Processes and services
@@ -47,7 +47,7 @@ Paths are exact. Do not create folders not listed here without updating this sec
 .
 ├── AGENTS.md · CLAUDE.md · README.md
 ├── app/
-│   ├── layout.tsx                      root <html>, Geist font, globals.css
+│   ├── layout.tsx                      root <html>, Inter, globals.css
 │   ├── globals.css                     shadcn design tokens (08 §4)
 │   ├── page.tsx                        redirect('/home')
 │   ├── not-found.tsx
@@ -56,6 +56,8 @@ Paths are exact. Do not create folders not listed here without updating this sec
 │   │   ├── login/page.tsx
 │   │   ├── forgot-password/page.tsx
 │   │   └── reset-password/page.tsx
+│   ├── (room)/                         authenticated, no app shell (M03b)
+│   │   └── courses/[offeringId]/live/[sessionId]/room/page.tsx   a live class filling its own tab
 │   ├── (app)/                          authenticated, shared shell
 │   │   ├── layout.tsx                  shell; user menu inside <Suspense>
 │   │   ├── loading.tsx                 Suspense boundary for every page below
@@ -120,6 +122,7 @@ Paths are exact. Do not create folders not listed here without updating this sec
 | A write used only by one action | inside that action in `app/**/actions.ts` |
 | A write used by an action **and** a job (or two actions in different routes) | `lib/data/<area>.ts`, exported |
 | A Server Action | `actions.ts` in the closest route segment containing all its callers |
+| A Server Action that a shared component calls (M03b) | `actions.ts` of the route that owns the record: `CourseOutcomes` and `CourseSyllabus` call `app/(app)/catalog/actions.ts` from the catalogue page and from the course workspace alike |
 | Talking to an external system | `lib/integrations/<system>.ts` |
 | Background work | `worker/jobs/<queue>.ts`, enqueued via `lib/queue.ts` |
 | UI used by one route | inline in that route's `page.tsx` (a local function component in the same file is fine) |
@@ -159,15 +162,14 @@ Producer: `await mailQueue().add(name, payload, { jobId })` with a deterministic
 
 `next.config.ts` already sets `cacheComponents: true` and `partialPrefetching: true`. Consequences you must design for (verified with a production build of the canonical patterns):
 
-1. **Any read of `cookies()`, `headers()`, `params` or `searchParams` must sit under a `<Suspense>` boundary** or the build fails. `app/(app)/loading.tsx` provides that boundary for every page. Layouts must not `await` the session at top level — push it into a child component wrapped in its own `<Suspense>`.
+1. **Any read of `cookies()`, `headers()`, `params`, `searchParams` or `connection()` must sit under a `<Suspense>` boundary** or the build fails. The boundary has to be inside the segment that changes: `app/(app)/loading.tsx` wraps the layout's children, so it sits above a navigation between `/home` and `/profile` and does not count. A page that reads the session puts that read in a child wrapped in its own `<Suspense>`. Layouts must not `await` the session at top level.
 2. **Environment variables are read lazily.** `env()` parses `process.env` on first call. Never read `env()` (or open a DB/Redis connection) at module top level: modules are evaluated during `next build`, where production secrets are absent.
 3. **Default: no `use cache`.** MongoDB with the right index is fast, and in-memory caches on several web instances drift apart after a mutation. `use cache` is allowed only on the functions listed here, each with `cacheLife` and `cacheTag`:
 
    | Function (in `lib/data/`) | Directive | `cacheLife` | Tag | Invalidated by |
    |---|---|---|---|---|
    | `getSettings(key)` inner reader | `'use cache'` | `'minutes'` | `settings:<key>` | `updateTag` in the settings action |
-   | `getSchemeVersion(id)` inner reader | `'use cache'` | `'max'` | `scheme:<id>` | never (versions are immutable) |
-   | `listProgramsForSelect()` / `listCoursesForSelect()` | `'use cache'` | `'minutes'` | `catalog` | `updateTag('catalog')` in admin actions |
+   | `listProgramsForSelect()` / `listCurriculumForSelect(programId)` inner readers | `'use cache'` | `'minutes'` | `catalog` | `updateTag('catalog')` in the catalogue, programme and course-list actions (the courseware worker cannot, so its new courses appear within the window) |
 
    Cached functions take ids, never the viewer, and are not exported directly — an exported wrapper does the access check first (pattern in 04 §6.4). Other instances see a change within the profile's revalidate window (1 minute for `'minutes'`); this is acceptable only for the reference data above.
 4. **After a mutation** the action calls `refresh()` from `next/cache` (unless it redirects). If it changed cached reference data it also calls `updateTag(tag)`.
@@ -200,8 +202,8 @@ Two checks, always both:
 | Queue | Job names | Concurrency / instance | Producers |
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
-| `compute` | `internalMarks`, `attainment`, `finalizeLiveSession`, `assessmentSweep`, `gradeCode`, `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
-| `sync` | `githubProject`, `examPull`, `examPush` | 2 | actions, schedulers, webhooks |
+| `compute` | `internalMarks`, `internalMarksNightly` (M06), `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `proctorRetention` | 4 | actions, schedulers, webhooks |
+| `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 
 Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone `Asia/Kolkata`):
@@ -209,11 +211,11 @@ Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone 
 | Scheduler id | Pattern | Job |
 |---|---|---|
 | `github-nightly` | `30 1 * * *` | enqueue `sync/githubProject` for every active GitHub project |
-| `internal-marks-nightly` | `0 2 * * *` | enqueue `compute/internalMarks` for every active UGC offering (safety net) |
-| `live-finalize-hourly` | `5 * * * *` | finalize live sessions past scheduled end + 30 min that never received `room_finished` |
-| `assessment-sweep` | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) |
+| `internalMarksNightly` (M06) | `0 2 * * *` | `compute/internalMarksNightly`: enqueue `compute/internalMarks` for every active credit offering (safety net) |
+| `liveSweep` (M03) | `5 * * * *` | `compute/liveSweep`: end live sessions still open 30 min after their scheduled end and finalize ended sessions left unfinalized (M03) |
+| `assessmentSweep` (M04; BullMQ names a scheduler after its job) | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) + publish the results of tests whose rule says so (M04b) |
 | `engagement-nightly` | `30 2 * * *` | `compute/engagementSnapshot` per active offering (M10) |
-| `proctor-retention` | `0 3 * * *` | `compute/proctorRetention` (M05) |
+| `proctorRetention` (M04b) | `30 3 * * *` | `compute/proctorRetention`: deletes camera snapshots `snapshotRetentionDays` after a test's results (05 §8) |
 
 Rules:
 - Every job payload has a Zod schema in `lib/schemas/jobs.ts`; the processor parses it first.
@@ -231,10 +233,11 @@ Each external system sits behind one file in `lib/integrations/` exposing a type
 | Object storage | `storage.ts` | `@aws-sdk/client-s3` + presigner; Cloudflare R2 in production (ADR-19) | M02 |
 | Email | `mail.ts` | `nodemailer` SMTP | M00 |
 | Live classes | `live.ts` | LiveKit server SDK + React components, self-hosted LiveKit server (ADR-18) | M03 |
-| Code runner | `code-runner.ts` | Judge0 CE 1.13.1 HTTP API | M05 — same caveat (**Q-25**) |
+| Code runner | `code-runner.ts` | Judge0 CE 1.13.1 HTTP API (Judge0's free public server, 1.14.0, until the university runs its own — **Q-55**) | M04b (from M05) — same caveat (**Q-25**) |
 | GitHub | `github.ts` | `octokit` App (installation token) + OAuth (identity link) | M07 |
 | Exam system | `exam-api.ts` | — | **Blocked on Q-04**. CSV import/export ships in M08 without an adapter |
-| AI | `ai.ts` | `@anthropic-ai/sdk`, model `claude-opus-5-5`, structured output | M09 |
+| AI | `ai.ts` | `openai` (Responses API), model `OPENAI_MODEL` (default `gpt-5.4-mini`), structured output | M04b (bank drafts), M09 |
+| CUTM courseware | `courseware.ts` | `fetch` + `happy-dom` (scripts off); read only | M01b |
 
 ## 10. Conventions
 
@@ -281,3 +284,7 @@ How the design meets them: stateless web instances; every query indexed and pagi
 | ADR-17 | English UI; IST display; UTC storage | Scope; single university in India | i18n framework |
 | ADR-18 | Live classes on **self-hosted LiveKit** (open source WebRTC SFU) | Cheapest at scale (no per-minute fees — cost is servers + bandwidth); teachers and students need only a browser (no OBS/RTMP); two-way audio for questions; signed join/leave webhooks give automatic attendance; scales by adding nodes (one room per node, so a class of 200 fits easily); verified end to end on v1.13.9. The same code works against LiveKit Cloud if the university prefers not to run servers (env change only) | **Mux Live** (and similar per-minute streaming APIs): billed per minute encoded *and* per viewer-minute delivered, so cost grows with every student; RTMP/SRT ingest only — Mux's FAQ states direct WebRTC/browser ingest is not supported — so every teacher would need OBS; one-way broadcast (students cannot speak); no participant presence for attendance |
 | ADR-19 | Recorded lectures as MP4 on **Cloudflare R2** + a worker-generated 480p data-saver copy (`ffmpeg-static`) | R2 charges no egress, so video delivery cost stays near zero as viewing grows; MP4 plays natively in every browser with range requests (no player library); the 480p copy (~0.7 Mbps cap) serves phones on mobile data (NFR-07); no vendor lock-in (S3 API) | **Mux Video / Cloudflare Stream**: easiest adaptive streaming, but delivery is billed per minute watched — at university scale (tens of millions of viewer-minutes a month) that becomes the largest line item; self-built HLS packaging: more code and per-segment signing |
+| ADR-20 | **Catalogue v2 from CUTM's own data** (M01b): one course per code listed by programmes in baskets; T-P-Pj credits decide the features (a credit course gets everything, 0-0-0 is non-credit); fixed outcome codes PO1–PO12, PSO1–PSO3 titled per programme; a coordinator per course; content imported from courseware.cutm.ac.in and the course list from the Course Repository CSV | Matches how CUTM already describes its courses, so most content arrives by import instead of by hand; a course is maintained once, not once per programme; fewer boxes (one dialog per step, a click-to-cycle mapping grid) | M01's per-programme courses with component checkboxes, one dialog per CO and a dropdown per matrix cell (rejected by the product owner as too complex, 15 Oct 2026); asking CUTM IT for an export (Q-37, still worth having) |
+| ADR-21 | **The evaluation policy is one Settings form, copied onto each offering** | CUTM's Examination Policy is one rule set for every course (each component out of 100, credit-weighted course percentage); a copy per offering keeps old marks stable when the policy changes | Admin-built evaluation schemes per component combination (145 controls; M01) |
+| ADR-22 | **Courseware pages are parsed by an adapter with happy-dom (scripts off) into plain lines and tables, and read by a pure normaliser with fixture tests** | The pages are hand-typed WYSIWYG HTML in many shapes; a DOM gives real rows, cells and line breaks and decodes entities; keeping the interpretation pure makes it testable against real pages, and only the adapter needs fixing if the site's markup changes | Regular expressions over raw HTML (fragile); a headless browser (heavy, runs scripts) |
+

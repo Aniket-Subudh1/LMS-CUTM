@@ -1,5 +1,7 @@
 # M01 · Academic structure & administration
 
+> **Superseded in part by M01b (catalogue v2, 15 Oct 2026).** This file records what M01 built. Since M01b a course exists once per code with T-P-Pj credits and reaches programmes through curriculum entries (with baskets); programmes have no category and only title the fixed codes PO1–PO12, PSO1–PSO3; evaluation schemes, `/admin/schemes` and `/admin/courses` are gone — the Examination Policy is one Settings form copied onto each offering — and offerings are created per section from the batch's curriculum. For the current model read `M01b-catalog-v2.md`, 05 and 06; AC-M01-01/02 no longer apply.
+
 | | |
 |---|---|
 | Depends on | M00 |
@@ -46,7 +48,7 @@ Files: `lib/schemas/structure.ts`, `lib/domain/structure.ts` (+ test), `lib/doma
 File: `lib/auth/access.ts` — exactly 04 §6.4 (`offeringAccess`, `requireTeach`). Integration tests: admin → oversee; listed faculty → teach; HoD of the department → oversee; HoD of another department → 404; enrolled student → learn; dropped student → 404.
 
 ### T4 · Departments, programs, batches, terms
-Routes: `/admin`, `/admin/departments`, `/admin/programs`, `/admin/programs/[id]`, `/admin/terms`; `app/(app)/admin/layout.tsx` (`requireViewer(['admin','support'])`, `TabNav`: Structure · Courses · Schemes · Offerings · Users · Audit; support sees only Users). Actions in `app/(app)/admin/actions.ts` (all `roles: ['admin']`, audit not required for structure except where 09 §6 says):
+Routes: `/admin`, `/admin/departments`, `/admin/programs`, `/admin/programs/[id]`, `/admin/terms`; no admin layout: since the UI redesign the sidebar's Administration group is the admin navigation (08 §3) and every admin page is guarded by its DAL call (`requireViewer(['admin'])`, Users also `support`); support sees only Users. Create and edit forms are `FormDialog`s on these pages (08 §6). Actions in `app/(app)/admin/actions.ts` (all `roles: ['admin']`, audit not required for structure except where 09 §6 says):
 
 | Action | Rules |
 |---|---|
@@ -59,7 +61,7 @@ Routes: `/admin`, `/admin/departments`, `/admin/programs`, `/admin/programs/[id]
 Lists use `DataTable` (first call sites: departments, programs, terms). `listProgramsForSelect()` uses `use cache` per 02 §5.
 
 ### T5 · Course catalog, COs and the CO-PO-PSO matrix
-Routes: `/admin/courses`, `/admin/courses/new`, `/admin/courses/[id]`.
+Routes: `/admin/courses` ("New course" dialog; `saveCourse` returns `{ next: '/admin/courses/<id>' }` for a new course), `/admin/courses/[id]`.
 
 | Action | Rules |
 |---|---|
@@ -80,7 +82,7 @@ Routes: `/admin/schemes` (one row per `componentKey` with the active version), `
 The form renders a fixed 10-row component grid (empty rows ignored) — no client-side row adding. Modes are checkboxes from `ASSESSMENT_MODES`.
 
 ### T7 · Offerings and enrollment
-Routes: `/admin/offerings` (filters: term, department, status), `/admin/offerings/new`, and the People tab (T10).
+Routes: `/admin/offerings` (filters: term, department, status; "New offering" dialog — choose the programme first, then the course, batch and term lists for it load into the dialog), and the People tab (T10).
 
 | Action | Rules |
 |---|---|
@@ -92,7 +94,7 @@ Routes: `/admin/offerings` (filters: term, department, status), `/admin/offering
 ### T8 · Users (ADM-05, SUP-01)
 Files (besides the routes): `lib/schemas/jobs.ts` + `MailJob` (`invitation { userIds }`, 06 §6); `lib/queue.ts` mail queue typed `Queue<MailSend | MailJob, void, 'send' | 'fanout'>`; `worker/jobs/mail.ts` + `fanout` (for each chunk of 500 invited users: a 7-day invite token, `invitationEmail`, `send` with job id `mail-invite-<userId>-<minuteBucket>`). `sendResetLink` is the second caller of the reset email: move the token + `resetEmail` + enqueue lines from `app/(auth)/actions.ts` into one exported function in `lib/auth/tokens.ts` and call it from both.
 
-Routes: `/admin/users` (search box → text index; filters role/status), `/admin/users/new`, `/admin/users/import`, `/admin/users/[id]`.
+Routes: `/admin/users` (search box → text index; filters role/status; "New user" and "Import CSV" dialogs — `createUser` returns `{ next: '/admin/users/<id>' }`), `/admin/users/[id]`.
 
 | Action | Roles | Rules |
 |---|---|---|
@@ -117,7 +119,7 @@ Routes: `/courses`, `app/(app)/courses/[offeringId]/layout.tsx`, `/courses/[offe
 - People: roster `DataTable` (roll no, name, email, status); for teach/admin, the enrollment-change form (T7).
 
 ### T11 · Home sections and seed data
-- `/home`: faculty — "My offerings this term"; student — "My courses"; admin — links to Structure, Offerings, Users; support — link to Users.
+- `/home`: faculty — "My offerings this term"; student — "My courses"; admin — links to Structure, Offerings, Users; support — link to Users. Since the UI redesign: `getHomeSummary()` in `lib/data/workspace.ts` (stat tiles: the viewer's offerings, active enrolments across the offerings they teach or oversee, and for admins the programme, catalogue, offering and user counts, the six latest audit entries, the audit entries per IST day for the last seven days and the three people with the most of them; 08 §6 Home).
 - `scripts/seed.ts` (dev) creates the structure below; `--e2e` creates the deterministic fixture set in 10 §3 with passwords from `.env.e2e`:
   department CSE; program `BTECH-CSE` (ugc) with default outcomes; batch 2025 (sections A, B); program `SKILL` (skill); term `2026-ODD` current; course `CS101 C Programming` (theory+practice, 4 credits, CO1–CO3, a CO map); course `SK01 Excel Basics` (skill); scheme `theory+practice` v1 as in 07 §2; two offerings with one faculty each; 20 students in batch 2025 section A.
 - Add CI step 5 (e2e) now that the seed exists.

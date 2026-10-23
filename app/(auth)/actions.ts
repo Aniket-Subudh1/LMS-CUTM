@@ -3,35 +3,21 @@
 import { redirect } from 'next/navigation';
 import { publicAction } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { hashPassword } from '@/lib/auth/password';
 import { signIn, signOut } from '@/lib/auth/session';
-import { createToken, readToken } from '@/lib/auth/tokens';
+import { passwordSignIn } from '@/lib/auth/sign-in';
+import { queueResetLink, readToken } from '@/lib/auth/tokens';
 import { db } from '@/lib/db';
-import { resetEmail } from '@/lib/domain/email-templates';
-import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { User } from '@/lib/models/user';
-import { mailQueue } from '@/lib/queue';
 import { clientIp, limit } from '@/lib/rate-limit';
 import { LoginInput, ResetInput, ResetRequestInput } from '@/lib/schemas/auth';
 
 const MINUTE = 60_000;
-const INCORRECT = 'Email or password is incorrect.';
 const EXPIRED = 'This link has expired or was already used.';
 
 export const login = publicAction(LoginInput, async ({ email, password }) => {
-  const attempts = [
-    await limit('login-ip', await clientIp(), 30, 15 * MINUTE),
-    await limit('login', email, 5, 15 * MINUTE),
-  ];
-  await db();
-  const user = await User.findOne({ email, status: 'active' }, { passwordHash: 1, sessionVersion: 1 }).lean();
-  if (!user?.passwordHash || !(await verifyPassword(user.passwordHash, password))) {
-    throw new AppError('UNAUTHENTICATED', INCORRECT);
-  }
-  await Promise.all(attempts.map((a) => a.refund()));
-  await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
-  await signIn({ id: String(user._id), sessionVersion: user.sessionVersion });
+  await passwordSignIn(email, password);
   redirect('/home');
 });
 
@@ -48,14 +34,12 @@ export const requestPasswordReset = publicAction(ResetRequestInput, async ({ ema
     { email, status: { $in: ['active', 'invited'] } },
     { name: 1, email: 1, sessionVersion: 1 },
   ).lean();
-  if (!user) return;
-  const link = new URL('/reset-password', env().APP_URL);
-  link.searchParams.set(
-    'token',
-    await createToken({ uid: String(user._id), sv: user.sessionVersion, purpose: 'reset' }),
-  );
-  await mailQueue().add('send', resetEmail({ to: user.email, name: user.name, link: link.href }), {
-    jobId: `mail-reset-${user._id}-${Math.floor(Date.now() / MINUTE)}`,
+  if (!user) throw new AppError('NOT_FOUND', 'This email does not exist in the database.');
+  await queueResetLink({
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    sessionVersion: user.sessionVersion,
   });
 });
 

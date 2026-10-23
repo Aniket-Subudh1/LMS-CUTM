@@ -2,7 +2,8 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/cn';
-import { XIcon } from 'lucide-react';
+// Local change from shadcn 4.21.4: Phosphor icons.
+import { XIcon } from '@phosphor-icons/react';
 import { Dialog as SheetPrimitive } from 'radix-ui';
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
