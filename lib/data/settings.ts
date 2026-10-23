@@ -26,6 +26,7 @@ const PARSE: { [K in SettingsKey]: (stored: unknown) => SettingsValue<K> } = {
   proctoring: (stored) => SETTINGS.proctoring.schema.parse(stored ?? {}),
   ceTrend: (stored) => SETTINGS.ceTrend.schema.parse(stored ?? {}),
   projects: (stored) => SETTINGS.projects.schema.parse(stored ?? {}),
+  grading: (stored) => SETTINGS.grading.schema.parse(stored ?? {}),
 };
 
 export async function getSettings<K extends SettingsKey>(key: K): Promise<SettingsValue<K>> {

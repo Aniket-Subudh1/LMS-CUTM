@@ -13,6 +13,7 @@ export const NOTIFICATION_KINDS = [
   'results.published',
   'bank.drafted',
   'task.assigned',
+  'gradeSheet.published',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

@@ -112,3 +112,45 @@ describe('project metrics (07 §12, M07)', () => {
     expect(projects.safeParse({ lastMinuteHours: '0' }).success).toBe(false);
   });
 });
+
+describe('grading (07 §6, M08)', () => {
+  const grading = SETTINGS.grading.schema;
+  const scaleErrors = (scale: string) => {
+    const parsed = grading.safeParse({ scale });
+    return parsed.success ? [] : z.flattenError(parsed.error).fieldErrors.scale;
+  };
+  it('defaults to the UGC letter grades, Ab for absent, and shows the SGPA', () => {
+    const value = grading.parse({});
+    expect(value.scale.map((g) => `${g.grade} ${g.minPct} ${g.points}`)).toEqual([
+      'O 90 10',
+      'A+ 80 9',
+      'A 70 8',
+      'B+ 60 7',
+      'B 50 6',
+      'C 45 5',
+      'P 40 4',
+      'F 0 0',
+    ]);
+    expect(value).toMatchObject({ absentGrade: 'Ab', absentPoints: 0, showSgpa: true });
+  });
+
+  it('reads the form’s lines and its yes or no, and a stored value again', () => {
+    const value = grading.parse({ scale: 'O | 90 | 10\nA | 60 | 8\nF | 0 | 0', showSgpa: 'no', absentPoints: '0' });
+    expect(value.scale).toEqual([
+      { grade: 'O', minPct: 90, points: 10 },
+      { grade: 'A', minPct: 60, points: 8 },
+      { grade: 'F', minPct: 0, points: 0 },
+    ]);
+    expect(value.showSgpa).toBe(false);
+    expect(grading.parse(value)).toEqual(value);
+  });
+
+  it.each([
+    ['O | 90 | 10\nO | 50 | 6\nF | 0 | 0', 'Use each grade once.'],
+    ['O | 90 | 10\nA | 90 | 8\nF | 0 | 0', "A must start below O's 90 %."],
+    ['O | 90 | 8\nA | 70 | 9\nF | 0 | 0', 'A cannot earn more points than O.'],
+    ['O | 90 | 10\nF | 40 | 0', 'The last grade must start at 0 %, so every mark gets a grade.'],
+  ])('refuses %j', (scale, message) => {
+    expect(scaleErrors(scale)).toContain(message);
+  });
+});

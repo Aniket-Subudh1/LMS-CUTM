@@ -35,6 +35,35 @@ const languageLines = (value: unknown) =>
           return { key, label, runnerId };
         });
 
+// 06 §7, 07 §6 (M08): UGC CBCS letter grades; only O from 90 % is in CUTM's Examination Policy (Q-40). A form posts
+// the scale as lines of `grade | from % | points`; a stored value is the parsed list.
+const SCALE = [
+  { grade: 'O', minPct: 90, points: 10 },
+  { grade: 'A+', minPct: 80, points: 9 },
+  { grade: 'A', minPct: 70, points: 8 },
+  { grade: 'B+', minPct: 60, points: 7 },
+  { grade: 'B', minPct: 50, points: 6 },
+  { grade: 'C', minPct: 45, points: 5 },
+  { grade: 'P', minPct: 40, points: 4 },
+  { grade: 'F', minPct: 0, points: 0 },
+];
+const scaleLines = (value: unknown) =>
+  typeof value !== 'string'
+    ? value
+    : value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [grade = '', minPct = '', points = ''] = line.split('|').map((part) => part.trim());
+          return { grade, minPct, points };
+        });
+const gradePoints = z.coerce
+  .number({ error: 'Points are a number.' })
+  .min(0, 'Use 0 to 10 points.')
+  .max(10, 'Use 0 to 10 points.')
+  .multipleOf(0.5, 'Use steps of 0.5.');
+
 // The settings registry (06 §7). Each later milestone adds its key here and its form on /admin/settings/[key].
 // A missing document means the defaults; `getSettings(key)` returns `schema.parse(stored ?? {})`.
 export const SETTINGS = {
@@ -272,6 +301,61 @@ export const SETTINGS = {
         'Commit messages that say nothing, one a line. A message that is one of these, or shorter than 10 characters, does not count as a good message.',
     },
   },
+  grading: {
+    // M08 (07 §6): proposed values; Q-19, Q-21 and Q-40 are open.
+    schema: z.object({
+      scale: z
+        .preprocess(
+          scaleLines,
+          z
+            .array(
+              z.object({
+                grade: z.string().min(1, 'Give each grade a name.').max(4, 'Keep each grade to 4 characters, like A+.'),
+                minPct: z.coerce
+                  .number({ error: 'Each “from %” is a number.' })
+                  .min(0, 'Use 0 to 100 %.')
+                  .max(100, 'Use 0 to 100 %.'),
+                points: gradePoints,
+              }),
+            )
+            .min(2, 'Keep at least two grades.')
+            .max(12, 'Use at most 12 grades.')
+            .superRefine((scale, ctx) => {
+              const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+              if (new Set(scale.map((g) => g.grade)).size !== scale.length) fail('Use each grade once.');
+              scale.forEach((g, i) => {
+                const above = scale[i - 1];
+                if (above && g.minPct >= above.minPct)
+                  fail(`${g.grade} must start below ${above.grade}'s ${above.minPct} %.`);
+                if (above && g.points > above.points) fail(`${g.grade} cannot earn more points than ${above.grade}.`);
+              });
+              if (scale.at(-1)?.minPct !== 0) fail('The last grade must start at 0 %, so every mark gets a grade.');
+            }),
+        )
+        .default(SCALE),
+      absentGrade: z
+        .string()
+        .trim()
+        .min(1, 'Give the grade a name.')
+        .max(4, 'Keep it to 4 characters, like Ab.')
+        .default('Ab'),
+      absentPoints: gradePoints.default(0),
+      // A select posts `yes` or `no`; a stored value is the boolean.
+      showSgpa: z
+        .preprocess((value) => (value === 'yes' ? true : value === 'no' ? false : value), z.boolean())
+        .default(true),
+    }),
+    label: 'Grading',
+    description: 'How a course’s percentage becomes a grade and grade points on the grade sheet.',
+    fieldHelp: {
+      scale:
+        'One grade a line: the grade, the lowest percentage that earns it, and its points, separated by |. Highest first; the last starts at 0. The course percentage is rounded up before it is graded.',
+      absentGrade:
+        'The grade of a course where the student is AB in any external part. Its credits still count in the SGPA.',
+      absentPoints: 'The grade points of that course.',
+      showSgpa: 'Whether students see their SGPA on the grade sheet.',
+    },
+  },
 } as const;
 
 export const settingsKey = z.enum([
@@ -282,6 +366,7 @@ export const settingsKey = z.enum([
   'proctoring',
   'ceTrend',
   'projects',
+  'grading',
 ]);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

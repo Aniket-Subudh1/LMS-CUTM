@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatCsvErrors, parseBankCsv, parseCourseListCsv, parseEnrollmentCsv, parseUsersCsv } from './csv';
+import {
+  buildInternalMarksCsv,
+  checkEndSemRow,
+  formatCsvErrors,
+  parseBankCsv,
+  parseCourseListCsv,
+  parseEndSemCsv,
+  parseEnrollmentCsv,
+  parseUsersCsv,
+  type EndSemRow,
+} from './csv';
 
 const HEADER = 'role,name,email,rollno,employeeid,department,program,batchstartyear,section';
 
@@ -242,5 +252,147 @@ describe('parseBankCsv (06 §8.6)', () => {
   ])('refuses %s, by row', (_, line, message) => {
     const parsed = parseBankCsv(`${header}\n${line}`);
     expect(parsed.ok ? [] : parsed.errors).toEqual([{ row: 1, message: expect.stringContaining(message) }]);
+  });
+});
+
+// 06 §8.3–8.4 (M08 decision 1): the export goes out, and comes back with its external columns filled in.
+const EXAM_HEADER =
+  'rollno,name,coursecode,termcode,theoryinternal,practiceinternal,projectinternal,theoryexternal,practiceexternal,projectexternal';
+
+describe('buildInternalMarksCsv (06 §8.4)', () => {
+  it('writes the shared header, internals at 2 dp and empty external columns', () => {
+    const csv = buildInternalMarksCsv([
+      {
+        rollNo: '2501CSE001',
+        name: 'Asha Rao',
+        courseCode: 'CUTM1602',
+        termCode: '2026-ODD',
+        internals: { theory: 28.5333333, practice: 40.5, project: 42 },
+      },
+      {
+        rollNo: '2501CSE002',
+        name: 'Ravi Das',
+        courseCode: 'CUTM1014',
+        termCode: '2026-ODD',
+        internals: { theory: null, project: 38 },
+      },
+    ]);
+    expect(csv.split('\r\n')).toEqual([
+      EXAM_HEADER,
+      '2501CSE001,Asha Rao,CUTM1602,2026-ODD,28.53,40.5,42,,,',
+      '2501CSE002,Ravi Das,CUTM1014,2026-ODD,,,38,,,',
+    ]);
+  });
+
+  it('escapes a name a spreadsheet would run as a formula', () => {
+    const csv = buildInternalMarksCsv([
+      { rollNo: 'R1', name: '=HYPERLINK("x")', courseCode: 'C1', termCode: 'T', internals: {} },
+    ]);
+    expect(csv.split('\r\n')[1]).toBe(`R1,"'=HYPERLINK(""x"")",C1,T,,,,,,`);
+  });
+});
+
+describe('parseEndSemCsv (06 §8.3)', () => {
+  it('reads the filled-in export: marks, AB in any case, blanks; other columns ignored', () => {
+    const result = parseEndSemCsv(
+      [
+        EXAM_HEADER,
+        '2501CSE001,Asha Rao,cutm 1602,2026-odd,28.53,40.5,42,48,ab,41.25',
+        '2501CSE002,Ravi Das,CUTM1014,2026-ODD,,,38,AB,,35',
+      ].join('\n'),
+    );
+    expect(result).toEqual({
+      ok: true,
+      rows: [
+        {
+          row: 1,
+          rollNo: '2501CSE001',
+          courseCode: 'CUTM1602',
+          termCode: '2026-ODD',
+          theory: 48,
+          practice: 'AB',
+          project: 41.25,
+        },
+        {
+          row: 2,
+          rollNo: '2501CSE002',
+          courseCode: 'CUTM1014',
+          termCode: '2026-ODD',
+          theory: 'AB',
+          practice: null,
+          project: 35,
+        },
+      ],
+    });
+  });
+
+  it('names a missing external column', () => {
+    const result = parseEndSemCsv('rollno,coursecode,termcode,theoryexternal\nR1,C1,T,40');
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        { row: 0, message: 'Missing column "practiceexternal".' },
+        { row: 0, message: 'Missing column "projectexternal".' },
+      ],
+    });
+  });
+
+  it('reports a value that is not a mark and a repeated student and course', () => {
+    const result = parseEndSemCsv(
+      [
+        'rollno,coursecode,termcode,theoryexternal,practiceexternal,projectexternal',
+        'R1,C1,T,4.567,,',
+        'R2,C1,T,-3,,',
+        'R3,C1,T,40,,',
+        'R3,c1,t,41,,',
+      ].join('\n'),
+    );
+    expect(result).toEqual({
+      ok: false,
+      errors: [
+        { row: 1, message: 'theoryexternal "4.567" is not a mark with at most two decimals, or AB.' },
+        { row: 2, message: 'theoryexternal "-3" is not a mark with at most two decimals, or AB.' },
+        { row: 4, message: 'R3 in C1 already appears in row 3.' },
+      ],
+    });
+  });
+});
+
+describe('checkEndSemRow', () => {
+  const course = {
+    code: 'CUTM1001',
+    credits: { theory: 2, practice: 0, project: 1 },
+    maxima: { theory: 60, practice: 50, project: 50 },
+  };
+  const row = (
+    theory: EndSemRow['theory'],
+    practice: EndSemRow['practice'],
+    project: EndSemRow['project'],
+  ): EndSemRow => ({
+    row: 1,
+    rollNo: 'R1',
+    courseCode: 'CUTM1001',
+    termCode: '2026-ODD',
+    theory,
+    practice,
+    project,
+  });
+
+  it('turns marks and AB into one external per component the course has', () => {
+    expect(checkEndSemRow(row(51, null, 'AB'), course)).toEqual({
+      ok: true,
+      externals: [
+        { component: 'theory', marks: 51, max: 60, absent: false },
+        { component: 'project', marks: null, max: 50, absent: true },
+      ],
+    });
+  });
+
+  it.each([
+    [row(64, null, 40), 'theoryexternal 64 is more than 60.'],
+    [row(51, 40, 40), 'practiceexternal has a mark, but CUTM1001 has no practice.'],
+    [row(null, null, 40), 'theoryexternal is empty: give the mark, or AB.'],
+  ])('refuses %o', (input, message) => {
+    expect(checkEndSemRow(input, course)).toEqual({ ok: false, message });
   });
 });

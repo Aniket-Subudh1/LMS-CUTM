@@ -1,6 +1,9 @@
 import Papa from 'papaparse';
 import { creditTotal, formatCredits, normalizeCode, parseCredits, type Credits } from '@/lib/domain/catalog';
+import type { External } from '@/lib/domain/grades';
+import { roundHalfUp } from '@/lib/domain/round';
 import { BANK_CSV_COLUMNS, BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
+import { COMPONENTS, EndSemCsvRow, EXAM_CSV_COLUMNS, EXAM_LIMITS, type Component } from '@/lib/schemas/exams';
 import { CourseListCsvRow, EnrollmentCsvRow, UserCsvRow } from '@/lib/schemas/structure';
 
 // `row` is 1-based and excludes the header; 0 means the file as a whole (06 §8).
@@ -11,7 +14,10 @@ export const MAX_CSV_ROWS = 5000;
 
 type Records = { columns: string[]; records: Record<string, string>[] };
 
-function readCsv(text: string): { ok: true; data: Records } | { ok: false; errors: CsvError[] } {
+function readCsv(
+  text: string,
+  maxRows = MAX_CSV_ROWS,
+): { ok: true; data: Records } | { ok: false; errors: CsvError[] } {
   const parsed = Papa.parse<Record<string, string>>(text.replace(/^\uFEFF/, ''), {
     header: true,
     delimiter: ',',
@@ -27,13 +33,13 @@ function readCsv(text: string): { ok: true; data: Records } | { ok: false; error
     };
   }
   if (parsed.data.length === 0) return { ok: false, errors: [{ row: 0, message: 'The file has no data rows.' }] };
-  if (parsed.data.length > MAX_CSV_ROWS) {
+  if (parsed.data.length > maxRows) {
     return {
       ok: false,
       errors: [
         {
           row: 0,
-          message: `The file has more than ${MAX_CSV_ROWS.toLocaleString('en-IN')} rows. Split it into smaller files.`,
+          message: `The file has more than ${maxRows.toLocaleString('en-IN')} rows. Split it into smaller files.`,
         },
       ],
     };
@@ -225,6 +231,111 @@ export function parseBankCsv(text: string): CsvResult<BankRow> {
     rows.push({ ...parsed.data, row });
   });
   return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
+}
+
+export type EndSemRow = EndSemCsvRow & { row: number };
+
+// 06 §8.3 (M08 decision 1): the export with its external columns filled in by the exam section. Only the values are
+// checked here; the action finds each row's enrolment and checks it against that course (`checkEndSemRow`).
+export function parseEndSemCsv(text: string): CsvResult<EndSemRow> {
+  const read = readCsv(text, EXAM_LIMITS.endSemRows);
+  if (!read.ok) return read;
+  const { columns, records } = read.data;
+  const missing = missingColumns(columns, [
+    'rollno',
+    'coursecode',
+    'termcode',
+    'theoryexternal',
+    'practiceexternal',
+    'projectexternal',
+  ]);
+  if (missing.length > 0) return { ok: false, errors: missing };
+
+  const errors: CsvError[] = [];
+  const rows: EndSemRow[] = [];
+  const keys = new Map<string, number>();
+  records.forEach((record, i) => {
+    const row = i + 1;
+    const parsed = EndSemCsvRow.safeParse({
+      rollNo: cell(record, 'rollno'),
+      courseCode: cell(record, 'coursecode'),
+      termCode: cell(record, 'termcode'),
+      theory: cell(record, 'theoryexternal'),
+      practice: cell(record, 'practiceexternal'),
+      project: cell(record, 'projectexternal'),
+    });
+    if (!parsed.success) {
+      errors.push({ row, message: [...new Set(parsed.error.issues.map((issue) => issue.message))].join(' ') });
+      return;
+    }
+    const { rollNo, courseCode, termCode } = parsed.data;
+    const first = keys.get(`${rollNo}|${courseCode}|${termCode}`);
+    if (first !== undefined)
+      errors.push({ row, message: `${rollNo} in ${courseCode} already appears in row ${first}.` });
+    else {
+      keys.set(`${rollNo}|${courseCode}|${termCode}`, row);
+      rows.push({ ...parsed.data, row });
+    }
+  });
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, rows };
+}
+
+// One row against its course: a mark (or AB) for each component the course has, within its maximum, and nothing for
+// one it lacks.
+export function checkEndSemRow(
+  row: EndSemRow,
+  course: { code: string; credits: Credits; maxima: Record<Component, number> },
+): { ok: true; externals: External[] } | { ok: false; message: string } {
+  const problems: string[] = [];
+  const externals: External[] = [];
+  for (const component of COMPONENTS) {
+    const value = row[component];
+    const column = `${component}external`;
+    if (course.credits[component] === 0) {
+      if (value !== null) problems.push(`${column} has a mark, but ${course.code} has no ${component}.`);
+      continue;
+    }
+    const max = course.maxima[component];
+    if (value === null) problems.push(`${column} is empty: give the mark, or AB.`);
+    else if (value === 'AB') externals.push({ component, marks: null, max, absent: true });
+    else if (value > max) problems.push(`${column} ${value} is more than ${max}.`);
+    else externals.push({ component, marks: value, max, absent: false });
+  }
+  return problems.length > 0 ? { ok: false, message: problems.join(' ') } : { ok: true, externals };
+}
+
+export type InternalMarksRow = {
+  rollNo: string;
+  name: string;
+  courseCode: string;
+  termCode: string;
+  internals: Partial<Record<Component, number | null>>;
+};
+
+// 06 §8.4: the file for the exam section, the same header for every course. Internal marks at 2 dp, blank where the
+// course has no such component or the mark is missing; the external columns are left for the exam section. A cell
+// that a spreadsheet would read as a formula (a name starting with =) is escaped.
+export function buildInternalMarksCsv(rows: readonly InternalMarksRow[]): string {
+  const mark = (value: number | null | undefined) =>
+    value === null || value === undefined ? '' : roundHalfUp(value, 2);
+  return Papa.unparse(
+    {
+      fields: [...EXAM_CSV_COLUMNS],
+      data: rows.map((r) => [
+        r.rollNo,
+        r.name,
+        r.courseCode,
+        r.termCode,
+        mark(r.internals.theory),
+        mark(r.internals.practice),
+        mark(r.internals.project),
+        '',
+        '',
+        '',
+      ]),
+    },
+    { escapeFormulae: true },
+  );
 }
 
 // "Row 12: …" lines for the standard `Field`; at most `max` rows are listed (the file-level message has no row).

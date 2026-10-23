@@ -30,6 +30,7 @@ const KIND: Record<NotificationKind, { label: string; icon: PageIconName }> = {
   'results.published': { label: 'Results published', icon: 'badge' },
   'bank.drafted': { label: 'AI drafts', icon: 'books' },
   'task.assigned': { label: 'Project task', icon: 'course' },
+  'gradeSheet.published': { label: 'Grade sheet published', icon: 'diploma' },
 };
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {

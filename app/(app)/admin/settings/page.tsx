@@ -20,6 +20,7 @@ const ICON: Record<SettingsKey, PageIconName> = {
   proctoring: 'devices',
   ceTrend: 'chart',
   projects: 'code',
+  grading: 'diploma',
 };
 
 export default function SettingsPage() {

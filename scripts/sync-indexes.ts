@@ -11,7 +11,9 @@ import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Department } from '@/lib/models/department';
+import { EndSemMark } from '@/lib/models/end-sem-mark';
 import { Enrollment } from '@/lib/models/enrollment';
+import { GradeSheet } from '@/lib/models/grade-sheet';
 import { InternalMark } from '@/lib/models/internal-mark';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
@@ -54,6 +56,8 @@ const models = [
   Submission,
   InternalMark,
   RubricMark,
+  EndSemMark,
+  GradeSheet,
   Project,
   ProjectTask,
   Commit,

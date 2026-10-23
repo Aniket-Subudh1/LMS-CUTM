@@ -98,3 +98,12 @@ export const DraftQuestionsJob = z.object({
   coIds: z.array(objectId),
 });
 export type DraftQuestionsJob = z.infer<typeof DraftQuestionsJob>;
+
+// `compute/lockOffering` (06 §6, M08): one course of a "Lock the complete courses" run — worked out again, then
+// locked only when every active student's internal marks are complete.
+export const LockOfferingJob = z.object({ offeringId: objectId, syncRunId: objectId, actorId: objectId });
+export type LockOfferingJob = z.infer<typeof LockOfferingJob>;
+
+// `compute/gradeSheets` (06 §6, M08): a batch's grade sheets for a term worked out again (07 §6).
+export const GradeSheetsJob = z.object({ termId: objectId, batchId: objectId, syncRunId: objectId, actorId: objectId });
+export type GradeSheetsJob = z.infer<typeof GradeSheetsJob>;

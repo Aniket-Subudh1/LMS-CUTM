@@ -1,22 +1,33 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 
-// One import or export run (05 §7.4). M01b adds the courseware import; M07/M08 add theirs.
+// One import or export run (05 §7.4). M01b adds the courseware import; M07/M08 add theirs. M08's `marks_lock` (locking
+// several offerings) and `grade_sheets` (a batch's grade sheets) are runs of the same shape, kept per batch and term.
 const syncRunSchema = new Schema(
   {
     kind: {
       type: String,
-      enum: ['courseware', 'exam_pull_csv', 'exam_push_csv', 'exam_pull_api', 'exam_push_api', 'github'],
+      enum: [
+        'courseware',
+        'exam_pull_csv',
+        'exam_push_csv',
+        'exam_pull_api',
+        'exam_push_api',
+        'github',
+        'marks_lock',
+        'grade_sheets',
+      ],
       required: true,
     },
     // courseware: `new` (pages not imported yet), `all`, or `one`.
     mode: { type: String, enum: ['new', 'all', 'one'], default: null },
     offeringId: { type: Schema.Types.ObjectId, default: null },
     termId: { type: Schema.Types.ObjectId, default: null },
+    batchId: { type: Schema.Types.ObjectId, default: null },
     projectId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: ['running', 'succeeded', 'partial', 'failed'], required: true, default: 'running' },
     actorId: { type: Schema.Types.ObjectId, default: null },
     startedAt: { type: Date, required: true },
-    // When the last page of a listing was read; until then `stats.rows` is still growing.
+    // When the last page of a listing was read; until then `stats.rows` is still growing (courseware only).
     listedAt: { type: Date, default: null },
     finishedAt: { type: Date, default: null },
     // `rows` is unknown (null) until the listing is complete.
@@ -53,6 +64,7 @@ const syncRunSchema = new Schema(
 
 syncRunSchema.index({ kind: 1, startedAt: -1 });
 syncRunSchema.index({ offeringId: 1, startedAt: -1 });
+syncRunSchema.index({ batchId: 1, termId: 1, startedAt: -1 });
 
 export type SyncRunDoc = InferSchemaType<typeof syncRunSchema>;
 export const SyncRun: Model<SyncRunDoc> = mongoose.models.SyncRun ?? mongoose.model('SyncRun', syncRunSchema);
