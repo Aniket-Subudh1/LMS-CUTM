@@ -30,7 +30,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
-| M08 Exam integration & grade sheet | T0 — decisions recorded 23 Oct 2026; mock-ups next | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
+| M08 Exam integration & grade sheet | T0 — decisions recorded and mock-ups drawn 23 Oct 2026; waiting for the picks (E1, E5) | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
 | M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
@@ -2316,3 +2316,31 @@ Request: "continue and plan next milestone". M07's seven commits were pushed to 
 **Open questions** — none new. Q-04, Q-21, Q-39, Q-40 and Q-58 stay open. Q-58 now affects grade sheets: an in-person course with no classes recorded in the LMS leaves every student `incomplete` (decision 2).
 
 **Verification** — Docs only. The two vectors were computed by script (`python3`). A search of `docs/` for the old CSV columns, "non-locked", `departmentId=` and the old 7.56 vector finds them only in this log.
+
+### 2026-10-23 · M08/T0 Mock-ups · Claude Code, at Aniket's request
+
+**Created** — the mock-up list's note and link in `docs/milestones/M08-exam-integration-grades.md`; this entry.
+
+**Drawn** — Inside the real app (the e2e build on port 3101, as admin and student01): the real sidebar and header, with static content where the new screens go, compiled by Tailwind's browser build with the app's theme. Ten screens, each at 1440 px and 390 px:
+- the term's batches;
+- E1 A (four tabs) and E1 B (four numbered steps);
+- E2 (the lock dialog for incomplete students, and a bulk lock's result);
+- E3 (the upload, its failures and the courses still without external marks);
+- E4 (grade sheets before publishing);
+- E5 A (a mark sheet) and E5 B (a card per course);
+- E6 (Settings › Grading, and the exam section on Integrations).
+
+The student's sheet was worked out by script with 07 §6: 83, 76, 83 and 71 % give A+, A, A+ and A, and SGPA 119 / 14 = 8.50. Exams and Results use the `diploma` sidebar icon, unused until now.
+
+**Not done** — T1–T9: they wait for the picks.
+
+**Assumptions** — none.
+
+**Open questions** — none new. On phones, the course and student tables scroll sideways inside their card with no cue, as M06's and M07's do. Noted on the page for Aniket to decide.
+
+**Verification** — Every screen measured no wider than its window after three fixes:
+- the tab row and the file field were given `min-w-0`;
+- `PageHeader`'s own `min-w-0` wrapper was copied into the mock-ups;
+- the upload's failures became a list, since a table squeezed the problem column on a phone.
+
+Shown to Aniket on one page: https://claude.ai/artifact/TLMeWHfZFN2VXqcycpz42m (private).

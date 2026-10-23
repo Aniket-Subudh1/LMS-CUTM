@@ -47,6 +47,8 @@ Drawn inside the real app at 1440 px and 390 px; two variants where there is a r
 | E5 | The student's Results | A · a mark sheet, one table row per course · B · a card per course with its components · both with a print view |
 | E6 | Grading settings, and the exam runs on Integrations | one |
 
+Drawn on 23 Oct 2026 as admin and student01 on the e2e data and shown to Aniket on one page: https://claude.ai/artifact/TLMeWHfZFN2VXqcycpz42m (private). Also drawn: the term's list of batches (`/admin/exams`), the same for E1 A and B. **Picks:** pending.
+
 ## Tasks
 
 ### T1 · Models, settings, pure functions
