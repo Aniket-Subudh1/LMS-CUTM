@@ -32,6 +32,8 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
     items: [
       { href: '/home', label: 'Dashboard', icon: 'dashboard', roles: [...ASSIGNABLE_ROLES] },
       { href: '/courses', label: 'My courses', icon: 'courses', roles: ['student', 'faculty', 'hod', 'admin'] },
+      // M06 (DSH-02): internal marks across a department's courses; M09 and M10 add their reports here.
+      { href: '/reports/ce', label: 'Reports', icon: 'chart', roles: ['hod', 'admin'] },
       { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
       // M04b (TP-02): standalone tests, and those a share link let anyone into (a candidate's whole LMS).
       { href: '/tests', label: 'Tests', icon: 'evaluation' },

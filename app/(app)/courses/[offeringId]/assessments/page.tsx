@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { listOfferingAssessments, type AssessmentList } from '@/lib/data/assessments';
+import { getWorkspace } from '@/lib/data/workspace';
 import { formatDateTime, formatDuration, MODE_LABEL, statusTone } from '@/lib/format';
 import { ASSESSMENT_MODES, ASSESSMENT_STATES } from '@/lib/schemas/assessment';
 import { page as pageParam, pageSize } from '@/lib/schemas/common';
@@ -46,7 +47,10 @@ async function Assessments({
 }) {
   const { offeringId } = await params;
   const { page, q, mode, state, new: open } = Search.parse(await searchParams);
-  const list = await listOfferingAssessments(offeringId, { q, mode, state }, page);
+  const [list, workspace] = await Promise.all([
+    listOfferingAssessments(offeringId, { q, mode, state }, page),
+    getWorkspace(offeringId),
+  ]);
   const base = `/courses/${offeringId}/assessments`;
   const query = { ...(q ? { q } : {}), ...(mode ? { mode } : {}), ...(state ? { state } : {}) };
   const filtered = Boolean(q || mode || state);
@@ -113,7 +117,14 @@ async function Assessments({
         {toolbar}
         <TeacherTable list={list} offeringId={offeringId} page={page} query={query} filtered={filtered} />
       </Section>
-      {list.canTeach && open && <NewAssessmentDialog key={open} offeringId={offeringId} mode={open} />}
+      {list.canTeach && open && (
+        <NewAssessmentDialog
+          key={open}
+          offeringId={offeringId}
+          mode={open}
+          theory={workspace.category === 'ugc' && workspace.credits.theory > 0}
+        />
+      )}
     </>
   );
 }

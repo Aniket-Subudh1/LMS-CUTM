@@ -6,8 +6,8 @@ import { FormDialog } from '@/components/form-dialog';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { Input } from '@/components/ui/input';
 import { istDayKey, istTimeOfDay } from '@/lib/domain/time';
-import { MODE_LABEL } from '@/lib/format';
-import { ASSESSMENT_MODES, type AssessmentMode } from '@/lib/schemas/assessment';
+import { MODE_LABEL, PART_LABEL } from '@/lib/format';
+import { ASSESSMENT_MODES, COUNTS_TOWARD, type AssessmentMode, type CountsToward } from '@/lib/schemas/assessment';
 
 export const MODE_ICON: Record<AssessmentMode, PageIconName> = {
   quiz: 'quiz',
@@ -31,12 +31,63 @@ const MODE_HINT: Record<AssessmentMode, string> = {
   coding_competition: 'Programs only, ranked by the tests they pass.',
 };
 
+const COUNTS_HINT: Record<CountsToward | 'none', string> = {
+  midTerm1: 'The online mid-term',
+  midTerm2: 'The presentation',
+  assignment: 'Several count equally',
+  none: 'Practice; in the trend only',
+};
+
+// M06 (Q-41): on a course with theory credits, the theory part an assessment's published marks count toward. Here and
+// in the builder's settings, where it stays open after students start.
+export function CountsTowardField({ value }: { value: CountsToward | null }) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className="mb-1 text-sm font-medium">Counts toward</legend>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {([...COUNTS_TOWARD, 'none'] as const).map((option) => (
+          <label
+            key={option}
+            className="ring-border has-checked:ring-foreground has-checked:bg-muted/40 has-focus-visible:ring-ring flex cursor-pointer flex-col gap-0.5 rounded-md px-3 py-2 ring-1 transition-colors has-checked:ring-2"
+          >
+            <input
+              type="radio"
+              name="countsToward"
+              value={option}
+              defaultChecked={(value ?? 'none') === option}
+              className="sr-only"
+            />
+            <span className="text-[0.8125rem] font-semibold">
+              {option === 'none' ? 'Not counted' : PART_LABEL[option]}
+            </span>
+            <span className="text-muted-foreground text-xs">{COUNTS_HINT[option]}</span>
+          </label>
+        ))}
+      </div>
+      <p className="text-muted-foreground text-xs leading-relaxed">
+        Once its results are published, its marks count toward this part of the theory internal. You can change it until
+        the marks are locked.
+      </p>
+      <FieldErrors name="countsToward" />
+    </fieldset>
+  );
+}
+
 // What datetime-local shows for a time: its IST wall clock (06 §2).
 export const istLocal = (date: Date) => `${istDayKey(date)}T${istTimeOfDay(date)}`;
 
 // M04 decision 2 (A-107): the type, a title and the window; the builder changes the rest. Opened from the URL
 // (`?new=<mode>`) on the Assessments and Records tabs, with that type chosen; without a course, on Tests (M04b, TP-02).
-export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string | null; mode: AssessmentMode }) {
+export function NewAssessmentDialog({
+  offeringId,
+  mode,
+  theory = false,
+}: {
+  offeringId: string | null;
+  mode: AssessmentMode;
+  // A credit course with theory credits (M06): the dialog asks what the assessment counts toward.
+  theory?: boolean;
+}) {
   // The next whole hour, and an hour later for a timed one or a week later for work done at home.
   const opens = new Date(Math.ceil(new Date().getTime() / 3_600_000) * 3_600_000);
   const closes = new Date(opens.getTime() + (mode === 'quiz' || mode === 'written_test' ? 3_600_000 : 7 * 86_400_000));
@@ -76,6 +127,7 @@ export function NewAssessmentDialog({ offeringId, mode }: { offeringId: string |
       <Field name="title" label="Title">
         <Input name="title" required minLength={3} maxLength={160} placeholder="Quiz 2 · Arrays" />
       </Field>
+      {theory && <CountsTowardField value={null} />}
       <div className="grid gap-5 sm:grid-cols-2">
         <Field name="opensAt" label="Opens">
           <Input name="opensAt" type="datetime-local" required defaultValue={istLocal(opens)} />

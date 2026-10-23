@@ -43,6 +43,8 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
     ...(workspace.category === 'ugc' && (workspace.credits.theory > 0 || workspace.credits.practice > 0)
       ? [{ href: `${base}/records`, label: 'Records', icon: mark('books') }]
       : []),
+    // M06 (CE-09, DSH-02): internal marks, for a credit course.
+    ...(workspace.category === 'ugc' ? [{ href: `${base}/marks`, label: 'Marks', icon: mark('chart') }] : []),
     ...(learn ? [] : [{ href: `${base}/people`, label: 'People', icon: mark('people') }]),
   ];
   return (

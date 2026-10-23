@@ -51,6 +51,7 @@ import {
   type AssessmentMode,
   type AssessmentState,
   type AttemptPolicy,
+  type CountsToward,
   type Difficulty,
   type ItemType,
   type ProctorEvent,
@@ -580,10 +581,13 @@ export type Builder = {
   // Students have started, so the questions are fixed (05 §5.1).
   locked: boolean;
   credit: boolean;
+  // M06: a credit course with theory credits, whose assessments may count toward a theory part.
+  theory: boolean;
   offeringTitle: string | null;
   cos: { id: string; code: string; statement: string }[];
   assessment: AssessmentSummary & {
     status: AssessmentDoc['status'];
+    countsToward: CountsToward | null;
     instructions: RichTextDoc | null;
     items: TeacherItem[];
   };
@@ -610,7 +614,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
   await db();
   const [doc, offering] = await Promise.all([
     readAssessment(assessmentId),
-    offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, title: 1 }).lean() : null,
+    offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, credits: 1, title: 1 }).lean() : null,
   ]);
   const [course, statuses, pools, people, runner] = await Promise.all([
     offering ? Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean() : null,
@@ -645,11 +649,13 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     canEdit: access === 'manage',
     locked: statuses.length > 0,
     credit,
+    theory: credit && (offering?.credits.theory ?? 0) > 0,
     offeringTitle: offering?.title ?? null,
     cos: (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })),
     assessment: {
       ...summaryOf({ ...doc, questions: questionsOf(doc) }, new Date()),
       status: doc.status,
+      countsToward: doc.countsToward ?? null,
       instructions: docOf(doc.instructions),
       items,
     },

@@ -42,7 +42,7 @@ import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { BloomChip } from '@/components/bloom-chip';
 import { CopyButton } from '@/components/copy-button';
 import { FormDialog } from '@/components/form-dialog';
-import { istLocal } from '@/components/new-assessment-dialog';
+import { CountsTowardField, istLocal } from '@/components/new-assessment-dialog';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { QuestionDialog, TYPE_ICON } from '@/components/question-dialog';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -60,7 +60,7 @@ import { pickFromBank, type BankRow } from '@/lib/data/bank';
 import { listLinks, type ShareLink } from '@/lib/data/test-links';
 import { PAPERS_CAP } from '@/lib/domain/papers';
 import { plainText } from '@/lib/domain/rich-text';
-import { formatDateTime, formatDuration, ITEM_LABEL, ordinal, statusTone } from '@/lib/format';
+import { formatDateTime, formatDuration, ITEM_LABEL, ordinal, PART_LABEL, statusTone } from '@/lib/format';
 import {
   ASSESSMENT_LIMITS,
   MODE_ITEM_TYPES,
@@ -309,6 +309,7 @@ export async function AssessmentBuilder({
           >
             <dl className="grid gap-2 text-[0.8125rem]">
               {[
+                ...(b.theory ? [['Counts toward', a.countsToward ? PART_LABEL[a.countsToward] : 'Not counted']] : []),
                 ['Opens', formatDateTime(a.opensAt)],
                 ['Closes', formatDateTime(a.closesAt)],
                 ['Late hand-ins', a.lateUntil ? `Until ${formatDateTime(a.lateUntil)}` : 'Not allowed'],
@@ -530,7 +531,7 @@ function SettingsDialog({ b }: { b: Builder }) {
       title="Settings"
       description={
         fixed
-          ? 'Students have started, so only the title and the dates can change.'
+          ? `Students have started, so only the title, the dates${b.theory ? ' and what it counts toward' : ''} can change.`
           : 'Times are Indian Standard Time. A time limit runs from when each student starts.'
       }
       action={updateAssessmentSettings}
@@ -552,6 +553,7 @@ function SettingsDialog({ b }: { b: Builder }) {
           <Input name="lateUntil" type="datetime-local" defaultValue={a.lateUntil ? istLocal(a.lateUntil) : ''} />
         </Field>
       </div>
+      {b.theory && <CountsTowardField value={a.countsToward} />}
       <fieldset disabled={fixed} className="grid gap-5 disabled:opacity-60">
         <div className="grid gap-5 sm:grid-cols-3">
           <Field name="durationMin" label="Time limit (minutes)" hint="Leave empty for no limit.">

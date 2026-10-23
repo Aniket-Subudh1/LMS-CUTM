@@ -110,6 +110,8 @@ export type OfferingRow = {
   status: (typeof OFFERING_STATUSES)[number];
   faculty: { name: string; email: string }[];
   students: number;
+  // M06: a credit offering whose marks are not locked, so an admin may refresh its evaluation policy.
+  refreshable: boolean;
 };
 
 export type OfferingFilter = {
@@ -148,7 +150,7 @@ export async function listOfferings(
     ...(filters.status ? { status: filters.status } : {}),
   };
   const [docs, total] = await Promise.all([
-    Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1 })
+    Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1, category: 1, lockedAt: 1 })
       // A word search lists the closest matches first (text score); otherwise the usual order.
       .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
       .skip((page - 1) * pageSize)
@@ -175,6 +177,7 @@ export async function listOfferings(
       status: o.status,
       faculty: o.facultyIds.flatMap((id) => people.get(String(id)) ?? []),
       students: students.get(String(o._id)) ?? 0,
+      refreshable: o.category === 'ugc' && !o.lockedAt,
     })),
     total,
   };

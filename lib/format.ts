@@ -1,6 +1,7 @@
 import type { AssessmentMode, ItemType, ProctorEvent } from '@/lib/schemas/assessment';
 import type { Role } from '@/lib/schemas/common';
 import type { RUBRICS } from '@/lib/domain/evaluation';
+import { roundHalfUp } from '@/lib/domain/round';
 import type { RubricComponent, TheoryPart, Trend } from '@/lib/schemas/marks';
 import type { COURSE_TYPES } from '@/lib/schemas/structure';
 
@@ -144,6 +145,11 @@ const pctFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
 // `74%`, `66.67%` (08 §7): up to two decimals, no trailing zeros.
 export function formatPct(value: number): string {
   return `${pctFormat.format(value)}%`;
+}
+
+// Marks kept unrounded and shown at 2 dp (07 §1), with no trailing zeros: `28.53`, `12`.
+export function formatMarks(value: number): string {
+  return pctFormat.format(roundHalfUp(value, 2));
 }
 
 const sizeFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 });

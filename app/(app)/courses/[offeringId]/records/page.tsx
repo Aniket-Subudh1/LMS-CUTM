@@ -159,7 +159,14 @@ async function Records({
           </ul>
         )}
       </Section>
-      {grid.canTeach && open && <NewAssessmentDialog key={open} offeringId={offeringId} mode={open} />}
+      {grid.canTeach && open && (
+        <NewAssessmentDialog
+          key={open}
+          offeringId={offeringId}
+          mode={open}
+          theory={workspace.category === 'ugc' && workspace.credits.theory > 0}
+        />
+      )}
     </>
   );
 }

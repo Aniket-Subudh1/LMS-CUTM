@@ -81,12 +81,13 @@ const activeIds = (offeringId: string) =>
     .lean()
     .then((rows) => rows.map((row) => row.studentId));
 
+// `state`: a draft, published with no results yet, or with its results out (only those count, A-20).
 export type CountingAssessment = {
   id: string;
   title: string;
   mode: AssessmentMode;
   maxMarks: number;
-  published: boolean;
+  state: 'draft' | 'published' | 'results';
 };
 
 export type MarksSheet = {
@@ -95,7 +96,7 @@ export type MarksSheet = {
   computedAt: Date | null;
   components: { key: Component; max: number }[];
   parts: { key: TheoryPart; label: string; max: number }[];
-  // What feeds each theory part: the assessments set to count toward it (published ones only count), and the classes.
+  // What feeds each theory part: the assessments set to count toward it (drafts too, so a teacher sees their choice).
   counting: Record<Exclude<TheoryPart, 'attendance'>, CountingAssessment[]>;
   notCounted: number;
   classesHeld: number;
@@ -127,10 +128,7 @@ export async function getMarksSheet(offeringId: string, filter: MarksFilter, pag
   const id = new Types.ObjectId(offeringId);
   const [ids, assessments, summary, held] = await Promise.all([
     activeIds(offeringId),
-    Assessment.find(
-      { offeringId, status: { $ne: 'draft' } },
-      { title: 1, mode: 1, maxMarks: 1, status: 1, countsToward: 1 },
-    )
+    Assessment.find({ offeringId }, { title: 1, mode: 1, maxMarks: 1, status: 1, countsToward: 1 })
       .sort({ closesAt: 1, _id: 1 })
       .limit(ASSESSMENT_LIMITS.perOffering)
       .lean(),
@@ -171,7 +169,7 @@ export async function getMarksSheet(offeringId: string, filter: MarksFilter, pag
       title: a.title,
       mode: a.mode,
       maxMarks: a.maxMarks,
-      published: a.status === 'results_published',
+      state: a.status === 'results_published' ? 'results' : a.status,
     });
   }
   const s = summary[0];
