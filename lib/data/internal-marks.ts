@@ -78,16 +78,19 @@ export async function gradedAttempts(
 
 // T2 (07 §2–3): every active student's internal marks in a credit offering, worked out again from the published
 // results, the finalized classes and the rubrics, and written whole. Safe to run in the worker and to run twice.
+// `lockedAt` (M08) is the lock this run closes: locking runs it once more straight after, for a change made between
+// its check and the lock.
 export async function recomputeInternalMarks(
   offeringId: string,
   now: Date,
+  lockedAt?: Date,
 ): Promise<{ skipped: 'missing' | 'skill' | 'locked' } | { students: number }> {
   await db();
   const offering = await Offering.findById(offeringId, { category: 1, credits: 1, evaluation: 1, lockedAt: 1 }).lean();
   if (!offering) return { skipped: 'missing' };
   if (offering.category === 'skill') return { skipped: 'skill' };
   // 05 §3.8: nothing moves while marks are locked.
-  if (offering.lockedAt) return { skipped: 'locked' };
+  if (offering.lockedAt && offering.lockedAt.getTime() !== lockedAt?.getTime()) return { skipped: 'locked' };
   const [policy, trendSettings, assessments, enrolments, practiceRows, reviews, classes] = await Promise.all([
     policyOf(offering.evaluation),
     stored('ceTrend').then((value) => SETTINGS.ceTrend.schema.parse(value)),

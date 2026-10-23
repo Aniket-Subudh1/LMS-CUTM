@@ -70,25 +70,25 @@ Files: `lib/models/end-sem-mark.ts`, `lib/models/grade-sheet.ts` (05 §5.4–5.5
 ### T3 · The Exams page and locking (CE-12; mock-ups E1, E2)
 Route `/admin/exams` (admin; "Exams" in the admin menu): a term's batches, each with its progress (courses locked of total, students with end-sem marks, sheets ready, incomplete and published), ten a page. `/admin/exams/[batchId]?term=` is one batch's page (E1's pick).
 - The batch's credit courses of the term: internal-marks completeness and lock state.
-- `lockOffering` (admin): `recomputeInternalMarks`, then any active student not `complete` requires `overrideReason` (≥ 10 characters; VALIDATION listing the students and what each lacks). In one transaction set `lockedAt` and `lockedBy`, and write audit `marks.locked` (with the reason, if any).
-- `lockOfferings` (admin): up to 50 of the batch's courses. A `marks_lock` run and one `compute/lockOffering` job per course; a course with incomplete students is not locked, and its failure says to lock it on its own with a reason. The page shows the run's results.
+- `lockOffering` (admin): `recomputeInternalMarks`, then any active student not `complete` requires `overrideReason` (≥ 10 characters; VALIDATION saying how many). In one transaction set `lockedAt` and `lockedBy`, and write audit `marks.locked` (with the reason, if any). One more recompute straight after the lock (`recomputeInternalMarks(id, now, lockedAt)`) takes in a change made between the check and the lock; anything later is refused. The batch page lists the incomplete students and what each lacks, from the stored marks.
+- `lockCompleteCourses` (admin, term, batch): the batch's unlocked credit courses, up to 50, with no selection. A `marks_lock` run and one `compute/lockOffering` job per course; a course with incomplete students is not locked, and its failure says to lock it on its own with a reason. The page shows the run's results.
 - `unlockOffering` (admin): reason ≥ 10 characters. Refused while a published sheet includes the course (unpublish first). Clears the lock, turns draft sheets that include the course to `incomplete`, and writes audit `marks.unlocked`, in one transaction.
 
 ### T4 · Send to the exam section (EXM-04 / CE-11 via CSV)
 `GET /api/exports/internal-marks?termId=&batchId=` (admin session; 06 §3):
-- **locked** courses of the batch and term only; one row per active enrolment (06 §8.4), sorted by course code and roll number, streamed from a cursor; more than 10,000 rows → 400 with a message.
+- **locked** courses of the batch and term only; one row per active enrolment (06 §8.4), sorted by course code and roll number, built in memory (at most 10,000 rows, about 1 MB); none locked, or more than 10,000 rows → 400 with a message.
 - `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="internal-marks-<term>-<batch>.csv"`.
 - An `exam_push_csv` run (stats), `offerings.lastPushedAt`, audit `ce.exported`.
 
 ### T5 · Bring back the marks (EXM-03, EXM-07 via CSV; mock-up E3)
 `importEndSem` (admin, term, batch, `FormData` file ≤ 2 MB), on the batch's page, since the file is that batch's export:
-1. `parseEndSemCsv`. Resolve each row to one active enrolment in a credit offering of that course and term; `checkEndSemRow` against that offering's credits and evaluation copy. An unknown roll number or course, another term, a student of another batch, or a student not enrolled or enrolled twice, is a row error: the mismatch report.
+1. `parseEndSemCsv`. Resolve each row to one active enrolment in a credit offering of this batch, that course and term; `checkEndSemRow` against that offering's credits and evaluation copy. An unknown roll number or course, another term, or a student not enrolled in such an offering or enrolled in two, is a row error: the mismatch report.
 2. A student whose grade sheet for the term is published → row error.
 3. All or nothing: in one transaction, upsert `endSemMarks` (`source: 'csv'`, `syncRunId`, `importedAt`), turn the students' draft sheets to `incomplete`, and finish the `exam_pull_csv` run (`succeeded`; or `failed` with its failures and nothing written). Write audit `endsem.imported`.
 4. The batch page shows the last import's figures and its failures (row, key, message); the same lines return as `fieldErrors.file`. Then the batch's courses whose enrolled students lack end-sem marks (completeness).
 
 ### T6 · Grade sheets (EXM-05, DSH-07; mock-ups E4, E5)
-- `computeGradeSheets` (admin, term, batch) → a `grade_sheets` run and the `compute/gradeSheets` job (`gs-<termId>-<batchId>`). For every student of the batch with active credit enrolments in the term: each course must be locked, the student's internal components all non-null, and the end-sem row present (decision 2). The sheet is then `draft` with its rows (`buildGradeSheetRow`) and SGPA (`sgpa`, if `showSgpa`); otherwise `incomplete` with what is missing. Published sheets are not touched.
+- `computeGradeSheets` (admin, term, batch) → a `grade_sheets` run and the `compute/gradeSheets` job (`gs-<syncRunId>`; none while a run for the batch and term is going). For every student of the batch with active credit enrolments in the term: each course must be locked, the student's internal components all non-null, and the end-sem row present (decision 2). The sheet is then `draft` with its rows (`buildGradeSheetRow`) and SGPA (`sgpa`, if `showSgpa`); otherwise `incomplete` with what is missing. Published sheets are not touched.
 - The preview: Ready · Incomplete · Published, ten a page (roll no, name, credits, SGPA, any F or Ab; for incomplete students, what is missing). A student's detail is identical to the student's own view.
 - `publishGradeSheets` (admin, term, batch): drafts → `published`, `publishedAt` and `publishedBy`, with audit `gradesheet.published` (counts) in one transaction; then `notify` those students (`gradeSheet.published`, in-app).
 - `unpublishGradeSheets` (admin, term, batch, reason ≥ 10 characters): published → draft; audit `gradesheet.unpublished`.
@@ -112,7 +112,7 @@ Add to `/admin/integrations`: the last 50 runs of kinds `exam_*`, `marks_lock` a
 - **AC-M08-02** The export opens in a spreadsheet with one row per student and course, the internal marks of every component and three empty external columns, and includes only locked courses.
 - **AC-M08-03** The export, filled in and uploaded back, imports fully. The same file with one unknown roll number imports nothing and names that row.
 - **AC-M08-04** Grade sheets reproduce 07 §6 exactly (grades, points, SGPA) and are visible to students only after publication. A student with a missing mark gets no sheet and is listed with what is missing.
-- **AC-M08-05** Every lock, unlock, export, import and publication appears in the audit log and `syncRuns`.
+- **AC-M08-05** Every lock, unlock, export, import and publication appears in the audit log; every export, import, bulk lock and grade-sheet run also in `syncRuns` (and on Integrations).
 
 ## Validation checklist (human)
 

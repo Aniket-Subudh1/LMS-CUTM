@@ -11,10 +11,12 @@ import type {
   GithubNightlyJob,
   GithubProjectJob,
   GradeCodeJob,
+  GradeSheetsJob,
   InternalMarksJob,
   InternalMarksNightlyJob,
   LiveControlJob,
   LiveSweepJob,
+  LockOfferingJob,
   MailJob,
   MakeTestFileJob,
   MailSend,
@@ -39,7 +41,9 @@ type ComputeData =
   | MakeTestFileJob
   | DraftQuestionsJob
   | InternalMarksJob
-  | InternalMarksNightlyJob;
+  | InternalMarksNightlyJob
+  | LockOfferingJob
+  | GradeSheetsJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -51,7 +55,9 @@ type ComputeName =
   | 'makeTestFile'
   | 'draftQuestions'
   | 'internalMarks'
-  | 'internalMarksNightly';
+  | 'internalMarksNightly'
+  | 'lockOffering'
+  | 'gradeSheets';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -206,6 +212,16 @@ export async function queueTestFile(fileId: string, requestedAt: Date): Promise<
 // failure tells the teacher, who asks again.
 export async function queueDraftQuestions(job: DraftQuestionsJob): Promise<void> {
   await computeQueue().add('draftQuestions', job, { jobId: `draft-${job.requestedBy}-${Date.now()}`, attempts: 1 });
+}
+
+// M08 (06 §6): one course of a "Lock the complete courses" run.
+export async function queueLockOffering(job: LockOfferingJob): Promise<void> {
+  await computeQueue().add('lockOffering', job, { jobId: `lock-${job.syncRunId}-${job.offeringId}` });
+}
+
+// M08 (06 §6): a batch's grade sheets; one run at a time per batch and term (the action checks), so the run names it.
+export async function queueGradeSheets(job: GradeSheetsJob): Promise<void> {
+  await computeQueue().add('gradeSheets', job, { jobId: `gs-${job.syncRunId}` });
 }
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.

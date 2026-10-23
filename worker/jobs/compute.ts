@@ -2,7 +2,9 @@ import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import mongoose, { type Types } from 'mongoose';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
+import { workOutGradeSheets } from '@/lib/data/grade-sheets';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
+import { lockForRun } from '@/lib/data/locks';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
 import { csvItem, paragraph, storedItem } from '@/lib/data/questions';
@@ -42,10 +44,12 @@ import {
   DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
+  GradeSheetsJob,
   InternalMarksJob,
   InternalMarksNightlyJob,
   LiveControlJob,
   LiveSweepJob,
+  LockOfferingJob,
   MakeTestFileJob,
   ProctorRetentionJob,
   TestStatsJob,
@@ -65,7 +69,9 @@ type ComputeName =
   | 'makeTestFile'
   | 'draftQuestions'
   | 'internalMarks'
-  | 'internalMarksNightly';
+  | 'internalMarksNightly'
+  | 'lockOffering'
+  | 'gradeSheets';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -77,7 +83,9 @@ type ComputeData =
   | MakeTestFileJob
   | DraftQuestionsJob
   | InternalMarksJob
-  | InternalMarksNightlyJob;
+  | InternalMarksNightlyJob
+  | LockOfferingJob
+  | GradeSheetsJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -251,15 +259,24 @@ async function assessmentSweep(now: Date): Promise<void> {
     if (expired.length < 500) break;
   }
   // TP-11: a test whose rule publishes its results does so once it has closed, nobody is writing and every hand-in
-  // is marked; the audit log names whoever chose the rule.
-  const closed = await Assessment.find(
+  // is marked; the audit log names whoever chose the rule. At most 100 tests are looked at a run. M08: a locked
+  // course's results wait for an unlock (05 §3.8); its tests are passed over and do not count toward the 100.
+  const closed = Assessment.find(
     { 'results.release': 'on_close', status: 'published', closesAt: { $lte: now } },
     { title: 1, offeringId: 1, opensAt: 1, closesAt: 1, lateUntil: 1, results: 1, createdBy: 1 },
   )
-    .limit(100)
-    .lean();
+    .lean()
+    .cursor();
+  const locked = new Map<string, boolean>();
+  let looked = 0;
   let released = 0;
-  for (const test of closed) {
+  for await (const test of closed) {
+    const offeringId = test.offeringId ? String(test.offeringId) : null;
+    if (offeringId && !locked.has(offeringId)) {
+      locked.set(offeringId, Boolean(await Offering.exists({ _id: offeringId, lockedAt: { $ne: null } })));
+    }
+    if (offeringId && locked.get(offeringId)) continue;
+    if (++looked > 100) break;
     const state = windowState({
       now,
       opensAt: test.opensAt,
@@ -768,6 +785,14 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'internalMarksNightly') {
     InternalMarksNightlyJob.parse(job.data);
     return internalMarksNightly();
+  }
+  if (job.name === 'lockOffering') return lockForRun(LockOfferingJob.parse(job.data), new Date());
+  if (job.name === 'gradeSheets') {
+    return workOutGradeSheets(
+      GradeSheetsJob.parse(job.data),
+      new Date(),
+      job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+    );
   }
   LiveSweepJob.parse(job.data);
   return liveSweep(new Date());
