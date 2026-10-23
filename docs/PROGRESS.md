@@ -2171,7 +2171,9 @@ Request: "the sidebar is getting short in many screens based on the screenshot �
 - `app/(app)/layout.tsx`: that group and Sign out sit in a `SidebarFooter` (inside `<Suspense>`, as `usePathname` needs), below the scrolling menu. The sidebar keeps its look.
 - 08 §3 and §5.2.
 
-**Not done** — An admin's menu still scrolls under the footer on a laptop-height window (Settings, Audit log and Users at 768 px), with no cue that it continues.
+**Then (Aniket):** a hairline rule (`SidebarSeparator`, inset like the groups) sets the footer off from the menu. The primitive's own full width had to be overridden, or it ran 15 px past the sidebar.
+
+**Not done** — An admin's menu still scrolls above the footer on a laptop-height window (Settings, Audit log and Users at 768 px). The rule marks where it ends.
 
 **Verification**
 - Measured again: Profile's and Sign out's bottoms are at 706 and 752 px in a 768 px window, and 838 and 884 px at 900 px, for admin and faculty, scrolled or not.

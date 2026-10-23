@@ -92,7 +92,7 @@ The nav lists only routes that exist, in groups; each milestone adds its own ite
 | Administration | Structure (`/admin`; also owns departments, programmes, terms) with sub-items Departments, Programmes, Terms | admin |
 | Administration | Offerings, Imports (M01b), Settings, Audit log | admin |
 | Administration | Users (`/admin/users`) | admin, support |
-| Account (the sidebar's fixed footer) | Profile, then Sign out; they stay in view while a long menu (an admin's on a laptop) scrolls above them (Aniket, 23 Oct 2026) | all |
+| Account (the sidebar's fixed footer) | Profile, then Sign out, under a hairline rule; they stay in view while a long menu (an admin's on a laptop) scrolls above them (Aniket, 23 Oct 2026) | all |
 
 The admin area has no `TabNav`: the sidebar is its navigation.
 

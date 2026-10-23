@@ -25,6 +25,7 @@ import {
   SidebarMenuSkeleton,
   SidebarProvider,
   SidebarRail,
+  SidebarSeparator,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { getViewer } from '@/lib/auth/session';
@@ -141,7 +142,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <Nav />
           </Suspense>
         </SidebarContent>
-        {/* Profile and Sign out stay in view however long the menu above them is (an admin's scrolls on a laptop). */}
+        {/* Profile and Sign out stay in view however long the menu above them is (an admin's scrolls on a laptop),
+            set off from it by a rule (Aniket, 23 Oct 2026). */}
+        <SidebarSeparator className="mx-4 group-data-[collapsible=icon]:mx-2 data-[orientation=horizontal]:w-auto" />
         <SidebarFooter className="p-0 [--radius:0.75rem]">
           <Suspense
             fallback={
