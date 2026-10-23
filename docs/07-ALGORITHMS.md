@@ -34,9 +34,9 @@ Since M01b the marking follows CUTM's Examination Policy (2020), held as the set
 **Internal marks (M06; Q-41 answered by Aniket, 23 Oct 2026)** — `lib/domain/evaluation.ts`, maxima from the offering's evaluation copy:
 - Each assessment of a credit course with theory credits counts toward one theory part (`countsToward`: Mid-term I, Mid-term II, Assignment) or none. A presentation for Mid-term II is an assignment with a rubric.
 - `partMarks(max, results)` — over the part's assessments with published results (A-20), each `{ counted, max }` with `counted` from `countedScore` (§14; a missed one counts 0, A-14): `max × mean(counted / maxMarks)`, so each assessment counts equally. `null` when none counts toward the part yet.
-- The attendance part is `attendancePoints(attendancePct(attended, held), bands)` over the student's finalized live classes (A-72); `null` while none is held.
-- `theoryInternal(parts)` — the four parts added up (out of 40 by default); `null` while any is `null`.
-- `rubricInternal(criteria, maxima)` — the practice or project rubric the teacher filled, added up (out of 50 by default); `null` while any criterion is blank.
+- The attendance part is `attendancePoints(100 × attended / held, bands)` over the student's finalized live classes (A-72): the unrounded percentage decides the band (449 of 500, 89.8 %, is 4, never 5); `attendancePct` (2 dp) is what is shown. `null` while no class is held.
+- `addedUp(values)` — the theory internal is the four parts added up (out of 40 by default), the practice or project internal the rubric's six criteria (out of 50 by default); `null` while any is missing.
+- `computeInternalMarks(input)` puts these together for one student: the parts, `attendancePct`, each component the course has, `complete` and `internalPct`.
 - `complete` — every component the course has (credits above 0) has its internal marks. `internalPct` = `roundHalfUp(100 × Σ internals / Σ maxima, 2)` once complete, else `null`.
 - Everything is kept unrounded and shown at 2 dp (§1); the course percentage, with the external marks, rounds once in M08.
 - External marks — the end-semester 60, the practice examiner's 50 and the project's external 50 — come from the exam section's CSV with the end-semester marks (M08). Teachers never type them.

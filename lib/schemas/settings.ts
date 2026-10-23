@@ -152,9 +152,7 @@ export const SETTINGS = {
           z
             .array(
               z.object({
-                key: z
-                  .string()
-                  .regex(/^[a-z][a-z0-9_]{0,19}$/, 'Each key is lower-case letters and digits, like cpp.'),
+                key: z.string().regex(/^[a-z][a-z0-9_]{0,19}$/, 'Each key is lower-case letters and digits, like cpp.'),
                 label: z.string().min(1, 'Give each language a name.').max(60),
                 runnerId: z.coerce
                   .number({ error: 'Each runner id is a number.' })
@@ -200,8 +198,44 @@ export const SETTINGS = {
         "Snapshots are deleted this many days after a test's results are published. Until then only the test's teachers and owners see them; the person in them never does.",
     },
   },
+  ceTrend: {
+    // M06 (07 §3): proposed values; the client has not set them.
+    schema: z
+      .object({
+        window: z.coerce
+          .number({ error: 'Enter a number of results.' })
+          .int('Use a whole number.')
+          .min(3, 'Use 3 to 12 results.')
+          .max(12, 'Use 3 to 12 results.')
+          .default(6),
+        minPoints: z.coerce
+          .number({ error: 'Enter a number of results.' })
+          .int('Use a whole number.')
+          .min(2, 'Use at least 2 results.')
+          .max(12, 'Use at most 12 results.')
+          .default(3),
+        slopeThreshold: z.coerce
+          .number({ error: 'Enter a number of points.' })
+          .min(0.5, 'Use 0.5 to 20 points.')
+          .max(20, 'Use 0.5 to 20 points.')
+          .multipleOf(0.5, 'Use steps of 0.5.')
+          .default(2),
+      })
+      .refine((v) => v.minPoints <= v.window, {
+        path: ['minPoints'],
+        message: 'Use at most the number of results looked at.',
+      }),
+    label: 'Performance trend',
+    description: "How a student's results are read as rising, dropping or steady on the Marks tab and the CE report.",
+    fieldHelp: {
+      window: 'How many of the latest published results are looked at, oldest first.',
+      minPoints: 'With fewer published results than this, the trend says "Too few results".',
+      slopeThreshold:
+        'How many percentage points a result must gain or lose on average, from one to the next, to count as rising or dropping.',
+    },
+  },
 } as const;
 
-export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'codeRunner', 'proctoring']);
+export const settingsKey = z.enum(['lessons', 'evaluation', 'attendance', 'codeRunner', 'proctoring', 'ceTrend']);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

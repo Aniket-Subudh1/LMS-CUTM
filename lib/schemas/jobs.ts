@@ -67,6 +67,13 @@ export type MakeTestFileJob = z.infer<typeof MakeTestFileJob>;
 export const TestStatsJob = z.object({ assessmentId: objectId });
 export type TestStatsJob = z.infer<typeof TestStatsJob>;
 
+// `compute/internalMarks` (06 §6, M06): one credit offering's internal marks worked out again (07 §2–3); and the
+// nightly job that queues it for every active credit offering.
+export const InternalMarksJob = z.object({ offeringId: objectId });
+export type InternalMarksJob = z.infer<typeof InternalMarksJob>;
+export const InternalMarksNightlyJob = z.object({});
+export type InternalMarksNightlyJob = z.infer<typeof InternalMarksNightlyJob>;
+
 // `compute/proctorRetention` (06 §6, M04b): the daily deletion of old proctoring snapshots (05 §8).
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;

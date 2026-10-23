@@ -83,3 +83,18 @@ describe('live-class attendance (07 §10)', () => {
     expect(attendance.safeParse({ liveThresholdPct: '101' }).success).toBe(false);
   });
 });
+
+describe('performance trend (07 §3, M06)', () => {
+  const ceTrend = SETTINGS.ceTrend.schema;
+  it('defaults to the last 6 results, at least 3, and 2 points', () => {
+    expect(ceTrend.parse({})).toEqual({ window: 6, minPoints: 3, slopeThreshold: 2 });
+    expect(ceTrend.parse({ window: '8', minPoints: '4', slopeThreshold: '2.5' })).toEqual({
+      window: 8,
+      minPoints: 4,
+      slopeThreshold: 2.5,
+    });
+  });
+  it('needs no more results for a trend than it looks at', () => {
+    expect(ceTrend.safeParse({ window: '4', minPoints: '5' }).error?.issues[0]).toMatchObject({ path: ['minPoints'] });
+  });
+});

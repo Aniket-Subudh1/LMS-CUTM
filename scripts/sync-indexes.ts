@@ -11,6 +11,7 @@ import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
+import { InternalMark } from '@/lib/models/internal-mark';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
@@ -18,6 +19,7 @@ import { Notification } from '@/lib/models/notification';
 import { Otp } from '@/lib/models/otp';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { RubricMark } from '@/lib/models/rubric-mark';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
 import { SyncRun } from '@/lib/models/sync-run';
@@ -46,6 +48,8 @@ const models = [
   Attendance,
   Assessment,
   Submission,
+  InternalMark,
+  RubricMark,
   BankItem,
   TestLink,
   TestGrant,

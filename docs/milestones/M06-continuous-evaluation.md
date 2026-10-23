@@ -36,13 +36,18 @@ Drawn inside the real app (a build on port 3101 with the e2e data, faculty1, stu
 | M4 | "Counts toward" in the New assessment dialog and the builder's settings | one |
 | M5 | The CE report | one |
 
-Picks: *waiting for Aniket.*
+**Picks (Aniket, 23 Oct 2026):**
+- M1 **A** · part by part: a column per theory part, then the components' internals and the trend.
+- M2 **A** · the ten-row grid with "Save this page".
+- M3–M5 as shown.
+- The tab row (found while drawing: a teacher's tabs are 1212 px in a 1104 px row at 1440 px, so People is out of view, and Marks adds one) **scrolls to show the current tab, with a fade at an edge that has more tabs**. `TabNav` keeps one row and its icons.
+- The mock-ups' own faults are not to be copied: tiles without their icons, buttons and inputs on the page grey instead of white, the attendance line cut off, and headings wrapping under the buttons. The screens use the app's components (`Section`, `DataTable`, the hand-ins tiles).
 
 ## Tasks
 
 ### T1 · Foundation: models, rules, settings
 Files: `lib/models/internal-mark.ts`, `lib/models/rubric-mark.ts` (05 §5.3, §5.3a), `lib/models/assessment.ts` (+ `countsToward`), `lib/schemas/assessment.ts` (+ `COUNTS_TOWARD`, the field on `CreateAssessment` and `UpdateAssessmentSettings`), `lib/domain/evaluation.ts` (+ test), `lib/domain/trend.ts` (+ test), `lib/schemas/settings.ts` (+ `ceTrend`, 06 §7), `lib/schemas/jobs.ts` (+ `InternalMarksJob`), `scripts/sync-indexes.ts`.
-- `partMarks`, `theoryInternal`, `rubricInternal`, `computeInternalMarks` — 07 §2, every vector and the worked example as `it.each`. Reuse `attendancePoints`, `attendancePct` (07 §10) and `countedScore` (07 §14).
+- `partMarks`, `addedUp`, `computeInternalMarks` — 07 §2, every vector and the worked example as `it.each`. The shared lists (`THEORY_PARTS`, `RUBRIC_COMPONENTS`, `TRENDS`) and the actions' inputs are in `lib/schemas/marks.ts`. Reuse `attendancePoints`, `attendancePct` (07 §10) and `countedScore` (07 §14).
 - `computeTrend(points, settings)` — 07 §3, every vector.
 
 ### T2 · Recompute (shared by actions and the worker)
@@ -60,13 +65,13 @@ Triggers (each only for an assessment with an offering):
 - after results are published: `gradeSubmission`, `waivePenalty` (waiving and putting back), and the `gradeCode` job;
 - `finalizeLiveSession` and `markAttendance` (the attendance part);
 - `changeEnrollments`, `addStudent`, `setEnrollmentStatus`;
-- `setCountsToward`, `saveRubricMarks`, `refreshEvaluation`;
+- a change of "Counts toward", `saveRubricMarks`, `refreshEvaluation`;
 - the nightly scheduler.
 
 Move `requireUnlocked` from the assessments actions to `lib/data/offerings.ts` as `assertUnlocked` (the name M08 T2 uses); its callers are the assessments actions and the new marks actions.
 
 ### T3 · Actions
-- `setCountsToward` (teach; credit offering with theory credits; unlocked): audited `assessment.counts_toward`; queues the recompute. Also accepted by `createAssessment` and `updateAssessmentSettings`.
+- "Counts toward" is a field of `createAssessment` and `updateAssessmentSettings` (it stays editable after students start, outside the fields that freeze): only on a credit offering with theory credits, refused while locked, audited `assessment.counts_toward` when it changes, and it queues the recompute.
 - `saveRubricMarks` (`app/(app)/courses/[offeringId]/marks/actions.ts`; teach; unlocked; a component the offering has; a page of students, each criterion blank or 0 to its maximum in steps of 0.01): one `rubricMarks` upsert and one `marks.rubric_saved` audit entry per student whose criteria changed; queues the recompute.
 - `requestRecompute` (teach; limit 1 a minute per offering): queues the recompute.
 - `refreshEvaluation` (`app/(app)/admin/offerings/actions.ts`; admin; credit offering; unlocked): copies the `evaluation` settings onto the offering, audited `offering.evaluation_refreshed` with before and after; queues the recompute.

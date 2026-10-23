@@ -17,6 +17,12 @@ export const ASSESSMENT_MODES = [
 export type AssessmentMode = (typeof ASSESSMENT_MODES)[number];
 export const RECORD_MODES = ['learning_record', 'lab_record'] as const satisfies readonly AssessmentMode[];
 
+// M06 (Q-41, 07 §2): the theory part a credit course's assessment counts toward. A form posts `none` for "Not counted";
+// a form without the field (no theory credits, a standalone test) leaves it as it is.
+export const COUNTS_TOWARD = ['midTerm1', 'midTerm2', 'assignment'] as const;
+export type CountsToward = (typeof COUNTS_TOWARD)[number];
+const countsToward = z.enum([...COUNTS_TOWARD, 'none'], 'Choose what it counts toward.').optional();
+
 // M04b adds true or false, fill in the blanks, matching and ordering (TP-06), and code (TP-09).
 export const ITEM_TYPES = [
   'mcq',
@@ -139,6 +145,7 @@ export const CreateAssessment = z
     title,
     opensAt: istDateTime,
     closesAt: istDateTime,
+    countsToward,
   })
   .refine(closesAfterOpening, closing);
 
@@ -162,6 +169,7 @@ export const UpdateAssessmentSettings = z
     attemptPolicy: z.enum(ATTEMPT_POLICIES).default('best'),
     shuffleItems: z.stringbool().default(false),
     shuffleOptions: z.stringbool().default(false),
+    countsToward,
   })
   .refine(closesAfterOpening, closing)
   .refine((input) => !input.lateUntil || input.lateUntil >= input.closesAt, {

@@ -4,6 +4,7 @@ import {
   ASSESSMENT_MODES,
   ASSESSMENT_STATUSES,
   ATTEMPT_POLICIES,
+  COUNTS_TOWARD,
   DIFFICULTIES,
   ITEM_TYPES,
   PROCTOR_LIMITS,
@@ -143,6 +144,8 @@ const assessmentSchema = new Schema(
     offeringId: { type: Schema.Types.ObjectId, default: null },
     ownerIds: { type: [Schema.Types.ObjectId], default: [] },
     mode: { type: String, enum: ASSESSMENT_MODES, required: true },
+    // M06 (Q-41): the theory part its published marks count toward; null is not counted (07 §2).
+    countsToward: { type: String, enum: COUNTS_TOWARD, default: null },
     title: { type: String, required: true, trim: true, maxlength: 160 },
     instructions: { type: Schema.Types.Mixed },
     items: { type: [itemSchema], default: [] },

@@ -189,6 +189,22 @@ describe('assessment windows', () => {
   });
 });
 
+describe('counts toward (M06, Q-41)', () => {
+  const create = {
+    offeringId: id(1),
+    mode: 'quiz',
+    title: 'Mid-term 1',
+    opensAt: '2026-10-30T10:00',
+    closesAt: '2026-10-30T11:00',
+  };
+  it('takes a theory part or none, and is left out when the form has no such field', () => {
+    expect(CreateAssessment.parse({ ...create, countsToward: 'midTerm1' })).toMatchObject({ countsToward: 'midTerm1' });
+    expect(CreateAssessment.parse({ ...create, countsToward: 'none' })).toMatchObject({ countsToward: 'none' });
+    expect(CreateAssessment.parse(create).countsToward).toBeUndefined();
+    expect(CreateAssessment.safeParse({ ...create, countsToward: 'attendance' }).success).toBe(false);
+  });
+});
+
 describe('GradeSubmission', () => {
   it('needs one marks and one comment field per question', () => {
     const ok = { offeringId: id(1), submissionId: id(2), 'item[]': [id(3)], 'marks[]': ['2'], 'comment[]': [''] };

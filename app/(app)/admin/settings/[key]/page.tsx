@@ -28,7 +28,7 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
 }
 
 // Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
-// `codeRunner` and `proctoring`.
+// `codeRunner` and `proctoring`, M06's `ceTrend`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -43,6 +43,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <CodeRunner page={await getSettingsPage('codeRunner')} runner={await getRunnerLanguages()} />;
     case 'proctoring':
       return <Proctoring page={await getSettingsPage('proctoring')} />;
+    case 'ceTrend':
+      return <CeTrend page={await getSettingsPage('ceTrend')} />;
   }
 }
 
@@ -244,6 +246,60 @@ function Proctoring({ page }: { page: SettingsPage<'proctoring'> }) {
                 </span>
               </span>
             </Field>
+          </ActionForm>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M06: how the Marks tab and the CE report read a student's results as rising or dropping (07 §3).
+function CeTrend({ page }: { page: SettingsPage<'ceTrend'> }) {
+  const fields = [
+    { name: 'window', label: 'Results looked at', unit: 'results', min: 3, max: 12, step: 1 },
+    { name: 'minPoints', label: 'Fewest results for a trend', unit: 'results', min: 2, max: 12, step: 1 },
+    { name: 'slopeThreshold', label: 'Change that counts', unit: 'points', min: 0.5, max: 20, step: 0.5 },
+  ] as const;
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="chart" />} />
+      <div className="max-w-3xl">
+        <Section
+          icon={<PageIcon name="chart" className="size-8" />}
+          title="When is a student rising or dropping?"
+          description={changed(page)}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Marks follow this the next time they are worked out."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            {fields.map((f) => (
+              <Field
+                key={f.name}
+                name={f.name}
+                label={f.label}
+                hint={`${page.fieldHelp[f.name]} Recommended: ${page.defaults[f.name]}.`}
+              >
+                <span className="relative block w-40">
+                  <Input
+                    name={f.name}
+                    type="number"
+                    inputMode="decimal"
+                    min={f.min}
+                    max={f.max}
+                    step={f.step}
+                    required
+                    defaultValue={page.value[f.name]}
+                    className="pr-16 tabular-nums"
+                  />
+                  <span className="text-muted-foreground pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-sm">
+                    {f.unit}
+                  </span>
+                </span>
+              </Field>
+            ))}
           </ActionForm>
         </Section>
       </div>
