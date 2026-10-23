@@ -2067,3 +2067,17 @@ Request: "plan the next milestone properly based on the changes in the previous 
 - `npx playwright test tests/e2e/assessments.spec.ts tests/e2e/proctoring.spec.ts tests/e2e/code.spec.ts` on the new build → `3 passed` (the lobby's tick posts `agree`).
 - A scripted look at a graded coding hand-in on the e2e data as faculty1, at 1440 px and 390 px: the hand-ins list ("1 run · best 1 of 1 passed", "5 / 5") and the grading page ("2 s after starting", Every run). No error page and nothing wider than the screen; the first layout pushed Open past the card at 1440 px, so the runs and the best run share one column.
 
+### 2026-10-23 · M06/T0 Decisions and mock-ups · Claude Code, at Aniket's request
+
+Aniket answered Q-41 by choosing the recommended option on each of its four points (decisions 1–4 in `docs/milestones/M06-continuous-evaluation.md`).
+
+**Created** — `da48ab5` M06(docs): the M06 milestone file (decisions, tasks T1–T5, AC-M06-01 to 06); 07 §2 (the internal-marks rules, vectors and a worked example computed by script); 05 §2, §5.1 (`countsToward`), §5.3 (`internalMarks` rewritten), §5.3a (`rubricMarks`); 06 §6 (`compute/internalMarks` debounced on `ce-<offeringId>`, `compute/internalMarksNightly`); 02 §8; 09 (permissions, audit actions); 01 (CE-06, CE-10, REC-04); the M08 file (externals by CSV); §3 Q-41 answered; §2 M06 in progress.
+
+**Not done** — T1–T5. They wait for the mock-up picks.
+
+**Assumptions** — none yet in §4 (they arrive with the code that needs them).
+
+**Open questions** — none new. Found while drawing the mock-ups: a teacher's course tabs are 1212 px wide in a 1104 px row at 1440 px, so People is already scrolled out of view, and Marks makes the row longer. Asked in the mock-up round.
+
+**Verification** — 18 mock-ups drawn inside the real app (the e2e build on port 3100, faculty1, student05, the HoD and admin on CUTM1602), static content in place of the new screens, compiled by Tailwind's browser build with the app's theme: M1 A/B, M2 A/B, M3, M4 (dialog and builder card), M5 (HoD and admin), each at 1440 px and 390 px, none wider than the screen. Shown to Aniket on one page: https://claude.ai/artifact/L5ejrmQXhWfAriP3QPH2Rb (private).
+
