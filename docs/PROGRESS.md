@@ -31,7 +31,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
-| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); T0 mock-ups next | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
+| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); T0 mock-ups drawn, waiting for the picks | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
@@ -2462,3 +2462,33 @@ Aniket chose the recommended option on each of four points (`docs/milestones/M09
 **Open questions** — none new. Q-07 and Q-43 stay open; Q-43 now decides how useful "Suggest levels" is, since most programmes title only PSO1–PSO3.
 
 **Verification** — Docs only. The worked example still gives CO 2.5, 2, 2 and PO1 2.21, PO2 2.08, PO3 2, PSO1 2, PSO3 2.25 under the new rules. The new vectors were computed by script (`python3`): `externalPct` 66.67, 70, 57.25 and `absent`; the drawn papers' CO values 1, 0, 0 and null; 0.4 / 0.6 giving CO1 2.4; the programme's 2 and 1.88.
+
+### 2026-10-24 · M09/T0 Mock-ups · Claude Code, at Aniket's request
+
+**Created** — the mock-up list's note and link in `docs/milestones/M09-attainment-ai.md`; this entry.
+
+**Drawn** — Inside the real app, on the e2e build on port 3100:
+- the real sidebar, header and course tabs, with static content where the new parts go, compiled by Tailwind's browser build with the app's theme (M08's script, reused);
+- as faculty1 on CUTM1602 · Programming in C, whose three COs, mapping and programme outcome titles are the e2e seed's; as the HoD for the report; as admin for Settings.
+
+Eight screens, each at 1440 px and 390 px:
+- A1 A (attainment first on the Outcomes tab) and A1 B (a Mapping · Attainment switch);
+- A2 (the grid with an Attainment row);
+- A3 before and after (the question dialog in the course bank, with a question typed in);
+- A4 (the CO–PO editor with five suggested cells);
+- A5 (Reports › Attainment);
+- A6 (Settings › Attainment).
+
+The attainment figures are examples worked out by 07 §4: CO1 75 % → level 3, SEE 68.42 % → level 2, CO1 2.5; PO3 = 7 / 5 = 1.4. The programme row is the mean of the example courses: PO1 2.17, PO2 1.89, PO4 1.75; 5 of 10 outcomes at the target.
+
+**Not done** — T1–T7: they wait for the picks.
+
+**Assumptions** — none new.
+
+**Open questions** — none new. On phones the outcome table and the grid scroll sideways inside their card, as the Marks and Exams tables do. Noted on the page for Aniket to decide.
+
+**Verification**
+- Every screen measured no wider than its window at both widths.
+- Two fixes after looking at the shots: the tiles' labels were cut off at 390 px ("SEE marks" and "SEE level" now), and the Bloom chips now capitalise as the app's do.
+
+Shown to Aniket on one page: https://claude.ai/artifact/Ep4y6pUdn56PsD5aNv8jNP (private).

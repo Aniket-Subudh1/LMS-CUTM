@@ -66,6 +66,8 @@ Drawn inside the real app at 1440 px and 390 px, with two variants where there i
 | A5 | Reports › Attainment: programme, batch and term; the course × outcome table; the programme row against the target | one |
 | A6 | Settings › Attainment, with 07 §4's example worked out by the saved values | one |
 
+Drawn on 24 Oct 2026 as faculty1, the HoD and admin on the e2e data (CUTM1602), and shown to Aniket on one page: https://claude.ai/artifact/Ep4y6pUdn56PsD5aNv8jNP (private).
+
 ## Tasks
 
 ### T1 · Model, setting, pure functions
