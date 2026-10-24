@@ -40,6 +40,7 @@ import {
   PencilSimpleLineIcon,
   SquaresFourIcon,
   ChatCircleIcon,
+  ClosedCaptioningIcon,
   CornersInIcon,
   CornersOutIcon,
   DotsThreeVerticalIcon,
@@ -437,7 +438,13 @@ function useBrowser() {
     () => window.documentPictureInPicture !== undefined || document.pictureInPictureEnabled,
     () => false,
   );
-  return { fullscreen, canFullscreen, canPopOut };
+  // M03c T9: Chrome and Edge recognise speech; Safari and Firefox do not.
+  const canCaption = useSyncExternalStore(
+    never,
+    () => window.SpeechRecognition !== undefined || window.webkitSpeechRecognition !== undefined,
+    () => false,
+  );
+  return { fullscreen, canFullscreen, canPopOut, canCaption };
 }
 
 // The token gives each participant a `role`; a raised hand is the attribute `hand`, the time it was raised (ms), set by
@@ -568,6 +575,76 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
     [float],
   );
   const reactions = useDataChannel('reaction', onReaction);
+
+  // M03c T9 (decision 6): a host's own speech, recognised by their browser, goes to the room as captions on the
+  // lossy `caption` topic — `I:` a line still being heard, `F:` a finished one. Each viewer turns the strip on with CC;
+  // captions are accepted from hosts only and never stored.
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const [captioning, setCaptioning] = useState(false);
+  const [caption, setCaption] = useState<{ name: string; lines: string[]; interim: string; at: number } | null>(null);
+  const hear = useCallback((name: string, line: string) => {
+    const final = line.startsWith('F:');
+    const text = line.slice(2).trim();
+    if (!text) return;
+    setCaption((current) => {
+      const lines = current?.name === name ? current.lines : [];
+      return final
+        ? { name, lines: [...lines, text].slice(-2), interim: '', at: Date.now() }
+        : { name, lines, interim: text, at: Date.now() };
+    });
+  }, []);
+  const onCaption = useCallback(
+    (m: Message) => {
+      if (m.from && isHost(m.from)) hear(nameOf(m.from), decode(m.payload));
+    },
+    [hear],
+  );
+  const captions = useDataChannel('caption', onCaption);
+  // A strip nobody adds to fades after eight seconds.
+  useEffect(() => {
+    if (!caption) return;
+    const timer = window.setTimeout(() => setCaption(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [caption]);
+  useEffect(() => {
+    const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!captioning || !Recognition) return;
+    const recognition = new Recognition();
+    recognition.lang = 'en-IN';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    let running = true;
+    let lastInterim = 0;
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = result[0].transcript.trim().slice(0, 500);
+        if (!text || (!result.isFinal && Date.now() - lastInterim < 300)) continue;
+        if (!result.isFinal) lastInterim = Date.now();
+        const line = `${result.isFinal ? 'F' : 'I'}:${text}`;
+        hear('You', line);
+        captions
+          .send(new TextEncoder().encode(line), { reliable: result.isFinal })
+          .catch(() => result.isFinal && setError('Your captions did not reach the others.'));
+      }
+    };
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        running = false;
+        setCaptioning(false);
+        setError('Your browser did not allow speech recognition, so your speech is not captioned.');
+      }
+    };
+    // Chrome stops listening after a pause; it starts again while captions are on.
+    recognition.onend = () => {
+      if (running) recognition.start();
+    };
+    recognition.start();
+    return () => {
+      running = false;
+      recognition.stop();
+    };
+  }, [captioning, captions, hear]);
 
   // A tab may play sound only once the viewer has clicked or typed in it, so the bell starts after the first click
   // (LiveKit's "Turn on sound" counts).
@@ -955,6 +1032,25 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
             ))}
           </div>
 
+          {captionsOn && caption && (
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-20 z-10 flex justify-center px-4"
+              aria-live="polite"
+            >
+              <div className="grid max-w-3xl gap-0.5 rounded-md bg-black/80 px-4 py-2.5">
+                <span className="text-xs font-semibold text-white/70">{caption.name}</span>
+                {[...caption.lines, caption.interim]
+                  .filter(Boolean)
+                  .slice(-2)
+                  .map((line, i) => (
+                    <p key={i} className="text-base leading-snug sm:text-lg">
+                      {line}
+                    </p>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {invited && skipped !== inviteKey && breakout && (
             <div className="absolute inset-0 z-10 grid place-items-center bg-black/40 p-4">
               <div className="bg-background text-foreground grid w-full max-w-sm gap-3 rounded-lg p-5 shadow-lg">
@@ -1030,6 +1126,15 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
             >
               <SmileyIcon />
             </RoundButton>
+            <RoundButton
+              label={captionsOn ? 'Turn off captions' : 'Turn on captions'}
+              pressed={captionsOn}
+              onClick={() => setCaptionsOn(!captionsOn)}
+              badge={!captionsOn && caption ? 1 : 0}
+              className="max-sm:hidden"
+            >
+              <ClosedCaptioningIcon />
+            </RoundButton>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <RoundButton label="More options">
@@ -1072,6 +1177,22 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
                   Sound when someone joins
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
+                {host && (
+                  <DropdownMenuCheckboxItem
+                    checked={captioning}
+                    disabled={!browser.canCaption}
+                    onCheckedChange={(checked) => setCaptioning(checked)}
+                  >
+                    <span className="grid">
+                      Caption my speech
+                      <span className="text-muted-foreground text-xs">
+                        {browser.canCaption
+                          ? 'Your browser sends your voice to Google or Microsoft to turn it into text.'
+                          : 'Use Chrome or Edge to caption your speech.'}
+                      </span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                )}
                 {props.canRecord && !inBreakout && (
                   <DropdownMenuItem
                     disabled={busy}
@@ -1092,6 +1213,9 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
                     {browser.fullscreen ? 'Exit full screen' : 'Full screen'}
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem className="sm:hidden" onSelect={() => setCaptionsOn(!captionsOn)}>
+                  <ClosedCaptioningIcon /> {captionsOn ? 'Turn off captions' : 'Turn on captions'}
+                </DropdownMenuItem>
                 <DropdownMenuItem className="sm:hidden" disabled={!mayChat} onSelect={() => setTray(!tray)}>
                   <SmileyIcon /> {tray ? 'Hide reactions' : 'Send a reaction'}
                 </DropdownMenuItem>

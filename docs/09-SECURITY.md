@@ -244,3 +244,4 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Never sent: student names, roll numbers, emails, answers, submissions, marks of identifiable students, faculty names.
 - AI output is a suggestion rendered for a human; nothing is written to records until a human submits the normal form. M04b: drafts are saved to the bank as AI drafts, which no test uses until a teacher saves each in its dialog.
 - The API key is server-only (`OPENAI_API_KEY`). The AI is OpenAI's (since 18 Oct 2026).
+- M03c T9 (decision 6): live captions are the host's own speech, recognised by the host's browser, which sends that audio to its maker (Google for Chrome, Microsoft for Edge). The host turns it on, and the menu says so; students' speech is never captioned, and no caption is stored.

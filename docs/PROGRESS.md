@@ -312,6 +312,8 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-205 | Drawing needs the data permission: when a host turns off chat and reactions, the others cannot draw either | M03c | — |
 | A-206 | Pictures cannot be put on the whiteboard (their files would have to reach everyone) | M03c | — |
 | A-207 | Excalidraw's Chinese font (Xiaolai, 12 MB) is not served; Chinese text on the board uses a system font | M03c | — |
+| A-208 | Captions are in English (India), the recogniser's `en-IN` | M03c | — |
+| A-209 | Each person turns captions on for themselves (CC); a host's captions also show in their own strip, as "You" | M03c | — |
 
 ## 5. Log
 
@@ -2806,3 +2808,24 @@ Built to mock-up R3-E, as drawn.
 - `npx vitest run --project integration tests/integration/meetings.test.ts` → 17 passed.
 - `npm run build` → exit 0 with Excalidraw.
 - `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`. `npm run check:bundle` → clean (313 files).
+
+### 2026-10-24 · M03c/T9 Captions · Claude Code, at Aniket's request
+
+Built to decision 6 and mock-up R3-F, as drawn.
+
+**Created**
+- `speech-recognition.d.ts`: the recogniser's types, which TypeScript's DOM library leaves out.
+- `components/live-room.tsx`:
+  - "Caption my speech" in More for hosts: the browser's recogniser, `en-IN`, continuous, restarted after pauses; stopped with a message when the browser refuses it.
+  - Lines go on the `caption` topic (`I:` lossy at most every 300 ms, `F:` reliable).
+  - CC for everyone (in More on a phone), with a gold dot while captions arrive unseen.
+  - The strip with the speaker's name and the latest two lines, faded after 8 s of quiet; captions accepted from hosts only.
+- **Docs:** 06 §8.8, 08 (`LiveRoom`), 09 §12.
+
+**Not done** — Not tried with real speech: the recogniser needs a person talking into Chrome or Edge, which a script cannot do. The walk after T10 checks that the menu, the button and the strip appear.
+
+**Assumptions** — A-208, A-209 (§4).
+
+**Open questions** — none new.
+
+**Verification** — `npx tsc --noEmit` and `npx eslint components/live-room.tsx`: clean. The full checks are in the T10 entry.
