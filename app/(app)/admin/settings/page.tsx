@@ -21,6 +21,7 @@ const ICON: Record<SettingsKey, PageIconName> = {
   ceTrend: 'chart',
   projects: 'code',
   grading: 'diploma',
+  attainment: 'outcomes',
 };
 
 export default function SettingsPage() {

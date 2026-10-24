@@ -14,7 +14,6 @@ const coSchema = new Schema({
   bloomLevels: { type: [{ type: String, enum: BLOOM_LEVELS }], default: [] },
   // A level guessed from the statement's verb by the import; it becomes `bloomLevels` only when a person saves.
   suggestedBloom: { type: String, enum: BLOOM_LEVELS, default: null },
-  targetLevel: { type: Number, min: 0, max: 3 },
 });
 
 const coMapSchema = new Schema(

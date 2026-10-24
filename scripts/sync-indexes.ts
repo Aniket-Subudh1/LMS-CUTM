@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { db } from '@/lib/db';
 import { log } from '@/lib/log';
 import { Assessment } from '@/lib/models/assessment';
+import { Attainment } from '@/lib/models/attainment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { BankItem } from '@/lib/models/bank-item';
@@ -60,6 +61,7 @@ const models = [
   RubricMark,
   EndSemMark,
   GradeSheet,
+  Attainment,
   Project,
   ProjectTask,
   Commit,

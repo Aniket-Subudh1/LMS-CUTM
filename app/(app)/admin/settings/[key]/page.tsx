@@ -15,8 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
+import { ATTAINMENT_EXAMPLE, computeOfferingAttainment } from '@/lib/domain/attainment';
 import { coursePercentage, RUBRICS } from '@/lib/domain/evaluation';
 import { gradeFor } from '@/lib/domain/grades';
+import { cn } from '@/lib/cn';
 import { CRITERION_LABEL, formatDateTime, formatPct } from '@/lib/format';
 import { settingsKey } from '@/lib/schemas/settings';
 
@@ -52,6 +54,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <Projects page={await getSettingsPage('projects')} />;
     case 'grading':
       return <Grading page={await getSettingsPage('grading')} />;
+    case 'attainment':
+      return <Attainment page={await getSettingsPage('attainment')} />;
   }
 }
 
@@ -290,6 +294,105 @@ function Grading({ page }: { page: SettingsPage<'grading'> }) {
             Only O from 90 % is in CUTM’s Examination Policy; the rest is the UGC scale until the university confirms
             it.
           </p>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M09 (07 §4, mock-up A6): when a student attains an outcome, the levels, the weights and the target, and 07 §4's example
+// worked out by the saved values.
+function Attainment({ page }: { page: SettingsPage<'attainment'> }) {
+  const v = page.value;
+  const example = computeOfferingAttainment({ ...ATTAINMENT_EXAMPLE, settings: v });
+  const n = ATTAINMENT_EXAMPLE.students.length;
+  const fieldset = (legend: string, help: string, fields: ReactNode, columns = 'sm:grid-cols-3') => (
+    <fieldset className="grid gap-4">
+      <legend className="mb-1 grid gap-0.5">
+        <span className="font-semibold">{legend}</span>
+        <span className="text-muted-foreground text-sm">{help}</span>
+      </legend>
+      <div className={cn('grid gap-4', columns)}>{fields}</div>
+    </fieldset>
+  );
+  const number = (name: keyof typeof v, label: string, step: number, min: number, max: number, unit = '') => (
+    <Field name={name} label={label} hint={`${page.fieldHelp[name]} Recommended: ${page.defaults[name]}${unit}.`}>
+      <Input
+        name={name}
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={max}
+        step={step}
+        required
+        defaultValue={v[name]}
+        className="tabular-nums"
+      />
+    </Field>
+  );
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="outcomes" />} />
+      <div className="max-w-3xl">
+        <Section
+          icon={<PageIcon name="outcomes" className="size-8" />}
+          title="How attainment is worked out"
+          description={`${changed(page)} A proposal until the university confirms it.`}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Attainment worked out from now follows this; each course shows the settings it used."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            {fieldset(
+              'When a student attains an outcome',
+              'On the questions tagged with the outcome (CIE), and on the end-semester marks weighted by credits (SEE).',
+              number('targetPct', 'Score needed (%)', 1, 1, 100, ' %'),
+            )}
+            {fieldset(
+              'Levels',
+              'The share of students who attain an outcome gives its level.',
+              <>
+                {number('level3Pct', 'Level 3 from (%)', 1, 0, 100, ' %')}
+                {number('level2Pct', 'Level 2 from (%)', 1, 0, 100, ' %')}
+                {number('level1Pct', 'Level 1 from (%)', 1, 0, 100, ' %')}
+              </>,
+            )}
+            {fieldset(
+              'Weights and target',
+              'Attainment = CIE weight × CIE level + SEE weight × SEE level; the two weights add up to 1.',
+              <>
+                {number('cieWeight', 'CIE weight', 0.05, 0, 1)}
+                {number('seeWeight', 'SEE weight', 0.05, 0, 1)}
+                {number('defaultTargetLevel', 'Target level', 0.1, 0, 3)}
+              </>,
+            )}
+            <div className="ring-border/70 grid content-start gap-1.5 rounded-md p-3 text-[0.8125rem] ring-1">
+              <p className="font-semibold">Worked example, with the saved settings</p>
+              <p>
+                {n} students, four questions, end-semester marks out of 50. SEE: {example.see?.attained} of {n} reach{' '}
+                {v.targetPct} % → {example.see ? formatPct(example.see.pct) : '—'} → level <b>{example.see?.level}</b>.
+              </p>
+              <ul className="grid gap-0.5">
+                {example.cos.map((co) => (
+                  <li key={co.coId}>
+                    {co.code}: {co.cie?.attained} of {co.cie?.assessed} → {co.cie ? formatPct(co.cie.pct) : '—'} → level{' '}
+                    {co.cie?.level}; {v.cieWeight} × {co.cie?.level} + {v.seeWeight} × {example.see?.level} ={' '}
+                    <b>{co.value}</b>, {co.met ? 'met' : 'not met'}.
+                  </li>
+                ))}
+              </ul>
+              <p>
+                Then{' '}
+                {example.outcomes
+                  .filter((o) => o.value !== null)
+                  .map((o) => `${o.code} ${o.value}`)
+                  .join(', ')}
+                ; the other outcomes have nothing mapped to them.
+              </p>
+            </div>
+          </ActionForm>
         </Section>
       </div>
     </>

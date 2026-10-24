@@ -154,3 +154,38 @@ describe('grading (07 §6, M08)', () => {
     expect(scaleErrors(scale)).toContain(message);
   });
 });
+
+describe('attainment (M09, 06 §7)', () => {
+  const attainment = SETTINGS.attainment.schema;
+  const errors = (value: Record<string, unknown>) => {
+    const result = attainment.safeParse(value);
+    return result.success ? [] : result.error.issues.map((issue) => issue.message);
+  };
+
+  it('defaults to 07 §4’s values and reads the form’s strings', () => {
+    expect(attainment.parse({})).toEqual({
+      targetPct: 60,
+      level3Pct: 70,
+      level2Pct: 60,
+      level1Pct: 50,
+      cieWeight: 0.5,
+      seeWeight: 0.5,
+      defaultTargetLevel: 2,
+    });
+    expect(attainment.parse({ cieWeight: '0.4', seeWeight: '0.6', defaultTargetLevel: '2.5' })).toMatchObject({
+      cieWeight: 0.4,
+      seeWeight: 0.6,
+      defaultTargetLevel: 2.5,
+    });
+  });
+
+  it.each([
+    [{ level3Pct: 60, level2Pct: 60 }, 'Use less than 60 %, the level 3 threshold.'],
+    [{ level2Pct: 50, level1Pct: 55 }, 'Use less than 50 %, the level 2 threshold.'],
+    [{ cieWeight: 0.6, seeWeight: 0.5 }, 'The weights add up to 1.1; they must add up to 1.'],
+    [{ cieWeight: 0.33 }, 'Use steps of 0.05.'],
+    [{ defaultTargetLevel: 3.5 }, 'Use a level from 0 to 3.'],
+  ])('refuses %j', (value, message) => {
+    expect(errors(value)).toContain(message);
+  });
+});

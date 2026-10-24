@@ -16,6 +16,21 @@ const percent = (fallback: number) =>
     .max(100, 'Use a percentage from 1 to 100.')
     .default(fallback);
 
+// M09 (07 §4): a level threshold may be 0 (level 1 for any share); the target is 1–100 (`percent`).
+const levelPct = (fallback: number) =>
+  z.coerce
+    .number({ error: 'Enter a percentage.' })
+    .min(0, 'Use a percentage from 0 to 100.')
+    .max(100, 'Use a percentage from 0 to 100.')
+    .default(fallback);
+const weight = (fallback: number) =>
+  z.coerce
+    .number({ error: 'Enter a weight.' })
+    .min(0, 'Use a weight from 0 to 1.')
+    .max(1, 'Use a weight from 0 to 1.')
+    .multipleOf(0.05, 'Use steps of 0.05.')
+    .default(fallback);
+
 // 06 §7, TP-09: Judge0 CE's ids for its GCC 9.2.0 and OpenJDK 13.0.1 (the free public server has the same ids). A
 // form posts the languages as lines of `key | label | runner id`; a stored value is the parsed list.
 const LANGUAGES = [
@@ -356,6 +371,48 @@ export const SETTINGS = {
       showSgpa: 'Whether students see their SGPA on the grade sheet.',
     },
   },
+  attainment: {
+    // M09 (07 §4): the team's proposed values until the client confirms the formula (Q-07).
+    schema: z
+      .object({
+        targetPct: percent(60),
+        level3Pct: levelPct(70),
+        level2Pct: levelPct(60),
+        level1Pct: levelPct(50),
+        cieWeight: weight(0.5),
+        seeWeight: weight(0.5),
+        defaultTargetLevel: z.coerce
+          .number({ error: 'Enter a level.' })
+          .min(0, 'Use a level from 0 to 3.')
+          .max(3, 'Use a level from 0 to 3.')
+          .multipleOf(0.1, 'Use steps of 0.1.')
+          .default(2),
+      })
+      .superRefine((a, ctx) => {
+        const fail = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+        if (a.level3Pct <= a.level2Pct) fail('level2Pct', `Use less than ${a.level3Pct} %, the level 3 threshold.`);
+        if (a.level2Pct <= a.level1Pct) fail('level1Pct', `Use less than ${a.level2Pct} %, the level 2 threshold.`);
+        // Steps of 0.05 add up exactly in hundredths.
+        if (Math.round(100 * (a.cieWeight + a.seeWeight)) !== 100) {
+          fail(
+            'seeWeight',
+            `The weights add up to ${Math.round(100 * (a.cieWeight + a.seeWeight)) / 100}; they must add up to 1.`,
+          );
+        }
+      }),
+    label: 'Attainment',
+    description: 'How course outcomes, and then programme outcomes, are judged attained from the marks.',
+    fieldHelp: {
+      targetPct:
+        'A student attains a course outcome when their marks on the questions tagged with it reach this share, and attains the end-semester part when their external marks do.',
+      level3Pct: 'The share of students who attain an outcome that makes it level 3.',
+      level2Pct: 'The share that makes it level 2; below this but at least the next, level 1.',
+      level1Pct: 'The share that makes it level 1; below it, level 0.',
+      cieWeight: 'How much the internal (continuous) assessments count in an outcome’s value.',
+      seeWeight: 'How much the end-semester exam counts; the two weights add up to 1.',
+      defaultTargetLevel: 'The value every course outcome is meant to reach; a course outcome at or above it is met.',
+    },
+  },
 } as const;
 
 export const settingsKey = z.enum([
@@ -367,6 +424,7 @@ export const settingsKey = z.enum([
   'ceTrend',
   'projects',
   'grading',
+  'attainment',
 ]);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

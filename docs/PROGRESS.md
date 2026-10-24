@@ -3062,3 +3062,38 @@ Request: fix the 16 tests whose pages failed with "a.sections is not iterable" (
 **Created** — this entry. Nothing in the repository changed.
 
 **Verification** — Every page of the 16 tests opened, signed in as their teacher: the test, its builder, results, grading and monitor, and each attempt's grading page. Each attempt's student also opened their own view of the test. 98 pages, none an error page.
+
+### 2026-10-24 · M09/T1 Model, setting and the pure functions · Claude Code, at Aniket's request
+
+**Created** (*changed*)
+- `lib/models/attainment.ts` (05 §5.6): one record per credit offering, with the settings and the CO–PO map it used. Registered in *`scripts/sync-indexes.ts`*.
+- *`lib/models/course.ts`*: no `targetLevel` (decision 3).
+- *`lib/schemas/settings.ts`*: the `attainment` key (06 §7). Its rules are falling levels, weights 0–1 in steps of 0.05 adding up to 1, and a target level 0–3 in steps of 0.1. Its parser goes in *`lib/data/settings.ts`*, its card in *`app/(app)/admin/settings/page.tsx`*.
+- **The Settings › Attainment form** (mock-up A6), in *`app/(app)/admin/settings/[key]/page.tsx`*: the score needed, the three level thresholds, the weights and the target level. It ends with 07 §4's example worked out by the saved values. It moved here from T6, because the page has a case for every settings key.
+- `lib/domain/attainment.ts`:
+  - `level`, `externalPct`, `missedItems`, `computeOfferingAttainment`, `computeProgramAttainment`;
+  - 07 §4's example as `ATTAINMENT_EXAMPLE`, shared by the test and the settings page.
+- **Tests:**
+  - `lib/domain/attainment.test.ts`: every vector of 07 §4–5, with the worked example whole.
+  - *`lib/schemas/settings.test.ts`*: the defaults, and the rules.
+- *08*: the grade scale is a table since the fields round.
+
+**Not done** — T2–T7 follow.
+
+**Assumptions**
+- A row of end-semester marks missing a component the course has leaves the student out of the SEE, as one without a row is (`externalPct` → null). A missing component is not AB.
+- Shares are compared with the target at 6 decimal places, so a share exactly at the target attains.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run lib/domain/attainment.test.ts` → `Tests 16 passed (16)`. Among them:
+  - the worked example (CO 2.5, 2, 2; PO1 2.21, PO2 2.08, PO3 2, PSO1 2, PSO3 2.25, the rest null);
+  - CIE only (3, 2, 2);
+  - s3, s6 and s7 on the threshold;
+  - 0.4 / 0.6 → CO1 2.4;
+  - a CO never assessed → null with a warning;
+  - the drawn papers (1, 0, 0, null);
+  - `externalPct` 66.67, 70, 57.25 and absent;
+  - the programme's 2 and 1.88.
+- `npm run check` → exit 0, `Tests 643 passed (643)`.
