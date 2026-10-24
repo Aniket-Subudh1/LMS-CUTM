@@ -113,6 +113,8 @@ Drawn inside the real app at 1440 px and 390 px, with two variants where there i
 
 Drawn on 24 Oct 2026 on the e2e data (CUTM1602's room, faculty1's Meetings, the class page) and shown to Aniket on one page: https://claude.ai/artifact/3eLKRW42zQFQf1dCNSyNPP (private).
 
+**Picks (24 Oct 2026):** Aniket said “yes start building” without choosing R3-B, so it is **A · an Activities tab** beside People and Chat (Google Meet's place, and a shorter bar on a phone); B moves three buttons if he prefers it. Everything else as drawn.
+
 ## How the pieces work (verified against the installed SDKs and LiveKit's docs)
 
 - **Mute:** `RoomServiceClient.mutePublishedTrack` (a host can mute, not unmute, as in Meet).

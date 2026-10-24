@@ -294,6 +294,8 @@ Secrets are never settings (A-05): SMTP credentials, LiveKit keys, Judge0 token,
 
 All CSVs: UTF-8, header row required, comma separated, parsed with `papaparse` (`header: true, skipEmptyLines: 'greedy'`, header names trimmed and lower-cased). Max 5,000 data rows per file (2 MB action body limit). Imports are **all-or-nothing per file**: if any row fails validation, nothing is written and the action returns every row error (`{ row, message }`, row numbers 1-based excluding the header). The parsing and row validation are pure functions in `lib/domain/csv.ts`.
 
+Every import dialog has "Download sample CSV" above its file box (24 Oct 2026): a static file in `public/samples/` (`users.csv`, `enrolment-changes.csv`, `course-list.csv`, `question-bank.csv`, `my-question-bank.csv` for a personal bank, which has no `cos`, and `exam-marks.csv`). Its people use `example.com` addresses, so importing a sample as-is invites nobody real. `lib/domain/csv.test.ts` parses each with its import's parser, so a sample cannot drift from the format.
+
 ### 8.1 Users — "Import CSV" dialog on `/admin/users` (M01)
 `role,name,email,rollno,employeeid,department,program,batchstartyear,section`
 - `role` ∈ `student, faculty, hod, support` (admins are never imported). `hod` rows get roles `['faculty','hod']`.
