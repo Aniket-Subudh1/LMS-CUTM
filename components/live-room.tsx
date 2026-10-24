@@ -62,7 +62,14 @@ import {
   VideoCameraSlashIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { DisconnectReason, RoomEvent, Track, type Participant, type RoomOptions } from 'livekit-client';
+import {
+  DisconnectReason,
+  LocalVideoTrack,
+  RoomEvent,
+  Track,
+  type Participant,
+  type RoomOptions,
+} from 'livekit-client';
 import {
   admitGuests,
   allowBack,
@@ -176,6 +183,17 @@ const LAYOUTS: { value: Layout; label: string; hint: string }[] = [
   { value: 'spotlight', label: 'Spotlight', hint: 'one person or the screen' },
   { value: 'sidebar', label: 'Sidebar', hint: 'one large, faces at the side' },
 ];
+// M03c T10 (mock-up R3-G): how much the viewer's own background is blurred.
+type Blur = 'off' | 'slight' | 'strong';
+const BLURS: { value: Blur; label: string }[] = [
+  { value: 'off', label: 'Not blurred' },
+  { value: 'slight', label: 'Slightly blurred' },
+  { value: 'strong', label: 'Blurred' },
+];
+const BLUR_RADIUS: Record<Exclude<Blur, 'off'>, number> = { slight: 5, strong: 15 };
+// MediaPipe's files come from our own server (public/mediapipe; the wasm is copied there by `postinstall`).
+const BLUR_ASSETS = { tasksVisionFileSet: '/mediapipe/wasm', modelAssetPath: '/mediapipe/selfie_segmenter.tflite' };
+
 const RIGHTS: [StudentRight, string][] = [
   ['share', 'can share their screen'],
   ['unmute', 'can turn on their microphone'],
@@ -486,7 +504,7 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
   const router = useRouter();
   const room = useRoomContext();
   const participants = useParticipants();
-  const { localParticipant } = useLocalParticipant();
+  const { localParticipant, cameraTrack } = useLocalParticipant();
   const permissions = useLocalParticipantPermissions();
   const cameras = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], { onlySubscribed: false });
   const screens = useTracks([Track.Source.ScreenShare]);
@@ -575,6 +593,30 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
     [float],
   );
   const reactions = useDataChannel('reaction', onReaction);
+
+  // M03c T10: the viewer's background is blurred in their own browser before their camera is sent; nobody else's
+  // picture changes. The processor loads only when first chosen; a device that cannot run it is told so.
+  const [blur, setBlur] = useState<Blur>('off');
+  const camera = cameraTrack?.track;
+  useEffect(() => {
+    if (!(camera instanceof LocalVideoTrack)) return;
+    let current = true;
+    const apply = async () => {
+      if (blur === 'off') {
+        if (camera.getProcessor()) await camera.stopProcessor();
+        return;
+      }
+      const { BackgroundProcessor } = await import('@livekit/track-processors');
+      if (!current) return;
+      await camera.setProcessor(
+        BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS[blur], assetPaths: BLUR_ASSETS }),
+      );
+    };
+    apply().catch(() => setError('Your background could not be blurred on this device.'));
+    return () => {
+      current = false;
+    };
+  }, [blur, camera]);
 
   // M03c T9 (decision 6): a host's own speech, recognised by their browser, goes to the room as captions on the
   // lossy `caption` topic — `I:` a line still being heard, `F:` a finished one. Each viewer turns the strip on with CC;
@@ -1176,6 +1218,18 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
                 >
                   Sound when someone joins
                 </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Your background</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={blur}
+                  onValueChange={(value) => setBlur(BLURS.find((b) => b.value === value)?.value ?? 'off')}
+                >
+                  {BLURS.map((b) => (
+                    <DropdownMenuRadioItem key={b.value} value={b.value}>
+                      {b.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
                 <DropdownMenuSeparator />
                 {host && (
                   <DropdownMenuCheckboxItem

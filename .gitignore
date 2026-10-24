@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# M03c T10: MediaPipe's wasm for background blur, copied from node_modules by `postinstall` (18 MB)
+/public/mediapipe/wasm/

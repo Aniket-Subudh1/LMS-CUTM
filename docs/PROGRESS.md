@@ -314,6 +314,8 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-207 | Excalidraw's Chinese font (Xiaolai, 12 MB) is not served; Chinese text on the board uses a system font | M03c | — |
 | A-208 | Captions are in English (India), the recogniser's `en-IN` | M03c | — |
 | A-209 | Each person turns captions on for themselves (CC); a host's captions also show in their own strip, as "You" | M03c | — |
+| A-210 | Blur is offered on every browser; one that cannot run it says so when it is chosen, rather than the option being hidden | M03c | — |
+| A-211 | The blur choice lasts as long as the tab, like the layout (A-99) | M03c | — |
 
 ## 5. Log
 
@@ -2829,3 +2831,26 @@ Built to decision 6 and mock-up R3-F, as drawn.
 **Open questions** — none new.
 
 **Verification** — `npx tsc --noEmit` and `npx eslint components/live-room.tsx`: clean. The full checks are in the T10 entry.
+
+### 2026-10-24 · M03c/T10 Background blur · Claude Code, at Aniket's request
+
+Built to mock-up R3-G, as drawn.
+
+**Created**
+- **The package:** `@livekit/track-processors` 0.8.1, with its reason in 03.
+- **Assets:**
+  - `postinstall` copies MediaPipe's wasm into `public/mediapipe/wasm` (git-ignored, in `.gitignore`).
+  - `public/mediapipe/selfie_segmenter.tflite`, downloaded once from Google's MediaPipe models and checked as a TFLite file.
+- **`components/live-room.tsx`:** "Your background" in More (not, slightly, or fully blurred). The processor is imported only when first chosen and applied to the viewer's own camera with our own asset paths. A camera that cannot be blurred says so.
+- **Docs:** 03, 08 (`LiveRoom`), 11 §3.
+
+**Not done** — Not tried with a real camera; the walk below tries it with Chromium's fake camera.
+
+**Assumptions** — A-210, A-211 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 620 passed (620)`. ESLint now ignores `public/mediapipe/wasm`, MediaPipe's own loaders.
+- `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`.
+- `npm run build` → exit 0. `npm run check:bundle` → clean.

@@ -113,6 +113,8 @@ If Docker Hub rate-limits anonymous pulls, the Google mirror serves the same off
 
 Env: `LIVEKIT_URL=ws://localhost:7880`, `LIVEKIT_API_URL=http://localhost:7880`, key/secret as in the file. Run the worker too (`npm run worker:dev`): it finalizes attendance after a class ends. Verified behaviour: tokens with the grants in 06 §4.3 connect; the webhook receiver gets `room_started`, `participant_joined` (identity = user id), `participant_left`, `room_finished`, each signed and accepted by `WebhookReceiver.receive`. Event `createdAt` is **Unix seconds** — convert with `new Date(Number(createdAt) * 1000)`. The engine closes a room about 20 s after its last participant leaves and sends `room_finished`; before the class's scheduled end the LMS keeps the class live and the room opens again when someone rejoins (Q-50).
 
+M03c T10: `npm install` (and `npm ci`) runs `postinstall`, which copies MediaPipe's wasm for background blur into `public/mediapipe/wasm` (git-ignored); a build or a container image must keep it, as the standalone copy of `public` does.
+
 ### 3.2 Code runner locally (M05, reference Judge0 CE 1.13.1)
 
 Judge0 runs only on a Linux host using cgroup v1 (`systemd.unified_cgroup_hierarchy=0` on the kernel command line). Use the release archive's own compose file (`judge0-v1.13.1.zip`): set `REDIS_PASSWORD`, `POSTGRES_PASSWORD` and `AUTHN_TOKEN` in `judge0.conf`, `docker compose up -d db redis`, then `docker compose up -d`. On macOS/Windows development machines, point `CODE_RUNNER_URL` at a shared Linux dev runner. Never expose Judge0 to the internet.

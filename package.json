@@ -30,7 +30,8 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test",
     "check:bundle": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/check-bundle.ts",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "postinstall": "mkdir -p public/mediapipe && cp -R node_modules/@mediapipe/tasks-vision/wasm public/mediapipe/"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1149.0",
@@ -42,6 +43,7 @@
     "@excalidraw/excalidraw": "0.18.1",
     "@livekit/components-react": "2.9.24",
     "@livekit/components-styles": "1.2.0",
+    "@livekit/track-processors": "0.8.1",
     "@node-rs/argon2": "2.2.2",
     "@phosphor-icons/react": "2.1.10",
     "@tiptap/html": "3.31.4",
