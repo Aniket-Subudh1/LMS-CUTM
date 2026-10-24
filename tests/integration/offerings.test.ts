@@ -1,5 +1,10 @@
-import { beforeAll, describe, expect, it } from 'vitest';
-import { createOfferings, setOfferingStatus, updateOfferingFaculty } from '@/app/(app)/admin/offerings/actions';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  createOfferings,
+  deleteOffering,
+  setOfferingStatus,
+  updateOfferingFaculty,
+} from '@/app/(app)/admin/offerings/actions';
 import { addStudent, changeEnrollments, setEnrollmentStatus } from '@/app/(app)/courses/actions';
 import { db } from '@/lib/db';
 import { getOfferingStats, listOfferings } from '@/lib/data/offerings';
@@ -12,22 +17,37 @@ import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
+import { InternalMark } from '@/lib/models/internal-mark';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { RubricMark } from '@/lib/models/rubric-mark';
 import { Setting } from '@/lib/models/setting';
 import { Term } from '@/lib/models/term';
 import { SETTINGS } from '@/lib/schemas/settings';
 import { MAX_ENROLLMENTS } from '@/lib/schemas/structure';
-import { form, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
+import { enroll, form, makeAssessment, makeCourse, makeOffering, makeUser, newId, signInAs } from '../factories';
+
+const { deleteObjects } = vi.hoisted(() => ({ deleteObjects: vi.fn(async (keys: string[]) => void keys) }));
+vi.mock('@/lib/integrations/storage', () => ({ deleteObjects }));
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
 
 beforeAll(async () => {
   await db();
   await Promise.all(
-    [AuditLog, Batch, Course, CurriculumEntry, Department, Enrollment, Offering, Program, Setting, Term].map((m) =>
-      m.createCollection(),
-    ),
+    [
+      AuditLog,
+      Batch,
+      Course,
+      CurriculumEntry,
+      Department,
+      Enrollment,
+      InternalMark,
+      Offering,
+      Program,
+      Setting,
+      Term,
+    ].map((m) => m.createCollection()),
   );
   await Offering.createIndexes();
 });
@@ -257,6 +277,58 @@ describe('updateOfferingFaculty and setOfferingStatus', () => {
       ok: false,
       code: 'NOT_FOUND',
     });
+  });
+});
+
+describe('deleteOffering', () => {
+  it('removes a draft with its enrolments and internal marks, deletes its cover and audits it', async () => {
+    const admin = await makeUser({ roles: ['admin'] });
+    await signInAs(admin);
+    const offering = await makeOffering({ status: 'draft', coverKey: 'offering-cover/a/b/c.png' });
+    const [one, two] = await Promise.all([makeUser({ roles: ['student'] }), makeUser({ roles: ['student'] })]);
+    await Promise.all([enroll(offering._id, one._id), enroll(offering._id, two._id, 'dropped')]);
+    await InternalMark.create({
+      offeringId: offering._id,
+      studentId: one._id,
+      components: { theory: 30 },
+      complete: false,
+      trend: 'insufficient',
+      computedAt: new Date(),
+    });
+    const id = String(offering._id);
+
+    expect(await deleteOffering(form({ offeringId: id }))).toEqual({ ok: true, data: undefined });
+    expect(await Offering.exists({ _id: id })).toBeNull();
+    expect(await Enrollment.countDocuments({ offeringId: id })).toBe(0);
+    expect(await InternalMark.countDocuments({ offeringId: id })).toBe(0);
+    expect(deleteObjects).toHaveBeenLastCalledWith(['offering-cover/a/b/c.png']);
+    expect(await AuditLog.findOne({ action: 'offering.deleted', entityId: id }).lean()).toMatchObject({
+      actorId: admin._id,
+      entity: 'offering',
+      before: { title: offering.title, enrolments: 2 },
+    });
+    expect(await deleteOffering(form({ offeringId: id }))).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+  });
+
+  it('keeps an offering that has started or holds anything, and is for admins only', async () => {
+    await asAdmin();
+    const del = (offering: { _id: unknown }) => deleteOffering(form({ offeringId: String(offering._id) }));
+    const active = await makeOffering({ status: 'active' });
+    expect(await del(active)).toMatchObject({ ok: false, code: 'CLOSED' });
+
+    const draft = await makeOffering({ status: 'draft' });
+    await makeAssessment({ offeringId: draft._id, status: 'draft' });
+    await RubricMark.create({ offeringId: draft._id, studentId: newId(), component: 'practice', updatedBy: newId() });
+    expect(await del(draft)).toMatchObject({
+      ok: false,
+      code: 'CONFLICT',
+      message: 'It already has assessments and marks, so it is kept.',
+    });
+
+    const empty = await makeOffering({ status: 'draft' });
+    await signInAs(await makeUser({ roles: ['faculty'] }));
+    expect(await del(empty)).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    expect(await Offering.countDocuments({ _id: { $in: [active._id, draft._id, empty._id] } })).toBe(3);
   });
 });
 

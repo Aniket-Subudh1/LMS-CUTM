@@ -10,12 +10,19 @@ import { getSettings } from '@/lib/data/settings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { courseMode } from '@/lib/domain/catalog';
 import { AppError } from '@/lib/errors';
+import { deleteObjects } from '@/lib/integrations/storage';
+import { Assessment } from '@/lib/models/assessment';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Enrollment } from '@/lib/models/enrollment';
+import { InternalMark } from '@/lib/models/internal-mark';
+import { Lesson } from '@/lib/models/lesson';
+import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { Project } from '@/lib/models/project';
+import { RubricMark } from '@/lib/models/rubric-mark';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { queueInternalMarks } from '@/lib/queue';
@@ -25,6 +32,7 @@ import { CreateOfferings, MAX_ENROLLMENTS, SetOfferingStatus, UpdateOfferingFacu
 // The CSV import limit (06 §8): a section larger than this is enrolled by file, not in one request.
 // A-83 (M03b): an offering holds at most MAX_ENROLLMENTS students; a larger batch is offered by section.
 const MAX_BATCH_ENROLLMENT = MAX_ENROLLMENTS;
+const list = new Intl.ListFormat('en-IN', { type: 'conjunction' });
 
 // Faculty ticked by name plus any typed emails (other departments): 1 to 5 faculty accounts that are not disabled.
 async function resolveFaculty(ids: string[], emails: string[]): Promise<Types.ObjectId[]> {
@@ -208,6 +216,49 @@ export const setOfferingStatus = action(
     refresh();
   },
 );
+
+// An offering created by mistake (wrong course, term or section) is removed for good with its enrolments, while it is
+// a draft and nothing has been added to it. A draft was never open to students and cannot be locked, so only what
+// teachers may add is checked; internal marks rows are recomputed copies (a refresh of a draft writes them), so they
+// go too. Audited.
+export const deleteOffering = action({ input: OfferingRef, roles: ['admin'] }, async ({ offeringId }, viewer) => {
+  await db();
+  const offering = await Offering.findById(offeringId, { title: 1, status: 1, coverKey: 1 }).lean();
+  if (!offering) throw new AppError('NOT_FOUND', 'Offering not found.');
+  if (offering.status !== 'draft') {
+    throw new AppError('CLOSED', 'Only a draft offering can be deleted. One that has started is kept with its records.');
+  }
+  const found = await Promise.all([
+    Lesson.exists({ offeringId }),
+    LiveSession.exists({ offeringId }),
+    Assessment.exists({ offeringId }),
+    Project.exists({ offeringId }),
+    RubricMark.exists({ offeringId }),
+  ]);
+  const added = ['lessons', 'live classes', 'assessments', 'projects', 'marks'].filter((_, i) => found[i]);
+  if (added.length > 0) {
+    throw new AppError('CONFLICT', `It already has ${list.format(added)}, so it is kept.`);
+  }
+  await mongoose.connection.transaction(async (session) => {
+    const removed = await Offering.deleteOne({ _id: offeringId, status: 'draft' }, { session });
+    if (removed.deletedCount === 0) throw new AppError('CONFLICT', 'The offering changed meanwhile. Reload the page.');
+    const enrolments = await Enrollment.deleteMany({ offeringId }, { session });
+    await InternalMark.deleteMany({ offeringId }, { session });
+    await writeAudit(
+      {
+        actorId: viewer.id,
+        action: 'offering.deleted',
+        entity: 'offering',
+        entityId: offeringId,
+        offeringId,
+        before: { title: offering.title, enrolments: enrolments.deletedCount },
+      },
+      session,
+    );
+  });
+  if (offering.coverKey) await deleteObjects([offering.coverKey]);
+  refresh();
+});
 
 // M06 (CE-07, AC-M06-04): an offering keeps the evaluation policy it was created with; an admin copies today's
 // Settings onto one offering, while its marks are unlocked. Audited with the copies before and after.

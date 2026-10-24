@@ -1,16 +1,16 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import { ArrowsClockwiseIcon, PlusIcon, UserSwitchIcon } from '@phosphor-icons/react/ssr';
+import { ArrowsClockwiseIcon, PlusIcon, TrashIcon, UserSwitchIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
-import { createOfferings, refreshEvaluation, setOfferingStatus, updateOfferingFaculty } from './actions';
+import { createOfferings, deleteOffering, refreshEvaluation, setOfferingStatus, updateOfferingFaculty } from './actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
-import { RowMenu } from '@/components/row-menu';
+import { RowMenu, type RowMenuItem } from '@/components/row-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
@@ -342,30 +342,44 @@ function StatusAction({ offering }: { offering: OfferingRow }) {
   if (offering.status === 'completed' && !offering.refreshable) {
     return <span className="text-muted-foreground text-sm">—</span>;
   }
+  // M06 (AC-M06-04): rarely needed, so they wait in the row's menu.
+  const items: RowMenuItem[] = [];
+  if (offering.refreshable) {
+    items.push({
+      kind: 'action',
+      label: 'Refresh the evaluation policy',
+      icon: <ArrowsClockwiseIcon />,
+      action: refreshEvaluation,
+      fields: { offeringId: offering.id },
+      confirm: {
+        title: 'Refresh the evaluation policy?',
+        message:
+          'This offering takes the evaluation policy as it is in Settings now, and its internal marks are worked out again with it. The change is audited.',
+        confirmLabel: 'Refresh',
+      },
+    });
+  }
+  if (offering.status === 'draft') {
+    if (items.length > 0) items.push({ kind: 'separator' });
+    items.push({
+      kind: 'action',
+      label: 'Delete',
+      icon: <TrashIcon />,
+      destructive: true,
+      action: deleteOffering,
+      fields: { offeringId: offering.id },
+      confirm: {
+        title: `Delete “${offering.title}”?`,
+        message: `It is removed for good${offering.students > 0 ? `, and its ${offering.students === 1 ? 'student is' : `${offering.students} students are`} unenrolled` : ''}. Only a draft with no lessons, classes, assessments, projects or marks can be deleted.`,
+        confirmLabel: 'Delete offering',
+        destructive: true,
+      },
+    });
+  }
   return (
     <span className="flex items-center gap-1">
       <StatusChange offering={offering} />
-      {/* M06 (AC-M06-04): rarely needed, so it waits in the row's menu. */}
-      {offering.refreshable && (
-        <RowMenu
-          label={offering.title}
-          items={[
-            {
-              kind: 'action',
-              label: 'Refresh the evaluation policy',
-              icon: <ArrowsClockwiseIcon />,
-              action: refreshEvaluation,
-              fields: { offeringId: offering.id },
-              confirm: {
-                title: 'Refresh the evaluation policy?',
-                message:
-                  'This offering takes the evaluation policy as it is in Settings now, and its internal marks are worked out again with it. The change is audited.',
-                confirmLabel: 'Refresh',
-              },
-            },
-          ]}
-        />
-      )}
+      {items.length > 0 && <RowMenu label={offering.title} items={items} />}
     </span>
   );
 }
