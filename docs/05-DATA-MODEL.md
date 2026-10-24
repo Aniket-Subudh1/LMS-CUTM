@@ -203,11 +203,17 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | removed | `[{ userId: Id, at: D, by: Id }]` | M03c: students a host removed (in a meeting, members and guests: `userId` is then a guest's id); they get no join token until a host lets them back. At most 100 (`MAX_REMOVED`) |
 | meeting | `{ hostIds: [Id], memberIds: [Id], guests: [{ _id: Id, email: S, name: S?, admittedAt: D?, deniedAt: D? }], sequence: N }?` | M03c T4, meetings only. `hostIds` 1–5, the scheduler first (they stay a host), then co-hosts (staff); `memberIds` ≤ 50, people from the LMS; `guests` ≤ 20, by email (lower case), `name` as they type it in the lobby, `admittedAt`/`deniedAt` a host's answer in this meeting. A guest's link is their `_id` signed with the session secret (`lib/auth/guest-link.ts`): nothing secret is stored. `sequence` numbers the invitation's version for calendars (06 §8.7) |
 | waiting | `[{ guestId: Id, name: S, at: D }]` | M03c T4: guests asking to join, in the order they asked (≤ 20) |
+| polls | `[{ _id: Id, question: S, options: [{ _id: Id, text: S }], showResults: B, sharedAt: D?, status: S, by: Id, startedAt: D, endedAt: D? }]` | M03c T6: ≤ 20 (`POLL_LIMITS`), at most one `open`; question ≤ 200, 2–6 options of ≤ 120; `showResults` — the others see the counts when it ends; `sharedAt` — a host showed them earlier. Answers are `pollAnswers` (§4.3a) |
 | recordings | `[{ egressId: S, key: S, by: Id, startedAt: D, endedAt: D?, durationSec: N?, status: S }]` | M03c T5: ≤ 20 (`MAX_RECORDINGS`), the latest last; `status` `recording` (at most one) · `saved` · `failed`, set by the egress webhook; `egressId` empty for the moment a host's start is claimed; `key` a `live-recording` object (06 §5) |
 | createdBy | Id | |
 
 Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique · M03c T4: `{ 'meeting.hostIds': 1, scheduledStart: -1 }` and `{ 'meeting.memberIds': 1, scheduledStart: -1 }` (the Meetings page) · `{ 'meeting.guests._id': 1 }` (a guest's link).
 Invariants: an offering holds at most 500 sessions (`scheduleSession` refuses the 501st, A-73), so its session reads are bounded. A `scheduled` session whose `scheduledEnd` has passed was never held; it keeps its status and produces no attendance. A meeting (M03c T4) has no course and takes no attendance: its webhooks write none and finalizing it only sets `finalizedAt`; only its hosts and members reach it (A-185).
+
+### 4.3a `pollAnswers` (M03c T6)
+`sessionId` Id · `pollId` Id · `userId` Id (the person in the room: a student or a meeting's member) · `optionId` Id · timestamps.
+Indexes: `{ pollId: 1, userId: 1 }` unique (one answer per person; a change replaces it while the poll is open) · `{ pollId: 1, optionId: 1 }` (a poll's counts).
+Invariants: written only by `answerPoll` while the poll is open, by someone taking part (not a host, not a guest). Read as counts only; who answered what is never shown (01 §4).
 
 ### 4.4 `attendance`
 | Field | Type | Rules |

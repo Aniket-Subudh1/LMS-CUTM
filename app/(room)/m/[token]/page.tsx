@@ -52,6 +52,7 @@ async function Lobby({ params }: { params: PageProps<'/m/[token]'>['params'] }) 
         expected={lobby.invited}
         attendanceNote=""
         controls={null}
+        polls={[]}
       />
     );
   }

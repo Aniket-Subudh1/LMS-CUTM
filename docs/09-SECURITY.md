@@ -42,6 +42,8 @@
 | Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
 | Meetings: host controls, let guests in or turn them away (their hosts) | — | ✔ | ✔ | ✔ | — |
 | Record a class or meeting (M03c T5; its hosts; everyone in the room is told; audited) | — | ✔ (host) | — | ✔ (host) | — |
+| Polls (M03c T6; not audited, no record): ask, see counts, show, end | — | ✔ (host) | — | ✔ (host) | — |
+| Polls: answer (those taking part; never guests); see own answer, and counts once shown | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
 | Watch a recording (M03c T5) | ✔ (their class, or a meeting they are invited to) | ✔ | ○ (their department's classes) | ✔ (classes; meetings they are invited to) | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |

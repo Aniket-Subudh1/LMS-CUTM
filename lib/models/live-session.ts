@@ -1,5 +1,11 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
-import { ATTENDANCE_MODES, RECORDING_STATUSES, SESSION_KINDS, SESSION_STATUSES } from '@/lib/schemas/live';
+import {
+  ATTENDANCE_MODES,
+  POLL_STATUSES,
+  RECORDING_STATUSES,
+  SESSION_KINDS,
+  SESSION_STATUSES,
+} from '@/lib/schemas/live';
 
 // M03c T4: a meeting's guest, invited by email. Their personal link is their id signed with the session secret
 // (lib/auth/guest-link.ts), so nothing secret is stored. `name` is what they type in the lobby.
@@ -73,6 +79,20 @@ const liveSessionSchema = new Schema(
         endedAt: { type: Date },
         durationSec: { type: Number },
         status: { type: String, enum: RECORDING_STATUSES, required: true },
+      },
+    ],
+    // M03c T6: polls, the latest last (at most POLL_LIMITS.polls), one open at a time. Answers are `pollAnswers`.
+    polls: [
+      {
+        question: { type: String, required: true, maxlength: 200 },
+        options: [{ text: { type: String, required: true, maxlength: 120 } }],
+        showResults: { type: Boolean, required: true },
+        // A host showed the results to everyone before the end.
+        sharedAt: { type: Date },
+        status: { type: String, enum: POLL_STATUSES, required: true },
+        by: { type: Schema.Types.ObjectId, required: true },
+        startedAt: { type: Date, required: true },
+        endedAt: { type: Date },
       },
     ],
     // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).

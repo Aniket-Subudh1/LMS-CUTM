@@ -59,6 +59,29 @@ export const RoomPerson = z.object({ sessionId: objectId, identity: objectId });
 export const RoomPeople = z.object({ sessionId: objectId, 'identity[]': z.array(objectId).min(1).max(1000) });
 export const RoomRight = z.object({ sessionId: objectId, right: z.enum(STUDENT_RIGHTS), allowed: z.boolean() });
 
+// --- Polls (M03c T6): a host asks, the people taking part answer once and may change it while the poll is open. ---
+
+export const POLL_LIMITS = { polls: 20, options: 6, question: 200, option: 120 } as const;
+export const POLL_STATUSES = ['open', 'ended'] as const;
+
+export const CreatePoll = z.object({
+  sessionId: objectId,
+  question: z.string().trim().min(1, 'Ask a question.').max(POLL_LIMITS.question, 'Use at most 200 characters.'),
+  'option[]': z
+    .array(z.string().trim().max(POLL_LIMITS.option, 'Use at most 120 characters an option.'))
+    .transform((options) => [...new Set(options.filter(Boolean))])
+    .pipe(
+      z
+        .array(z.string())
+        .min(2, 'Give at least two different options.')
+        .max(POLL_LIMITS.options, `Give at most ${POLL_LIMITS.options} options.`),
+    ),
+  // Students see the results when the poll ends (a host may also show them earlier).
+  showResults: z.boolean().default(true),
+});
+export const PollRef = z.object({ sessionId: objectId, pollId: objectId });
+export const AnswerPoll = z.object({ sessionId: objectId, pollId: objectId, optionId: objectId });
+
 // --- Meetings (M03c T4) ---
 
 // 05 §4.3: the scheduler and up to four co-hosts; members picked from the LMS; guests by email.

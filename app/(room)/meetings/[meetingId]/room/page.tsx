@@ -51,6 +51,7 @@ async function Room({ params }: { params: PageProps<'/meetings/[meetingId]/room'
         attendanceNote="Meetings take no attendance."
         controls={room.controls}
         canRecord={room.canRecord}
+        polls={room.polls}
       />
     );
   }

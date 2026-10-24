@@ -5,9 +5,13 @@ import { cancelMeeting, findPeople, saveMeeting, startMeeting } from '@/app/(app
 import {
   admitGuests,
   allowBack,
+  answerPoll,
+  createPoll,
   denyGuest,
+  endPoll,
   endRoom,
   removeParticipant,
+  showPollResults,
   startRecording,
   stopRecording,
 } from '@/app/(room)/actions';
@@ -26,6 +30,7 @@ import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
+import { PollAnswer } from '@/lib/models/poll-answer';
 import { computeQueue, mailQueue, redis } from '@/lib/queue';
 import { startComputeWorker } from '@/worker/jobs/compute';
 import { startMailWorker } from '@/worker/jobs/mail';
@@ -92,7 +97,7 @@ let computeEvents: QueueEvents;
 beforeAll(async () => {
   await db();
   await Promise.all(
-    [Attendance, AuditLog, Enrollment, LiveSession, Notification, Offering].map(async (m) => {
+    [Attendance, AuditLog, Enrollment, LiveSession, Notification, Offering, PollAnswer].map(async (m) => {
       await m.createCollection();
       await m.createIndexes();
     }),
@@ -509,5 +514,83 @@ describe('recording (M03c T5)', () => {
     expect((await get(recording.key)).status).toBe(302);
     await signInAs(w.untaught);
     expect((await get(recording.key)).status).toBe(404);
+  });
+});
+
+describe('polls (M03c T6)', () => {
+  async function running() {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    return { w, id, ref: { sessionId: id } };
+  }
+  const options = async (id: string) => (await LiveSession.findById(id).lean())?.polls?.at(-1);
+
+  it('lets a host ask one poll at a time, its people answer and change their answer, and counts them for hosts', async () => {
+    const { w, id, ref } = await running();
+    const ask = {
+      ...ref,
+      question: 'Which line declares a pointer?',
+      'option[]': [' int *p; ', 'int p;', 'int *p;', ''],
+    };
+    await signInAs(w.taught);
+    await expect(createPoll({ ...ask, showResults: true })).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.faculty);
+    tell.mockClear();
+    expect(await createPoll({ ...ask, showResults: true })).toMatchObject({ ok: true });
+    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'poll', 'started');
+    expect(await createPoll({ ...ask, showResults: true })).toMatchObject({ code: 'CONFLICT' });
+    expect(
+      await createPoll({ ...ref, question: 'One option', 'option[]': ['a', 'a'], showResults: true }),
+    ).toMatchObject({
+      code: 'VALIDATION',
+    });
+    const poll = await options(id);
+    expect(poll?.options.map((o) => o.text)).toEqual(['int *p;', 'int p;']);
+    const [right, wrong] = (poll?.options ?? []).map((o) => String(o._id));
+    const pollId = String(poll?._id);
+    expect(await answerPoll({ ...ref, pollId, optionId: right })).toMatchObject({ code: 'FORBIDDEN' });
+    await signInAs(w.taught);
+    expect(await answerPoll({ ...ref, pollId, optionId: wrong })).toMatchObject({ ok: true });
+    expect(await answerPoll({ ...ref, pollId, optionId: right })).toMatchObject({ ok: true });
+    expect(await PollAnswer.countDocuments({ pollId })).toBe(1);
+    // The member sees their own answer but no counts; a host sees the counts as they come in.
+    expect((await getMeetingRoom(id)).polls).toEqual([
+      expect.objectContaining({
+        status: 'open',
+        mine: right,
+        answered: null,
+        options: [expect.objectContaining({ count: null }), expect.objectContaining({ count: null })],
+      }),
+    ]);
+    await signInAs(w.colleague);
+    expect((await getMeetingRoom(id)).polls[0]).toMatchObject({ answered: 1, options: [{ count: 1 }, { count: 0 }] });
+    expect(await showPollResults({ ...ref, pollId })).toMatchObject({ ok: true });
+    await signInAs(w.taught);
+    expect((await getMeetingRoom(id)).polls[0]).toMatchObject({ shared: true, answered: 1 });
+    await signInAs(w.faculty);
+    expect(await endPoll({ ...ref, pollId })).toMatchObject({ ok: true });
+    await signInAs(w.taught);
+    expect(await answerPoll({ ...ref, pollId, optionId: wrong })).toMatchObject({ code: 'CLOSED' });
+    await signInAs(w.untaught);
+    await expect(answerPoll({ ...ref, pollId, optionId: wrong })).rejects.toThrow(NOT_FOUND);
+  });
+
+  it('keeps an ended poll’s results with the hosts unless they show them', async () => {
+    const { w, id, ref } = await running();
+    await signInAs(w.faculty);
+    await createPoll({ ...ref, question: 'Ready?', 'option[]': ['Yes', 'No'], showResults: false });
+    const pollId = String((await options(id))?._id);
+    await endPoll({ ...ref, pollId });
+    await signInAs(w.taught);
+    expect((await getMeetingRoom(id)).polls).toEqual([]);
+    await signInAs(w.faculty);
+    expect((await getMeetingRoom(id)).polls[0]).toMatchObject({ status: 'ended', answered: 0 });
+    // A new poll can start once the last has ended.
+    expect(
+      await createPoll({ ...ref, question: 'Again?', 'option[]': ['Yes', 'No'], showResults: true }),
+    ).toMatchObject({
+      ok: true,
+    });
   });
 });

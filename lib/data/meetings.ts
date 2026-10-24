@@ -6,12 +6,14 @@ import { guestIdOf } from '@/lib/auth/guest-link';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import {
   roomControls,
+  roomPolls,
   savedRecordings,
   START_EARLY_MS,
   toRow,
   type LiveSessionRow,
   type RecordingRow,
   type RoomControls,
+  type RoomPoll,
 } from '@/lib/data/live';
 import { db } from '@/lib/db';
 import { joinToken, recordingEnabled } from '@/lib/integrations/live';
@@ -229,6 +231,7 @@ async function findMeeting(viewer: Viewer, meetingId: string) {
     removed: 1,
     waiting: 1,
     recordings: 1,
+    polls: 1,
   }).lean();
   if (!doc?.meeting) notFound();
   return { doc: { ...doc, meeting: doc.meeting }, role: access.role };
@@ -278,6 +281,7 @@ export type MeetingRoom = {
   removed: boolean;
   controls: RoomControls | null;
   canRecord: boolean;
+  polls: RoomPoll[];
   invited: number;
   canStartAt: Date;
 };
@@ -291,7 +295,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
   const host = role === 'host';
   const removed = !host && (doc.removed ?? []).some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
-  const [join, controls] = await Promise.all([
+  const [join, controls, polls] = await Promise.all([
     live && !removed
       ? joinToken({
           roomName: doc.roomName,
@@ -302,6 +306,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
         })
       : null,
     live && host ? roomControls(doc) : null,
+    live && !removed ? roomPolls(doc, viewer.id, host) : [],
   ]);
   return {
     session,
@@ -310,6 +315,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
     removed,
     controls,
     canRecord: live && host && recordingEnabled(),
+    polls,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
   };

@@ -13,6 +13,7 @@ import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
+import { PollAnswer } from '@/lib/models/poll-answer';
 import { User } from '@/lib/models/user';
 import { queueLiveFinalize } from '@/lib/queue';
 import { pageSize } from '@/lib/schemas/common';
@@ -246,6 +247,8 @@ export type SessionDetail = {
   // M03c T5: a host may record while it runs (where Egress is set up); its saved recordings, for whoever sees the class.
   canRecord: boolean;
   recordings: RecordingRow[];
+  // M03c T6: while it runs, its polls as the viewer may see them.
+  polls: RoomPoll[];
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -293,6 +296,56 @@ export async function roomControls(doc: RoomDoc): Promise<RoomControls> {
   };
 }
 
+// M03c T6: the polls of a running room as the viewer may see them. Hosts see every poll with its counts as answers
+// come in; the others see the open poll and their own answer, and a poll's counts once a host shows them or it ends
+// with results for everyone. Who answered what is never shown (01 §4: poll analytics are out of scope).
+export type RoomPoll = {
+  id: string;
+  question: string;
+  status: 'open' | 'ended';
+  showResults: boolean;
+  shared: boolean;
+  options: { id: string; text: string; count: number | null }[];
+  answered: number | null;
+  mine: string | null;
+};
+
+export async function roomPolls(
+  doc: Pick<LiveSessionDoc, 'polls'>,
+  viewerId: string,
+  host: boolean,
+): Promise<RoomPoll[]> {
+  const visible = (p: NonNullable<LiveSessionDoc['polls']>[number]) =>
+    host || Boolean(p.sharedAt) || (p.status === 'ended' && p.showResults);
+  const polls = (doc.polls ?? []).filter((p) => host || p.status === 'open' || visible(p));
+  if (polls.length === 0) return [];
+  const counted = polls.filter(visible).map((p) => p._id);
+  const [counts, mine] = await Promise.all([
+    counted.length > 0
+      ? PollAnswer.aggregate<{ _id: { pollId: Types.ObjectId; optionId: Types.ObjectId }; n: number }>([
+          { $match: { pollId: { $in: counted } } },
+          { $group: { _id: { pollId: '$pollId', optionId: '$optionId' }, n: { $sum: 1 } } },
+        ])
+      : [],
+    PollAnswer.find({ pollId: { $in: polls.map((p) => p._id) }, userId: viewerId }, { pollId: 1, optionId: 1 }).lean(),
+  ]);
+  return polls.map((p) => {
+    const shown = visible(p);
+    const countOf = (optionId: Types.ObjectId) =>
+      counts.find((c) => c._id.pollId.equals(p._id) && c._id.optionId.equals(optionId))?.n ?? 0;
+    return {
+      id: String(p._id),
+      question: p.question,
+      status: p.status,
+      showResults: p.showResults,
+      shared: Boolean(p.sharedAt),
+      options: p.options.map((o) => ({ id: String(o._id), text: o.text, count: shown ? countOf(o._id) : null })),
+      answered: shown ? p.options.reduce((sum, o) => sum + countOf(o._id), 0) : null,
+      mine: mine.find((a) => a.pollId.equals(p._id))?.optionId.toString() ?? null,
+    };
+  });
+}
+
 // T3, M03c T4: ending a class or a meeting for everyone. The room closes first, so a failure changes nothing and the host
 // can try again; the engine's room_finished may end it first. Either way it is ended and finalized (a meeting without
 // attendance).
@@ -316,7 +369,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   if (!Types.ObjectId.isValid(sessionId)) notFound();
   const doc = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1 },
+    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1, polls: 1 },
   ).lean();
   if (!doc) notFound();
   const now = new Date();
@@ -326,7 +379,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   const removed = student && removedList.some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
   const rights = { ...ALL_RIGHTS, ...doc.studentsMay };
-  const [join, controls, recordings, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
+  const [join, controls, recordings, polls, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
     live && !removed && (student || hosts)
       ? joinToken({
           roomName: doc.roomName,
@@ -338,6 +391,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
       : null,
     live && hosts && !student ? roomControls(doc) : null,
     savedRecordings(doc),
+    live && !removed && (student || hosts) ? roomPolls(doc, viewer.id, !student) : [],
     student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
     student || !doc.startedAt
@@ -382,6 +436,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     controls,
     canRecord: live && hosts && !student && recordingEnabled(),
     recordings,
+    polls,
     inClass,
     enrolled,
     summary:

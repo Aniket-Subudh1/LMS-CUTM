@@ -35,6 +35,7 @@ import {
   ArrowLeftIcon,
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
+  ChartBarIcon,
   ChatCircleIcon,
   CornersInIcon,
   CornersOutIcon,
@@ -61,7 +62,10 @@ import { DisconnectReason, RoomEvent, Track, type Participant, type RoomOptions 
 import {
   admitGuests,
   allowBack,
+  answerPoll,
+  createPoll,
   denyGuest,
+  endPoll,
   endRoom,
   lowerHands,
   muteEveryone,
@@ -69,6 +73,7 @@ import {
   raiseHand,
   removeParticipant,
   setStudentRight,
+  showPollResults,
   startRecording,
   stopRecording,
 } from '@/app/(room)/actions';
@@ -98,7 +103,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/cn';
-import type { RoomControls } from '@/lib/data/live';
+import type { RoomControls, RoomPoll } from '@/lib/data/live';
 import { formatTime, initials } from '@/lib/format';
 import type { StudentRight } from '@/lib/schemas/live';
 
@@ -129,9 +134,11 @@ type Props = {
   controls: RoomControls | null;
   // M03c T5: a host may start and stop a recording (where Egress is set up).
   canRecord?: boolean;
+  // M03c T6: the polls as the viewer may see them (none for a guest).
+  polls: RoomPoll[];
 };
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
-type Panel = 'people' | 'chat';
+type Panel = 'people' | 'chat' | 'activities';
 type Layout = 'auto' | 'tiled' | 'spotlight' | 'sidebar';
 type View = { layout: Layout; hideNoVideo: boolean; showSelf: boolean; joinSound: boolean };
 type Float = { id: number; emoji: string; name: string };
@@ -470,6 +477,21 @@ function Classroom(props: Props) {
     [host, router],
   );
   useDataChannel('controls', onControls);
+  // M03c T6: a poll started, ended or was shown: everyone reads the polls again.
+  const onPoll = useCallback(
+    (m: Message) => {
+      if (!m.from) router.refresh();
+    },
+    [router],
+  );
+  useDataChannel('poll', onPoll);
+  // Hosts see the answers come in: while a poll is open their page reads them again every few seconds.
+  const pollOpen = props.polls.some((poll) => poll.status === 'open');
+  useEffect(() => {
+    if (!host || !pollOpen) return;
+    const timer = window.setInterval(() => router.refresh(), 3000);
+    return () => window.clearInterval(timer);
+  }, [host, pollOpen, router]);
   // M03c T3: reactions go straight to the browsers in the room (not stored); the sender sees their own at once.
   const float = useCallback((emoji: string, name: string) => {
     floatId.current += 1;
@@ -606,6 +628,8 @@ function Classroom(props: Props) {
   const mine = cameraOf(localParticipant);
   const latest = hands.at(-1);
   const toastKey = latest ? `${latest.identity}:${handOf(latest)}` : '';
+  // M03c T6: a poll the viewer has yet to answer marks the Activities tab.
+  const unanswered = !host && props.polls.some((poll) => poll.status === 'open' && poll.mine === null);
   // M03c T4: the guest who asked to join last, until a host answers.
   const asking = props.controls?.waiting.at(-1);
   const tile = (t: TrackReferenceOrPlaceholder, className: string, isMain = false, fills = false) => (
@@ -962,17 +986,20 @@ function Classroom(props: Props) {
       {panel && (
         <aside className="flex w-88 shrink-0 flex-col border-l border-white/10 bg-(--lk-bg) max-lg:absolute max-lg:inset-0 max-lg:z-20 max-lg:w-full max-lg:border-l-0">
           <header className="flex items-center gap-1 border-b border-white/10 p-2">
-            {(['people', 'chat'] as const).map((tab) => (
+            {(guest ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => open(tab)}
                 className={cn(
-                  'h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
+                  'relative h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
                   panel === tab ? 'bg-white/10 font-semibold' : 'text-white/60 hover:text-white',
                 )}
               >
                 {tab}
+                {tab === 'activities' && unanswered && (
+                  <span className="bg-gold absolute top-1.5 right-2 size-2 rounded-full" aria-label="A poll is open" />
+                )}
               </button>
             ))}
             <button
@@ -1005,8 +1032,19 @@ function Classroom(props: Props) {
               admit={(identities) => void run(() => admitGuests({ ...ref, 'identity[]': identities }))}
               deny={(identity) => void run(() => denyGuest({ ...ref, identity }))}
             />
-          ) : (
+          ) : panel === 'chat' ? (
             <Chat me={me} noun={noun} locked={!mayChat} {...chat} />
+          ) : (
+            <Activities
+              host={host}
+              noun={noun}
+              polls={props.polls}
+              busy={busy}
+              create={(poll) => run(() => createPoll({ ...ref, ...poll }))}
+              answer={(pollId, optionId) => void run(() => answerPoll({ ...ref, pollId, optionId }))}
+              end={(pollId) => void run(() => endPoll({ ...ref, pollId }))}
+              show={(pollId) => void run(() => showPollResults({ ...ref, pollId }))}
+            />
           )}
         </aside>
       )}
@@ -1611,6 +1649,283 @@ function People({
         </footer>
       )}
     </>
+  );
+}
+
+const FIELD =
+  'h-9 w-full rounded-md bg-white/10 px-3 text-[0.8125rem] outline-none placeholder:text-white/40 ring-1 ring-white/15 focus-visible:ring-2 focus-visible:ring-white/40';
+const SECTION_HEADING = 'text-[0.6875rem] font-medium tracking-wide text-white/60 uppercase';
+
+type NewPoll = { question: string; 'option[]': string[]; showResults: boolean };
+
+// M03c T6 (mock-ups R3-B A, R3-C): the Activities tab. Hosts start a poll, watch the answers come in, show the results
+// and end it; the others answer the open poll and see the results once a host shows them. Breakout rooms and the
+// whiteboard join the hosts' list in T7 and T8.
+function Activities({
+  host,
+  noun,
+  polls,
+  busy,
+  create,
+  answer,
+  end,
+  show,
+}: {
+  host: boolean;
+  noun: Noun;
+  polls: RoomPoll[];
+  busy: boolean;
+  create: (poll: NewPoll) => Promise<boolean>;
+  answer: (pollId: string, optionId: string) => void;
+  end: (pollId: string) => void;
+  show: (pollId: string) => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  const open = polls.find((p) => p.status === 'open');
+  const earlier = polls.filter((p) => p.status === 'ended').reverse();
+  if (asking) {
+    return (
+      <PollForm
+        noun={noun}
+        busy={busy}
+        cancel={() => setAsking(false)}
+        create={async (poll) => {
+          if (await create(poll)) setAsking(false);
+        }}
+      />
+    );
+  }
+  const card = { host, noun, busy, answer, end, show };
+  return (
+    <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto p-4">
+      {host && !open && (
+        <section className="grid gap-2">
+          <h2 className={SECTION_HEADING}>Activities</h2>
+          <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
+            <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
+              <ChartBarIcon />
+            </span>
+            <span className="grid min-w-0 flex-1 gap-0.5">
+              <span className="text-[0.8125rem] font-semibold">Polls</span>
+              <span className="text-xs text-white/60">Ask a quick question; answers come in live.</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAsking(true)}
+              className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium"
+            >
+              New poll
+            </button>
+          </div>
+        </section>
+      )}
+      {open && <PollCard poll={open} {...card} />}
+      {!host && !open && earlier.length === 0 && (
+        <p className="text-[0.8125rem] text-white/60">No poll is open. When a host asks one, it appears here.</p>
+      )}
+      {earlier.length > 0 && (
+        <section className="grid gap-3">
+          <h2 className={SECTION_HEADING}>Earlier in this {noun}</h2>
+          {earlier.map((p) => (
+            <PollCard key={p.id} poll={p} {...card} />
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function PollForm({
+  noun,
+  busy,
+  cancel,
+  create,
+}: {
+  noun: Noun;
+  busy: boolean;
+  cancel: () => void;
+  create: (poll: NewPoll) => Promise<void>;
+}) {
+  const [question, setQuestion] = useState('');
+  const [options, setOptions] = useState(['', '']);
+  const [showResults, setShowResults] = useState(true);
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void create({ question, 'option[]': options, showResults });
+      }}
+      className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4"
+    >
+      <button
+        type="button"
+        onClick={cancel}
+        className="flex items-center gap-2 justify-self-start text-[0.8125rem] text-white/60 hover:text-white"
+      >
+        <ArrowLeftIcon className="size-4" /> Activities
+      </button>
+      <h2 className="text-[0.9375rem] font-semibold">New poll</h2>
+      <label className="grid gap-1.5 text-[0.8125rem]">
+        Question
+        <input
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          required
+          maxLength={200}
+          className={FIELD}
+        />
+      </label>
+      <fieldset className="grid gap-1.5 text-[0.8125rem]">
+        <legend className="mb-1.5">Options</legend>
+        {options.map((option, i) => (
+          <input
+            // Options are only added at the end, so their place names them.
+            key={i}
+            value={option}
+            onChange={(event) => setOptions(options.map((o, j) => (j === i ? event.target.value : o)))}
+            required={i < 2}
+            maxLength={120}
+            aria-label={`Option ${i + 1}`}
+            className={FIELD}
+          />
+        ))}
+        {options.length < 6 && (
+          <button
+            type="button"
+            onClick={() => setOptions([...options, ''])}
+            className="justify-self-start text-xs text-white/60 hover:text-white"
+          >
+            + Add an option (2–6)
+          </button>
+        )}
+      </fieldset>
+      <label className="flex items-center justify-between gap-3 text-[0.8125rem]">
+        {OTHERS[noun]} see the results when it ends
+        <Switch checked={showResults} onCheckedChange={setShowResults} className="data-[state=unchecked]:bg-white/20" />
+      </label>
+      <button
+        type="submit"
+        disabled={busy}
+        className="bg-primary h-9 rounded-md text-[0.8125rem] font-medium disabled:opacity-50"
+      >
+        Start the poll
+      </button>
+    </form>
+  );
+}
+
+function PollCard({
+  poll,
+  host,
+  noun,
+  busy,
+  answer,
+  end,
+  show,
+}: {
+  poll: RoomPoll;
+  host: boolean;
+  noun: Noun;
+  busy: boolean;
+  answer: (pollId: string, optionId: string) => void;
+  end: (pollId: string) => void;
+  show: (pollId: string) => void;
+}) {
+  const [choice, setChoice] = useState(poll.mine);
+  const open = poll.status === 'open';
+  const total = poll.answered ?? 0;
+  const small = 'flex h-7 items-center rounded-md px-2.5 text-xs ring-1 ring-white/15 hover:bg-white/10';
+  return (
+    <article className="grid gap-3 rounded-md p-3 ring-1 ring-white/10">
+      <div className="flex items-center justify-between gap-3">
+        <span className={SECTION_HEADING}>Poll · {open ? 'open' : 'ended'}</span>
+        {poll.answered !== null && <span className="text-xs text-white/60 tabular-nums">{total} answered</span>}
+      </div>
+      <p className="text-[0.9375rem] font-semibold">{poll.question}</p>
+      {!host && open && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (choice) answer(poll.id, choice);
+          }}
+          className="grid gap-2"
+        >
+          {poll.options.map((o) => (
+            <label
+              key={o.id}
+              className={cn(
+                'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-[0.8125rem] ring-1',
+                choice === o.id ? 'ring-primary bg-primary/15' : 'ring-white/15',
+              )}
+            >
+              <input
+                type="radio"
+                name={`poll-${poll.id}`}
+                value={o.id}
+                checked={choice === o.id}
+                onChange={() => setChoice(o.id)}
+                className="accent-primary"
+              />
+              {o.text}
+            </label>
+          ))}
+          <button
+            type="submit"
+            disabled={busy || !choice || choice === poll.mine}
+            className="bg-primary h-9 rounded-md text-[0.8125rem] font-medium disabled:opacity-50"
+          >
+            {poll.mine ? (choice === poll.mine ? 'Answer sent' : 'Change my answer') : 'Send my answer'}
+          </button>
+          <p className="text-xs text-white/60">You can change it until the poll ends.</p>
+        </form>
+      )}
+      {poll.answered !== null && (
+        <ul className="grid gap-2">
+          {poll.options.map((o) => {
+            const pct = total > 0 ? Math.round((100 * (o.count ?? 0)) / total) : 0;
+            return (
+              <li key={o.id} className="grid gap-1 text-[0.8125rem]">
+                <span className="flex justify-between gap-3">
+                  <span>
+                    {o.text}
+                    {poll.mine === o.id && <span className="text-white/60"> · yours</span>}
+                  </span>
+                  <span className="text-white/70 tabular-nums">
+                    {o.count} · {pct} %
+                  </span>
+                </span>
+                <span className="block h-2 overflow-hidden rounded-full bg-white/10">
+                  <span className="bg-primary block h-full rounded-full" style={{ width: `${pct}%` }} />
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!host && !open && poll.mine === null && <p className="text-xs text-white/60">You did not answer.</p>}
+      {host && open && (
+        <div className="flex flex-wrap gap-2">
+          {!poll.shared && (
+            <button type="button" disabled={busy} onClick={() => show(poll.id)} className={small}>
+              Show results to {noun === 'class' ? 'students' : 'everyone'} now
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => end(poll.id)}
+            className="bg-primary flex h-7 items-center rounded-md px-2.5 text-xs font-medium"
+          >
+            End the poll
+          </button>
+        </div>
+      )}
+      {host && !open && (
+        <p className="text-xs text-white/60">
+          {poll.shared || poll.showResults ? `${OTHERS[noun]} saw these results.` : `Only hosts saw these results.`}
+        </p>
+      )}
+    </article>
   );
 }
 

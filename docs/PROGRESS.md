@@ -300,6 +300,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-193 | Recordings are kept with their class or meeting; nobody can delete one yet | M03c | — |
 | A-194 | A recording is the room as Egress's speaker layout shows it: whoever speaks large, the others small, a shared screen filling the frame | M03c | — |
 | A-195 | A class's recording plays for everyone who opens the class page (its students, teachers, the department's head, admins); a meeting's for its hosts and members, not its guests, who have no page | M03c | — |
+| A-196 | One poll is open at a time in a class or meeting | M03c | — |
+| A-197 | Guests do not take part in polls: an answer is kept per LMS account | M03c | — |
+| A-198 | Who answered what is never shown, in the room or after (01 §4 keeps poll analytics out); the counts stay with the session. The mock-up's "who answered what is on the class page" is not built | M03c | — |
+| A-199 | Hosts see the counts by their page reading the polls again every 3 s while one is open, not by a message per answer | M03c | — |
 
 ## 5. Log
 
@@ -2700,3 +2704,34 @@ Built to decision 5 (recording on the current server) and mock-up R3-A, as drawn
 - **An empty room:** the same request is aborted after a while with "Start signal not received". An earlier try without a participant showed it.
 - **The server afterwards:** Egress `service ready`, health 200, idle at 49 MB and under 1% CPU. LiveKit `active`, offering only 65.20.89.9. The LMS `/api/health` 200.
 - `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 325 passed (325)`. `npm run build` → exit 0. `npm run check:bundle` → clean.
+
+### 2026-10-24 · M03c/T6 Polls · Claude Code, at Aniket's request
+
+Built to mock-ups R3-B A (the Activities tab) and R3-C, as drawn. The one exception: the mock-up's footnote "who answered what is on the class page" is not built (A-198, 01 §4).
+
+**Created**
+- **The record:**
+  - `liveSessions.polls`, and the `pollAnswers` model (`lib/models/poll-answer.ts`, in `scripts/sync-indexes.ts`).
+  - `CreatePoll`, `PollRef`, `AnswerPoll`, `POLL_LIMITS` in `lib/schemas/live.ts`.
+  - The `poll` topic.
+- **Actions** (`app/(room)/actions.ts`): `createPoll`, `answerPoll`, `endPoll`, `showPollResults`.
+- **Reads:** `roomPolls` (`lib/data/live.ts`), with `polls` on the class's and the meeting's room.
+- **Screens:**
+  - `LiveRoom` gains the Activities tab: the hosts' Polls card, the new-poll form, live bars, Show results and End the poll; the others' answer card and the gold dot; earlier polls.
+  - Hosts' pages read the polls again every 3 s while one is open.
+- **Tests:** `tests/integration/meetings.test.ts`, 2 more cases:
+  - asking (options cleaned, one at a time, hosts only); answering (not hosts, not outsiders, a change replaces, closed after the end);
+  - who sees counts when; showing early; results kept with the hosts.
+- **Docs:** 01 §4, 05 §4.3 and §4.3a, 06 §4.3 and §8.8, 08 (`LiveRoom`), 09 (permissions).
+
+**Not done**
+- Polls in breakout rooms.
+- Exporting a poll's results (not asked).
+
+**Assumptions** — A-196 to A-199 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/meetings.test.ts` → 14 passed.
+- `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 327 passed (327)`.

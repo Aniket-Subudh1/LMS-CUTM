@@ -18,6 +18,7 @@ import { InternalMark } from '@/lib/models/internal-mark';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
+import { PollAnswer } from '@/lib/models/poll-answer';
 import { Notification } from '@/lib/models/notification';
 import { Otp } from '@/lib/models/otp';
 import { Offering } from '@/lib/models/offering';
@@ -51,6 +52,7 @@ const models = [
   Offering,
   Enrollment,
   LiveSession,
+  PollAnswer,
   Attendance,
   Assessment,
   Submission,

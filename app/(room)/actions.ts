@@ -20,9 +20,21 @@ import {
 } from '@/lib/integrations/live';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
+import { PollAnswer } from '@/lib/models/poll-answer';
 import { queueLiveControl } from '@/lib/queue';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
-import { MAX_RECORDINGS, MAX_REMOVED, RoomPeople, RoomPerson, RoomRef, RoomRight } from '@/lib/schemas/live';
+import {
+  AnswerPoll,
+  CreatePoll,
+  MAX_RECORDINGS,
+  MAX_REMOVED,
+  POLL_LIMITS,
+  PollRef,
+  RoomPeople,
+  RoomPerson,
+  RoomRef,
+  RoomRight,
+} from '@/lib/schemas/live';
 
 // M03c T4: the room's actions, for a class and a meeting alike. Each takes the session; roomAccess works out from it who
 // the viewer is there (a class through its course, a meeting through its people). Anyone with an LMS account may be in
@@ -302,3 +314,90 @@ export const stopRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES },
   await tell(session.roomName, 'notice', `${viewer.name} stopped recording`);
   refresh();
 });
+
+// --- Polls (M03c T6, mock-ups R3-B A and R3-C): one open at a time. Starting, ending and showing results tell everyone
+// in the room (`poll`), whose pages read the polls again; answers are counted for hosts as they come in. Not audited:
+// a poll is no record (01 §4). ---
+
+export const createPoll = action(
+  { input: CreatePoll, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, question, 'option[]': options, showResults }, viewer) => {
+    await requireRoomHost(viewer, sessionId);
+    const { roomName } = await liveRoom(sessionId);
+    const written = await LiveSession.updateOne(
+      {
+        _id: sessionId,
+        status: 'live',
+        'polls.status': { $ne: 'open' },
+        [`polls.${POLL_LIMITS.polls - 1}`]: { $exists: false },
+      },
+      {
+        $push: {
+          polls: {
+            question,
+            options: options.map((text) => ({ text })),
+            showResults,
+            status: 'open',
+            by: viewer.id,
+            startedAt: new Date(),
+          },
+        },
+      },
+    );
+    if (written.matchedCount === 0) {
+      throw new AppError('CONFLICT', `End the open poll first. A class or meeting holds at most ${POLL_LIMITS.polls}.`);
+    }
+    await tell(roomName, 'poll', 'started');
+    await tell(roomName, 'notice', `${viewer.name} started a poll`);
+    refresh();
+  },
+);
+
+// The people taking part answer, and may change their answer while the poll is open; hosts do not.
+export const answerPoll = action(
+  { input: AnswerPoll, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, pollId, optionId }, viewer) => {
+    if ((await roomAccess(viewer, sessionId)).role !== 'participant') {
+      throw new AppError('FORBIDDEN', 'Only the people taking part answer a poll.');
+    }
+    await liveRoom(sessionId);
+    const open = await LiveSession.exists({
+      _id: sessionId,
+      polls: { $elemMatch: { _id: pollId, status: 'open', 'options._id': optionId } },
+    });
+    if (!open) throw new AppError('CLOSED', 'This poll has ended.');
+    await PollAnswer.updateOne(
+      { pollId, userId: viewer.id },
+      { $set: { optionId }, $setOnInsert: { sessionId } },
+      { upsert: true },
+    );
+    refresh();
+  },
+);
+
+export const endPoll = action({ input: PollRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId, pollId }, viewer) => {
+  await requireRoomHost(viewer, sessionId);
+  const { roomName } = await liveRoom(sessionId);
+  await LiveSession.updateOne(
+    { _id: sessionId },
+    { $set: { 'polls.$[p].status': 'ended', 'polls.$[p].endedAt': new Date() } },
+    { arrayFilters: [{ 'p._id': new Types.ObjectId(pollId), 'p.status': 'open' }] },
+  );
+  await tell(roomName, 'poll', 'ended');
+  refresh();
+});
+
+export const showPollResults = action(
+  { input: PollRef, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, pollId }, viewer) => {
+    await requireRoomHost(viewer, sessionId);
+    const { roomName } = await liveRoom(sessionId);
+    await LiveSession.updateOne(
+      { _id: sessionId },
+      { $set: { 'polls.$[p].sharedAt': new Date() } },
+      { arrayFilters: [{ 'p._id': new Types.ObjectId(pollId) }] },
+    );
+    await tell(roomName, 'poll', 'shared');
+    refresh();
+  },
+);
