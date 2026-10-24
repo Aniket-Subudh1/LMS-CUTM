@@ -21,7 +21,7 @@ import { Offering } from '@/lib/models/offering';
 import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
-import { queueGradeSheets, queueInternalMarks, queueLockOffering } from '@/lib/queue';
+import { queueAttainment, queueGradeSheets, queueInternalMarks, queueLockOffering } from '@/lib/queue';
 import {
   BatchTerm,
   EXAM_LIMITS,
@@ -225,6 +225,8 @@ export const importEndSem = action(
     const writes: AnyBulkWriteOperation<EndSemMarkDoc>[] = [];
     const syncRunId = new Types.ObjectId();
     const touched = new Set<string>();
+    // M09 (EXM-06): each offering the file wrote to has its attainment worked out again.
+    const offeringsTouched = new Set<string>();
     for (const row of rows) {
       const key = `${row.rollNo} · ${row.courseCode}`;
       const fail = (message: string) => failures.push({ row: row.row, key, message });
@@ -262,6 +264,7 @@ export const importEndSem = action(
         continue;
       }
       touched.add(String(studentId));
+      offeringsTouched.add(String(offering._id));
       writes.push({
         updateOne: {
           filter: { offeringId: offering._id, studentId },
@@ -306,6 +309,7 @@ export const importEndSem = action(
         session,
       );
     });
+    for (const offeringId of offeringsTouched) await queueAttainment(offeringId);
     refresh();
     return { rows: rows.length };
   },
@@ -367,6 +371,12 @@ export const publishGradeSheets = action(
       drafts.map((d) => String(d.studentId)),
       { kind: 'gradeSheet.published', title: `Your grade sheet for ${term.name} is published`, href: '/results' },
     );
+    // M09 (EXM-06): the batch's credit courses this term are worked out again with their final marks.
+    const credit = await Offering.find(
+      { batchId, termId, category: 'ugc', status: { $ne: 'draft' } },
+      { _id: 1 },
+    ).lean();
+    for (const offering of credit) await queueAttainment(String(offering._id));
     refresh();
     return { published };
   },

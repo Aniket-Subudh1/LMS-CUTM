@@ -33,7 +33,7 @@ import { Submission } from '@/lib/models/submission';
 import { TestFile } from '@/lib/models/test-file';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
-import { queueGradeCode, queueInternalMarks, queueTestFile, queueTestStats } from '@/lib/queue';
+import { queueAttainment, queueGradeCode, queueInternalMarks, queueTestFile, queueTestStats } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
@@ -661,7 +661,10 @@ export const waivePenalty = action({ input: WaivePenalty, roles: TEACH }, async 
   });
   if (rules.status === 'results_published') {
     await queueTestStats(String(attempt.assessmentId));
-    if (offeringId) await queueInternalMarks(offeringId);
+    if (offeringId) {
+      await queueInternalMarks(offeringId);
+      await queueAttainment(offeringId);
+    }
   }
   refresh();
 });
@@ -860,10 +863,13 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
       );
     });
   }
-  // TP-11, M06: marks changed after the results went out, so the ranks and the internal marks follow.
+  // TP-11, M06, M09: marks changed after the results went out, so the ranks, the internal marks and attainment follow.
   if (changed.length > 0 && rules?.status === 'results_published') {
     await queueTestStats(String(attempt.assessmentId));
-    if (offeringId) await queueInternalMarks(offeringId);
+    if (offeringId) {
+      await queueInternalMarks(offeringId);
+      await queueAttainment(offeringId);
+    }
   }
   if (input.then === 'next') {
     // M04 decision 5: the next hand-in waiting for marks, else back to the list.

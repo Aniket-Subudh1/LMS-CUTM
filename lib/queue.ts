@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { env } from '@/lib/env';
 import type {
   AssessmentSweepJob,
+  AttainmentJob,
   CoursewareListJob,
   CoursewarePageJob,
   DraftQuestionsJob,
@@ -43,7 +44,8 @@ type ComputeData =
   | InternalMarksJob
   | InternalMarksNightlyJob
   | LockOfferingJob
-  | GradeSheetsJob;
+  | GradeSheetsJob
+  | AttainmentJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -57,7 +59,8 @@ type ComputeName =
   | 'internalMarks'
   | 'internalMarksNightly'
   | 'lockOffering'
-  | 'gradeSheets';
+  | 'gradeSheets'
+  | 'attainment';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -185,6 +188,16 @@ export async function queueInternalMarks(offeringId: string): Promise<void> {
     (jobId, delay) => computeQueue().add('internalMarks', data, { jobId, delay }),
     computeQueue(),
     `ce-${offeringId}`,
+  );
+}
+
+// M09 (07 §4): a credit offering's attainment, after its marks, its end-semester marks or its course's map change.
+export async function queueAttainment(offeringId: string, actorId?: string): Promise<void> {
+  const data: AttainmentJob = { offeringId, actorId };
+  await queueRecompute(
+    (jobId, delay) => computeQueue().add('attainment', data, { jobId, delay }),
+    computeQueue(),
+    `att-${offeringId}`,
   );
 }
 

@@ -86,6 +86,10 @@ export type TestStatsJob = z.infer<typeof TestStatsJob>;
 // nightly job that queues it for every active credit offering.
 export const InternalMarksJob = z.object({ offeringId: objectId });
 export type InternalMarksJob = z.infer<typeof InternalMarksJob>;
+// `compute/attainment` (06 §6, M09): one credit offering's attainment worked out again (07 §4); `actorId` when someone
+// pressed "Work it out again".
+export const AttainmentJob = z.object({ offeringId: objectId, actorId: objectId.optional() });
+export type AttainmentJob = z.infer<typeof AttainmentJob>;
 export const InternalMarksNightlyJob = z.object({});
 export type InternalMarksNightlyJob = z.infer<typeof InternalMarksNightlyJob>;
 

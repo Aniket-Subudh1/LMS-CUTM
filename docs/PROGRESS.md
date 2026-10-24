@@ -3097,3 +3097,70 @@ Request: fix the 16 tests whose pages failed with "a.sections is not iterable" (
   - `externalPct` 66.67, 70, 57.25 and absent;
   - the programme's 2 and 1.88.
 - `npm run check` → exit 0, `Tests 643 passed (643)`.
+
+### 2026-10-24 · M09/T2, T5 Working attainment out, its triggers, and the AI suggestions · Claude Code, at Aniket's request
+
+**Created** (*changed*)
+- **Working it out:** `lib/data/attainment.ts`, `recomputeAttainment` (07 §4), safe in the worker.
+  - It reads each counted attempt's own paper and scores, 500 attempts at a time, and counts a missed assessment through `missedItems`.
+  - The SEE is the end-semester rows through `externalPct`.
+  - It writes the record whole, with the settings and map it used, and adds two warnings the marks cannot show: draws with no outcome filter, and questions with no outcome.
+  - Settings are read without Next's cache.
+- **The job:** *`lib/schemas/jobs.ts`* (`AttainmentJob { offeringId, actorId? }`), *`lib/queue.ts`* (`queueAttainment`, id `att-<offeringId>`), *`worker/jobs/compute.ts`* (the branch).
+- **Triggers:**
+  - results released (*`lib/data/results.ts`*);
+  - marks changed on published results (*grading, a waived attempt, the `gradeCode` job*);
+  - end-semester marks imported, for each offering the file wrote to (*`admin/exams/actions.ts`*);
+  - grade sheets published, for the batch's credit offerings that term;
+  - the CO–PO map saved or a CO deleted, for the course's active credit offerings (*`catalog/actions.ts`*, A-181).
+- **"Work it out again":** `app/(app)/courses/[offeringId]/outcomes/actions.ts` `requestAttainment`. Teach or admin, credit offerings only, once a minute per offering; the record names who asked.
+- **Reads:** `lib/data/attainment-views.ts`.
+  - `getOfferingAttainment`: teach and oversee read it; a student gets none; no access is a 404.
+  - `getProgramAttainment`: an admin, or a head of department for their department's programmes. It counts a course's sections once, and asks for a term above 200 offerings.
+  - Kept apart from the worker's module, which imports nothing of Next or the session.
+- **The AI:**
+  - `lib/schemas/ai.ts` (the two answers' formats, the actions' inputs).
+  - *`lib/integrations/ai.ts`*: `suggestItemTags` and `suggestCoMap` with the milestone's instructions, and one request helper that `draftQuestions` now shares. It drops codes that are not the course's, outcomes that were not given, levels other than 1–3 and repeated pairs; with nothing left, null.
+  - Actions:
+    - `suggestItemTags` (*`app/(app)/tests/bank/actions.ts`*): the dialog's unsaved question, from a course test or a course bank; a standalone test has no course outcomes.
+    - `suggestCoMap` (*`app/(app)/catalog/actions.ts`*): titles from the offering's programme, or on the catalogue each code's first title by programme code; the untitled codes are listed.
+    - Both need the AI set up, count toward the `ai` limit (30 an hour, with "Draft with AI") and write nothing.
+- **Tests:**
+  - `tests/integration/attainment.test.ts` (12): through the real compute worker.
+  - `tests/integration/ai-suggestions.test.ts` (5): the AI mocked.
+  - `lib/integrations/ai.test.ts` (5): OpenAI's client mocked.
+- **Docs:** 06 §6 (the job's `actorId`, where its functions live).
+
+**Not done** — The screens (T3, T4, T6) follow.
+
+**Assumptions**
+- A head of department reads attainment and the programme report but does not press "Work it out again", which is for whoever teaches the class and admins (09 §2 lists it under teach).
+- A dropped or added student changes attainment at its next trigger or "Work it out again", not at once; 06 §6 lists no enrolment trigger.
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 648 passed (648)`.
+- `npm run test:integration` → `Test Files 29 passed (29)`, `Tests 347 passed (347)`.
+- **Attainment, through the real worker:**
+  - the documented example as real tests, attempts and end-sem rows (AC-M09-01);
+  - 0.4 / 0.6 → CO1 2.4, with the record stating the settings (AC-M09-05);
+  - CIE only;
+  - no published assessment → null COs with warnings (AC-M09-03);
+  - drawn papers;
+  - a locked offering worked out, a skill one skipped.
+- **Triggers:**
+  - an end-sem import recomputes (AC-M09-02);
+  - publishing grade sheets recomputes;
+  - a new map recomputes the active offering and not a completed one.
+- **"Work it out again" and the reads:**
+  - a student is refused; the faculty member's run names them; a second press within the minute → RATE_LIMITED;
+  - teacher, head and admin read it, a student gets null, another department 404;
+  - the programme report gives 2.25 for two sections and 1.88 for the programme, and keeps a head to their department.
+- **AI:**
+  - the builder and the course bank;
+  - the brief holds no seeded name, email or roll number, and the test is unchanged afterwards (AC-M09-04);
+  - null → no suggestion; no key → CONFLICT; the 30th request of the hour → RATE_LIMITED;
+  - a standalone test refused, another teacher 404;
+  - only the titled outcomes are sent, the untitled are named, and the map is unchanged;
+  - on the catalogue, the first title by programme code.

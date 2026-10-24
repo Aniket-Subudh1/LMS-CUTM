@@ -4,6 +4,9 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { env } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { log } from '@/lib/log';
+import type { AutoParseableTextFormat } from 'openai/lib/parser';
+import type { z } from 'zod';
+import { CoMapSuggestion, ItemTagSuggestion } from '@/lib/schemas/ai';
 import { AiDrafts, type AiDraft } from '@/lib/schemas/bank';
 
 // 06 §4.7. Only this file talks to the AI (OpenAI, Aniket's choice of 18 Oct 2026 for cost). It is sent what a teacher
@@ -44,6 +47,15 @@ above" or "none of the above". Wrong options are plausible mistakes. Write plain
 question its difficulty, its Bloom level, and the codes of the course outcomes it assesses (only from the list given;
 none when no list is given). A teacher reviews every draft before anyone sees it.`;
 
+// M09 (06 §4.7): the two suggestions' instructions, as the milestone wrote them.
+const ITEM_TAGS = `You help university teachers tag an assessment question with the course outcomes (COs) it assesses and
+its Bloom's taxonomy level (remember, understand, apply, analyse, evaluate, create). Choose only from the CO codes
+provided. Prefer one CO; choose two only when the question clearly assesses both. Base the Bloom level on what the
+student must do. Give a one-sentence rationale.`;
+const CO_MAP = `You help define a CO–PO–PSO correlation matrix. For each pair where the course outcome contributes to the
+program outcome, give a level: 3 strong, 2 moderate, 1 slight. Omit pairs with no meaningful contribution. Use only the
+codes provided.`;
+
 // TP-10: `count` drafts of one type on a topic. Null when the AI declines or its answer does not fit the format; an
 // AppError when it cannot be reached.
 export async function draftQuestions(input: {
@@ -62,18 +74,83 @@ export async function draftQuestions(input: {
       : 'No course outcomes: leave `outcomes` empty.',
     'Each explanation says in one or two sentences why the answer is right.',
   ].join('\n\n');
+  const answer = await ask('draftQuestions', SYSTEM, brief, zodTextFormat(AiDrafts, 'drafts'), 16_000);
+  return answer?.questions ?? null;
+}
+
+// M09 (CPP-07): the outcomes a question being written assesses, and its Bloom level. Told only the question and the
+// course's outcomes. Codes that are not the course's are dropped; none left, null.
+export async function suggestItemTags(input: {
+  promptText: string;
+  cos: readonly { code: string; statement: string }[];
+}): Promise<{
+  coCodes: string[];
+  bloomLevel: z.infer<typeof ItemTagSuggestion>['bloomLevel'];
+  rationale: string;
+} | null> {
+  const brief = [
+    `Question:\n${input.promptText}`,
+    `Course outcomes:\n${input.cos.map((co) => `${co.code}: ${co.statement}`).join('\n')}`,
+  ].join('\n\n');
+  const answer = await ask('suggestItemTags', ITEM_TAGS, brief, zodTextFormat(ItemTagSuggestion, 'item_tags'), 2_000);
+  if (!answer) return null;
+  const known = new Set(input.cos.map((co) => co.code));
+  const coCodes = [...new Set(answer.coCodes.map((code) => code.trim().toUpperCase()))]
+    .filter((code) => known.has(code))
+    .slice(0, 2);
+  return coCodes.length > 0
+    ? { coCodes, bloomLevel: answer.bloomLevel, rationale: answer.rationale.trim().slice(0, 300) }
+    : null;
+}
+
+// M09 (CPP-07): levels for a course's CO–PO–PSO map. Told the outcomes' codes and statements and only the programme
+// outcomes that have a title (decision 2). Unknown codes, levels other than 1–3 and repeated pairs are dropped; none
+// left, null.
+export async function suggestCoMap(input: {
+  cos: readonly { code: string; statement: string }[];
+  outcomes: readonly { code: string; title: string }[];
+}): Promise<{ co: string; outcome: string; level: 1 | 2 | 3; rationale: string }[] | null> {
+  const brief = [
+    `Course outcomes:\n${input.cos.map((co) => `${co.code}: ${co.statement}`).join('\n')}`,
+    `Programme outcomes:\n${input.outcomes.map((o) => `${o.code}: ${o.title}`).join('\n')}`,
+  ].join('\n\n');
+  const answer = await ask('suggestCoMap', CO_MAP, brief, zodTextFormat(CoMapSuggestion, 'co_map'), 2_000);
+  if (!answer) return null;
+  const cos = new Set(input.cos.map((co) => co.code));
+  const outcomes = new Set(input.outcomes.map((o) => o.code));
+  const seen = new Set<string>();
+  const cells = answer.cells.flatMap((cell) => {
+    const co = cell.co.trim().toUpperCase();
+    const outcome = cell.outcome.trim().toUpperCase();
+    const level = ([1, 2, 3] as const).find((l) => l === cell.level) ?? null;
+    if (!cos.has(co) || !outcomes.has(outcome) || level === null || seen.has(`${co}:${outcome}`)) return [];
+    seen.add(`${co}:${outcome}`);
+    return [{ co, outcome, level, rationale: cell.rationale.trim().slice(0, 200) }];
+  });
+  return cells.length > 0 ? cells : null;
+}
+
+// One structured request (06 §4.7): null when the AI declines or its answer does not fit the format; an AppError when
+// it is not set up or cannot be reached (logged).
+async function ask<T>(
+  operation: string,
+  instructions: string,
+  input: string,
+  format: AutoParseableTextFormat<T>,
+  maxOutputTokens: number,
+): Promise<T | null> {
   try {
     const res = await openai().responses.parse({
       model: env().OPENAI_MODEL,
-      instructions: SYSTEM,
-      input: brief,
-      max_output_tokens: 16_000,
-      text: { format: zodTextFormat(AiDrafts, 'drafts') },
+      instructions,
+      input,
+      max_output_tokens: maxOutputTokens,
+      text: { format },
     });
-    return res.output_parsed?.questions ?? null;
+    return res.output_parsed;
   } catch (error) {
     if (error instanceof AppError) throw error;
-    log.error('ai request failed', { operation: 'draftQuestions', error });
+    log.error('ai request failed', { operation, error });
     throw new AppError('INTEGRATION', 'The AI service is unavailable. Try again in a few minutes.');
   }
 }

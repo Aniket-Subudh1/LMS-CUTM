@@ -17,15 +17,20 @@ import { Assessment } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Offering } from '@/lib/models/offering';
+import { Program } from '@/lib/models/program';
 import { User } from '@/lib/models/user';
+import { aiConfigured, suggestCoMap as askCoMap } from '@/lib/integrations/ai';
 import { deleteObjects } from '@/lib/integrations/storage';
-import { syncQueue } from '@/lib/queue';
+import { queueAttainment, syncQueue } from '@/lib/queue';
+import { limit } from '@/lib/rate-limit';
+import { SuggestCoMap } from '@/lib/schemas/ai';
 import {
   AddCo,
   CATALOG_LIMITS,
   CoRef,
   CourseModuleRef,
   CourseRef,
+  OUTCOME_CODES,
   ReorderCourseModules,
   SaveBooks,
   SaveCoMap,
@@ -225,7 +230,67 @@ export const deleteCo = action({ input: CoRef, roles: EDITORS }, async ({ course
       after: { deleted: co.code, mappingLinksRemoved: links, offeringsUntagged: untagged },
     }),
   );
+  await queueCourseAttainment(courseId);
 });
+
+// M09 (CPP-07, decision 2): levels for the course's map, suggested from its outcomes and the programme outcomes that
+// have a title — the offering's programme's on its Outcomes tab, else, for each code, the first title among the
+// programmes listing the course (by programme code). Nothing is stored: the editor shows the cells as unsaved changes.
+export const suggestCoMap = action(
+  { input: SuggestCoMap, roles: EDITORS },
+  async ({ courseId, offeringId }, viewer) => {
+    const course = await loadCourse(viewer, courseId, ['credits', 'cos']);
+    requireCredit(course.credits);
+    if (!aiConfigured()) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
+    if (course.cos.length === 0) throw new AppError('CONFLICT', 'Add the course’s outcomes first.');
+    let programIds: Types.ObjectId[];
+    if (offeringId) {
+      const offering = await Offering.findOne({ _id: offeringId, courseId }, { programId: 1 }).lean();
+      if (!offering) throw new AppError('NOT_FOUND', 'Class not found.');
+      programIds = [offering.programId];
+    } else {
+      programIds = await CurriculumEntry.distinct('programId', { courseId });
+    }
+    const programs = await Program.find({ _id: { $in: programIds } }, { code: 1, outcomeTitles: 1 })
+      .sort({ code: 1 })
+      .limit(50)
+      .lean();
+    const titleOf = (code: string) =>
+      programs
+        .flatMap((p) => p.outcomeTitles.filter((t) => t.code === code && t.title.trim()))
+        .at(0)
+        ?.title.trim();
+    const outcomes = OUTCOME_CODES.flatMap((code) => {
+      const title = titleOf(code);
+      return title ? [{ code, title }] : [];
+    });
+    const untitled = OUTCOME_CODES.filter((code) => !titleOf(code));
+    if (outcomes.length === 0) {
+      throw new AppError('CONFLICT', 'The programme outcomes have no titles yet, so there is nothing to map to.');
+    }
+    await limit('ai', viewer.id, 30, 60 * 60_000);
+    const cells = await askCoMap({
+      cos: course.cos.map((co) => ({ code: co.code, statement: co.statement })),
+      outcomes,
+    });
+    if (!cells) return null;
+    const idOf = new Map(course.cos.map((co) => [co.code, String(co._id)]));
+    return {
+      cells: cells.flatMap((cell) => {
+        const coId = idOf.get(cell.co);
+        return coId ? [{ coId, outcome: cell.outcome, level: cell.level, rationale: cell.rationale }] : [];
+      }),
+      untitled,
+    };
+  },
+);
+
+// M09 (A-181): a change to the course's outcomes or map is worked into its active credit offerings; a completed one keeps
+// the map its record was worked out with.
+async function queueCourseAttainment(courseId: string) {
+  const offerings = await Offering.find({ courseId, category: 'ugc', status: 'active' }, { _id: 1 }).limit(200).lean();
+  for (const offering of offerings) await queueAttainment(String(offering._id));
+}
 
 export const saveCoMap = action({ input: SaveCoMap, roles: EDITORS }, async ({ courseId, 'cell[]': raw }, viewer) => {
   const course = await loadCourse(viewer, courseId, ['credits', 'cos', 'coMap']);
@@ -263,6 +328,7 @@ export const saveCoMap = action({ input: SaveCoMap, roles: EDITORS }, async ({ c
       session,
     );
   });
+  await queueCourseAttainment(courseId);
   refresh();
 });
 

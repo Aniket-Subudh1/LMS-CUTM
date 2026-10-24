@@ -8,14 +8,16 @@ import { requireOfferedLanguages } from '@/lib/data/code';
 import { csvItem, questionOf, storedItem } from '@/lib/data/questions';
 import { db } from '@/lib/db';
 import { formatCsvErrors, parseBankCsv } from '@/lib/domain/csv';
+import { plainText } from '@/lib/domain/rich-text';
 import { AppError, csvRejected } from '@/lib/errors';
-import { aiConfigured } from '@/lib/integrations/ai';
+import { aiConfigured, suggestItemTags as askItemTags } from '@/lib/integrations/ai';
 import { Assessment } from '@/lib/models/assessment';
 import { BankItem } from '@/lib/models/bank-item';
 import { Course } from '@/lib/models/course';
 import { Offering } from '@/lib/models/offering';
 import { queueDraftQuestions } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
+import { SuggestItemTags } from '@/lib/schemas/ai';
 import { BANK_LIMITS, BankItemRef, CopyToBank, DraftQuestions, ImportBankCsv, SaveBankItem } from '@/lib/schemas/bank';
 
 const STAFF = ['admin', 'faculty'] as const;
@@ -82,6 +84,38 @@ export const draftWithAi = action({ input: DraftQuestions, roles: STAFF }, async
     level: input.level,
     coIds: input['coIds[]'],
   });
+});
+
+// M09 (CPP-07): outcomes and a Bloom level for the question being written, from the dialog's unsaved text; nothing is
+// stored, the teacher reviews and saves. In the builder the test gives the class (whoever manages it), in a course bank
+// the class gives the course. Only the question's words and the course's outcomes are sent (09 §12).
+export const suggestItemTags = action({ input: SuggestItemTags, roles: STAFF }, async (input, viewer) => {
+  let offeringId = input.offeringId;
+  if (input.assessmentId) {
+    await requireManage(viewer, input.assessmentId);
+    const test = await Assessment.findById(input.assessmentId, { offeringId: 1 }).lean();
+    offeringId = test?.offeringId ? String(test.offeringId) : undefined;
+  }
+  if (!offeringId) throw new AppError('CONFLICT', 'Only a course’s questions have course outcomes.');
+  const bank = await requireBankEditor(viewer, offeringId);
+  if (!aiConfigured()) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
+  await db();
+  const course = await Course.findById(bank.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean();
+  const cos = course?.cos ?? [];
+  if (cos.length === 0) throw new AppError('CONFLICT', 'This course has no outcomes yet.');
+  await limit('ai', viewer.id, 30, 60 * 60_000);
+  const options = input['option[]'].map((o) => o.trim()).filter(Boolean);
+  const answer = await askItemTags({
+    promptText: [plainText(input.prompt), ...options.map((o, i) => `Option ${i + 1}: ${o}`)].join('\n'),
+    cos: cos.map((co) => ({ code: co.code, statement: co.statement })),
+  });
+  if (!answer) return null;
+  const idOf = new Map(cos.map((co) => [co.code, String(co._id)]));
+  return {
+    coIds: answer.coCodes.flatMap((code) => idOf.get(code) ?? []),
+    bloomLevel: answer.bloomLevel,
+    rationale: answer.rationale,
+  };
 });
 
 // Papers keep their own copies, so a deleted bank question changes no attempt (TP-05).

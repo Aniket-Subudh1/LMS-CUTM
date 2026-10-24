@@ -2,6 +2,7 @@ import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import mongoose, { type Types } from 'mongoose';
 import { handInAttempts, totalOf } from '@/lib/data/attempts';
+import { recomputeAttainment } from '@/lib/data/attainment';
 import { workOutGradeSheets } from '@/lib/data/grade-sheets';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
 import { lockForRun } from '@/lib/data/locks';
@@ -35,12 +36,13 @@ import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
 import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
-import { queueInternalMarks, queueLiveFinalize, queueTestStats } from '@/lib/queue';
+import { queueAttainment, queueInternalMarks, queueLiveFinalize, queueTestStats } from '@/lib/queue';
 import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
 import { BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { RichTextDoc } from '@/lib/schemas/common';
 import {
   AssessmentSweepJob,
+  AttainmentJob,
   DraftQuestionsJob,
   FinalizeLiveJob,
   GradeCodeJob,
@@ -71,7 +73,8 @@ type ComputeName =
   | 'internalMarks'
   | 'internalMarksNightly'
   | 'lockOffering'
-  | 'gradeSheets';
+  | 'gradeSheets'
+  | 'attainment';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -85,7 +88,8 @@ type ComputeData =
   | InternalMarksJob
   | InternalMarksNightlyJob
   | LockOfferingJob
-  | GradeSheetsJob;
+  | GradeSheetsJob
+  | AttainmentJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -454,7 +458,10 @@ async function gradeCode({ submissionId }: GradeCodeJob): Promise<void> {
       const test = await Assessment.findById(current.assessmentId, { status: 1 }).lean();
       if (test?.status === 'results_published') {
         await queueTestStats(String(current.assessmentId));
-        if (current.offeringId) await queueInternalMarks(String(current.offeringId));
+        if (current.offeringId) {
+          await queueInternalMarks(String(current.offeringId));
+          await queueAttainment(String(current.offeringId));
+        }
       }
       return;
     }
@@ -796,6 +803,12 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
     const { offeringId } = InternalMarksJob.parse(job.data);
     const result = await recomputeInternalMarks(offeringId, new Date());
     log.info('internal marks', { offeringId, ...result });
+    return;
+  }
+  if (job.name === 'attainment') {
+    const { offeringId, actorId } = AttainmentJob.parse(job.data);
+    const result = await recomputeAttainment(offeringId, new Date(), actorId);
+    log.info('attainment', { offeringId, ...result });
     return;
   }
   if (job.name === 'internalMarksNightly') {
