@@ -252,6 +252,8 @@ export type SessionDetail = {
   polls: RoomPoll[];
   // M03c T7: open breakout rooms as the viewer may see them.
   breakout: RoomBreakout | null;
+  // M03c T8: the whiteboard, while one is open.
+  board: { studentsDraw: boolean } | null;
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -420,7 +422,17 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   if (!Types.ObjectId.isValid(sessionId)) notFound();
   const doc = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1, polls: 1, breakout: 1 },
+    {
+      ...SESSION_FIELDS,
+      roomName: 1,
+      studentsMay: 1,
+      removed: 1,
+      waiting: 1,
+      recordings: 1,
+      polls: 1,
+      breakout: 1,
+      board: 1,
+    },
   ).lean();
   if (!doc) notFound();
   const now = new Date();
@@ -491,6 +503,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     recordings,
     polls,
     breakout,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
     inClass,
     enrolled,
     summary:

@@ -54,6 +54,7 @@ async function Lobby({ params }: { params: PageProps<'/m/[token]'>['params'] }) 
         controls={null}
         polls={[]}
         breakout={null}
+        board={lobby.board}
       />
     );
   }

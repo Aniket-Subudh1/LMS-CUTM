@@ -235,6 +235,7 @@ async function findMeeting(viewer: Viewer, meetingId: string) {
     recordings: 1,
     polls: 1,
     breakout: 1,
+    board: 1,
   }).lean();
   if (!doc?.meeting) notFound();
   return { doc: { ...doc, meeting: doc.meeting }, role: access.role };
@@ -286,6 +287,7 @@ export type MeetingRoom = {
   canRecord: boolean;
   polls: RoomPoll[];
   breakout: RoomBreakout | null;
+  board: { studentsDraw: boolean } | null;
   invited: number;
   canStartAt: Date;
 };
@@ -322,6 +324,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
     canRecord: live && host && recordingEnabled(),
     polls,
     breakout,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
   };
@@ -333,6 +336,7 @@ export type GuestLobby = {
   hosts: string;
   guest: { email: string; name: string | null; state: GuestState };
   join: { serverUrl: string; token: string } | null;
+  board: { studentsDraw: boolean } | null;
   invited: number;
 };
 
@@ -344,7 +348,7 @@ export async function getGuestLobby(token: string): Promise<GuestLobby> {
   await db();
   const doc = await LiveSession.findOne(
     { kind: 'meeting', 'meeting.guests._id': new Types.ObjectId(guestId) },
-    { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1 },
+    { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, board: 1 },
   ).lean();
   const guest = doc?.meeting?.guests.find((g) => g._id.equals(guestId));
   if (!doc?.meeting || !guest) notFound();
@@ -365,6 +369,7 @@ export async function getGuestLobby(token: string): Promise<GuestLobby> {
             rights: { ...ALL_RIGHTS, ...doc.studentsMay },
           })
         : null,
+    board: doc.status === 'live' && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
   };
 }

@@ -27,12 +27,14 @@ import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 import {
   ALL_RIGHTS,
   AnswerPoll,
+  BoardDrawing,
   BREAKOUT_CLOSING_MS,
   BreakoutMessage,
   breakoutRoomName,
   CreatePoll,
   MAX_RECORDINGS,
   MAX_REMOVED,
+  OpenBoard,
   OpenBreakouts,
   POLL_LIMITS,
   PollRef,
@@ -521,3 +523,39 @@ export const roomToken = action(
     });
   },
 );
+
+// --- The whiteboard (M03c T8, mock-up R3-E): a host opens it on the stage for everyone and decides whether the others
+// may draw; closing it ends it for everyone. Its drawing goes from browser to browser and is not stored. ---
+
+export const openBoard = action(
+  { input: OpenBoard, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, studentsDraw }, viewer) => {
+    await requireRoomHost(viewer, sessionId);
+    const { roomName } = await liveRoom(sessionId);
+    await LiveSession.updateOne(
+      { _id: sessionId, status: 'live', board: null },
+      { $set: { board: { by: viewer.id, openedAt: new Date(), studentsDraw } } },
+    );
+    await tell(roomName, 'board', 'opened');
+    refresh();
+  },
+);
+
+export const setBoardDrawing = action(
+  { input: BoardDrawing, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, allowed }, viewer) => {
+    await requireRoomHost(viewer, sessionId);
+    const { roomName } = await liveRoom(sessionId);
+    await LiveSession.updateOne({ _id: sessionId, board: { $ne: null } }, { $set: { 'board.studentsDraw': allowed } });
+    await tell(roomName, 'board', 'drawing');
+    refresh();
+  },
+);
+
+export const closeBoard = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
+  await requireRoomHost(viewer, sessionId);
+  const { roomName } = await liveRoom(sessionId);
+  await LiveSession.updateOne({ _id: sessionId }, { $unset: { board: '' } });
+  await tell(roomName, 'board', 'closed');
+  refresh();
+});

@@ -115,6 +115,17 @@ const liveSessionSchema = new Schema(
       },
       default: undefined,
     },
+    // M03c T8: a whiteboard open on the stage, and whether the others may draw. The drawing itself travels between the
+    // browsers in the room and is not stored.
+    board: {
+      type: {
+        _id: false,
+        by: { type: Schema.Types.ObjectId, required: true },
+        openedAt: { type: Date, required: true },
+        studentsDraw: { type: Boolean, required: true },
+      },
+      default: undefined,
+    },
     // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).
     waiting: [
       {

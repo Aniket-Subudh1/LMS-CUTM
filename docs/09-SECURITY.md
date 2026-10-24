@@ -45,6 +45,8 @@
 | Polls (M03c T6; not audited, no record): ask, see counts, show, end | — | ✔ (host) | — | ✔ (host) | — |
 | Polls: answer (those taking part; never guests); see own answer, and counts once shown | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
 | Breakout rooms (M03c T7): open, close, message every room, visit any | — | ✔ (host) | — | ✔ (host) | — |
+| Whiteboard (M03c T8): open, close, choose whether the others draw | — | ✔ (host) | — | ✔ (host) | — |
+| Whiteboard: draw when a host allows it (and data messages are allowed); see it always, guests included | ✔ | ✔ | ✔ | ✔ | — |
 | Breakout rooms: join one's own room (those taking part; never guests) | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
 | Watch a recording (M03c T5) | ✔ (their class, or a meeting they are invited to) | ✔ | ○ (their department's classes) | ✔ (classes; meetings they are invited to) | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |

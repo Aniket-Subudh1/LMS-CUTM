@@ -6,15 +6,18 @@ import {
   admitGuests,
   allowBack,
   answerPoll,
+  closeBoard,
   closeBreakouts,
   createPoll,
   denyGuest,
   endPoll,
   endRoom,
   messageBreakouts,
+  openBoard,
   openBreakouts,
   removeParticipant,
   roomToken,
+  setBoardDrawing,
   showPollResults,
   startRecording,
   stopRecording,
@@ -715,5 +718,32 @@ describe('breakout rooms (M03c T7)', () => {
     closeRoom.mockClear();
     expect(await endRoom({ sessionId: String(_id) })).toMatchObject({ ok: true });
     expect(closeRoom.mock.calls).toEqual([[`ls-${_id}-b1`], [`ls-${_id}-b2`], [`ls-${_id}`]]);
+  });
+});
+
+describe('the whiteboard (M03c T8)', () => {
+  it('lets a host open it for everyone, guests included, decide who draws, and close it', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const ref = { sessionId: id };
+    const rao = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
+    const token = guestLinkToken(String(rao?._id));
+    await signInAs(w.taught);
+    await expect(openBoard({ ...ref, studentsDraw: true })).rejects.toThrow(NOT_FOUND);
+    expect((await getMeetingRoom(id)).board).toBeNull();
+    await signInAs(w.faculty);
+    tell.mockClear();
+    expect(await openBoard({ ...ref, studentsDraw: false })).toMatchObject({ ok: true });
+    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'board', 'opened');
+    await signInAs(w.taught);
+    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: false });
+    expect((await getGuestLobby(token)).board).toEqual({ studentsDraw: false });
+    await signInAs(w.colleague);
+    expect(await setBoardDrawing({ ...ref, allowed: true })).toMatchObject({ ok: true });
+    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: true });
+    expect(await closeBoard(ref)).toMatchObject({ ok: true });
+    expect((await getMeetingRoom(id)).board).toBeNull();
+    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'board', 'closed');
   });
 });

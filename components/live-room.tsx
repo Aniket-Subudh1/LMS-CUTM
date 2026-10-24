@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -36,6 +37,7 @@ import {
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
   ChartBarIcon,
+  PencilSimpleLineIcon,
   SquaresFourIcon,
   ChatCircleIcon,
   CornersInIcon,
@@ -64,6 +66,7 @@ import {
   admitGuests,
   allowBack,
   answerPoll,
+  closeBoard,
   closeBreakouts,
   createPoll,
   denyGuest,
@@ -73,10 +76,12 @@ import {
   messageBreakouts,
   muteEveryone,
   muteParticipant,
+  openBoard,
   openBreakouts,
   raiseHand,
   removeParticipant,
   roomToken,
+  setBoardDrawing,
   setStudentRight,
   showPollResults,
   startRecording,
@@ -143,7 +148,15 @@ type Props = {
   polls: RoomPoll[];
   // M03c T7: open breakout rooms as the viewer may see them (none for a guest).
   breakout: RoomBreakout | null;
+  // M03c T8: the whiteboard, while a host has one open.
+  board: { studentsDraw: boolean } | null;
 };
+
+// M03c T8: Excalidraw is large, so it loads only when a board opens.
+const Whiteboard = dynamic(() => import('@/components/whiteboard').then((m) => m.Whiteboard), {
+  ssr: false,
+  loading: () => <p className="grid h-full place-items-center text-sm text-slate-500">Opening the whiteboard…</p>,
+});
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
 type Panel = 'people' | 'chat' | 'activities';
 type Layout = 'auto' | 'tiled' | 'spotlight' | 'sidebar';
@@ -532,6 +545,7 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
   );
   useDataChannel('poll', reread);
   useDataChannel('breakout', reread);
+  useDataChannel('board', reread);
   // Hosts see the answers come in: while a poll is open their page reads them again every few seconds.
   const pollOpen = props.polls.some((poll) => poll.status === 'open');
   useEffect(() => {
@@ -710,8 +724,51 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
     />
   );
 
+  // M03c T8: an open whiteboard takes the main tile, with the faces beside it.
+  const board = inBreakout ? null : props.board;
+  const canDraw = host || (board?.studentsDraw === true && mayChat);
+  const mayDraw = useCallback(
+    (identity: string) => {
+      const sender = room.remoteParticipants.get(identity);
+      return sender !== undefined && (isHost(sender) || board?.studentsDraw === true);
+    },
+    [room, board?.studentsDraw],
+  );
+  const showError = useCallback((message: string) => setError(message), []);
+
   let stage: ReactNode;
-  if (view.layout === 'tiled') {
+  if (board) {
+    const others = faces.slice(0, wide ? 5 : 3);
+    stage = (
+      <div className="absolute inset-0 flex flex-col gap-2 px-2 pt-14 pb-20 lg:flex-row">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg bg-white text-slate-900">
+          <Whiteboard canDraw={canDraw} host={host} mayDraw={mayDraw} onError={showError} />
+          {host && (
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-2.5 rounded-md bg-black/75 px-3 py-1.5 text-[0.8125rem] text-white">
+              <label className="flex items-center gap-2">
+                {OTHERS[noun]} can draw
+                <Switch
+                  checked={board.studentsDraw}
+                  disabled={busy}
+                  onCheckedChange={(allowed) => void run(() => setBoardDrawing({ ...ref, allowed }))}
+                  className="data-[state=unchecked]:bg-white/20"
+                />
+              </label>
+              <span className="h-4 w-px bg-white/20" />
+              <button type="button" disabled={busy} onClick={() => void run(() => closeBoard(ref))}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+        {others.length > 0 && (
+          <div className="flex h-20 shrink-0 gap-2 overflow-hidden sm:h-24 lg:h-auto lg:w-56 lg:flex-col">
+            {others.map((t) => tile(t, 'relative aspect-video h-full shrink-0 lg:h-auto lg:w-full'))}
+          </div>
+        )}
+      </div>
+    );
+  } else if (view.layout === 'tiled') {
     // Everyone the same size; a pinned tile or a shared screen takes four cells.
     const big = pinnedTile ?? screens[0];
     const all = [...(big ? [big] : []), ...[...screens, ...faces].filter((t) => !big || keyOf(t) !== keyOf(big))];
@@ -1149,6 +1206,8 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
               breakout={breakout}
               people={participants.filter((p) => !isHost(p)).map((p) => ({ id: p.identity, name: nameOf(p) }))}
               now={now}
+              boardOpen={props.board !== null}
+              openBoard={() => void run(() => openBoard({ ...ref, studentsDraw: false }))}
               openRooms={(rooms) => run(() => openBreakouts({ ...ref, ...rooms }))}
               closeRooms={() => void run(() => closeBreakouts(ref))}
               messageRooms={(text) => run(() => messageBreakouts({ ...ref, text }))}
@@ -1784,6 +1843,8 @@ function Activities({
   breakout,
   people,
   now,
+  boardOpen,
+  openBoard,
   openRooms,
   closeRooms,
   messageRooms,
@@ -1800,6 +1861,8 @@ function Activities({
   breakout: RoomBreakout | null;
   people: Person[];
   now: number;
+  boardOpen: boolean;
+  openBoard: () => void;
   openRooms: (rooms: NewRooms) => Promise<boolean>;
   closeRooms: () => void;
   messageRooms: (text: string) => Promise<boolean>;
@@ -1878,6 +1941,25 @@ function Activities({
             className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium disabled:opacity-50"
           >
             Set up
+          </button>
+        </div>
+      )}
+      {host && !boardOpen && (
+        <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
+            <PencilSimpleLineIcon />
+          </span>
+          <span className="grid min-w-0 flex-1 gap-0.5">
+            <span className="text-[0.8125rem] font-semibold">Whiteboard</span>
+            <span className="text-xs text-white/60">Draw on the stage; let the others draw too.</span>
+          </span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={openBoard}
+            className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium disabled:opacity-50"
+          >
+            Open
           </button>
         </div>
       )}

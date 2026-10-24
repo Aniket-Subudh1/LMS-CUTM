@@ -205,6 +205,7 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | waiting | `[{ guestId: Id, name: S, at: D }]` | M03c T4: guests asking to join, in the order they asked (≤ 20) |
 | polls | `[{ _id: Id, question: S, options: [{ _id: Id, text: S }], showResults: B, sharedAt: D?, status: S, by: Id, startedAt: D, endedAt: D? }]` | M03c T6: ≤ 20 (`POLL_LIMITS`), at most one `open`; question ≤ 200, 2–6 options of ≤ 120; `showResults` — the others see the counts when it ends; `sharedAt` — a host showed them earlier. Answers are `pollAnswers` (§4.3a) |
 | breakout | `{ rooms: N, assignments: [{ userId: Id, room: N }], openedAt: D, closesAt: D?, closedAt: D?, by: Id }?` | M03c T7: the latest breakout rooms, 2–20; `assignments` ≤ 1,000, each person in one room; open from `openedAt` until `closedAt` (set by the worker), and everyone returns at `closesAt` (the time limit, or a host's close plus a minute). Rooms are LiveKit rooms `<roomName>-b<n>` |
+| board | `{ by: Id, openedAt: D, studentsDraw: B }?` | M03c T8: a whiteboard open on the stage and whether the others may draw; the drawing itself goes from browser to browser and is not stored |
 | recordings | `[{ egressId: S, key: S, by: Id, startedAt: D, endedAt: D?, durationSec: N?, status: S }]` | M03c T5: ≤ 20 (`MAX_RECORDINGS`), the latest last; `status` `recording` (at most one) · `saved` · `failed`, set by the egress webhook; `egressId` empty for the moment a host's start is claimed; `key` a `live-recording` object (06 §5) |
 | createdBy | Id | |
 

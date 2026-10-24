@@ -308,6 +308,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-201 | Guests stay in the main room while breakout rooms are open: moving needs a token, which their link alone does not give | M03c | — |
 | A-202 | Hands, host controls, polls and recording belong to the main room: in a breakout room there are chat, reactions and the people | M03c | — |
 | A-203 | The setup deals people into rooms in turn in the order they appear; Shuffle mixes them at random; each can then be moved by hand | M03c | — |
+| A-204 | The whiteboard is not stored and has no export; it lives in the browsers in the room. A host who reloads with no other host there starts from a blank board, while the others keep theirs | M03c | — |
+| A-205 | Drawing needs the data permission: when a host turns off chat and reactions, the others cannot draw either | M03c | — |
+| A-206 | Pictures cannot be put on the whiteboard (their files would have to reach everyone) | M03c | — |
+| A-207 | Excalidraw's Chinese font (Xiaolai, 12 MB) is not served; Chinese text on the board uses a system font | M03c | — |
 
 ## 5. Log
 
@@ -2773,3 +2777,32 @@ Built to mock-up R3-D, as drawn.
 **Verification**
 - `npx vitest run --project integration tests/integration/meetings.test.ts` → 16 passed.
 - `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 329 passed (329)`.
+
+### 2026-10-24 · M03c/T8 The whiteboard · Claude Code, at Aniket's request
+
+Built to mock-up R3-E, as drawn.
+
+**Created**
+- **The package:** `@excalidraw/excalidraw` 0.18.1, with its reason and npm audit's findings in 03.
+- **Fonts:** its Latin fonts in `public/excalidraw/fonts` (480 KB, 25 files).
+- **The record:** `liveSessions.board`, `OpenBoard`, `BoardDrawing`, the `board` topic.
+- **Actions** (`app/(room)/actions.ts`): `openBoard`, `setBoardDrawing`, `closeBoard`.
+- **Reads:** `board` on the class's and the meeting's room and the guest's lobby.
+- **Screens:**
+  - `components/whiteboard.tsx` (loaded on demand): Excalidraw, with text streams for its changes, a sync for late joiners, a check on every incoming element, and changes from someone who may not draw ignored.
+  - `LiveRoom`: the board as the main tile with the faces beside it; "Others can draw" and Close for hosts; the Whiteboard card in Activities.
+- **Tests:** `tests/integration/meetings.test.ts`, 1 more case: only hosts open, guests see it, who draws, closing.
+- **Docs:** 03, 05 §4.3, 06 §4.3 and §8.8, 08 (`LiveRoom`, `Whiteboard`), 09 (permissions).
+
+**Not done**
+- Saving or exporting a board; pictures (A-206).
+- Drawing between real browsers has not been tried yet: that walk comes after T10.
+
+**Assumptions** — A-204 to A-207 (§4).
+
+**Open questions** — none new. npm audit's high findings in Excalidraw's Mermaid converter are recorded in 03 for Aniket to weigh.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/meetings.test.ts` → 17 passed.
+- `npm run build` → exit 0 with Excalidraw.
+- `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`. `npm run check:bundle` → clean (313 files).

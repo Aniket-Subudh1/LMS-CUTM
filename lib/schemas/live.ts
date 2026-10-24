@@ -110,6 +110,11 @@ export const BreakoutMessage = z.object({
 export const RoomTokenRef = z.object({ sessionId: objectId, room: z.number().int().min(0).max(BREAKOUT_LIMITS.rooms) });
 export const breakoutRoomName = (roomName: string, room: number) => (room === 0 ? roomName : `${roomName}-b${room}`);
 
+// --- The whiteboard (M03c T8): a host opens it on the stage and lets the others draw, or only watch. ---
+
+export const OpenBoard = z.object({ sessionId: objectId, studentsDraw: z.boolean().default(false) });
+export const BoardDrawing = z.object({ sessionId: objectId, allowed: z.boolean() });
+
 // --- Meetings (M03c T4) ---
 
 // 05 §4.3: the scheduler and up to four co-hosts; members picked from the LMS; guests by email.
