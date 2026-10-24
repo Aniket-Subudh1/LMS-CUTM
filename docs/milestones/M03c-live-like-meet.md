@@ -5,9 +5,10 @@
 | Depends on | M03, M03b (the room page, raised hands, chat) |
 | Requirements | LIV-01–LIV-05, ATT-01–ATT-03, COM-03; new owner requests below |
 | Release | part of R1, before M04 |
-| Packages to add (each with its reason in 03 §3, in the commit that first uses it) | `@livekit/track-processors` (background blur); `@excalidraw/excalidraw` (whiteboard, MIT); the recording uses `livekit-server-sdk`'s `EgressClient`, already installed |
-| Collections | `liveSessions` (removed people, locks, recording, polls), new `meetings` (and its guests) |
-| Infrastructure | LiveKit **Egress** deployed next to the LiveKit server (recording) |
+| Packages to add (each with its reason in 03 §3, in the commit that first uses it) | `@livekit/track-processors` 0.8.1 (background blur; 0.8.2 is under two weeks old); `@excalidraw/excalidraw` 0.18.1 (whiteboard, MIT); the recording uses `livekit-server-sdk`'s `EgressClient`, already installed |
+| Collections | `liveSessions` (removed people, locks; M03c T4–T7: `kind: 'meeting'`, the lobby, recording, polls, breakout rooms), new `meetings` (and its guests), new `pollAnswers` |
+| Env vars added | `LIVEKIT_EGRESS` (`on` where an Egress service runs; recording is hidden otherwise) |
+| Infrastructure | LiveKit **Egress** next to the LiveKit server on the test server, 65.20.89.9 (decision 5) |
 
 ## Goal
 
@@ -35,6 +36,81 @@ Standing preference: every screen is shown first as static mock-ups; Aniket pick
 
 Round 1 (17 Oct 2026): **Auto puts the faces beside a shared screen (R1-A)**; **host controls at the top of People (R1-C)**; the tiled view with pinning and reactions (R1-B), the mini window (R1-D) and the removed screen (R1-E) **as shown**. T1–T3 are built to these.
 
+## Decisions (Aniket, 24 Oct 2026)
+
+Asked before T4, when Aniket said to complete the milestone:
+
+5. **Recording runs on the current server**, 65.20.89.9, beside LiveKit. It has 2 vCPUs and 3.3 GB, and also runs the LMS, MongoDB and Redis. A recording can therefore slow the live class and the LMS while it runs. Aniket accepts this for trying it out; real use needs its own machine (M11, Q-12).
+6. **Captions are the host's own speech.** The host's browser recognises it (Chrome's or Edge's speech recognition, which may send the audio to Google or Microsoft) and sends the text to everyone in the room. Each person turns captions on or off for themselves. Students' speech is not captioned, so no student's voice leaves for captions.
+7. **Guests come in by personal link and a lobby.** Each invited guest's email holds their own link. They type their name and ask to join, and a host admits or turns them away. No account and no code.
+8. **One mock-up round for everything left** (rounds 2 and 3 together). After the picks, T4–T10 are built straight through, one commit each.
+
+## Design of T4–T10 (dev)
+
+- **A meeting is a live session without a course.**
+  - `meetings` holds what is scheduled: the title, when, the hosts, the members, the guests and their invitations.
+  - Each meeting has one `liveSessions` row (`kind: 'meeting'`, `meetingId`, no `offeringId`). That row holds the room, as a class's does: removed people, locks, the lobby, recording, polls and breakout rooms.
+  - So one room serves both. Its actions take the session and work out the viewer's access from it: a class through its course (`offeringAccess`), a meeting through its hosts and members. M04b's assessment actions work the same way (`assessmentAccess`).
+  - T1–T3's actions move to that shape in T4. Meetings take no attendance.
+- **Scheduling (T4):**
+  - Faculty, heads of department and admins schedule meetings. They pick members by name or email: staff, and the students they can already see (09 §3), at most 50. Guests are email addresses, at most 20.
+  - A changed time sends the invitation again. Cancelling sends a cancellation.
+  - The scheduler and the co-hosts they name are the hosts.
+- **Invitations (T4):** an email to each member and guest, with the join link and an `.ics` calendar file.
+  - The file is `METHOD:REQUEST`; a new time sends it again with a higher `SEQUENCE`, and cancelling sends `METHOD:CANCEL`.
+  - Emails go through the mail queue. The mail adapter gains attachments (06 §4.2).
+  - A guest's link holds a token; only its hash is stored.
+- **The guest lobby (T4):** `/m/<token>`, a public page like `/t/`.
+  - It shows the meeting and its time, the guest's name, and a camera and microphone check, then "Ask to join".
+  - The request goes on the session's `waiting` list. The server tells the hosts in the room (a `lobby` message), and People lists the waiting guests with Admit, Deny and Admit all.
+  - The guest's page checks every 3 seconds. Once admitted, it gets a token for identity `guest-<guestId>`.
+  - A turned-away guest may ask again. A removed guest stays out until let back (decision 3). Guests have no host controls.
+- **Recording (T5):**
+  - A host records with `EgressClient.startRoomCompositeEgress` (the speaker layout) to the S3 bucket, under a key the server chooses. One recording at a time per room.
+  - The session keeps `recordings [{ egressId, by, startedAt, endedAt?, key?, durationSec?, status }]`, at most 20.
+  - Everyone sees "Recording" beside "Live", and a notice when it starts and stops. The egress webhook stores the file.
+  - The class page, or the meeting's page, plays it through `/api/files` for whoever can open that class or meeting.
+  - Recording is hidden unless `LIVEKIT_EGRESS=on`.
+- **Polls (T6):**
+  - A host asks a question with 2–6 options. Each person answers once and may change their answer while the poll is open.
+  - Hosts see the counts live: the server sends them after each answer. A host can show the results to everyone, and close the poll.
+  - Each poll is stored on the session (at most 20 per class). Answers go in `pollAnswers`, one row per person and poll.
+- **Breakout rooms (T7):**
+  - A host makes 2–20 rooms, sends students to them at random or by hand, and may set a time limit.
+  - Each room is its own LiveKit room, `ls-<sessionId>-b<n>`. Students get "Join breakout room n" and move with a new token. Time there counts as time in the class: the webhook maps a breakout room to its session.
+  - Hosts can visit any room, send a message to every room, and close them. Everyone then returns after a 60-second countdown.
+  - The plan is stored on the session (`breakout`).
+- **Whiteboard (T8):**
+  - A host opens Excalidraw as the stage's main tile and lets students draw or only watch.
+  - Changes travel as data messages. Someone who joins late gets the board from a host's browser. Nothing is stored.
+  - Excalidraw loads only when a board opens, and its fonts come from our own files.
+- **Captions (T9):** as decision 6.
+  - The host turns on "Caption my speech". The browser's recognition (English, India) sends `{ text, final }` on the `caption` topic.
+  - "CC" in the bar shows a strip at the foot of the stage: the latest two lines with the speaker's name.
+  - Hosts on a browser without speech recognition are told so.
+- **Background blur (T10):**
+  - "Blur my background" in More applies `@livekit/track-processors`' `BackgroundBlur` to the viewer's own camera.
+  - Its model and wasm files are served from our own `public/`, so nothing is fetched from another site.
+  - It is hidden where the browser cannot run it.
+
+## Mock-ups (T0, rounds 2 and 3 together)
+
+Drawn inside the real app at 1440 px and 390 px, with two variants where there is a real choice. The picks are recorded here before T4.
+
+| # | Screen | Variants |
+|---|---|---|
+| R2-A | Meetings (in the menu for staff): upcoming and past, and the New meeting dialog | one |
+| R2-B | The invitation email, with the calendar file and the join link | one |
+| R2-C | The guest's lobby: before asking, and while waiting | one |
+| R2-D | A host in the room while a guest asks to join: the notice on the stage and the waiting list in People | one |
+| R3-A | Recording: Record for hosts, what everyone sees while it records, and the recording on the class page | one |
+| R3-B | Polls, breakout rooms and the whiteboard: where hosts start them | A · an Activities tab beside People and Chat · B · their own buttons in the bar |
+| R3-C | A poll: asking, answering, and the live results | one |
+| R3-D | Breakout rooms: setting them up, a student's invitation, inside a room with the time left | one |
+| R3-E | The whiteboard on the stage | one |
+| R3-F | Captions on the stage | one |
+| R3-G | Background blur in More, and the blurred tile | one |
+
 ## How the pieces work (verified against the installed SDKs and LiveKit's docs)
 
 - **Mute:** `RoomServiceClient.mutePublishedTrack` (a host can mute, not unmute, as in Meet).
@@ -43,14 +119,14 @@ Round 1 (17 Oct 2026): **Auto puts the faces beside a shared screen (R1-A)**; **
 - **Picture-in-picture:** the Document Picture-in-Picture API (Chrome and Edge) for a window with the stage and controls; Chrome opens it on its own when the tab is left if the page registers the `enterpictureinpicture` media-session handler while using the camera or microphone. Other browsers: the video element's own picture-in-picture.
 - **Reactions, polls' live results, whiteboard strokes, captions:** LiveKit data messages, reaching only the people in the room. Polls and their answers are stored (one row per answer); reactions, strokes and captions are not.
 - **Breakout rooms:** separate LiveKit rooms named after the class; people move with new tokens; time in a breakout room counts as time in the class.
-- **Captions:** decided at their task (engine and privacy: the browser's speech recognition sends audio to its maker; a server model needs a GPU).
+- **Captions:** the host's browser's speech recognition (decision 6); a server model would need a GPU.
 - **Recording:** `EgressClient` room-composite recording to S3; the room tells everyone while it records; the egress webhook stores the file on the session.
 
 ## Tasks
 
 Each task: database → backend → frontend, one commit, one PROGRESS entry.
 
-- **T0** Decisions (this file, PROGRESS); mock-ups in rounds: (1) layouts, pinning, mini window, host controls, reactions; (2) meetings, invitations, guest lobby; (3) polls, breakout rooms, whiteboard, captions, recording.
+- **T0** Decisions (this file, PROGRESS); mock-ups in rounds: (1) layouts, pinning, mini window, host controls, reactions; (2) meetings, invitations, guest lobby; (3) polls, breakout rooms, whiteboard, captions, recording. Rounds 2 and 3 are drawn together (decision 8).
 - **T1** Layouts and pinning; the mini window.
 - **T2** Host controls: mute one or all, remove and let back, locks.
 - **T3** Emoji reactions.

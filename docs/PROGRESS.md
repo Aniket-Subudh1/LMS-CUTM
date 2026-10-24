@@ -24,7 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; decisions 5–8 (24 Oct 2026); rounds 2–3 mock-ups next; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
@@ -2492,3 +2492,31 @@ The attainment figures are examples worked out by 07 §4: CO1 75 % → level 3, 
 - Two fixes after looking at the shots: the tiles' labels were cut off at 390 px ("SEE marks" and "SEE level" now), and the Bloom chips now capitalise as the app's do.
 
 Shown to Aniket on one page: https://claude.ai/artifact/Ep4y6pUdn56PsD5aNv8jNP (private).
+
+### 2026-10-24 · Decision: M03c T4–T10 · Claude Code, at Aniket's request
+
+Request: "complete this" (M03c). Before T4, four points needed Aniket (`docs/milestones/M03c-live-like-meet.md`, decisions 5–8):
+5. **Recording runs on the current server (65.20.89.9).** Aniket chose it knowing the server has 2 vCPUs and 3.3 GB and also runs LiveKit, the LMS, MongoDB and Redis, so a recording can slow the class and the LMS. It is for trying out; real use needs its own machine.
+6. **Captions are the host's own speech,** recognised by the host's Chrome or Edge (which may send the audio to Google or Microsoft). The recommended option.
+7. **Guests come in by personal link and a lobby;** no account and no code. The recommended option.
+8. **One mock-up round for everything left,** then T4–T10 straight through. The recommended option.
+
+**Design** (in the milestone file):
+- A meeting is a live session without a course: `meetings` holds the schedule and the invitations, and one `liveSessions` row (`kind: 'meeting'`) holds the room.
+- The room's actions take the session and work out access from it, as M04b's assessment actions do.
+- Invitations carry an `.ics` file; the mail adapter gains attachments.
+- Polls are stored, with `pollAnswers`.
+- Breakout rooms are LiveKit rooms named after the class.
+- The whiteboard and the captions travel as data messages and are not stored.
+- Blur's files are served from our own server.
+- Recording is behind `LIVEKIT_EGRESS=on`.
+
+**Packages to come:** `@excalidraw/excalidraw` 0.18.1, and `@livekit/track-processors` 0.8.1 (0.8.2 was published on 12 Oct, under two weeks ago). Both accept React 19 and livekit-client 2.
+
+**Not done** — the mock-ups (next), then T4–T11.
+
+**Assumptions** — none yet in §4.
+
+**Open questions** — none new. Q-12 (hosting) now also decides where recording runs for real use.
+
+**Verification** — Docs only. The server's size is from the 16 Oct test-deployment entry. Versions and peers were checked with `npm view`.
