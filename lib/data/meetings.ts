@@ -365,7 +365,7 @@ export async function getGuestLobby(token: string): Promise<GuestLobby> {
             roomName: doc.roomName,
             userId: guestId,
             name: guest.name ?? guest.email,
-            role: 'participant',
+            role: 'guest',
             rights: { ...ALL_RIGHTS, ...doc.studentsMay },
           })
         : null,

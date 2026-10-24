@@ -17,7 +17,8 @@ import { AppError } from '@/lib/errors';
 import { log } from '@/lib/log';
 
 // 06 §4.3. The live engine is self-hosted LiveKit (ADR-18); only this file talks to it from the server.
-export type LiveRole = 'host' | 'participant';
+// M03c T4: a meeting's guest takes part like a member, but the browsers keep them out of breakout rooms (A-201).
+export type LiveRole = 'host' | 'participant' | 'guest';
 // M03c T2: what a student may do in the room; hosts may always do everything.
 export type StudentRights = { share: boolean; unmute: boolean; chat: boolean };
 // Someone in the room: whether they host, and the microphone tracks they have on.

@@ -20,6 +20,7 @@ import {
   RoomAudioRenderer,
   StartAudio,
   useChat,
+  useConnectionState,
   useDataChannel,
   useIsRecording,
   useLocalParticipant,
@@ -63,12 +64,14 @@ import {
   XIcon,
 } from '@phosphor-icons/react';
 import {
+  ConnectionState,
   DisconnectReason,
   LocalVideoTrack,
   RoomEvent,
   Track,
   type Participant,
   type RoomOptions,
+  type VideoCaptureOptions,
 } from 'livekit-client';
 import {
   admitGuests,
@@ -193,6 +196,12 @@ const BLURS: { value: Blur; label: string }[] = [
 const BLUR_RADIUS: Record<Exclude<Blur, 'off'>, number> = { slight: 5, strong: 15 };
 // MediaPipe's files come from our own server (public/mediapipe; the wasm is copied there by `postinstall`).
 const BLUR_ASSETS = { tasksVisionFileSet: '/mediapipe/wasm', modelAssetPath: '/mediapipe/selfie_segmenter.tflite' };
+async function blurProcessor(blur: Exclude<Blur, 'off'>) {
+  const { BackgroundProcessor } = await import('@livekit/track-processors');
+  return BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS[blur], assetPaths: BLUR_ASSETS });
+}
+// M03c T7: whether the viewer's camera and microphone were on in the room they are leaving.
+type Media = { camera: boolean; microphone: boolean };
 
 const RIGHTS: [StudentRight, string][] = [
   ['share', 'can share their screen'],
@@ -245,7 +254,20 @@ export function LiveRoom(props: Props) {
   // room: LiveKit renews the token while connected, and Rejoin reloads the page for a new one. M03c T7: `room` is where
   // the tab is connected — 0 the class or meeting, 1–20 a breakout room; moving fetches a token for the other room, and
   // the disconnect that the move causes is not the viewer leaving.
-  const [conn, setConn] = useState({ token: props.token, room: 0 });
+  // Moving carries the camera and microphone into the other room as they were; a camera with its background blurred
+  // starts there already blurred, so the room behind the viewer is never sent. The blur choice outlives the move
+  // (A-211).
+  const [conn, setConn] = useState<{
+    token: string;
+    room: number;
+    video: VideoCaptureOptions | boolean;
+    audio: boolean;
+  }>({ token: props.token, room: 0, video: false, audio: false });
+  const [blur, setBlur] = useState<Blur>('off');
+  const media = useRef<Media>({ camera: false, microphone: false });
+  const remember = useCallback((now: Media) => {
+    media.current = now;
+  }, []);
   const switching = useRef(false);
   const [deviceFailed, setDeviceFailed] = useState(false);
   const connected = useRef(false);
@@ -253,11 +275,20 @@ export function LiveRoom(props: Props) {
     async (room: number): Promise<string | null> => {
       const result = await roomToken({ sessionId, room });
       if (!result.ok) return result.message;
+      const { camera, microphone } = media.current;
+      // A blur that cannot load leaves the camera off rather than sending it unblurred.
+      const video =
+        camera && blur !== 'off'
+          ? await blurProcessor(blur).then(
+              (processor) => ({ processor }),
+              () => false,
+            )
+          : camera;
       switching.current = true;
-      setConn({ token: result.data.token, room });
+      setConn({ token: result.data.token, room, video, audio: microphone });
       return null;
     },
-    [sessionId],
+    [sessionId, blur],
   );
   // Back to the class or meeting when the breakout rooms close.
   const breakoutOpen = props.breakout !== null;
@@ -375,8 +406,8 @@ export function LiveRoom(props: Props) {
         token={conn.token}
         connect
         options={ROOM_OPTIONS}
-        video={false}
-        audio={false}
+        video={conn.video}
+        audio={conn.audio}
         data-lk-theme="default"
         className="flex min-h-0 min-w-0 flex-1"
         onConnected={() => {
@@ -402,7 +433,14 @@ export function LiveRoom(props: Props) {
         onError={() => setState('failed')}
         onMediaDeviceFailure={() => setDeviceFailed(true)}
       >
-        <Classroom {...props} inRoom={conn.room} switchTo={switchTo} />
+        <Classroom
+          {...props}
+          inRoom={conn.room}
+          switchTo={switchTo}
+          blur={blur}
+          setBlur={setBlur}
+          remember={remember}
+        />
         <RoomAudioRenderer />
       </LiveKitRoom>
     </div>
@@ -468,6 +506,7 @@ function useBrowser() {
 // The token gives each participant a `role`; a raised hand is the attribute `hand`, the time it was raised (ms), set by
 // the server (lib/integrations/live.ts).
 const isHost = (p: Participant) => p.attributes.role === 'host';
+const isGuest = (p: Participant) => p.attributes.role === 'guest';
 const handOf = (p: Participant) => Number(p.attributes.hand) || 0;
 const nameOf = (p: Participant) => p.name || p.identity;
 // 12:41 — the time left in breakout rooms (M03c T7).
@@ -495,20 +534,37 @@ const byPlace = (a: TrackReferenceOrPlaceholder, b: TrackReferenceOrPlaceholder)
 
 // M03c T7: `inRoom` is where the tab is connected: 0 the class or meeting, otherwise a breakout room, where only
 // chat, reactions and the people are there — hands, host controls, activities and recording belong to the main room.
-function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => Promise<string | null> }) {
-  const { sessionId, host, noun, guest = false, inRoom, switchTo } = props;
+function Classroom(
+  props: Props & {
+    inRoom: number;
+    switchTo: (room: number) => Promise<string | null>;
+    blur: Blur;
+    setBlur: (blur: Blur) => void;
+    remember: (media: Media) => void;
+  },
+) {
+  const { sessionId, host, noun, guest = false, inRoom, switchTo, blur, setBlur, remember } = props;
   const inBreakout = inRoom > 0;
-  const breakout = props.breakout;
   // A participant who said "Not now" to their breakout room (keyed by when the rooms opened).
   const [skipped, setSkipped] = useState<string | null>(null);
   const router = useRouter();
   const room = useRoomContext();
   const participants = useParticipants();
-  const { localParticipant, cameraTrack } = useLocalParticipant();
+  const { localParticipant, cameraTrack, isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
+  const connection = useConnectionState();
+  useEffect(() => {
+    // A room being left has already stopped everything: what moves is how it was while connected.
+    if (connection === ConnectionState.Connected)
+      remember({ camera: isCameraEnabled, microphone: isMicrophoneEnabled });
+  }, [connection, isCameraEnabled, isMicrophoneEnabled, remember]);
   const permissions = useLocalParticipantPermissions();
   const cameras = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], { onlySubscribed: false });
   const screens = useTracks([Track.Source.ScreenShare]);
   const now = useNow();
+  // Breakout rooms past their closing time are over, though the page has not read them again yet: nobody is asked to
+  // join one, and the people back from them are not asked again.
+  const breakout =
+    props.breakout?.closesAt && now > 0 && props.breakout.closesAt.getTime() <= now * 1000 ? null : props.breakout;
   const wide = useWide();
   // M03c T5: the engine says when an Egress recording runs, so everyone in the room sees it.
   const recording = useIsRecording();
@@ -595,22 +651,23 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
   const reactions = useDataChannel('reaction', onReaction);
 
   // M03c T10: the viewer's background is blurred in their own browser before their camera is sent; nobody else's
-  // picture changes. The processor loads only when first chosen; a device that cannot run it is told so.
-  const [blur, setBlur] = useState<Blur>('off');
+  // picture changes. The processor loads only when first chosen; a device that cannot run it is told so. A blur
+  // already running changes strength in place: a new processor would send the camera unblurred while the old stops.
   const camera = cameraTrack?.track;
   useEffect(() => {
     if (!(camera instanceof LocalVideoTrack)) return;
     let current = true;
     const apply = async () => {
+      const running = camera.getProcessor();
       if (blur === 'off') {
-        if (camera.getProcessor()) await camera.stopProcessor();
+        if (running) await camera.stopProcessor();
         return;
       }
-      const { BackgroundProcessor } = await import('@livekit/track-processors');
+      const { BackgroundProcessorWrapper } = await import('@livekit/track-processors');
       if (!current) return;
-      await camera.setProcessor(
-        BackgroundProcessor({ mode: 'background-blur', blurRadius: BLUR_RADIUS[blur], assetPaths: BLUR_ASSETS }),
-      );
+      if (running instanceof BackgroundProcessorWrapper) {
+        await running.switchTo({ mode: 'background-blur', blurRadius: BLUR_RADIUS[blur] });
+      } else await camera.setProcessor(await blurProcessor(blur));
     };
     apply().catch(() => setError('Your background could not be blurred on this device.'));
     return () => {
@@ -1140,7 +1197,20 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
               off={<MicrophoneSlashIcon />}
               locked={may(Track.Source.Microphone) ? undefined : lockedBy(noun, 'microphones')}
             />
-            <MediaToggle source={Track.Source.Camera} on={<VideoCameraIcon />} off={<VideoCameraSlashIcon />} />
+            <MediaToggle
+              source={Track.Source.Camera}
+              on={<VideoCameraIcon />}
+              off={<VideoCameraSlashIcon />}
+              // A camera turned on with its background blurred starts blurred, before anything is sent.
+              turnOn={
+                blur === 'off'
+                  ? undefined
+                  : () =>
+                      void blurProcessor(blur)
+                        .then((processor) => localParticipant.setCameraEnabled(true, { processor }))
+                        .catch(() => setError('Your camera could not start with its background blurred.'))
+              }
+            />
             <MediaToggle
               source={Track.Source.ScreenShare}
               on={<MonitorArrowUpIcon />}
@@ -1382,7 +1452,9 @@ function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => 
               noun={noun}
               polls={props.polls}
               breakout={breakout}
-              people={participants.filter((p) => !isHost(p)).map((p) => ({ id: p.identity, name: nameOf(p) }))}
+              people={participants
+                .filter((p) => !isHost(p) && !isGuest(p))
+                .map((p) => ({ id: p.identity, name: nameOf(p) }))}
               now={now}
               boardOpen={props.board !== null}
               openBoard={() => void run(() => openBoard({ ...ref, studentsDraw: false }))}
@@ -1733,6 +1805,7 @@ function MediaToggle({
   on,
   off,
   locked,
+  turnOn,
   className,
 }: {
   source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare;
@@ -1740,6 +1813,8 @@ function MediaToggle({
   off: ReactNode;
   // Why a host has turned this off for students, if they have.
   locked?: string;
+  // How to turn it on, when not the usual way (a camera with its background blurred).
+  turnOn?: () => void;
   className?: string;
 }) {
   const { enabled, pending, toggle } = useTrackToggle({ source });
@@ -1755,7 +1830,7 @@ function MediaToggle({
     <RoundButton
       label={label}
       pressed={source === Track.Source.ScreenShare && enabled}
-      onClick={() => void toggle()}
+      onClick={() => (!enabled && turnOn ? turnOn() : void toggle())}
       disabled={pending || locked !== undefined}
       className={cn(source !== Track.Source.ScreenShare && !enabled && 'bg-red-500/20 text-red-300', className)}
     >
@@ -1927,9 +2002,9 @@ function People({
                     {nameOf(p)}
                     {p.identity === me && <span className="text-white/60"> (you)</span>}
                   </span>
-                  {(isHost(p) || handOf(p) > 0) && (
+                  {(isHost(p) || isGuest(p) || handOf(p) > 0) && (
                     <span className={cn('text-xs', handOf(p) > 0 ? 'text-gold' : 'text-white/60')}>
-                      {handOf(p) > 0 ? 'Hand raised' : 'Host'}
+                      {handOf(p) > 0 ? 'Hand raised' : isHost(p) ? 'Host' : 'Guest'}
                     </span>
                   )}
                 </span>

@@ -371,7 +371,8 @@ describe('the guest lobby (decision 7)', () => {
     expect(await admitGuests({ ...ref, 'identity[]': [raoId] })).toMatchObject({ ok: true });
     expect(await getGuestLobby(token)).toMatchObject({
       guest: { state: 'admitted' },
-      join: { token: `participant-${raoId}` },
+      // A guest's own role keeps them out of the breakout setup (A-201).
+      join: { token: `guest-${raoId}` },
     });
     expect((await getMeetingRoom(id)).controls?.waiting).toEqual([]);
     // Removed: no token, put out again if they come back with one they kept, and no attendance in a meeting.
@@ -395,7 +396,7 @@ describe('the guest lobby (decision 7)', () => {
     expect(await allowBack({ ...ref, identity: raoId })).toMatchObject({ ok: true });
     expect(await getGuestLobby(token)).toMatchObject({
       guest: { state: 'admitted' },
-      join: { token: `participant-${raoId}` },
+      join: { token: `guest-${raoId}` },
     });
     expect(
       await AuditLog.countDocuments({ entityId: id, action: { $in: ['live.removed', 'live.allowed_back'] } }),

@@ -24,7 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; decisions 5–8 (24 Oct 2026); rounds 2–3 picked (R3-B A by default); T4–T11 being built | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T3 pushed on 17 Oct; T4–T11 committed on main on 24 Oct, not pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
@@ -316,6 +316,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-209 | Each person turns captions on for themselves (CC); a host's captions also show in their own strip, as "You" | M03c | — |
 | A-210 | Blur is offered on every browser; one that cannot run it says so when it is chosen, rather than the option being hidden | M03c | — |
 | A-211 | The blur choice lasts as long as the tab, like the layout (A-99) | M03c | — |
+| A-212 | Moving between a class or meeting and its breakout rooms keeps one's camera, microphone and blur as they were; the layout, pins, captions and panel start afresh in each room | M03c | — |
 
 ## 5. Log
 
@@ -2854,3 +2855,63 @@ Built to mock-up R3-G, as drawn.
 - `npm run check` → exit 0, `Tests 620 passed (620)`. ESLint now ignores `public/mediapipe/wasm`, MediaPipe's own loaders.
 - `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`.
 - `npm run build` → exit 0. `npm run check:bundle` → clean.
+
+### 2026-10-24 · M03c/T11 The walk on the dev LiveKit server, its fixes, and the report · Claude Code, at Aniket's request
+
+This walk is the one T4–T10 promised. It ran the build on port 3101 and the worker, both on the e2e database, against the dev LiveKit server and its Egress (from `.env`), with recordings going to the test bucket and email to a local SMTP sink. Chromium ran with fake cameras: faculty1 hosting, student01 and student02 as members, and a guest from their emailed link. It found four defects, fixed below; the last run passed all 62 steps.
+
+**Fixed**
+- **Breakout rooms could not be opened while a guest was in the meeting.** The setup dealt the guest into a room and the server refused ("Only the people taking part go to breakout rooms"). A guest's token now carries `role: 'guest'` (`lib/integrations/live.ts`, `lib/data/meetings.ts`), so the setup leaves guests out (A-201) and People marks them "Guest". Guests keep a member's rights.
+- **Moving between rooms turned the camera and microphone off.** It also reset the blur, so a camera turned back on in the new room showed the room behind the person. `LiveRoom` now keeps the blur choice and the last camera and microphone state across a move (A-212). A blurred camera starts in the new room already blurred: LiveKit applies a capture-time processor before it publishes.
+- **The blur could send an unblurred picture.** Two ways: turning the camera on with blur chosen published the plain camera, then blurred it; changing between "Slightly blurred" and "Blurred" put the plain camera back on the sender while it swapped processors (livekit-client's `setProcessor` stops the old one first). Now the camera starts blurred, and a change of strength calls the running processor's `switchTo`.
+- **The invitation to a breakout room came back after the rooms had closed.** It appeared once people were back in the main room, until the page read the session again. The room now treats rooms past `closesAt` as closed.
+- Also changed: `lib/integrations/live.test.ts` (a guest's token), `tests/integration/meetings.test.ts` (a guest's role), 06 §4 (the token's role, breakout moves) and 08 (`LiveRoom`).
+
+**The walk** (each line one or more scripted checks, all passing on the final run)
+- **T4:**
+  - The New meeting dialog (title, IST date and times, a co-host found by name, two students by email, a guest) saved a meeting: `kind: 'meeting'`, no offering, 2 hosts, 2 members, 1 guest.
+  - Four invitations arrived, each with a `text/calendar; method=REQUEST` part naming only its recipient. The guest's carried their own `/m/<token>` link and a member's the meeting page.
+  - The host started 3 minutes early and both members joined (3 in the LiveKit room). The guest asked to join; the host saw "Visiting Examiner (guest) wants to join" and "Waiting to join · 1", then admitted them. The guest's page became the meeting, with no Activities tab.
+- **T5:**
+  - Start recording showed "Recording" to the host, a member and the guest, and Stop took it away for all.
+  - Egress saved a 20 s, 2.4 MB MP4 to the bucket. The server's `egress_ended` webhook goes to the deployed app, so it was replayed to the local one, signed as LiveKit signs it. The recording then showed as saved on the meeting, and a member's meeting page played it through `/api/files` (metadata loaded, 20 s).
+- **T6:** The host started a poll. The member saw the gold dot, answered, and the host saw "1 answered" within the 3 s refresh. Ending it showed the member the results ("1 · 100 %"). The session stores no user ids for a poll.
+- **T10:**
+  - "Blurred" loaded MediaPipe's js, wasm and model from our own server, all 200, with no error.
+  - Turning the blurred camera off and on brought it back without an error.
+  - No page requested any host other than this machine and the LiveKit server.
+- **T7:**
+  - The setup listed the two members and not the guest. With 2 rooms and 5 minutes, each student was asked, joined, and was alone in their own LiveKit room, while the guest stayed in the main room.
+  - The host visited room 1 (2 there), came back, and messaged every room; room 2 saw it.
+  - Close the rooms brought everyone back in the minute (4 in the main room). Cameras were back on for the host and both students, and student01's blur choice was still "Blurred".
+- **T8:**
+  - The board opened for all three. The host's rectangle reached a member, who had no toolbar.
+  - After "Others can draw", the member's ellipse reached the host and the guest. Close closed it for everyone.
+- **T9:**
+  - The host's "Caption my speech" started the recogniser. A line it heard reached student01 with CC on, as "Pradeep Sahoo · Today we look at the second unit.", and nothing showed for student02 with CC off.
+  - Headless Chromium cannot recognise speech, so the recogniser was replaced by a stub that hands the room the same results.
+- **At 390 px:** the guest's page, /meetings, a meeting's page and the room fit the width (scroll width 390), and More offers "Turn on captions".
+- **Cleanup:** the walk's 18 meetings, their notifications, poll answers and audit rows were deleted from the e2e database, along with the 6 recordings earlier runs left in the bucket.
+
+**Not done**
+- **Needs a person, not a script** (for the human validation):
+  - captions from real speech in Chrome and Edge;
+  - blur on a real camera with a person in front of it (Chromium's fake camera has no person, so all of it blurs);
+  - drawing with a pen or a finger;
+  - a recording completed through the deployed app's own webhook, after a push;
+  - the invitation's calendar file opened in Gmail and Outlook;
+  - Safari and Firefox (no captions; blur may be refused, A-210).
+- **Not measured:** recording's load on the 2-vCPU test server with a full class.
+- **Not done here:** an e2e spec. It would need a LiveKit server whose webhooks reach the test machine, as T1–T3 found.
+- **Rotate the dev LiveKit API secret.** It was printed into a session log during T5's server work; it is in no file or commit.
+- **Not pushed:** T4–T11 are committed on main only (a push deploys the test server).
+
+**Assumptions** — A-212 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- The walk: `walk/env.sh node walk/walk.mjs` in the session scratchpad → `62/62 passed`, with the app, the worker and the SMTP sink running as above.
+- `npm run check` → exit 0, `Tests 621 passed (621)`.
+- `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`.
+- `npm run build` → exit 0. `npm run check:bundle` → clean (315 files).

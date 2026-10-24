@@ -140,7 +140,7 @@ Each task: database → backend → frontend, one commit, one PROGRESS entry.
 - **T8** Whiteboard.
 - **T9** Live captions.
 - **T10** Background blur.
-- **T11** Report.
+- **T11** Report: the walk of T4–T10 on the dev LiveKit server and the fixes it led to (PROGRESS, 24 Oct 2026).
 
 ## Not built
 

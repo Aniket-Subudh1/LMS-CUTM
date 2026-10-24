@@ -132,4 +132,11 @@ describe('joinToken', () => {
     const claims = await verifier.verify(token.token);
     expect(claims.video).toMatchObject({ canPublish: true, canPublishData: false, canPublishSources: ['camera'] });
   });
+
+  it('marks a meeting guest, who may do what members may (M03c T4)', async () => {
+    const token = await joinToken({ ...input, role: 'guest', rights: { share: false, unmute: true, chat: true } });
+    const claims = await verifier.verify(token.token);
+    expect(claims.attributes).toEqual({ role: 'guest' });
+    expect(claims.video).toMatchObject({ canPublishData: true, canPublishSources: ['camera', 'microphone'] });
+  });
 });
