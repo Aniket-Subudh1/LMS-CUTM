@@ -2915,3 +2915,27 @@ This walk is the one T4–T10 promised. It ran the build on port 3101 and the wo
 - `npm run check` → exit 0, `Tests 621 passed (621)`.
 - `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`.
 - `npm run build` → exit 0. `npm run check:bundle` → clean (315 files).
+
+### 2026-10-24 · M03c deployed to the test server, and a guest's room loading its files signed out · Claude Code, at Aniket's request
+
+Request: "deploy everything properly". `main` was pushed (`b12d5cd..46857cc`: M09's docs, M03c T4–T11, deleting a draft offering, the sample CSVs), and the server's deploy timer built and switched to `46857cc` in about 3 minutes (2.6 GB peak, 631 MB of swap), with no rollback.
+
+**Found after the deploy, and fixed:** signed out, `/mediapipe/…` and `/excalidraw/…` answered 307 to `/login`. `proxy.ts` sends every path without a session to sign in, and a meeting guest is never signed in. So a guest's blur failed ("could not be blurred") and the board's text fonts did not load. The walk had missed it: its guest chose no blur and drew shapes only. `proxy.ts` now lets both folders through; 09 §4 says so.
+
+**Created** (*changed*) — *`proxy.ts`*, *09 (`proxy.ts`)*, this entry.
+
+**Not done** — A recording finished through the deployed app's own webhook was not tried: it needs signing in on the shared development database, which the walk avoided.
+
+**Assumptions** — none new.
+
+**Open questions** — none new.
+
+**Verification**
+- On the server, with `46857cc` running:
+  - `cutm-lms-web`, `cutm-lms-worker`, `livekit`, `caddy` and `redis-server` active, Egress up.
+  - The worker logged `worker started`; index sync passed (the deploy stops on a failure there).
+  - The release's `public` has `mediapipe/wasm` and `excalidraw/fonts`.
+  - `GET /api/health` → `{"ok":true,"mongo":"up","redis":"up"}`, `/login` 200.
+- Locally, after the fix (`npm run build` → exit 0, standalone on port 3102, signed out):
+  - `/mediapipe/selfie_segmenter.tflite` 200, `/mediapipe/wasm/vision_wasm_internal.wasm` 200 `application/wasm`, an Excalifont `.woff2` 200 `font/woff2`;
+  - `/meetings`, `/home`, `/courses`, `/mediapipe-x` and `/excalidrawx` still 307.

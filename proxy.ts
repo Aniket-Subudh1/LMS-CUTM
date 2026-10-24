@@ -10,7 +10,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // `t/`: a test's share link opens signed out, to sign in or register there (M04b, TP-01). `v/`: anyone checks a
-    // certificate (TP-12). `m/`: a meeting guest's personal link (M03c T4).
-    '/((?!login|forgot-password|reset-password|t/|v/|m/|api/|_next/|favicon.ico|icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    // certificate (TP-12). `m/`: a meeting guest's personal link (M03c T4), whose room, signed out, loads the
+    // whiteboard's fonts (`excalidraw/`, T8) and the blur's model (`mediapipe/`, T10).
+    '/((?!login|forgot-password|reset-password|t/|v/|m/|excalidraw/|mediapipe/|api/|_next/|favicon.ico|icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
