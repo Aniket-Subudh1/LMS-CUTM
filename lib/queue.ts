@@ -225,6 +225,6 @@ export async function queueGradeSheets(job: GradeSheetsJob): Promise<void> {
 }
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.
-export async function queueLiveControl(job: LiveControlJob): Promise<void> {
-  await computeQueue().add('liveControl', job, { attempts: 3, backoff: { type: 'fixed', delay: 2_000 } });
+export async function queueLiveControl(job: LiveControlJob, delayMs = 0): Promise<void> {
+  await computeQueue().add('liveControl', job, { attempts: 3, backoff: { type: 'fixed', delay: 2_000 }, delay: delayMs });
 }

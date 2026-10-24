@@ -13,6 +13,9 @@ import { ALL_RIGHTS } from '@/lib/schemas/live';
 const ok = () => new Response(null, { status: 200 });
 
 type Connection = { sid: string; joinedAt: Date; leftAt: Date | null };
+
+// M03c T7: a breakout room `<roomName>-b<n>` belongs to its class or meeting, so time there counts as time in the class.
+const sessionRoom = (roomName: string) => /^(ls-[a-f\d]{24})-b\d+$/.exec(roomName)?.[1] ?? roomName;
 type Room = { _id: Types.ObjectId; offeringId: Types.ObjectId };
 
 // One entry per connection (05 §4.4): a connection already recorded is not added again, so a repeated or late event
@@ -39,7 +42,7 @@ async function addConnection(room: Room, userId: string, connection: Connection,
 // attendance: its removed members and guests are put out again, and the others get the current rights.
 async function joined({ roomName, userId, sid, host, at }: Extract<LiveEvent, { type: 'joined' }>) {
   const room = await LiveSession.findOne(
-    { roomName, status: 'live' },
+    { roomName: sessionRoom(roomName), status: 'live' },
     { kind: 1, offeringId: 1, studentsMay: 1, removed: { $elemMatch: { userId: new Types.ObjectId(userId) } } },
   ).lean();
   if (!room) return;
@@ -52,7 +55,10 @@ async function joined({ roomName, userId, sid, host, at }: Extract<LiveEvent, { 
 
 // Leaves arrive after the class has ended too (ending it closes the room), so they apply in any status.
 async function left({ roomName, userId, sid, joinedAt, at }: Extract<LiveEvent, { type: 'left' }>) {
-  const room = await LiveSession.findOne({ roomName, status: { $in: ['live', 'ended'] } }, { offeringId: 1 }).lean();
+  const room = await LiveSession.findOne(
+    { roomName: sessionRoom(roomName), status: { $in: ['live', 'ended'] } },
+    { offeringId: 1 },
+  ).lean();
   if (!room?.offeringId) return;
   const closed = await Attendance.updateOne(
     { sessionId: room._id, studentId: userId, 'presence.sid': sid },

@@ -95,6 +95,26 @@ const liveSessionSchema = new Schema(
         endedAt: { type: Date },
       },
     ],
+    // M03c T7: the latest breakout rooms. Open from `openedAt` until `closedAt`; `closesAt` is when everyone returns (a
+    // time limit, or a host's close plus a minute). Rooms are LiveKit rooms `<roomName>-b<n>`.
+    breakout: {
+      type: {
+        _id: false,
+        rooms: { type: Number, required: true },
+        assignments: [
+          {
+            _id: false,
+            userId: { type: Schema.Types.ObjectId, required: true },
+            room: { type: Number, required: true },
+          },
+        ],
+        openedAt: { type: Date, required: true },
+        closesAt: { type: Date },
+        closedAt: { type: Date },
+        by: { type: Schema.Types.ObjectId, required: true },
+      },
+      default: undefined,
+    },
     // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).
     waiting: [
       {

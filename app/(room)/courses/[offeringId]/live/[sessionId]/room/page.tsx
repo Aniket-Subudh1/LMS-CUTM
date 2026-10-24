@@ -58,6 +58,7 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
         controls={detail.controls}
         canRecord={detail.canRecord}
         polls={detail.polls}
+        breakout={detail.breakout}
       />
     );
   }

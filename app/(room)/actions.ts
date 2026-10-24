@@ -10,6 +10,7 @@ import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { buildKey } from '@/lib/domain/uploads';
 import {
+  joinToken,
   muteMicrophone,
   recordingEnabled,
   removeFromRoom,
@@ -24,16 +25,22 @@ import { PollAnswer } from '@/lib/models/poll-answer';
 import { queueLiveControl } from '@/lib/queue';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 import {
+  ALL_RIGHTS,
   AnswerPoll,
+  BREAKOUT_CLOSING_MS,
+  BreakoutMessage,
+  breakoutRoomName,
   CreatePoll,
   MAX_RECORDINGS,
   MAX_REMOVED,
+  OpenBreakouts,
   POLL_LIMITS,
   PollRef,
   RoomPeople,
   RoomPerson,
   RoomRef,
   RoomRight,
+  RoomTokenRef,
 } from '@/lib/schemas/live';
 
 // M03c T4: the room's actions, for a class and a meeting alike. Each takes the session; roomAccess works out from it who
@@ -204,7 +211,7 @@ export const allowBack = action(
 export const endRoom = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
   await requireRoomHost(viewer, sessionId);
   await db();
-  const session = await LiveSession.findById(sessionId, { status: 1, roomName: 1 }).lean();
+  const session = await LiveSession.findById(sessionId, { status: 1, roomName: 1, breakout: 1 }).lean();
   if (!session) throw new AppError('NOT_FOUND', 'Not found.');
   await endLiveSession(session);
   refresh();
@@ -399,5 +406,118 @@ export const showPollResults = action(
     );
     await tell(roomName, 'poll', 'shared');
     refresh();
+  },
+);
+
+// --- Breakout rooms (M03c T7, mock-up R3-D): a host sends the people taking part to 2–20 rooms, each its own LiveKit
+// room named after the class (time there counts as time in the class: the webhook maps it back). People move with a
+// token for their room; hosts may visit any. Everyone returns when the rooms close: at the time limit, or a minute
+// after a host closes them; the worker then closes the LiveKit rooms. Guests stay in the main room (A-201). ---
+
+export const openBreakouts = action(
+  { input: OpenBreakouts, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, rooms, limitMin, 'assign[]': assign }, viewer) => {
+    const { kind, offeringId } = await requireRoomHost(viewer, sessionId);
+    const session = await liveRoom(sessionId);
+    const assignments = assign.map((entry) => {
+      const [userId, room] = entry.split(':');
+      return { userId, room: Number(room) };
+    });
+    const ids = new Set(assignments.map((a) => a.userId));
+    if (ids.size !== assignments.length || assignments.some((a) => a.room < 1 || a.room > rooms)) {
+      throw new AppError('VALIDATION', 'Put each person in exactly one of the rooms.');
+    }
+    const taking =
+      kind === 'meeting'
+        ? (session.meeting?.memberIds ?? []).map(String).filter((id) => ids.has(id))
+        : (await Enrollment.distinct('studentId', { offeringId, status: 'active', studentId: { $in: [...ids] } })).map(
+            String,
+          );
+    if (taking.length !== ids.size) {
+      throw new AppError('VALIDATION', 'Only the people taking part go to breakout rooms.');
+    }
+    const now = new Date();
+    const closesAt = limitMin > 0 ? new Date(now.getTime() + limitMin * 60_000) : undefined;
+    const written = await LiveSession.updateOne(
+      {
+        _id: sessionId,
+        status: 'live',
+        $or: [{ breakout: null }, { 'breakout.closedAt': { $ne: null } }, { 'breakout.closesAt': { $lte: now } }],
+      },
+      { $set: { breakout: { rooms, assignments, openedAt: now, closesAt, by: viewer.id } } },
+    );
+    if (written.matchedCount === 0)
+      throw new AppError('CONFLICT', 'Breakout rooms are already open. Close them first.');
+    if (closesAt)
+      await queueLiveControl({ op: 'closeBreakouts', sessionId }, closesAt.getTime() - now.getTime() + 15_000);
+    await tell(session.roomName, 'breakout', 'opened');
+    await tell(session.roomName, 'notice', `${viewer.name} opened ${rooms} breakout rooms`);
+    refresh();
+  },
+);
+
+// Everyone returns a minute from now (or sooner, if the time limit ends first).
+export const closeBreakouts = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
+  await requireRoomHost(viewer, sessionId);
+  const session = await liveRoom(sessionId);
+  const breakout = (await LiveSession.findById(sessionId, { breakout: 1 }).lean())?.breakout;
+  const now = new Date();
+  if (!breakout || breakout.closedAt || (breakout.closesAt && breakout.closesAt <= now)) return refresh();
+  const closesAt = new Date(Math.min(breakout.closesAt?.getTime() ?? Infinity, now.getTime() + BREAKOUT_CLOSING_MS));
+  await LiveSession.updateOne(
+    { _id: sessionId, 'breakout.closedAt': null },
+    { $set: { 'breakout.closesAt': closesAt } },
+  );
+  await queueLiveControl({ op: 'closeBreakouts', sessionId }, closesAt.getTime() - now.getTime() + 15_000);
+  for (let room = 0; room <= breakout.rooms; room++) {
+    await tell(breakoutRoomName(session.roomName, room), 'breakout', 'closing');
+  }
+  refresh();
+});
+
+export const messageBreakouts = action(
+  { input: BreakoutMessage, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, text }, viewer) => {
+    await requireRoomHost(viewer, sessionId);
+    const session = await liveRoom(sessionId);
+    const rooms = (await LiveSession.findById(sessionId, { breakout: 1 }).lean())?.breakout?.rooms ?? 0;
+    for (let room = 1; room <= rooms; room++) {
+      await tell(breakoutRoomName(session.roomName, room), 'notice', `${viewer.name} to every room: ${text}`);
+    }
+  },
+);
+
+// A token for the class or meeting itself (room 0) or a breakout room: one's own, or any for a host.
+export const roomToken = action(
+  { input: RoomTokenRef, roles: ASSIGNABLE_ROLES },
+  async ({ sessionId, room }, viewer) => {
+    const { role } = await roomAccess(viewer, sessionId);
+    if (role === 'watch') throw new AppError('FORBIDDEN', 'You follow this class from its page.');
+    const session = await LiveSession.findById(sessionId, {
+      status: 1,
+      roomName: 1,
+      studentsMay: 1,
+      breakout: 1,
+      removed: { $elemMatch: { userId: new Types.ObjectId(viewer.id) } },
+    }).lean();
+    if (session?.status !== 'live') throw new AppError('CLOSED', 'It is not running.');
+    if (session.removed?.length) throw new AppError('FORBIDDEN', 'A host removed you.');
+    if (room > 0) {
+      const breakout = session.breakout;
+      const now = new Date();
+      if (!breakout || breakout.closedAt || (breakout.closesAt && breakout.closesAt <= now) || room > breakout.rooms) {
+        throw new AppError('CLOSED', 'The breakout rooms are closed.');
+      }
+      if (role !== 'host' && !breakout.assignments.some((a) => a.userId.equals(viewer.id) && a.room === room)) {
+        throw new AppError('FORBIDDEN', 'This is not your breakout room.');
+      }
+    }
+    return joinToken({
+      roomName: breakoutRoomName(session.roomName, room),
+      userId: viewer.id,
+      name: viewer.name,
+      role: role === 'host' ? 'host' : 'participant',
+      rights: { ...ALL_RIGHTS, ...session.studentsMay },
+    });
   },
 );

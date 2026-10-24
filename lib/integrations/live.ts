@@ -23,8 +23,9 @@ export type StudentRights = { share: boolean; unmute: boolean; chat: boolean };
 // Someone in the room: whether they host, and the microphone tracks they have on.
 export type RoomPerson = { identity: string; host: boolean; microphones: string[] };
 // Messages from the server to the browsers in the room: `notice` is shown to the people it is sent to; `controls`
-// tells hosts that the host controls changed; `poll` (M03c T6) tells everyone a poll started, ended or was shown.
-export type RoomTopic = 'notice' | 'controls' | 'poll';
+// tells hosts that the host controls changed; `poll` (M03c T6) tells everyone a poll started, ended or was shown;
+// `breakout` (T7) that breakout rooms opened or are closing.
+export type RoomTopic = 'notice' | 'controls' | 'poll' | 'breakout';
 
 // `sid` names one connection of a participant: a reconnect or a second tab is a new sid, so presence is matched by it.
 export type LiveEvent =

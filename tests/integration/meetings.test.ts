@@ -6,11 +6,15 @@ import {
   admitGuests,
   allowBack,
   answerPoll,
+  closeBreakouts,
   createPoll,
   denyGuest,
   endPoll,
   endRoom,
+  messageBreakouts,
+  openBreakouts,
   removeParticipant,
+  roomToken,
   showPollResults,
   startRecording,
   stopRecording,
@@ -31,7 +35,7 @@ import { LiveSession } from '@/lib/models/live-session';
 import { Notification } from '@/lib/models/notification';
 import { Offering } from '@/lib/models/offering';
 import { PollAnswer } from '@/lib/models/poll-answer';
-import { computeQueue, mailQueue, redis } from '@/lib/queue';
+import { computeQueue, mailQueue, queueLiveControl, redis } from '@/lib/queue';
 import { startComputeWorker } from '@/worker/jobs/compute';
 import { startMailWorker } from '@/worker/jobs/mail';
 import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
@@ -592,5 +596,124 @@ describe('polls (M03c T6)', () => {
     ).toMatchObject({
       ok: true,
     });
+  });
+});
+
+describe('breakout rooms (M03c T7)', () => {
+  it('sends the people taking part to rooms, gives each a token for their own, and lets hosts visit any', async () => {
+    const w = await world();
+    const other = await makeUser({ roles: ['student'] });
+    const offering = await makeOffering({ facultyIds: [w.faculty._id], status: 'active' });
+    await enroll(offering._id, other._id);
+    const id = await schedule(w, { 'member[]': [String(w.taught._id), String(other._id)] });
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const ref = { sessionId: id };
+    const assign = (...pairs: [{ _id: unknown }, number][]) => pairs.map(([u, room]) => `${String(u._id)}:${room}`);
+    await signInAs(w.faculty);
+    expect(await openBreakouts({ ...ref, rooms: 2, limitMin: 0, 'assign[]': assign([w.untaught, 1]) })).toMatchObject({
+      code: 'VALIDATION',
+    });
+    expect(await openBreakouts({ ...ref, rooms: 2, limitMin: 0, 'assign[]': assign([w.taught, 3]) })).toMatchObject({
+      code: 'VALIDATION',
+    });
+    tell.mockClear();
+    expect(
+      await openBreakouts({ ...ref, rooms: 2, limitMin: 15, 'assign[]': assign([w.taught, 1], [other, 2]) }),
+    ).toMatchObject({ ok: true });
+    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'breakout', 'opened');
+    expect(await openBreakouts({ ...ref, rooms: 2, limitMin: 0, 'assign[]': assign([w.taught, 1]) })).toMatchObject({
+      code: 'CONFLICT',
+    });
+    const host = (await getMeetingRoom(id)).breakout;
+    expect(host).toMatchObject({
+      rooms: 2,
+      mine: null,
+      assigned: [
+        { room: 1, people: [w.taught.name] },
+        { room: 2, people: [other.name] },
+      ],
+    });
+    expect(host?.closesAt?.getTime()).toBeGreaterThan(Date.now() + 14 * MIN);
+    // A token for one's own room; a host's for any.
+    await signInAs(w.taught);
+    expect((await getMeetingRoom(id)).breakout).toMatchObject({
+      mine: 1,
+      assigned: [{ room: 1, people: [w.taught.name] }],
+    });
+    joinToken.mockClear();
+    expect(await roomToken({ ...ref, room: 1 })).toMatchObject({
+      ok: true,
+      data: { token: `participant-${w.taught._id}` },
+    });
+    expect(joinToken).toHaveBeenCalledWith(expect.objectContaining({ roomName: `ls-${id}-b1`, role: 'participant' }));
+    expect(await roomToken({ ...ref, room: 2 })).toMatchObject({ code: 'FORBIDDEN' });
+    expect(await roomToken({ ...ref, room: 0 })).toMatchObject({ ok: true });
+    await signInAs(w.colleague);
+    expect(await roomToken({ ...ref, room: 2 })).toMatchObject({
+      ok: true,
+      data: { token: `host-${w.colleague._id}` },
+    });
+    // A message reaches every room; closing brings everyone back within a minute, then the worker closes the rooms.
+    tell.mockClear();
+    expect(await messageBreakouts({ ...ref, text: 'Five minutes left' })).toMatchObject({ ok: true });
+    expect(tell.mock.calls.map(([room, topic]) => [room, topic])).toEqual([
+      [`ls-${id}-b1`, 'notice'],
+      [`ls-${id}-b2`, 'notice'],
+    ]);
+    tell.mockClear();
+    expect(await closeBreakouts(ref)).toMatchObject({ ok: true });
+    const closesAt = (await LiveSession.findById(id).lean())?.breakout?.closesAt?.getTime() ?? 0;
+    expect(closesAt).toBeLessThanOrEqual(Date.now() + 60_000);
+    expect(tell).toHaveBeenCalledWith(`ls-${id}-b2`, 'breakout', 'closing');
+    await LiveSession.updateOne({ _id: id }, { $set: { 'breakout.closesAt': new Date(Date.now() - 1000) } });
+    closeRoom.mockClear();
+    await queueLiveControl({ op: 'closeBreakouts', sessionId: id });
+    await vi.waitFor(async () =>
+      expect((await LiveSession.findById(id).lean())?.breakout?.closedAt).toBeInstanceOf(Date),
+    );
+    expect(closeRoom.mock.calls).toEqual([[`ls-${id}-b1`], [`ls-${id}-b2`]]);
+    await signInAs(w.taught);
+    expect((await getMeetingRoom(id)).breakout).toBeNull();
+    expect(await roomToken({ ...ref, room: 1 })).toMatchObject({ code: 'CLOSED' });
+  });
+
+  it('counts a student’s time in a breakout room as time in the class, and closes the rooms when the class ends', async () => {
+    const w = await world();
+    const offering = await makeOffering({ facultyIds: [w.faculty._id], status: 'active' });
+    await enroll(offering._id, w.taught._id);
+    const _id = newId();
+    await LiveSession.create({
+      _id,
+      offeringId: offering._id,
+      title: 'Pointers',
+      scheduledStart: new Date(Date.now() - 10 * MIN),
+      scheduledEnd: new Date(Date.now() + 50 * MIN),
+      status: 'live',
+      startedAt: new Date(Date.now() - 10 * MIN),
+      roomName: `ls-${_id}`,
+      attendanceMode: 'derived',
+      createdBy: w.faculty._id,
+    });
+    await signInAs(w.faculty);
+    expect(
+      await openBreakouts({ sessionId: String(_id), rooms: 2, limitMin: 0, 'assign[]': [`${w.taught._id}:2`] }),
+    ).toMatchObject({ ok: true });
+    await hook({
+      type: 'joined',
+      host: false,
+      roomName: `ls-${_id}-b2`,
+      userId: String(w.taught._id),
+      sid: 'PA_b',
+      at: new Date(),
+    });
+    expect((await Attendance.findOne({ sessionId: _id, studentId: w.taught._id }).lean())?.presence).toEqual([
+      expect.objectContaining({ sid: 'PA_b', leftAt: null }),
+    ]);
+    // A breakout room closing does not end the class.
+    await hook({ type: 'room_finished', roomName: `ls-${_id}-b2`, at: new Date() });
+    expect((await LiveSession.findById(_id).lean())?.status).toBe('live');
+    closeRoom.mockClear();
+    expect(await endRoom({ sessionId: String(_id) })).toMatchObject({ ok: true });
+    expect(closeRoom.mock.calls).toEqual([[`ls-${_id}-b1`], [`ls-${_id}-b2`], [`ls-${_id}`]]);
   });
 });

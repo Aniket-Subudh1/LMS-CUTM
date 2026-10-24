@@ -54,7 +54,7 @@ import {
   ProctorRetentionJob,
   TestStatsJob,
 } from '@/lib/schemas/jobs';
-import { ALL_RIGHTS } from '@/lib/schemas/live';
+import { ALL_RIGHTS, breakoutRoomName } from '@/lib/schemas/live';
 import { SETTINGS } from '@/lib/schemas/settings';
 import { makeTestFile } from '@/worker/jobs/test-files';
 
@@ -180,8 +180,21 @@ async function liveSweep(now: Date): Promise<void> {
   log.info('live sweep', { ended: overdue.length, finalizing: unfinalized.length });
 }
 
+// M03c T7: the breakout rooms close once everyone was due back. A job queued for an earlier time limit that a host
+// cut shorter, or one that comes twice, finds them closed.
+async function closeBreakouts(sessionId: string, now: Date): Promise<void> {
+  const live = await LiveSession.findOne(
+    { _id: sessionId, 'breakout.closedAt': null, 'breakout.closesAt': { $lte: now } },
+    { roomName: 1, breakout: 1 },
+  ).lean();
+  if (!live?.breakout) return;
+  for (let room = 1; room <= live.breakout.rooms; room++) await closeRoom(breakoutRoomName(live.roomName, room));
+  await LiveSession.updateOne({ _id: sessionId, 'breakout.closedAt': null }, { $set: { 'breakout.closedAt': now } });
+}
+
 // M03c T2: once the class has ended there is no room to change.
 async function liveControl(job: LiveControlJob): Promise<void> {
+  if (job.op === 'closeBreakouts') return closeBreakouts(job.sessionId, new Date());
   const live = await LiveSession.findOne(
     { _id: job.sessionId, status: 'live' },
     { roomName: 1, studentsMay: 1 },

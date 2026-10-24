@@ -31,7 +31,7 @@ async function getOffering(offeringId: string) {
 async function findSession(offeringId: string, sessionId: string) {
   const session = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { title: 1, status: 1, scheduledStart: 1, scheduledEnd: 1, startedAt: 1, roomName: 1, attendanceMode: 1 },
+    { title: 1, status: 1, scheduledStart: 1, scheduledEnd: 1, startedAt: 1, roomName: 1, attendanceMode: 1, breakout: 1 },
   ).lean();
   if (!session) throw new AppError('NOT_FOUND', 'Live class not found.');
   return session;

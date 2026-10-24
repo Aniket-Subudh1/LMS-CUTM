@@ -304,6 +304,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-197 | Guests do not take part in polls: an answer is kept per LMS account | M03c | — |
 | A-198 | Who answered what is never shown, in the room or after (01 §4 keeps poll analytics out); the counts stay with the session. The mock-up's "who answered what is on the class page" is not built | M03c | — |
 | A-199 | Hosts see the counts by their page reading the polls again every 3 s while one is open, not by a message per answer | M03c | — |
+| A-200 | Breakout rooms take the people in the room when a host opens them; people who join later stay in the main room | M03c | — |
+| A-201 | Guests stay in the main room while breakout rooms are open: moving needs a token, which their link alone does not give | M03c | — |
+| A-202 | Hands, host controls, polls and recording belong to the main room: in a breakout room there are chat, reactions and the people | M03c | — |
+| A-203 | The setup deals people into rooms in turn in the order they appear; Shuffle mixes them at random; each can then be moved by hand | M03c | — |
 
 ## 5. Log
 
@@ -2735,3 +2739,37 @@ Built to mock-ups R3-B A (the Activities tab) and R3-C, as drawn. The one except
 **Verification**
 - `npx vitest run --project integration tests/integration/meetings.test.ts` → 14 passed.
 - `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 327 passed (327)`.
+
+### 2026-10-24 · M03c/T7 Breakout rooms · Claude Code, at Aniket's request
+
+Built to mock-up R3-D, as drawn.
+
+**Created**
+- **The record:**
+  - `liveSessions.breakout`, `OpenBreakouts`, `BreakoutMessage`, `RoomTokenRef`, `breakoutRoomName`, `BREAKOUT_LIMITS`.
+  - The `breakout` topic, and the `closeBreakouts` op of `compute/liveControl`; `queueLiveControl` takes a delay.
+- **Actions** (`app/(room)/actions.ts`): `openBreakouts`, `closeBreakouts`, `messageBreakouts`, and `roomToken` (main or a breakout room).
+- **Reads:** `roomBreakout` (`lib/data/live.ts`), on the class's and the meeting's room.
+- **Ending:** `endLiveSession` closes open breakout rooms with the class.
+- **The webhook:** maps `<roomName>-b<n>` to its session, so attendance, removal and rights work there too.
+- **Screens** (`LiveRoom`):
+  - The connection is `{ token, room }`. Moving fetches a token and reconnects, and the disconnect that a move causes is ignored. A room closing under someone, or the time running out, brings them back.
+  - The Breakout rooms card and setup (`BreakoutForm`); the hosts' status card (`BreakoutStatus`: Visit, message every room, close).
+  - The participant's invitation card and "Join room n" pill; a breakout room's header with the time left, and "Back to the class".
+- **Tests:** `tests/integration/meetings.test.ts`, 2 more cases:
+  - who may go where; tokens for one's own room or any for a host; what each sees; a message to every room; closing within a minute, then the worker closing each room; closed afterwards;
+  - in a class: a join in a breakout room counts toward attendance; a breakout room closing does not end the class; ending the class closes the breakout rooms.
+- **Docs:** 05 §4.3, 06 §4.3, §6 and §8.8, 07 §10, 08 (`LiveRoom`), 09 (permissions).
+
+**Not done**
+- Moving someone to another room while the rooms are open.
+- Guests in breakout rooms (A-201).
+- Polls or recording inside a breakout room (A-202).
+
+**Assumptions** — A-200 to A-203 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/meetings.test.ts` → 16 passed.
+- `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 329 passed (329)`.

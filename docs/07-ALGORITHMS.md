@@ -322,6 +322,7 @@ Live focus:
 2. `presenceSec` = union length in whole seconds; `status = presenceSec ≥ thresholdPct / 100 × (endedAt − startedAt) ? 'present' : 'absent'`. A session of no length (`endedAt ≤ startedAt`) marks everyone absent.
 3. Finalization writes a row for every active enrolled student (no presence → absent). Rows with `source = manual` are never overwritten; in a `manual`-mode session only rows without a status get one (unmarked → absent).
 4. A session that never started (`startedAt` null) produces no rows.
+5. M03c T7: a connection to one of the class's breakout rooms (`<roomName>-b<n>`) is a connection to the class, so time in a breakout room counts; moving between rooms is a leave and a join, and the union counts any overlap once.
 
 `attendancePct(attended, held)` → `roundHalfUp(100 × attended / held, 2)`, null when `held` is 0; the same function gives skill-course attendance (§8).
 

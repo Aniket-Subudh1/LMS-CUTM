@@ -61,6 +61,8 @@ export type LiveSweepJob = z.infer<typeof LiveSweepJob>;
 export const LiveControlJob = z.discriminatedUnion('op', [
   z.object({ op: z.literal('rights'), sessionId: objectId }),
   z.object({ op: z.literal('muteAll'), sessionId: objectId, byId: objectId, byName: z.string().min(1).max(120) }),
+  // M03c T7: close the breakout rooms once their time is up (queued for then; a later close leaves it nothing to do).
+  z.object({ op: z.literal('closeBreakouts'), sessionId: objectId }),
 ]);
 export type LiveControlJob = z.infer<typeof LiveControlJob>;
 

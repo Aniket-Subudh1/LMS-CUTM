@@ -19,6 +19,7 @@ import { queueLiveFinalize } from '@/lib/queue';
 import { pageSize } from '@/lib/schemas/common';
 import {
   ALL_RIGHTS,
+  breakoutRoomName,
   SHEET_PAGE_SIZE,
   type AttendanceMode,
   type AttendanceStatus,
@@ -249,6 +250,8 @@ export type SessionDetail = {
   recordings: RecordingRow[];
   // M03c T6: while it runs, its polls as the viewer may see them.
   polls: RoomPoll[];
+  // M03c T7: open breakout rooms as the viewer may see them.
+  breakout: RoomBreakout | null;
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -346,11 +349,59 @@ export async function roomPolls(
   });
 }
 
+// M03c T7: open breakout rooms as the viewer may see them: hosts every room with who is in it; the others their own
+// room and who is with them. Null when none is open.
+export type RoomBreakout = {
+  rooms: number;
+  openedAt: Date;
+  closesAt: Date | null;
+  assigned: { room: number; people: string[] }[];
+  mine: number | null;
+};
+
+export async function roomBreakout(
+  doc: Pick<LiveSessionDoc, 'breakout'>,
+  viewerId: string,
+  host: boolean,
+  now: Date,
+): Promise<RoomBreakout | null> {
+  const breakout = doc.breakout;
+  if (!breakout || breakout.closedAt || (breakout.closesAt && breakout.closesAt <= now)) return null;
+  const mine = breakout.assignments.find((a) => a.userId.equals(viewerId))?.room ?? null;
+  const shown = breakout.assignments.filter((a) => host || (mine !== null && a.room === mine));
+  const users = await User.find({ _id: { $in: shown.map((a) => a.userId) } }, { name: 1 }).lean();
+  const rooms = host ? Array.from({ length: breakout.rooms }, (_, i) => i + 1) : mine === null ? [] : [mine];
+  return {
+    rooms: breakout.rooms,
+    openedAt: breakout.openedAt,
+    closesAt: breakout.closesAt ?? null,
+    assigned: rooms.map((room) => ({
+      room,
+      people: shown
+        .filter((a) => a.room === room)
+        .map((a) => users.find((u) => u._id.equals(a.userId))?.name ?? 'Someone')
+        .sort((a, b) => a.localeCompare(b)),
+    })),
+    mine,
+  };
+}
+
 // T3, M03c T4: ending a class or a meeting for everyone. The room closes first, so a failure changes nothing and the host
 // can try again; the engine's room_finished may end it first. Either way it is ended and finalized (a meeting without
 // attendance).
-export async function endLiveSession(session: { _id: Types.ObjectId; status: SessionStatus; roomName: string }) {
+export async function endLiveSession(session: {
+  _id: Types.ObjectId;
+  status: SessionStatus;
+  roomName: string;
+  breakout?: LiveSessionDoc['breakout'];
+}) {
   if (session.status === 'live') {
+    // M03c T7: breakout rooms still open close with it.
+    if (session.breakout && !session.breakout.closedAt) {
+      for (let room = 1; room <= session.breakout.rooms; room++) {
+        await closeRoom(breakoutRoomName(session.roomName, room));
+      }
+    }
     await closeRoom(session.roomName);
     await LiveSession.updateOne(
       { _id: session._id, status: 'live' },
@@ -369,7 +420,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   if (!Types.ObjectId.isValid(sessionId)) notFound();
   const doc = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1, polls: 1 },
+    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1, polls: 1, breakout: 1 },
   ).lean();
   if (!doc) notFound();
   const now = new Date();
@@ -379,50 +430,52 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   const removed = student && removedList.some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
   const rights = { ...ALL_RIGHTS, ...doc.studentsMay };
-  const [join, controls, recordings, polls, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
-    live && !removed && (student || hosts)
-      ? joinToken({
-          roomName: doc.roomName,
-          userId: viewer.id,
-          name: viewer.name,
-          role: student ? 'participant' : 'host',
-          rights,
-        })
-      : null,
-    live && hosts && !student ? roomControls(doc) : null,
-    savedRecordings(doc),
-    live && !removed && (student || hosts) ? roomPolls(doc, viewer.id, !student) : [],
-    student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
-    Enrollment.countDocuments({ offeringId, status: 'active' }),
-    student || !doc.startedAt
-      ? []
-      : Attendance.aggregate<{
-          present: number;
-          absent: number;
-          manual: number;
-          avgPresenceSec: number;
-          avgFocusedSec: number;
-        }>([
-          { $match: { sessionId: doc._id } },
-          {
-            $group: {
-              _id: null,
-              present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
-              absent: { $sum: { $cond: [{ $eq: ['$status', 'absent'] }, 1, 0] } },
-              manual: { $sum: { $cond: [{ $eq: ['$source', 'manual'] }, 1, 0] } },
-              avgPresenceSec: { $avg: '$presenceSec' },
-              avgFocusedSec: { $avg: '$focusedSec' },
+  const [join, controls, recordings, polls, breakout, inClass, enrolled, stats, mine, { liveThresholdPct }] =
+    await Promise.all([
+      live && !removed && (student || hosts)
+        ? joinToken({
+            roomName: doc.roomName,
+            userId: viewer.id,
+            name: viewer.name,
+            role: student ? 'participant' : 'host',
+            rights,
+          })
+        : null,
+      live && hosts && !student ? roomControls(doc) : null,
+      savedRecordings(doc),
+      live && !removed && (student || hosts) ? roomPolls(doc, viewer.id, !student) : [],
+      live && !removed && (student || hosts) ? roomBreakout(doc, viewer.id, !student, now) : null,
+      student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
+      Enrollment.countDocuments({ offeringId, status: 'active' }),
+      student || !doc.startedAt
+        ? []
+        : Attendance.aggregate<{
+            present: number;
+            absent: number;
+            manual: number;
+            avgPresenceSec: number;
+            avgFocusedSec: number;
+          }>([
+            { $match: { sessionId: doc._id } },
+            {
+              $group: {
+                _id: null,
+                present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+                absent: { $sum: { $cond: [{ $eq: ['$status', 'absent'] }, 1, 0] } },
+                manual: { $sum: { $cond: [{ $eq: ['$source', 'manual'] }, 1, 0] } },
+                avgPresenceSec: { $avg: '$presenceSec' },
+                avgFocusedSec: { $avg: '$focusedSec' },
+              },
             },
-          },
-        ]),
-    student
-      ? Attendance.findOne(
-          { sessionId: doc._id, studentId: viewer.id },
-          { status: 1, presenceSec: 1, focusedSec: 1 },
-        ).lean()
-      : null,
-    getSettings('attendance'),
-  ]);
+          ]),
+      student
+        ? Attendance.findOne(
+            { sessionId: doc._id, studentId: viewer.id },
+            { status: 1, presenceSec: 1, focusedSec: 1 },
+          ).lean()
+        : null,
+      getSettings('attendance'),
+    ]);
   const summary = stats[0];
   return {
     view,
@@ -437,6 +490,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     canRecord: live && hosts && !student && recordingEnabled(),
     recordings,
     polls,
+    breakout,
     inClass,
     enrolled,
     summary:

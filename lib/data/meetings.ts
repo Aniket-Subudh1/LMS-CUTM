@@ -5,6 +5,7 @@ import { roomAccess, type RoomRole } from '@/lib/auth/access';
 import { guestIdOf } from '@/lib/auth/guest-link';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import {
+  roomBreakout,
   roomControls,
   roomPolls,
   savedRecordings,
@@ -12,6 +13,7 @@ import {
   toRow,
   type LiveSessionRow,
   type RecordingRow,
+  type RoomBreakout,
   type RoomControls,
   type RoomPoll,
 } from '@/lib/data/live';
@@ -232,6 +234,7 @@ async function findMeeting(viewer: Viewer, meetingId: string) {
     waiting: 1,
     recordings: 1,
     polls: 1,
+    breakout: 1,
   }).lean();
   if (!doc?.meeting) notFound();
   return { doc: { ...doc, meeting: doc.meeting }, role: access.role };
@@ -282,6 +285,7 @@ export type MeetingRoom = {
   controls: RoomControls | null;
   canRecord: boolean;
   polls: RoomPoll[];
+  breakout: RoomBreakout | null;
   invited: number;
   canStartAt: Date;
 };
@@ -295,7 +299,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
   const host = role === 'host';
   const removed = !host && (doc.removed ?? []).some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
-  const [join, controls, polls] = await Promise.all([
+  const [join, controls, polls, breakout] = await Promise.all([
     live && !removed
       ? joinToken({
           roomName: doc.roomName,
@@ -307,6 +311,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
       : null,
     live && host ? roomControls(doc) : null,
     live && !removed ? roomPolls(doc, viewer.id, host) : [],
+    live && !removed ? roomBreakout(doc, viewer.id, host, new Date()) : null,
   ]);
   return {
     session,
@@ -316,6 +321,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
     controls,
     canRecord: live && host && recordingEnabled(),
     polls,
+    breakout,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
   };

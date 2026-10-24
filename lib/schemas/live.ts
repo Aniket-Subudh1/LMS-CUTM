@@ -82,6 +82,34 @@ export const CreatePoll = z.object({
 export const PollRef = z.object({ sessionId: objectId, pollId: objectId });
 export const AnswerPoll = z.object({ sessionId: objectId, pollId: objectId, optionId: objectId });
 
+// --- Breakout rooms (M03c T7): a host splits the people taking part into 2–20 rooms for a while. ---
+
+export const BREAKOUT_LIMITS = { rooms: 20, limitMin: 120, message: 300 } as const;
+// Everyone returns this long after a host closes the rooms (as in Google Meet).
+export const BREAKOUT_CLOSING_MS = 60_000;
+
+// The setup posts who goes where as `<identity>:<room>`; a time limit of 0 keeps the rooms open until a host closes them.
+export const OpenBreakouts = z.object({
+  sessionId: objectId,
+  rooms: z.coerce
+    .number()
+    .int()
+    .min(2, 'Make at least two rooms.')
+    .max(BREAKOUT_LIMITS.rooms, 'Make at most 20 rooms.'),
+  limitMin: z.coerce.number().int().min(0).max(BREAKOUT_LIMITS.limitMin, 'Keep them open at most 2 hours.'),
+  'assign[]': z
+    .array(z.string().regex(/^[a-f\d]{24}:\d{1,2}$/, 'Invalid assignment'))
+    .min(1, 'Nobody is in the room to send to a breakout room.')
+    .max(1000),
+});
+export const BreakoutMessage = z.object({
+  sessionId: objectId,
+  text: z.string().trim().min(1, 'Write a message.').max(BREAKOUT_LIMITS.message, 'Use at most 300 characters.'),
+});
+// The room to connect to: 0 is the class or meeting itself, 1–20 a breakout room.
+export const RoomTokenRef = z.object({ sessionId: objectId, room: z.number().int().min(0).max(BREAKOUT_LIMITS.rooms) });
+export const breakoutRoomName = (roomName: string, room: number) => (room === 0 ? roomName : `${roomName}-b${room}`);
+
 // --- Meetings (M03c T4) ---
 
 // 05 §4.3: the scheduler and up to four co-hosts; members picked from the LMS; guests by email.

@@ -36,6 +36,7 @@ import {
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
   ChartBarIcon,
+  SquaresFourIcon,
   ChatCircleIcon,
   CornersInIcon,
   CornersOutIcon,
@@ -63,15 +64,19 @@ import {
   admitGuests,
   allowBack,
   answerPoll,
+  closeBreakouts,
   createPoll,
   denyGuest,
   endPoll,
   endRoom,
   lowerHands,
+  messageBreakouts,
   muteEveryone,
   muteParticipant,
+  openBreakouts,
   raiseHand,
   removeParticipant,
+  roomToken,
   setStudentRight,
   showPollResults,
   startRecording,
@@ -103,7 +108,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/cn';
-import type { RoomControls, RoomPoll } from '@/lib/data/live';
+import type { RoomBreakout, RoomControls, RoomPoll } from '@/lib/data/live';
 import { formatTime, initials } from '@/lib/format';
 import type { StudentRight } from '@/lib/schemas/live';
 
@@ -136,6 +141,8 @@ type Props = {
   canRecord?: boolean;
   // M03c T6: the polls as the viewer may see them (none for a guest).
   polls: RoomPoll[];
+  // M03c T7: open breakout rooms as the viewer may see them (none for a guest).
+  breakout: RoomBreakout | null;
 };
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
 type Panel = 'people' | 'chat' | 'activities';
@@ -203,10 +210,32 @@ export function LiveRoom(props: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>('in');
   // The token joined with. A host control refreshes the page, which brings a new token that must not reconnect the
-  // room: LiveKit renews the token while connected, and Rejoin reloads the page for a new one.
-  const [token] = useState(props.token);
+  // room: LiveKit renews the token while connected, and Rejoin reloads the page for a new one. M03c T7: `room` is where
+  // the tab is connected — 0 the class or meeting, 1–20 a breakout room; moving fetches a token for the other room, and
+  // the disconnect that the move causes is not the viewer leaving.
+  const [conn, setConn] = useState({ token: props.token, room: 0 });
+  const switching = useRef(false);
   const [deviceFailed, setDeviceFailed] = useState(false);
   const connected = useRef(false);
+  const switchTo = useCallback(
+    async (room: number): Promise<string | null> => {
+      const result = await roomToken({ sessionId, room });
+      if (!result.ok) return result.message;
+      switching.current = true;
+      setConn({ token: result.data.token, room });
+      return null;
+    },
+    [sessionId],
+  );
+  // Back to the class or meeting when the breakout rooms close.
+  const breakoutOpen = props.breakout !== null;
+  const closesAt = props.breakout?.closesAt?.getTime() ?? null;
+  useEffect(() => {
+    if (conn.room === 0 || (breakoutOpen && closesAt === null)) return;
+    const delay = breakoutOpen && closesAt !== null ? Math.max(0, closesAt - Date.now()) : 0;
+    const timer = window.setTimeout(() => void switchTo(0), delay);
+    return () => window.clearTimeout(timer);
+  }, [conn.room, breakoutOpen, closesAt, switchTo]);
 
   useEffect(() => {
     if (!trackFocus) return;
@@ -309,8 +338,9 @@ export function LiveRoom(props: Props) {
         </Alert>
       )}
       <LiveKitRoom
+        key={conn.room}
         serverUrl={serverUrl}
-        token={token}
+        token={conn.token}
         connect
         options={ROOM_OPTIONS}
         video={false}
@@ -319,9 +349,16 @@ export function LiveRoom(props: Props) {
         className="flex min-h-0 min-w-0 flex-1"
         onConnected={() => {
           connected.current = true;
+          switching.current = false;
         }}
         onDisconnected={(reason) => {
           connected.current = false;
+          if (switching.current) return;
+          // A breakout room closed under the viewer: back to the class or meeting.
+          if (reason === DisconnectReason.ROOM_DELETED && conn.room > 0) {
+            void switchTo(0);
+            return;
+          }
           if (reason === DisconnectReason.ROOM_DELETED) {
             setState('ended');
             router.refresh();
@@ -333,7 +370,7 @@ export function LiveRoom(props: Props) {
         onError={() => setState('failed')}
         onMediaDeviceFailure={() => setDeviceFailed(true)}
       >
-        <Classroom {...props} />
+        <Classroom {...props} inRoom={conn.room} switchTo={switchTo} />
         <RoomAudioRenderer />
       </LiveKitRoom>
     </div>
@@ -395,6 +432,8 @@ function useBrowser() {
 const isHost = (p: Participant) => p.attributes.role === 'host';
 const handOf = (p: Participant) => Number(p.attributes.hand) || 0;
 const nameOf = (p: Participant) => p.name || p.identity;
+// 12:41 — the time left in breakout rooms (M03c T7).
+const minutes = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 const clock = (sec: number) =>
   [Math.floor(sec / 3600), Math.floor(sec / 60) % 60, sec % 60].map((n) => String(n).padStart(2, '0')).join(':');
 const ago = (now: number, at: number) => {
@@ -416,8 +455,14 @@ const byPlace = (a: TrackReferenceOrPlaceholder, b: TrackReferenceOrPlaceholder)
   );
 };
 
-function Classroom(props: Props) {
-  const { sessionId, host, noun, guest = false } = props;
+// M03c T7: `inRoom` is where the tab is connected: 0 the class or meeting, otherwise a breakout room, where only
+// chat, reactions and the people are there — hands, host controls, activities and recording belong to the main room.
+function Classroom(props: Props & { inRoom: number; switchTo: (room: number) => Promise<string | null> }) {
+  const { sessionId, host, noun, guest = false, inRoom, switchTo } = props;
+  const inBreakout = inRoom > 0;
+  const breakout = props.breakout;
+  // A participant who said "Not now" to their breakout room (keyed by when the rooms opened).
+  const [skipped, setSkipped] = useState<string | null>(null);
   const router = useRouter();
   const room = useRoomContext();
   const participants = useParticipants();
@@ -477,14 +522,16 @@ function Classroom(props: Props) {
     [host, router],
   );
   useDataChannel('controls', onControls);
-  // M03c T6: a poll started, ended or was shown: everyone reads the polls again.
-  const onPoll = useCallback(
+  // M03c T6, T7: a poll started, ended or was shown, or breakout rooms opened or are closing: everyone reads the
+  // page again.
+  const reread = useCallback(
     (m: Message) => {
       if (!m.from) router.refresh();
     },
     [router],
   );
-  useDataChannel('poll', onPoll);
+  useDataChannel('poll', reread);
+  useDataChannel('breakout', reread);
   // Hosts see the answers come in: while a poll is open their page reads them again every few seconds.
   const pollOpen = props.polls.some((poll) => poll.status === 'open');
   useEffect(() => {
@@ -578,6 +625,15 @@ function Classroom(props: Props) {
     return result.ok;
   }
   const lower = (identities: string[]) => run(() => lowerHands({ ...ref, 'identity[]': identities }));
+  // M03c T7: move to a breakout room, or back (0).
+  const go = async (to: number) => {
+    setBusy(true);
+    const message = await switchTo(to);
+    setBusy(false);
+    if (message) setError(message);
+  };
+  const invited = !host && !inBreakout && (breakout?.mine ?? null) !== null;
+  const inviteKey = breakout ? `${breakout.openedAt.getTime()}` : '';
   const toggleHand = () => (myHand ? lower([me]) : run(() => raiseHand(ref)));
   const open = (next: Panel) => {
     if (panel === 'chat' || next === 'chat') setSeen(chat.chatMessages.length);
@@ -597,7 +653,7 @@ function Classroom(props: Props) {
       p={p}
       noun={noun}
       self={p.identity === me}
-      host={host}
+      host={host && !inBreakout}
       pinned={pinned === key}
       onPin={() => pin(key)}
       onMute={() => void run(() => muteParticipant({ ...ref, identity: p.identity }))}
@@ -733,10 +789,18 @@ function Classroom(props: Props) {
               >
                 <XIcon className="size-4" />
               </button>
-              <span className="truncate font-semibold">{props.title}</span>
-              <span className="truncate text-white/60 max-md:hidden">{props.course}</span>
+              <span className="truncate font-semibold">{inBreakout ? `Breakout room ${inRoom}` : props.title}</span>
+              <span className="truncate text-white/60 max-md:hidden">{inBreakout ? props.title : props.course}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {breakout?.closesAt && (inBreakout || host) && now > 0 && (
+                <span className="flex items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-[0.8125rem] ring-1 ring-white/10">
+                  <span className="font-semibold tabular-nums">
+                    {minutes(Math.max(0, Math.round(breakout.closesAt.getTime() / 1000) - now))}
+                  </span>
+                  <span className="text-white/60">{inBreakout ? 'left' : 'until the rooms close'}</span>
+                </span>
+              )}
               {recording && (
                 <span className="flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1.5 text-[0.8125rem] font-semibold ring-1 ring-white/10">
                   <span className="size-2 rounded-full bg-white motion-safe:animate-pulse" />
@@ -765,7 +829,7 @@ function Classroom(props: Props) {
                 {notice.text}
               </p>
             )}
-            {host && asking && (
+            {host && !inBreakout && asking && (
               <div
                 role="status"
                 className="bg-background text-foreground flex max-w-full items-center gap-2.5 rounded-md py-1.5 pr-1.5 pl-3 text-[0.8125rem]"
@@ -834,6 +898,29 @@ function Classroom(props: Props) {
             ))}
           </div>
 
+          {invited && skipped !== inviteKey && breakout && (
+            <div className="absolute inset-0 z-10 grid place-items-center bg-black/40 p-4">
+              <div className="bg-background text-foreground grid w-full max-w-sm gap-3 rounded-lg p-5 shadow-lg">
+                <h2 className="text-lg font-semibold">Breakout room {breakout.mine} is open</h2>
+                <p className="text-muted-foreground text-sm">
+                  {breakout.assigned[0].people.length > 1
+                    ? `You are in room ${breakout.mine} with ${breakout.assigned[0].people.length - 1} other${breakout.assigned[0].people.length === 2 ? '' : 's'}`
+                    : `You are in room ${breakout.mine}`}
+                  {breakout.closesAt ? `, until ${formatTime(breakout.closesAt)}.` : '.'}
+                  {noun === 'class' ? ' Your time there counts towards this class.' : ''}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setSkipped(inviteKey)}>
+                    Not now
+                  </Button>
+                  <Button disabled={busy} onClick={() => void go(breakout.mine ?? 0)}>
+                    Join room {breakout.mine}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {tray && (
             <div className="absolute bottom-19 left-1/2 flex -translate-x-1/2 gap-0.5 rounded-full bg-black/70 p-1.5 ring-1 ring-white/10">
               {REACTIONS.map(([emoji, label]) => (
@@ -866,7 +953,7 @@ function Classroom(props: Props) {
               locked={may(Track.Source.ScreenShare) ? undefined : lockedBy(noun, 'screen sharing')}
               className="max-sm:hidden"
             />
-            {!host && !guest && (
+            {!host && !guest && !inBreakout && (
               <RoundButton
                 label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
                 pressed={myHand > 0}
@@ -928,7 +1015,7 @@ function Classroom(props: Props) {
                   Sound when someone joins
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
-                {props.canRecord && (
+                {props.canRecord && !inBreakout && (
                   <DropdownMenuItem
                     disabled={busy}
                     onSelect={() => void run(() => (recording ? stopRecording(ref) : startRecording(ref)))}
@@ -966,6 +1053,19 @@ function Classroom(props: Props) {
               <ChatCircleIcon />
             </RoundButton>
             <span className="mx-0.5 h-6 w-px bg-white/15 max-sm:hidden" />
+            {(inBreakout || (invited && skipped === inviteKey)) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void go(inBreakout ? 0 : (breakout?.mine ?? 0))}
+                className="flex h-10 items-center gap-2 rounded-full bg-white/10 px-3 text-[0.8125rem] font-semibold hover:bg-white/20 sm:h-11"
+              >
+                <ArrowUUpLeftIcon className="size-5" />
+                <span className="max-sm:hidden">
+                  {inBreakout ? `Back to the ${noun}` : `Join room ${breakout?.mine}`}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void room.disconnect()}
@@ -986,22 +1086,27 @@ function Classroom(props: Props) {
       {panel && (
         <aside className="flex w-88 shrink-0 flex-col border-l border-white/10 bg-(--lk-bg) max-lg:absolute max-lg:inset-0 max-lg:z-20 max-lg:w-full max-lg:border-l-0">
           <header className="flex items-center gap-1 border-b border-white/10 p-2">
-            {(guest ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => open(tab)}
-                className={cn(
-                  'relative h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
-                  panel === tab ? 'bg-white/10 font-semibold' : 'text-white/60 hover:text-white',
-                )}
-              >
-                {tab}
-                {tab === 'activities' && unanswered && (
-                  <span className="bg-gold absolute top-1.5 right-2 size-2 rounded-full" aria-label="A poll is open" />
-                )}
-              </button>
-            ))}
+            {(guest || inBreakout ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map(
+              (tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => open(tab)}
+                  className={cn(
+                    'relative h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
+                    panel === tab ? 'bg-white/10 font-semibold' : 'text-white/60 hover:text-white',
+                  )}
+                >
+                  {tab}
+                  {tab === 'activities' && unanswered && (
+                    <span
+                      className="bg-gold absolute top-1.5 right-2 size-2 rounded-full"
+                      aria-label="A poll is open"
+                    />
+                  )}
+                </button>
+              ),
+            )}
             <button
               type="button"
               aria-label="Close the panel"
@@ -1014,6 +1119,8 @@ function Classroom(props: Props) {
           {panel === 'people' ? (
             <People
               {...props}
+              host={host && !inBreakout}
+              controls={inBreakout ? null : props.controls}
               now={now}
               participants={participants}
               hands={hands}
@@ -1039,6 +1146,13 @@ function Classroom(props: Props) {
               host={host}
               noun={noun}
               polls={props.polls}
+              breakout={breakout}
+              people={participants.filter((p) => !isHost(p)).map((p) => ({ id: p.identity, name: nameOf(p) }))}
+              now={now}
+              openRooms={(rooms) => run(() => openBreakouts({ ...ref, ...rooms }))}
+              closeRooms={() => void run(() => closeBreakouts(ref))}
+              messageRooms={(text) => run(() => messageBreakouts({ ...ref, text }))}
+              visit={(room) => void go(room)}
               busy={busy}
               create={(poll) => run(() => createPoll({ ...ref, ...poll }))}
               answer={(pollId, optionId) => void run(() => answerPoll({ ...ref, pollId, optionId }))}
@@ -1657,6 +1771,8 @@ const FIELD =
 const SECTION_HEADING = 'text-[0.6875rem] font-medium tracking-wide text-white/60 uppercase';
 
 type NewPoll = { question: string; 'option[]': string[]; showResults: boolean };
+type NewRooms = { rooms: number; limitMin: number; 'assign[]': string[] };
+type Person = { id: string; name: string };
 
 // M03c T6 (mock-ups R3-B A, R3-C): the Activities tab. Hosts start a poll, watch the answers come in, show the results
 // and end it; the others answer the open poll and see the results once a host shows them. Breakout rooms and the
@@ -1665,6 +1781,13 @@ function Activities({
   host,
   noun,
   polls,
+  breakout,
+  people,
+  now,
+  openRooms,
+  closeRooms,
+  messageRooms,
+  visit,
   busy,
   create,
   answer,
@@ -1674,6 +1797,13 @@ function Activities({
   host: boolean;
   noun: Noun;
   polls: RoomPoll[];
+  breakout: RoomBreakout | null;
+  people: Person[];
+  now: number;
+  openRooms: (rooms: NewRooms) => Promise<boolean>;
+  closeRooms: () => void;
+  messageRooms: (text: string) => Promise<boolean>;
+  visit: (room: number) => void;
   busy: boolean;
   create: (poll: NewPoll) => Promise<boolean>;
   answer: (pollId: string, optionId: string) => void;
@@ -1681,6 +1811,19 @@ function Activities({
   show: (pollId: string) => void;
 }) {
   const [asking, setAsking] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  if (splitting && !breakout) {
+    return (
+      <BreakoutForm
+        people={people}
+        busy={busy}
+        cancel={() => setSplitting(false)}
+        open={async (rooms) => {
+          if (await openRooms(rooms)) setSplitting(false);
+        }}
+      />
+    );
+  }
   const open = polls.find((p) => p.status === 'open');
   const earlier = polls.filter((p) => p.status === 'ended').reverse();
   if (asking) {
@@ -1719,6 +1862,35 @@ function Activities({
           </div>
         </section>
       )}
+      {host && !breakout && (
+        <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
+            <SquaresFourIcon />
+          </span>
+          <span className="grid min-w-0 flex-1 gap-0.5">
+            <span className="text-[0.8125rem] font-semibold">Breakout rooms</span>
+            <span className="text-xs text-white/60">Split the {noun} into small groups for a while.</span>
+          </span>
+          <button
+            type="button"
+            disabled={people.length < 2}
+            onClick={() => setSplitting(true)}
+            className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium disabled:opacity-50"
+          >
+            Set up
+          </button>
+        </div>
+      )}
+      {host && breakout && (
+        <BreakoutStatus
+          breakout={breakout}
+          now={now}
+          busy={busy}
+          visit={visit}
+          close={closeRooms}
+          message={messageRooms}
+        />
+      )}
       {open && <PollCard poll={open} {...card} />}
       {!host && !open && earlier.length === 0 && (
         <p className="text-[0.8125rem] text-white/60">No poll is open. When a host asks one, it appears here.</p>
@@ -1732,6 +1904,187 @@ function Activities({
         </section>
       )}
     </div>
+  );
+}
+
+// M03c T7 (mock-up R3-D): how many rooms, for how long, and who goes where — dealt out in turn, shuffled at random on
+// request, and changed person by person.
+const LIMITS_MIN = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120];
+const deal = (people: Person[], rooms: number) =>
+  Object.fromEntries(people.map((p, i) => [p.id, (i % rooms) + 1])) as Record<string, number>;
+
+function BreakoutForm({
+  people,
+  busy,
+  cancel,
+  open,
+}: {
+  people: Person[];
+  busy: boolean;
+  cancel: () => void;
+  open: (rooms: NewRooms) => Promise<void>;
+}) {
+  const [rooms, setRooms] = useState(Math.min(20, Math.max(2, Math.ceil(people.length / 5))));
+  const [limitMin, setLimitMin] = useState(15);
+  const [assigned, setAssigned] = useState(() => deal(people, rooms));
+  const shuffle = () => {
+    const mixed = [...people];
+    for (let i = mixed.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [mixed[i], mixed[j]] = [mixed[j], mixed[i]];
+    }
+    setAssigned(deal(mixed, rooms));
+  };
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void open({ rooms, limitMin, 'assign[]': Object.entries(assigned).map(([id, room]) => `${id}:${room}`) });
+      }}
+      className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4"
+    >
+      <button
+        type="button"
+        onClick={cancel}
+        className="flex items-center gap-2 justify-self-start text-[0.8125rem] text-white/60 hover:text-white"
+      >
+        <ArrowLeftIcon className="size-4" /> Activities
+      </button>
+      <h2 className="text-[0.9375rem] font-semibold">Breakout rooms</h2>
+      <div className="grid grid-cols-2 gap-3 text-[0.8125rem]">
+        <label className="grid gap-1.5">
+          Rooms
+          <select
+            value={rooms}
+            onChange={(event) => {
+              const count = Number(event.target.value);
+              setRooms(count);
+              setAssigned(deal(people, count));
+            }}
+            className={FIELD}
+          >
+            {Array.from({ length: Math.min(20, people.length) - 1 }, (_, i) => i + 2).map((n) => (
+              <option key={n} value={n} className="text-foreground">
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1.5">
+          Time limit
+          <select value={limitMin} onChange={(event) => setLimitMin(Number(event.target.value))} className={FIELD}>
+            {LIMITS_MIN.map((m) => (
+              <option key={m} value={m} className="text-foreground">
+                {m === 0 ? 'None' : `${m} min`}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={SECTION_HEADING}>Who goes where · {people.length}</h3>
+        <button type="button" onClick={shuffle} className="text-xs text-white/60 hover:text-white">
+          Shuffle
+        </button>
+      </div>
+      <ul className="grid gap-1">
+        {people.map((p) => (
+          <li key={p.id} className="flex items-center gap-2.5 text-[0.8125rem]">
+            <Avatar name={p.name} />
+            <span className="min-w-0 flex-1 truncate">{p.name}</span>
+            <select
+              aria-label={`Room for ${p.name}`}
+              value={assigned[p.id] ?? 1}
+              onChange={(event) => setAssigned({ ...assigned, [p.id]: Number(event.target.value) })}
+              className="h-8 rounded-md bg-white/10 px-2 text-xs ring-1 ring-white/15"
+            >
+              {Array.from({ length: rooms }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n} className="text-foreground">
+                  Room {n}
+                </option>
+              ))}
+            </select>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="submit"
+        disabled={busy}
+        className="bg-primary h-9 rounded-md text-[0.8125rem] font-medium disabled:opacity-50"
+      >
+        Open {rooms} rooms
+      </button>
+      <p className="text-xs text-white/60">Each person is asked to join their room. People who join later stay here.</p>
+    </form>
+  );
+}
+
+function BreakoutStatus({
+  breakout,
+  now,
+  busy,
+  visit,
+  close,
+  message,
+}: {
+  breakout: RoomBreakout;
+  now: number;
+  busy: boolean;
+  visit: (room: number) => void;
+  close: () => void;
+  message: (text: string) => Promise<boolean>;
+}) {
+  const [text, setText] = useState('');
+  const left = breakout.closesAt && now > 0 ? Math.max(0, Math.round(breakout.closesAt.getTime() / 1000) - now) : null;
+  const small = 'flex h-7 items-center rounded-md px-2.5 text-xs ring-1 ring-white/15 hover:bg-white/10';
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className={SECTION_HEADING}>Breakout rooms · {breakout.rooms} open</h2>
+        {left !== null && <span className="text-xs text-white/60 tabular-nums">{minutes(left)} left</span>}
+      </div>
+      <ul className="grid gap-2">
+        {breakout.assigned.map((r) => (
+          <li key={r.room} className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
+            <span className="grid min-w-0 flex-1 gap-0.5">
+              <span className="text-[0.8125rem] font-semibold">Room {r.room}</span>
+              <span className="text-xs text-white/70">{r.people.join(', ') || 'Nobody'}</span>
+            </span>
+            <button type="button" disabled={busy} onClick={() => visit(r.room)} className={small}>
+              Visit
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void message(text).then((ok) => ok && setText(''));
+        }}
+        className="flex gap-2"
+      >
+        <input
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          maxLength={300}
+          aria-label="Message every room"
+          placeholder="Message every room"
+          className={FIELD}
+        />
+        <button type="submit" disabled={busy || text.trim() === ''} className={cn(small, 'h-9 disabled:opacity-50')}>
+          Send
+        </button>
+      </form>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={close}
+        className="bg-primary h-9 rounded-md text-[0.8125rem] font-medium disabled:opacity-50"
+      >
+        Close the rooms
+      </button>
+      <p className="text-xs text-white/60">Everyone comes back a minute after you close them.</p>
+    </section>
   );
 }
 

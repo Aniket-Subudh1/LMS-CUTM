@@ -52,6 +52,7 @@ async function Room({ params }: { params: PageProps<'/meetings/[meetingId]/room'
         controls={room.controls}
         canRecord={room.canRecord}
         polls={room.polls}
+        breakout={room.breakout}
       />
     );
   }
