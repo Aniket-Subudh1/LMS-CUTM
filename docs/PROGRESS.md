@@ -31,7 +31,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
-| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); T0 mock-ups drawn, waiting for the picks | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
+| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); mock-ups picked (A1 A by default); T1–T7 being built | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
@@ -322,6 +322,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-215 | The meeting's people field matches a pasted email or roll number exactly; an email that is nobody the viewer may invite becomes a guest (A-186), and anything else that matches nobody is reported | fields round | — |
 | A-216 | A drawn section names at most 10 topics, since the stored list holds 400 characters; the bank's 100 most used topics are suggested | fields round | — |
 | A-217 | An offering's faculty are found among faculty accounts of every department, the viewer included | fields round | — |
+| A-218 | M09's A1 is variant A, attainment first on the Outcomes tab, since Aniket asked for the build without picking (as with M03c's R3-B) | M09 | — |
 
 ## 5. Log
 

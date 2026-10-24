@@ -68,6 +68,8 @@ Drawn inside the real app at 1440 px and 390 px, with two variants where there i
 
 Drawn on 24 Oct 2026 as faculty1, the HoD and admin on the e2e data (CUTM1602), and shown to Aniket on one page: https://claude.ai/artifact/Ep4y6pUdn56PsD5aNv8jNP (private).
 
+**Picks (24 Oct 2026).** Aniket asked for M09 to be built without choosing between A1's variants, so A1 is **A** by default: attainment first on the Outcomes tab, then the outcomes and mapping as today (A-218). A2–A6 are built as drawn. On phones the outcome table and the grid scroll sideways inside their card, as the Marks and Exams tables do.
+
 ## Tasks
 
 ### T1 · Model, setting, pure functions
