@@ -2939,3 +2939,29 @@ Request: "deploy everything properly". `main` was pushed (`b12d5cd..46857cc`: M0
 - Locally, after the fix (`npm run build` → exit 0, standalone on port 3102, signed out):
   - `/mediapipe/selfie_segmenter.tflite` 200, `/mediapipe/wasm/vision_wasm_internal.wasm` 200 `application/wasm`, an Excalifont `.woff2` 200 `font/woff2`;
   - `/meetings`, `/home`, `/courses`, `/mediapipe-x` and `/excalidrawx` still 307.
+
+### 2026-10-24 · Decision and mock-up round: fields that ask people to type a format · Claude Code, at Aniket's request
+
+Request: the meeting dialog's people fields are "very wrong" and should work like Google Meet's; find every field with an unfriendly data-entry structure (the grade scale's `|` lines, for example), research what works best, and use it. This entry is the written scope approval for the change (AGENTS law 1). What is saved does not change, only how it is entered.
+
+**The audit** — 13 fields make people type a format:
+- **People and emails:** the meeting's co-hosts, people from the LMS and guests (three boxes, guests one a line); an offering's faculty from other departments and Change faculty (emails with commas); a test's invitation emails.
+- **Short lists:** a test's allowed email domains and a drawn section's topics; a batch's sections; the commit messages that say nothing (Settings · Project metrics).
+- **Rows typed with `|`:** the grade scale; the code questions' languages.
+- **One per line:** the catalogue's session plan (with "Practice:" or "Project:" typed in front), the syllabus's objectives and projects, a unit's practicals.
+
+Fields that hold sentences stay text boxes: unlock, lock and unpublish reasons, a module's summary, an outcome statement, a unit's topics, a message to a candidate.
+
+**Research** — Google Calendar's single "Add guests" field with directory suggestions, co-hosts chosen from the guest list; chip (tags) inputs that add on Enter, comma, Tab and blur, split pasted lists and report what they reject; the WAI-ARIA combobox pattern for suggestions; Canvas's grading-scheme rows covering 100 % to 0 %; design systems' "add another" rows.
+
+**Mock-ups** — drawn inside the real app (e2e build, port 3101) at 1440 and 390 px, on one private artifact (https://claude.ai/artifact/QXVL5XMgkUaTpJsetjwKkq):
+- **F1, who a meeting invites:** A, one field like Google Calendar with the invited list and each person's role below (recommended); B, the three fields as chip boxes.
+- **F2:** the test invitation emails as chips, with paste and per-address checks.
+- **F3:** the grade scale as a table, with a bar showing how 0–100 % is shared out.
+- **F4:** the languages as a table.
+- **F5:** the session plan as rows with a type each; the same list for objectives, projects and practicals.
+- **F6:** the short lists as chips; faculty found by name; topics suggested from the bank.
+
+**Not done** — Nothing is built yet: the build waits for Aniket's picks.
+
+**Open questions** — none; the picks are asked in the artifact.
