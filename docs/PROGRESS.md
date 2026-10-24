@@ -31,7 +31,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
-| M09 Attainment & AI tagging | Not started | | Formula sign-off: Q-07 |
+| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); T0 mock-ups next | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
@@ -47,7 +47,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-04 | Exam-system API: provider, documentation, authentication, data format, pull/push frequency | @client | CSV import/export | M08 API adapter | Open |
 | Q-05 | Is the internal maximum always 50? Default component weights per subject type? | @client | Admin enters schemes | — | Answered 15 Oct 2026 (Aniket, M01b): CUTM's Examination Policy marks each component out of 100 — theory internal 40 + end-semester 60, practice and project 50 + 50 by rubric (evaluation policy in Settings) |
 | Q-06 | Exact workflow for "continuous evaluation in mark entry" (CE-10) | @client | M06 marks view | CE-10 specifics | Open |
-| Q-07 | Attainment formula: target %, level thresholds, CIE:SEE weights, direct/indirect, NBA format? | @client | 07 §4 defaults (60 %; 70/60/50; 0.5/0.5; direct only) | M09 sign-off | Open |
+| Q-07 | Attainment formula: target %, level thresholds, CIE:SEE weights, direct/indirect, NBA format? | @client | 07 §4 defaults (60 %; 70/60/50; 0.5/0.5; direct only); SEE is the externals weighted by credits, and one target level for every CO (M09 decisions 1 and 3) | M09 sign-off | Open |
 | Q-08 | Are PSOs the same for all programs or program-specific? | @client | Since M01b: the codes PO1–PO12 and PSO1–PSO3 are fixed and each programme gives them titles (defaults for PSO1–3: Higher education, Entrepreneurship, Placement) | — | Open (changed 15 Oct 2026) |
 | Q-09 | Which proctoring features (webcam, screen, tab switch, AI flags)? | @client | Full-screen, tab-switch, paste block, optional webcam snapshots; no AI flags | — | Open |
 | Q-10 | Languages and lab types beyond C, C++, Java? | @client | C, C++, Java only | LAB-06 | Open |
@@ -82,7 +82,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-40 | The full grade table and pass rules (the rest of Q-19) | @client | 06 §7 scale | M08 | Open |
 | Q-41 | How do assessments map to the policy's parts — Mid-term I (online), Mid-term II (presentation), assignment, attendance points from M03, the practice and project rubrics — and who enters the external practice and project marks? | @client / @dev | — | — | Answered 23 Oct 2026 (Aniket, M06): each assessment picks the theory part it counts toward; several in one part count by the mean of their percentages; the teacher fills the practice and project rubrics on the Marks tab; external marks come from the exam section's CSV (M08). 07 §2 |
 | Q-42 | What must the LMS do with the 75 % attendance minimum: show it, or produce an eligibility list? | @client | Stored only | M06, M08 | Open |
-| Q-43 | Programmes with fewer than 12 POs (MBA, BBA, M.Sc): may codes stay unused? Who supplies non-engineering PO titles? (Agriculture pages carry their own) | @client | An untitled code shows the code itself | M09 | Open |
+| Q-43 | Programmes with fewer than 12 POs (MBA, BBA, M.Sc): may codes stay unused? Who supplies non-engineering PO titles? (Agriculture pages carry their own) | @client | An untitled code shows the code itself; since M09 the AI is not asked about it (M09 decision 2), so a programme's PO titles matter for "Suggest levels" | M09 | Open |
 | Q-44 | Who maintains the course-list CSV after the first load, and how do the repository's "programme + stream" values map to LMS programmes? The 2021 repository spells one programme several ways (BTech / B.Tech / B Tech; M.Sc / MSc; B.Sc / B.Sc. / B.SC) and lists courses open to all under "All", "CUTM" and "MOOC"; converted as written it gives 39 programmes | @client | Converted once by the developer; admins keep that CSV | — | Open |
 | Q-45 | Are Certificate, Advanced certificate and Diploma courses credit-bearing? Which courses are 0-0-0? | @client | The credits in the course list decide | — | Open |
 | Q-46 | Should courseware session links (YouTube, slides) become lesson links? | @client | Not imported (backlog) | — | Open |
@@ -282,6 +282,13 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-175 | A student with no credit course in the term gets no grade sheet; working the sheets out again removes an earlier unpublished one | M08 | — |
 | A-176 | The batch page counts complete students from the internal marks last worked out; a course whose marks were never worked out shows everyone incomplete until locking works them out | M08 | — |
 | A-177 | The internal-marks export rounds each internal to 2 dp; grade sheets use the unrounded value | M08 | Q-59 |
+| A-178 | CIE reads each counted attempt's own paper, as the student's "By outcome" does: a negative question mark counts 0, and the proctoring penalty, which belongs to no question, is left out | M09 | Q-07 |
+| A-179 | A missed assessment counts 0 toward its fixed questions' COs and each draw's CO filter (count × marks each); a draw without a CO filter adds nothing for the student who missed it | M09 | Q-07 |
+| A-180 | A CO's CIE % is over the students assessed on it (some question on their paper, or in the assessment they missed, carries it), not every enrolled student | M09 | Q-07 |
+| A-181 | Attainment is worked out for locked offerings too. A record keeps the map and settings it used; editing the catalogue map recomputes only active offerings, so a completed course's record stands until its marks change or someone works it out again | M09 | — |
+| A-182 | In the programme report a course taught in several sections counts once, as the mean of its sections' values | M09 | Q-07 |
+| A-183 | Practice rubric marks and project reviews carry no CO tags and do not feed CO attainment; only assessment questions do | M09 | Q-07 |
+| A-184 | A test released "each person's at once" counts toward attainment once a teacher publishes its results (A-20) | M09 | — |
 
 ## 5. Log
 
@@ -2420,3 +2427,38 @@ Built to decisions 1–3 and the mock-up picks (E1 B, E5 B; E2–E4 and E6 as dr
   - No error page, and nothing wider than the screen.
   - Fixes it led to: "All 1 course are locked"; the sheet tabs now start with Ready; the badges' case; on phones, a part's marks line ran over its total and now wraps; printing left the page panel grey.
 - The print view, emulated after the panel's 0.5 s transition and as a PDF: the sheet alone on white, under the university's name, bars and grade kept.
+
+### 2026-10-24 · Decision: M09 attainment and AI tagging · Claude Code, at Aniket's request
+
+Request: "plan the next milestone". M08 is done, so M09 is next (00 §3). The milestone file predates M01b, M03b, M04b, M06 and M08. It was checked against the code first:
+- End-sem marks come per component since M08.
+- Each attempt keeps its own paper since M04b.
+- The Outcomes tab exists since M03b, for every role.
+- A credit-course question cannot be saved without a CO, so a suggestion has to come before the first save.
+- `CoPoMatrix` and `CoPoEditor` have no modes.
+- `targetLevel` cannot be set.
+- The AI's errors already follow 06 §4.7.
+
+Aniket chose the recommended option on each of four points (`docs/milestones/M09-attainment-ai.md`, decisions 1–4):
+1. SEE is the externals weighted by credits; `AB` in any part means not attained.
+2. The AI is told only outcome titles a programme gave.
+3. One target level for every CO, from the setting.
+4. The programme report is worked out when it is opened; nothing is stored for a programme.
+
+**Dev consequences** (in the milestone file): A-178–A-184 (§4). CIE reads each counted attempt's paper through `breakdown()`; a missed assessment counts 0; a CO's % is over the students assessed on it; locked courses are worked out; a record keeps its map and settings; sections count once in the programme report. The question's suggestion reads the dialog's unsaved text. Jobs dedupe as M06's do.
+
+**Changed docs**
+- The M09 file: decisions, consequences, mock-ups A1–A6, tasks T1–T7.
+- 05 §3.6 (no `targetLevel`) and §5.6 (one record per credit offering, with the map and settings it used).
+- 06 §4.7 (the M09 actions; the leftover `fallbacks: 'default'` line from the Anthropic SDK removed), §6 (`compute/attainment` and its triggers), §7 (`attainment` rules).
+- 07 §4 (papers, missed assessments, the assessed denominator, `externalPct`, one target; new vectors), §5 (on opening, sections; a new vector), §14.
+- 08 §2–3 (the Outcomes tab, Reports' tabs, Reports › Attainment, Settings).
+- 09 §3, §4, §12. Q-07 and Q-43 here.
+
+**Not done** — T0's mock-ups (next), then T1–T7 after the picks.
+
+**Assumptions** — A-178–A-184 (§4).
+
+**Open questions** — none new. Q-07 and Q-43 stay open; Q-43 now decides how useful "Suggest levels" is, since most programmes title only PSO1–PSO3.
+
+**Verification** — Docs only. The worked example still gives CO 2.5, 2, 2 and PO1 2.21, PO2 2.08, PO3 2, PSO1 2, PSO3 2.25 under the new rules. The new vectors were computed by script (`python3`): `externalPct` 66.67, 70, 57.25 and `absent`; the drawn papers' CO values 1, 0, 0 and null; 0.4 / 0.6 giving CO1 2.4; the programme's 2 and 1.88.

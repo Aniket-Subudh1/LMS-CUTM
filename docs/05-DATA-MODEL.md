@@ -96,7 +96,7 @@ One course per code, listed by any number of programmes (§3.6a, A-54). Sizes ar
 | status | S | `draft` · `active` · `archived` |
 | coordinatorId | Id? | a faculty user (CRS-07) |
 | objectives | [S] | ≤ 20, each ≤ 500 |
-| cos | `[{ _id: Id, code: S, statement: S, bloomLevels: [S], suggestedBloom: S?, targetLevel: N? }]` | credit courses only; ≤ 15; `code` `CO1…` unique, never reused for a new CO; `statement` ≤ 500; `bloomLevels` 0–3 of `remember understand apply analyse evaluate create`; `suggestedBloom` is the import's guess from the first verb, shown pre-ticked, cleared when a person saves (A-58); `targetLevel` 0–3 |
+| cos | `[{ _id: Id, code: S, statement: S, bloomLevels: [S], suggestedBloom: S? }]` | credit courses only; ≤ 15; `code` `CO1…` unique, never reused for a new CO; `statement` ≤ 500; `bloomLevels` 0–3 of `remember understand apply analyse evaluate create`; `suggestedBloom` is the import's guess from the first verb, shown pre-ticked, cleared when a person saves (A-58). Every CO's attainment target is the `attainment` setting's (M09 decision 3; the never-settable `targetLevel` is gone) |
 | coSeq | N | the highest CO number the course has given (M03b); `nextCoCode(cos, coSeq)` gives the next, so a deleted CO6 is followed by CO7. Set by `addCo`, raised by `deleteCo` (`$max`); absent on courses saved before M03b (read as 0) |
 | coMap | `[{ coId: Id, outcome: S, level: 1\|2\|3 }]` | sparse; `outcome` ∈ PO1–PO12, PSO1–PSO3; unique per (coId, outcome); ≤ 225 |
 | modules | `[{ _id: Id, title: S, hours: S?, topics: S, practicals: [S] }]` | ≤ 20; `title` ≤ 200; `hours` ≤ 30, as written (`6` or `4+0+2`); `topics` ≤ 3000; `practicals` ≤ 30, each ≤ 300 |
@@ -386,9 +386,23 @@ Invariants: a re-import replaces the row (upsert) and is audited. Refused for a 
 Indexes: `{ termId: 1, studentId: 1 }` unique · `{ termId: 1, batchId: 1, status: 1 }` (a batch's sheets and their counts) · `{ 'rows.offeringId': 1, status: 1 }` (unlocking checks for a published sheet and turns drafts `incomplete`).
 Invariants: written by the `compute/gradeSheets` job (06 §6), which never touches a `published` sheet. A student gets a `draft` only when every credit offering of theirs in the term is locked, their internal components are all non-null and their end-sem row is present (M08 decision 2); otherwise `incomplete`. Unlocking an offering or importing a student's end-sem marks turns affected drafts `incomplete`. Students see only their own `published` sheets.
 
-### 5.6 `attainments` (latest result per scope)
-`scope` `offering|program` · `offeringId` Id? · `programId` Id · `batchId` Id? · `termIds` [Id] · `config` (snapshot of `attainment` settings used) · `cos` `[{ coId, code, cie: { assessed: N, attained: N, pct: N, level: N }?, see: { … }?, value: N?, target: N, met: B? }]` · `outcomes` `[{ code: S, value: N? }]` · `warnings` [S] (max 50) · `computedAt` D · `computedBy` Id?
-Indexes: `{ scope: 1, offeringId: 1 }` unique partial (scope offering) · `{ scope: 1, programId: 1, batchId: 1 }` unique partial (scope program).
+### 5.6 `attainments` (one per credit offering, M09)
+The latest attainment of one credit offering (07 §4), written whole by the `compute/attainment` job (06 §6). The programme report reads these and stores nothing (M09 decision 4).
+
+| Field | Type | Rules |
+|---|---|---|
+| offeringId, courseId, programId, batchId, termId | Id | *denorm* from the offering, for the programme report |
+| config | `{ targetPct, level3Pct, level2Pct, level1Pct, cieWeight, seeWeight, defaultTargetLevel }` | the `attainment` settings used (06 §7) |
+| cos | `[{ coId: Id, code: S, statement: S, cie: { assessed: N, attained: N, pct: N, level: N }?, value: N?, met: B? }]` | ≤ 15, the course's COs when worked out; `cie` null when no question assessed the CO; `pct` and `value` at 2 dp; the target is `config.defaultTargetLevel` |
+| see | `{ considered: N, attained: N, pct: N, level: N, withoutMarks: N }?` | the course's one SEE (07 §4); null without any end-sem row; `withoutMarks` = active students without a row |
+| cells | `[{ coId: Id, outcome: S, level: 1\|2\|3 }]` | ≤ 225, the course's `coMap` when worked out, so the values always read against the grid they came from (A-181) |
+| outcomes | `[{ code: S, value: N? }]` | PO1–PO12 then PSO1–PSO3; null where no assessed CO maps to it |
+| warnings | [S] | ≤ 50, plain sentences |
+| computedAt | D | |
+| computedBy | Id? | who pressed "Work it out again"; null when a trigger queued it |
+
+Indexes: `{ offeringId: 1 }` unique.
+Invariants: written only by `recomputeAttainment` (07 §4), whole; never edited by hand. Skill offerings have none. Locked offerings are worked out too. A completed offering's record changes only when its own marks change or someone works it out again, never because the catalogue map changed (A-181).
 
 ## 6. Projects
 

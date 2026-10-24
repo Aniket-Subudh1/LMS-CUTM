@@ -121,33 +121,36 @@ The policy's 75 % minimum is stored only (Q-42).
 
 ## 4. CO attainment for an offering (CPP-08) — `lib/domain/attainment.ts`
 
-Settings (06 §7): `targetPct` T (60), level thresholds `level3Pct` (70), `level2Pct` (60), `level1Pct` (50), weights `cieWeight` (0.5) and `seeWeight` (0.5), `defaultTargetLevel` (2).
+Settings (06 §7): `targetPct` T (60), level thresholds `level3Pct` (70), `level2Pct` (60), `level1Pct` (50), weights `cieWeight` (0.5) and `seeWeight` (0.5), `defaultTargetLevel` (2). Credit (`ugc`) offerings only; locked offerings too, since nothing here changes a mark (M09).
 
 `level(p) = p ≥ level3Pct ? 3 : p ≥ level2Pct ? 2 : p ≥ level1Pct ? 1 : 0`
 
-**CIE (internal) per CO `k`**
-1. `I_k` = items tagged with `k` in the offering's `results_published` assessments.
-2. If `I_k` is empty → CIE for `k` is `null` and a warning "COk was not assessed in any published assessment" is recorded.
-3. For each active enrolled student: `num = Σ` counted item marks on `I_k` (the counted attempt of §14; missing → 0), `den = Σ maxMarks` of `I_k`. The student **attains** `k` if `100 × num / den ≥ T`.
-4. An item tagged with several COs counts in full toward each (assumption A-07).
-5. `pct = 100 × attained / students`; `cieLevel = level(pct)`.
+**CIE (internal) per CO `k`** — over the offering's `results_published` assessments (A-20).
+1. Each active enrolled student's questions: for each assessment, the **paper** of their counted attempt (`countedAttempt`, §14), each question with its own `coIds`, `maxMarks` and the marks it scored. Since M04b a paper can hold questions drawn from the bank, so two students' questions may differ. A missed assessment (no counted attempt) gives `missedItems(assessment)`: each fixed question at 0 marks, and each section draw with a CO filter as one question of `count × marksEach` toward each CO in the filter, at 0. A draw without a filter adds nothing (A-14, A-179).
+2. For student `s`: `num_k = Σ max(0, marks)` and `den_k = Σ maxMarks` over their questions carrying `k`, as `breakdown()` (`lib/domain/results.ts`) adds a result's marks per outcome. A question carrying several COs counts in full toward each (A-07). A negative mark counts 0, and the proctoring penalty, which belongs to no question, is left out (A-178).
+3. `assessed_k` = the students with `den_k > 0`; `s` **attains** `k` when `100 × num_k / den_k ≥ T`.
+4. `assessed_k = 0` → CIE for `k` is `null`, with the warning "COk was not assessed in any published assessment".
+5. Otherwise `pct = 100 × attained / assessed` (2 dp shown); `cieLevel = level(pct)` (A-180).
 
 **SEE (end-semester) — one value for the course**
 - End-sem marks are per course, not per CO, so the SEE level applies to every CO (assumption A-08).
+- `externalPct(credits, externals)` (M09 decision 1): over the components the course has (credits > 0), `Σ credits_c × 100 × marks_c / max_c / Σ credits_c` — weighted by credits as the course percentage is (§2), unrounded. `AB` in any part → `absent`.
 - Students considered = those with an `endSemMarks` row; `absent` counts as not attained. Students without a row are excluded and counted in a warning.
-- A student attains if `100 × marks / maxMarks ≥ T`. `seeLevel = level(100 × attained / considered)`. No rows at all → SEE `null`.
+- A student attains if `externalPct ≥ T`. `seeLevel = level(100 × attained / considered)`. No rows at all → SEE `null`.
 
 **CO value**
 - Both present → `roundHalfUp(cieWeight × cieLevel + seeWeight × seeLevel, 2)`.
 - SEE null → `cieLevel` (warning "CIE only").
 - CIE null → `null`.
-- `target = co.targetLevel ?? defaultTargetLevel`; `met = value ≥ target` (null value → `met` null).
+- `target = defaultTargetLevel` for every CO (M09 decision 3); `met = value ≥ target` (null value → `met` null).
 
 **PO / PSO value (course level)**
 For outcome `j`: the cells of `coMap` with `outcome = j` whose CO value is not null. None → `null`. Otherwise `roundHalfUp(Σ value_k × level_kj / Σ level_kj, 2)`.
 
-**Worked example** — "C Programming", 10 students, defaults above.
-Items: quiz q1 (CO1, 5), q2 (CO2, 5); assignment a1 (CO2, 10), a2 (CO3, 10). End-sem max 50.
+The stored record keeps the map and the settings it used (05 §5.6), so the values always read against the grid they came from.
+
+**Worked example** — "C Programming", a 3-0-0 course, 10 students, defaults above. Every student has the same four questions, so every student is assessed on every CO.
+Items: quiz q1 (CO1, 5), q2 (CO2, 5); assignment a1 (CO2, 10), a2 (CO3, 10). The theory external is out of 50 in this example (the policy's default is 60).
 
 | Student | q1 | q2 | a1 | a2 | End-sem |
 |---|---|---|---|---|---|
@@ -181,11 +184,37 @@ CO→outcome map: CO1–PO1 3, CO1–PO2 1, CO1–PSO3 3, CO2–PO1 2, CO2–PO2
 | PSO2 | no mapping | **null** |
 | PSO3 | (2.5×3 + 2×3) / 6 | **2.25** |
 
-Extra vectors: same data without end-sem rows → CO1 3, CO2 2, CO3 2 (all "CIE only"). A student exactly at T (s3 on CO1: 3/5 = 60 %) attains. s6 end-sem 30/50 = 60 % attains; s7 29/50 = 58 % does not.
+Extra vectors: same data without end-sem rows → CO1 3, CO2 2, CO3 2 (all "CIE only"). `cieWeight` 0.4 and `seeWeight` 0.6 → CO1 2.4, CO2 2, CO3 2. A student exactly at T (s3 on CO1: 3/5 = 60 %) attains. s6 end-sem 30/50 = 60 % attains; s7 29/50 = 58 % does not.
+
+**`externalPct`** (computed by script, 24 Oct 2026; maxima from the default policy):
+
+| Credits | Externals | Result |
+|---|---|---|
+| 3-0-0 | T 40/60 | 66.67 (66.666…) |
+| 1-2-2 | T 30/60, P 40/50, Pj 35/50 | (1 × 50 + 2 × 80 + 2 × 70) / 5 = **70** |
+| 3-1-0 | T 33/60, P 32/50 | (3 × 55 + 1 × 64) / 4 = **57.25** (added up it would be 65/110 = 59.09) |
+| 1-2-2 | T 50/60, P `AB`, Pj 45/50 | `absent` |
+
+**Drawn papers** (computed by script). One assessment whose section draws two 2-mark questions filtered to CO1 and CO2; COs CO1–CO4; no end-sem rows (CIE only):
+- A was given d1 (CO1) and scored 2, and d2 (CO2) and scored 0.
+- B was given d3 (CO2) and scored 2, and d4 (CO2, CO3) and scored 1.
+- C missed it, which counts 2 × 2 = 4 marks toward CO1 and toward CO2, at 0.
+
+| CO | Assessed | Attained | pct | value |
+|---|---|---|---|---|
+| CO1 | A (2/2), C (0/4) | A | 50 | **1** |
+| CO2 | A (0/2), B (3/4), C (0/4) | B | 33.33 | **0** |
+| CO3 | B (1/2) | — | 0 | **0** |
+| CO4 | nobody | — | — | **null**, warning |
 
 ## 5. Program-level attainment (CPP-09) — same file
 
-For program P, batch B and a set of terms: take the latest offering-scope attainment of every offering of B in those terms. For each outcome `j`: `roundHalfUp(mean of the non-null course values for j, 2)`; `null` if none. The report also shows the course × outcome matrix and each value against `defaultTargetLevel`.
+Worked out when the report opens, from the stored offering records (M09 decision 4); nothing is stored for a programme. For programme P, batch B and one term or every term: the latest record of every credit offering of B in those terms. A course taught in several sections is one course whose value per outcome is the mean of its sections' non-null values (A-182). For each outcome `j`: `roundHalfUp(mean of the non-null course values for j, 2)`, rounded once; `null` if none. The report also shows the course × outcome matrix and each value against `defaultTargetLevel`.
+
+| Courses (PO1) | Programme PO1 |
+|---|---|
+| A 2.21, B 1.79, C null | **2** |
+| A in two sections, 2.5 and 2 (A = 2.25); B 1.5 | (2.25 + 1.5) / 2 = 1.875 → **1.88** |
 
 ## 6. Grade sheet (EXM-05) — `lib/domain/grades.ts`
 
@@ -422,7 +451,7 @@ Attempt total = `max(0, roundHalfUp(Σ item marks, 2))`: negative marks never ta
 
 **Sections (M04b, TP-06)** — `lib/domain/attempts.ts`. A section with its own time closes `durationMin` after it was first opened, never after the attempt's deadline. `planSectionMove(rules, visits, from, to)`: a closed section (left when "no going back", or out of time) cannot be opened; a "no going back" section is a gate — nothing after it opens until it is left (or its time runs out), and leaving it closes it. Extra time for one person adds to both the time limit and the end of hand-ins (`deadlineAt(…, extraMin)`).
 
-**Counted score** — `countedScore(attempts, policy)` in `lib/domain/attempts.ts` (M04; these rows stood in §2 until M01b rewrote it). Only **graded** attempts count: `best` → the highest `total`; `last` → the `total` of the graded attempt with the highest `attemptNo`; no graded attempt → **0** (a missed assessment counts as zero, A-14). M06 and M09 use the same function.
+**Counted score** — `countedScore(attempts, policy)` in `lib/domain/attempts.ts` (M04; these rows stood in §2 until M01b rewrote it). Only **graded** attempts count: `best` → the highest `total`; `last` → the `total` of the graded attempt with the highest `attemptNo`; no graded attempt → **0** (a missed assessment counts as zero, A-14). M06 uses the same function; M09 uses `countedAttempt`, the same rule, to find the attempt whose paper it reads (§4).
 
 | Graded attempts (attemptNo: total) | Policy | Counted |
 |---|---|---|

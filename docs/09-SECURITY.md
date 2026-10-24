@@ -82,6 +82,7 @@ Every exported DAL function and every action applies these filters; integration 
 | Live monitor and proctoring records (M04b) | their own warnings count and the monitor's messages to them; never their snapshots | of tests they manage: act (time, messages, end, waive) | of their department's offerings: watch and read | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
+| Attainment (M09) | — (the Outcomes tab shows no attainment) | offering's (`teach`); "Work it out again" | offering's in their department (read); the programme report of their department's programmes | all |
 | Projects & tasks | `memberIds ∋ me` | offering's | offering's | all |
 | Users | self | students enrolled in my offerings (name, roll no, email) | users of my department | all |
 | Catalogue courses (M01b) | only through an offering's Overview | all (read); content edits only where `coordinatorId = me` | all (read) | all |
@@ -113,7 +114,8 @@ Rules:
 | Monitor messages (M04b) | staff | 30 / min |
 | Files from the results (`requestTestFile`, M04b) | user | 10 / hour |
 | Beacon | user | 120 / 10 min |
-| AI suggestion (`ai`; M04b: `draftWithAi`, whatever it asks for) | user | 30 / hour |
+| AI suggestion (`ai`; M04b: `draftWithAi`, whatever it asks for; M09: `suggestItemTags`, `suggestCoMap`) | user | 30 / hour |
+| Work attainment out again (`requestAttainment`, M09) | offering | 1 / min |
 
 The client IP is the first entry of `X-Forwarded-For`, which the production load balancer must overwrite (11 §4). On limit: `AppError('RATE_LIMITED')` / HTTP 429.
 
@@ -222,7 +224,7 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 
 ## 12. AI data policy (M09, M10)
 
-- Sent to the model: question text, a topic a teacher types for drafts (M04b, TP-10), CO statements and Bloom levels, PO/PSO titles, and numeric engagement metrics with labels.
+- Sent to the model: question text, a topic a teacher types for drafts (M04b, TP-10), CO statements and Bloom levels, PO/PSO titles (M09: only those a programme gave; untitled codes are left out), and numeric engagement metrics with labels.
 - Never sent: student names, roll numbers, emails, answers, submissions, marks of identifiable students, faculty names.
 - AI output is a suggestion rendered for a human; nothing is written to records until a human submits the normal form. M04b: drafts are saved to the bank as AI drafts, which no test uses until a teacher saves each in its dialog.
 - The API key is server-only (`OPENAI_API_KEY`). The AI is OpenAI's (since 18 Oct 2026).
