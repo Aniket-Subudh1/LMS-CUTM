@@ -4,20 +4,22 @@ import { useEffect, useId, useState } from 'react';
 import { XIcon } from '@phosphor-icons/react';
 import { findPeople } from '@/app/(app)/meetings/actions';
 import type { Person } from '@/lib/data/meetings';
+import type { PEOPLE_SCOPES } from '@/lib/schemas/live';
 
-// M03c T4: people picked from the LMS by name, roll number or email (mock-up R2-A), shown as chips and posted as hidden
-// `name` inputs. The server searches only people the viewer may invite (09 §3), and checks them again on save.
+// M03c T4: people picked from the LMS by name, roll number or email, shown as chips and posted as hidden `name`
+// inputs. The server searches only people the viewer may invite (09 §3), and checks them again on save. The fields round
+// (mock-up F6): an offering's faculty from other departments, found by name instead of typed as emails.
 export function PeoplePicker({
   name,
   initial,
   max,
-  staffOnly = false,
+  scope = 'all',
   placeholder,
 }: {
   name: string;
   initial: Person[];
   max: number;
-  staffOnly?: boolean;
+  scope?: (typeof PEOPLE_SCOPES)[number];
   placeholder: string;
 }) {
   const [chosen, setChosen] = useState<Person[]>(initial);
@@ -36,7 +38,7 @@ export function PeoplePicker({
     if (text.length < 2) return;
     let current = true;
     const timer = window.setTimeout(() => {
-      void findPeople({ q: text, staffOnly }).then((result) => {
+      void findPeople({ q: text, scope }).then((result) => {
         if (!current) return;
         setFound(
           result.ok
@@ -53,7 +55,7 @@ export function PeoplePicker({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [text, staffOnly]);
+  }, [text, scope]);
 
   const options = found.q === text ? found.people.filter((p) => !chosen.some((c) => c.id === p.id)) : [];
   const pick = (person: Person) => {

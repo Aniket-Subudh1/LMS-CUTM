@@ -317,6 +317,11 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-210 | Blur is offered on every browser; one that cannot run it says so when it is chosen, rather than the option being hidden | M03c | — |
 | A-211 | The blur choice lasts as long as the tab, like the layout (A-99) | M03c | — |
 | A-212 | Moving between a class or meeting and its breakout rooms keeps one's camera, microphone and blur as they were; the layout, pins, captions and panel start afresh in each room | M03c | — |
+| A-213 | "Deploy it", after the fields round, is taken as the recommended picks: F1 A (one field, like Google Calendar) and F2–F6 as drawn | fields round | — |
+| A-214 | A value that is not added (not an email or a domain, matching nobody, too long, over the most) stays in the box with a message saying why, rather than becoming a red chip as F2 drew it: nothing invalid is ever a chip | fields round | — |
+| A-215 | The meeting's people field matches a pasted email or roll number exactly; an email that is nobody the viewer may invite becomes a guest (A-186), and anything else that matches nobody is reported | fields round | — |
+| A-216 | A drawn section names at most 10 topics, since the stored list holds 400 characters; the bank's 100 most used topics are suggested | fields round | — |
+| A-217 | An offering's faculty are found among faculty accounts of every department, the viewer included | fields round | — |
 
 ## 5. Log
 
@@ -2965,3 +2970,75 @@ Fields that hold sentences stay text boxes: unlock, lock and unpublish reasons, 
 **Not done** — Nothing is built yet: the build waits for Aniket's picks.
 
 **Open questions** — none; the picks are asked in the artifact.
+
+### 2026-10-24 · The fields round built: chips, rows and one people field · Claude Code, at Aniket's request
+
+Aniket said "deploy it" after the mock-up round, so this builds the recommended picks: F1 A and F2–F6 as drawn (A-213). Everything saved has the same shape as before: each new field posts the text its form posted, which the server already reads.
+
+**Created** (*changed*)
+- **Server:**
+  - *`lib/schemas/live.ts`:* `FindPeople` takes `scope` (`all`, `staff`, `faculty`) instead of `staffOnly`; new `MatchPeople { keys }`.
+  - *`lib/data/meetings.ts`:* `Person.staff`; `findPeople` by scope; new `matchPeople`, a pasted list matched among the people the viewer may invite.
+  - *`app/(app)/meetings/actions.ts`:* `findPeople({ q, scope })` and `matchPeople`.
+  - *`lib/data/papers.ts`:* new `bankTopics`, the bank's topics by use. *`lib/data/assessments.ts`:* `Builder.bank.topics`.
+  - *`lib/data/offerings.ts`:* each offering's faculty carry their `id`.
+  - *`lib/domain/catalog.ts`:* `formatSessionLines` is removed; the session plan's editor writes the lines itself.
+  - *`lib/schemas/settings.ts`:* help for the grade scale, the languages and the commit messages no longer describes a typed format.
+- **Components** (08 §5.2):
+  - `components/meeting-people.tsx` (F1 A), `components/chip-input.tsx` (F2, F6), `components/list-editor.tsx` (F5), and `components/settings-tables.tsx` (F3, F4);
+  - *`components/people-picker.tsx`* takes a scope.
+- **Fields replaced:**
+  - *`components/meeting-dialog.tsx`* (the three people fields);
+  - *`app/(app)/admin/offerings/page.tsx`* (faculty from other departments, and Change faculty, now found by name);
+  - *`components/assessment-builder.tsx`* (invitation emails, a link's domains, a drawn section's topics with suggestions);
+  - *`app/(app)/admin/programs/[id]/page.tsx`* (sections);
+  - *`app/(app)/admin/settings/[key]/page.tsx`* (grade scale, languages, commit messages);
+  - *`app/(app)/catalog/[id]/page.tsx`* (session plan);
+  - *`components/course-syllabus.tsx`* (objectives, textbooks, references, projects, a module's practicals).
+- **Tests:**
+  - *`tests/integration/meetings.test.ts`*: the scope and `staff`; `matchPeople` matching a colleague's email in capitals and leaving out an untaught student and an unknown address.
+  - *`tests/integration/build.test.ts`*: the bank's topics by use.
+  - *`lib/domain/catalog.test.ts`*: the session lines as the editor posts them.
+- **Docs:**
+  - 06 (`findPeople`, `matchPeople`, stop words), 07 (session plan text), 08 §5.2 (four new rows, `MeetingDialog`, `PeoplePicker`), 09 (paste matching);
+  - this entry and A-213–A-217.
+
+**Not done**
+- **No e2e spec:** the scripted walk below drove every field instead.
+- **No arrow keys in the offering's faculty search:** `PeoplePicker` still takes the first result on Enter.
+- **Found, not fixed:** 16 tests in the e2e database have no `sections` field. Their pages fail with "a.sections is not iterable". They are records left from before sections existed, not something this round changed; whether the shared development database has any was not checked.
+
+**Assumptions** — A-213 to A-217 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 621 passed (621)`.
+- `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 330 passed (330)`.
+- `npm run build` → exit 0. `npm run check:bundle` → clean (318 files).
+- **The walk** (`fields-walk.mjs` in the session scratchpad: the build on port 3101 with the worker and a mail sink, e2e database, Chromium) → `33/33 passed`.
+  - **F1, the meeting:**
+    - Typing "Lipika" suggested Lipika Das; Enter added her as a participant, and she was made co-host.
+    - A pasted list of two student emails, a guest email, an unknown roll number and a word added 3, reported the other two and kept them in the box.
+    - The meeting saved with 2 hosts, 2 members and 1 guest. Editing showed everyone with their role. The dialog fits 390 px.
+  - **F2, test invitations:**
+    - A pasted list became chips, dropped the repeat and reported the bad address. Backspace and a comma worked.
+    - Three invitation emails reached the sink. On a second run, the same addresses were dropped as a day's repeats, as designed, so each run now uses new ones.
+  - **F6, short lists:**
+    - "@CUTM.ac.in" became `cutm.ac.in` and "gmail" was refused.
+    - The bank's topics were suggested with their counts; the arrow keys and Enter picked one.
+    - Sections saved as B, C.
+    - Change faculty showed the current faculty as chips, and saved Lipika Das found by name.
+    - Commit messages saved without "wip", with the pasted "todo" and "misc" in lower case.
+  - **F3, the grade scale:**
+    - P worth 4.5 and a new grade D were entered.
+    - D at 45 % showed the server's "D must start below P's 40 %." under the table, while the bar waited for numbers that make sense.
+    - At 35 % the bar drew it; the save stored O … P 4.5, D 35 → 3, F 0. The table fits 390 px.
+  - **F4:** a Python row saved with runner id 71.
+  - **F5, the session plan:**
+    - Enter added session 7 and moved to it; a pasted "Practice:" and "Project:" pair became two rows of those kinds.
+    - Move up and Save stored the new order and kinds; the dialog fits 390 px.
+  - **F5, the syllabus lists:** an objective added as a row was saved; a module's practicals are rows too.
+  - **Afterwards:** every record the walk changed was put back, and its meeting removed. These were the batch, the offering's faculty, the course's session plan and objectives, the three settings, and the test's closing time, which the walk had moved to reopen it.
+- Screenshots of the real fields were looked at.
+  - Fixed: a dialog stretches every native select to its width, which pushed out the co-host's name and put each session over three lines on a desktop. Both selects now sit in a box of their own width.

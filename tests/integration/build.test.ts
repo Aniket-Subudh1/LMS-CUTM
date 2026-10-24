@@ -364,9 +364,18 @@ describe('papers drawn per attempt (TP-05)', () => {
     expect((await getBuilder(w.aid)).bank).toEqual({
       shortfalls: ['Drawn needs 1 more medium question in the bank'],
       papers: 0,
+      topics: [{ topic: 'arrays', questions: 3 }],
     });
-    await bankQuestion(w, 'medium');
-    expect((await getBuilder(w.aid)).bank).toEqual({ shortfalls: [], papers: 1 });
+    await bankQuestion(w, 'medium', 'loops');
+    // The bank's topics are suggested when a section is limited to some, the most used first.
+    expect((await getBuilder(w.aid)).bank).toEqual({
+      shortfalls: [],
+      papers: 1,
+      topics: [
+        { topic: 'arrays', questions: 3 },
+        { topic: 'loops', questions: 1 },
+      ],
+    });
     expect(await publishAssessment({ assessmentId: w.aid })).toEqual({ ok: true, data: undefined });
   });
 

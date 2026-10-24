@@ -24,7 +24,7 @@ import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
-import { ALL_RIGHTS } from '@/lib/schemas/live';
+import { ALL_RIGHTS, type PEOPLE_SCOPES } from '@/lib/schemas/live';
 
 // M03c T4 (05 §4.3): a meeting is a live session without a course; the Meetings page lists the ones the viewer hosts
 // or is invited to, and its own page and room follow its people (roomAccess).
@@ -32,7 +32,9 @@ import { ALL_RIGHTS } from '@/lib/schemas/live';
 export const STAFF_ROLES = ['faculty', 'hod', 'admin'] as const;
 const isStaff = (roles: readonly string[]) => roles.some((r) => (STAFF_ROLES as readonly string[]).includes(r));
 
-export type Person = { id: string; name: string; detail: string };
+type PeopleScope = (typeof PEOPLE_SCOPES)[number];
+// `staff`: the people who may be made co-hosts (faculty, heads of department, admins).
+export type Person = { id: string; name: string; detail: string; staff: boolean };
 
 type Candidate = {
   _id: Types.ObjectId;
@@ -71,11 +73,21 @@ async function invitable(viewer: Viewer, people: Candidate[]): Promise<Candidate
 }
 
 const CANDIDATE_FIELDS = { name: 1, email: 1, rollNo: 1, roles: 1, departmentId: 1 } as const;
-const personOf = (p: Candidate): Person => ({ id: String(p._id), name: p.name, detail: p.rollNo ?? p.email });
+const personOf = (p: Candidate): Person => ({
+  id: String(p._id),
+  name: p.name,
+  detail: p.rollNo ?? p.email,
+  staff: isStaff(p.roles),
+});
+const SCOPE_ROLES = {
+  all: [...STAFF_ROLES, 'student'],
+  staff: STAFF_ROLES,
+  faculty: ['faculty'],
+} as const;
 
 // The people picker (T4): an email or roll number finds that person; words find names (the users' text index). Ten
-// at most; co-hosts are staff only.
-export async function findPeople(viewer: Viewer, q: string, staffOnly: boolean): Promise<Person[]> {
+// at most; co-hosts are staff only, an offering's faculty faculty only. The viewer is left out, except as faculty.
+export async function findPeople(viewer: Viewer, q: string, scope: PeopleScope): Promise<Person[]> {
   await db();
   const match = q.includes('@')
     ? { email: q.toLowerCase() }
@@ -86,14 +98,38 @@ export async function findPeople(viewer: Viewer, q: string, staffOnly: boolean):
     {
       ...match,
       status: { $ne: 'disabled' },
-      roles: { $in: staffOnly ? [...STAFF_ROLES] : [...STAFF_ROLES, 'student'] },
-      _id: { $ne: new Types.ObjectId(viewer.id) },
+      roles: { $in: [...SCOPE_ROLES[scope]] },
+      ...(scope === 'faculty' ? {} : { _id: { $ne: new Types.ObjectId(viewer.id) } }),
     },
     CANDIDATE_FIELDS,
   )
     .limit(30)
     .lean<Candidate[]>();
   return (await invitable(viewer, found)).slice(0, 10).map(personOf);
+}
+
+// A pasted list (the meeting's people field): each email or roll number that is someone the viewer may invite, with
+// that person; the keys that match nobody are left out, for the field to treat as guests or report.
+export async function matchPeople(viewer: Viewer, keys: string[]): Promise<{ key: string; person: Person }[]> {
+  await db();
+  const emails = keys.filter((k) => k.includes('@')).map((k) => k.toLowerCase());
+  const rollNos = keys.filter((k) => !k.includes('@')).map((k) => k.toUpperCase());
+  const found = await User.find(
+    {
+      $or: [{ email: { $in: emails } }, { rollNo: { $in: rollNos } }],
+      status: { $ne: 'disabled' },
+      roles: { $in: [...SCOPE_ROLES.all] },
+      _id: { $ne: new Types.ObjectId(viewer.id) },
+    },
+    CANDIDATE_FIELDS,
+  )
+    .limit(keys.length)
+    .lean<Candidate[]>();
+  const allowed = await invitable(viewer, found);
+  return keys.flatMap((key) => {
+    const person = allowed.find((p) => p.email === key.toLowerCase() || p.rollNo === key.toUpperCase());
+    return person ? [{ key, person: personOf(person) }] : [];
+  });
 }
 
 // The people a save names must all be ones the viewer may invite (co-hosts staff); returns them for the emails.
@@ -249,11 +285,16 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
   const session = toRow(doc, now);
   const users = await User.find(
     { _id: { $in: [...doc.meeting.hostIds, ...doc.meeting.memberIds] } },
-    { name: 1, email: 1, rollNo: 1 },
+    { name: 1, email: 1, rollNo: 1, roles: 1 },
   ).lean();
   const person = (id: Types.ObjectId): Person => {
     const u = users.find((x) => x._id.equals(id));
-    return { id: String(id), name: u?.name ?? 'Someone', detail: u ? (u.rollNo ?? u.email) : '' };
+    return {
+      id: String(id),
+      name: u?.name ?? 'Someone',
+      detail: u ? (u.rollNo ?? u.email) : '',
+      staff: u ? isStaff(u.roles) : false,
+    };
   };
   const [owner, ...coHosts] = doc.meeting.hostIds.map(person);
   return {

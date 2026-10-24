@@ -4,7 +4,7 @@ import { Types, type QueryFilter } from 'mongoose';
 import { assessmentAccess, offeringAccess, type AssessmentAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { SAVE_GRACE_MS } from '@/lib/data/attempts';
-import { sectionPools, shortfallMessages } from '@/lib/data/papers';
+import { bankTopics, sectionPools, shortfallMessages } from '@/lib/data/papers';
 import {
   correctText,
   figuresOf,
@@ -593,8 +593,9 @@ export type Builder = {
   };
   // M04b (TP-05, TP-06)
   sections: BuilderSection[];
-  // What the bank cannot supply for the sections' draws, and how many different papers it can make (null: no draws).
-  bank: { shortfalls: string[]; papers: number | null };
+  // What the bank cannot supply for the sections' draws, and how many different papers it can make (null: no draws);
+  // its topics, suggested when a section is limited to some.
+  bank: { shortfalls: string[]; papers: number | null; topics: { topic: string; questions: number }[] };
   extraTime: { userId: string; name: string; email: string; minutes: number }[];
   // TP-08
   proctoring: Proctoring;
@@ -616,7 +617,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     readAssessment(assessmentId),
     offeringId ? Offering.findById(offeringId, { courseId: 1, category: 1, credits: 1, title: 1 }).lean() : null,
   ]);
-  const [course, statuses, pools, people, runner] = await Promise.all([
+  const [course, statuses, pools, people, runner, topics] = await Promise.all([
     offering ? Course.findById(offering.courseId, { 'cos._id': 1, 'cos.code': 1, 'cos.statement': 1 }).lean() : null,
     Submission.aggregate<{ _id: string; n: number }>([
       { $match: { assessmentId: doc._id } },
@@ -625,6 +626,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     sectionPools(doc),
     User.find({ _id: { $in: doc.extraTime.map((e) => e.userId) } }, { name: 1, email: 1 }).lean(),
     getSettings('codeRunner'),
+    bankTopics(doc),
   ]);
   const n = (status: string) => statuses.find((s) => s._id === status)?.n ?? 0;
   const credit = offering?.category === 'ugc';
@@ -681,6 +683,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     bank: {
       shortfalls: shortfallMessages(doc.sections, pools),
       papers: drawing.length > 0 ? distinctPapers(drawing) : null,
+      topics,
     },
     extraTime: doc.extraTime.map((entry) => {
       const person = personOf.get(String(entry.userId));

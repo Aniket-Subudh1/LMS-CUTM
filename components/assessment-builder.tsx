@@ -41,6 +41,7 @@ import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { BloomChip } from '@/components/bloom-chip';
 import { CopyButton } from '@/components/copy-button';
+import { ChipInput } from '@/components/chip-input';
 import { FormDialog } from '@/components/form-dialog';
 import { CountsTowardField, istLocal } from '@/components/new-assessment-dialog';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
@@ -54,7 +55,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { Textarea } from '@/components/ui/textarea';
 import { getBuilder, type Builder, type BuilderSection, type TeacherItem } from '@/lib/data/assessments';
 import { pickFromBank, type BankRow } from '@/lib/data/bank';
 import { listLinks, type ShareLink } from '@/lib/data/test-links';
@@ -1146,9 +1146,20 @@ function SectionDialog({
             </div>
           </fieldset>
         )}
-        <Field name="drawTopics" label="Only these topics" hint="Separated by commas. Empty: any topic.">
-          <Input name="drawTopics" defaultValue={draw?.topics.join(', ') ?? ''} placeholder="arrays, loops" />
-        </Field>
+        <ChipInput
+          name="drawTopics"
+          label="Only these topics"
+          kind="phrase"
+          initial={draw?.topics ?? []}
+          max={10}
+          maxLength={ASSESSMENT_LIMITS.topic}
+          placeholder="Add a topic, like arrays"
+          suggestions={b.bank.topics.map((t) => ({
+            value: t.topic,
+            detail: `${t.questions} question${t.questions === 1 ? '' : 's'} in the bank`,
+          }))}
+          hint="Topics already in the question bank are suggested. Leave it empty for any topic."
+        />
       </fieldset>
     </FormDialog>
   );
@@ -1491,9 +1502,14 @@ function NewLinkDialog({ aid, course }: { aid: string; course: boolean }) {
         <Field name="expiresAt" label="Works until" hint="Indian Standard Time.">
           <Input name="expiresAt" type="datetime-local" />
         </Field>
-        <Field name="allowedDomains" label="Only these email domains" hint="Separated by commas: cutm.ac.in, gmail.com">
-          <Input name="allowedDomains" placeholder="cutm.ac.in" />
-        </Field>
+        <ChipInput
+          name="allowedDomains"
+          label="Only these email domains"
+          kind="domain"
+          max={TEST_LIMITS.domains}
+          placeholder="Add a domain, like cutm.ac.in"
+          hint="Leave it empty to let any email register."
+        />
       </div>
     </FormDialog>
   );
@@ -1512,13 +1528,17 @@ function InviteDialog({ aid, link, openParam }: { aid: string; link: ShareLink; 
     >
       <input type="hidden" name="assessmentId" value={aid} />
       <input type="hidden" name="linkId" value={link.id} />
-      <Field
+      <ChipInput
         name="emails"
         label="Email addresses"
-        hint={`One per line or separated by commas; up to ${TEST_LIMITS.invitesPerSend} at a time.`}
-      >
-        <Textarea name="emails" required rows={8} placeholder={'riya.p@gmail.com\narjun.das@cutm.ac.in'} />
-      </Field>
+        kind="email"
+        max={TEST_LIMITS.invitesPerSend}
+        maxLength={254}
+        placeholder="Type or paste addresses"
+        tall
+        count
+        hint="Paste a column from a spreadsheet or a list from an email: commas, spaces and new lines all work. Repeats are dropped."
+      />
     </FormDialog>
   );
 }

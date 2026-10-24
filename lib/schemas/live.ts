@@ -158,10 +158,16 @@ export const SaveMeeting = z
   })
   .refine((m) => m.endTime > m.startTime, { path: ['endTime'], message: 'End after the start.' });
 export const MeetingRef = z.object({ meetingId: objectId });
-// The people picker's search: an email or roll number, or words of a name.
+// The people picker's search: an email or roll number, or words of a name; among everyone the viewer may invite, staff
+// only (co-hosts), or faculty only (an offering's faculty).
+export const PEOPLE_SCOPES = ['all', 'staff', 'faculty'] as const;
 export const FindPeople = z.object({
   q: z.string().trim().min(2, 'Type at least two letters.').max(80),
-  staffOnly: z.boolean().default(false),
+  scope: z.enum(PEOPLE_SCOPES).default('all'),
+});
+// A pasted list of emails and roll numbers, matched exactly (the meeting's people field).
+export const MatchPeople = z.object({
+  keys: z.array(z.string().trim().min(1).max(120)).min(1).max(100),
 });
 
 // A guest's personal link: their id and its signature (lib/auth/guest-link.ts).

@@ -532,7 +532,7 @@ The attempt is counted **before** the check, so parallel guesses are limited too
 
 **Bloom.** `inferBloom(statement)` skips a lead-in ("CO1:", "Students will be able to", "The student will", "To") and an adverb ("Critically"), then reads the first verb against a fixed verb list: `Explain …` → understand, `Evaluate …` → evaluate, `Design …` → create, `Analyze …` → analyse, `Get a deep understanding …` → understand, `Read and interpret …` → null. The result is only a **suggestion** shown pre-ticked; it becomes the CO's level when a person saves (A-58). `parseBloomLevels` reads stated levels in order — `Apply, Create`, `L2 - Understand`, `K3` (K1–K6 in order), `Analyzing` — keeping at most three (`extra` says more were given).
 
-**Session plan text.** `parseSessionLines`: one session per line; a `Practice:`/`Practical:`/`Lab:` prefix makes a practice session and `Project:` a project session; blank lines are ignored. `formatSessionLines` is its inverse.
+**Session plan text.** `parseSessionLines`: one session per line; a `Practice:`/`Practical:`/`Lab:` prefix makes a practice session and `Project:` a project session; blank lines are ignored. The session plan's editor shows a row per session with its kind and posts these lines.
 
 **Outcomes.** `nextCoCode(existing, seq)` never reuses a code: it is one above the highest of the existing codes and `seq` (`courses.coSeq`, the highest number ever given). Vectors: `([], 0)` → CO1; `(CO1, CO4; 0)` → CO5; `(CO1, CO5; 6)` → CO7 (CO6 was deleted); `(CO9; 6)` → CO10; `(Outcome 1; 0)` → CO1. `coNumber('CO7')` = 7, anything else 0. `mergeCos(existing, imported, newId)` keeps each CO's id by its code, so a re-import leaves calendar rows and question tags pointing at the same CO.
 

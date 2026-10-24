@@ -6,7 +6,7 @@ import { action } from '@/lib/action';
 import { requireRoomHost } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
 import { START_EARLY_MS } from '@/lib/data/live';
-import { findPeople as searchPeople, requireInvitable, STAFF_ROLES } from '@/lib/data/meetings';
+import { matchPeople as matchKeys, findPeople as searchPeople, requireInvitable, STAFF_ROLES } from '@/lib/data/meetings';
 import { notify } from '@/lib/data/notify';
 import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
@@ -18,7 +18,7 @@ import { User } from '@/lib/models/user';
 import { mailQueue } from '@/lib/queue';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 import type { MailJob } from '@/lib/schemas/jobs';
-import { FindPeople, MEETING_LIMITS, MeetingRef, SaveMeeting } from '@/lib/schemas/live';
+import { FindPeople, MatchPeople, MEETING_LIMITS, MeetingRef, SaveMeeting } from '@/lib/schemas/live';
 
 // M03c T4: meetings outside classes. Staff schedule them; the scheduler stays a host, with up to four co-hosts (staff);
 // members are picked from the LMS and guests are invited by email (decision 7). Everyone invited gets an email with a
@@ -44,8 +44,13 @@ async function sendInvites(job: Omit<Extract<MailJob, { kind: 'meetingInvites' }
 
 const distinct = (ids: string[], without: string[]) => [...new Set(ids)].filter((id) => !without.includes(id));
 
-export const findPeople = action({ input: FindPeople, roles: STAFF_ROLES }, async ({ q, staffOnly }, viewer) =>
-  searchPeople(viewer, q, staffOnly),
+export const findPeople = action({ input: FindPeople, roles: STAFF_ROLES }, async ({ q, scope }, viewer) =>
+  searchPeople(viewer, q, scope),
+);
+
+// A list pasted into the meeting's people field: who among it is in the LMS.
+export const matchPeople = action({ input: MatchPeople, roles: STAFF_ROLES }, async ({ keys }, viewer) =>
+  matchKeys(viewer, keys),
 );
 
 async function hostedMeeting(viewer: Viewer, meetingId: string) {

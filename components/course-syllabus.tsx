@@ -14,6 +14,7 @@ import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { EmptyState } from '@/components/data-table';
 import { FileUpload } from '@/components/file-upload';
 import { FormDialog } from '@/components/form-dialog';
+import { ListEditor } from '@/components/list-editor';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { RowMenu } from '@/components/row-menu';
 import { Section } from '@/components/section';
@@ -143,7 +144,10 @@ export function CourseSyllabus({
             {
               name: 'objectives',
               label: 'Objectives',
-              hint: `One per line, at most ${CATALOG_LIMITS.objectives}.`,
+              hint: `At most ${CATALOG_LIMITS.objectives}.`,
+              noun: 'objective',
+              max: CATALOG_LIMITS.objectives,
+              maxLength: CATALOG_LIMITS.objective,
               lines: course.objectives,
             },
           ]}
@@ -158,8 +162,22 @@ export function CourseSyllabus({
           title="Books"
           action={saveBooks}
           fields={[
-            { name: 'textbooks', label: 'Textbooks', hint: 'One book per line.', lines: course.textbooks },
-            { name: 'references', label: 'References', hint: 'One book per line.', lines: course.references },
+            {
+              name: 'textbooks',
+              label: 'Textbooks',
+              noun: 'textbook',
+              max: CATALOG_LIMITS.textbooks,
+              maxLength: CATALOG_LIMITS.book,
+              lines: course.textbooks,
+            },
+            {
+              name: 'references',
+              label: 'References',
+              noun: 'reference',
+              max: CATALOG_LIMITS.references,
+              maxLength: CATALOG_LIMITS.book,
+              lines: course.references,
+            },
           ]}
         />
       )}
@@ -175,7 +193,10 @@ export function CourseSyllabus({
             {
               name: 'projects',
               label: 'Projects',
-              hint: `One per line, at most ${CATALOG_LIMITS.projects}.`,
+              hint: `At most ${CATALOG_LIMITS.projects}.`,
+              noun: 'project',
+              max: CATALOG_LIMITS.projects,
+              maxLength: CATALOG_LIMITS.project,
               lines: course.projects,
             },
           ]}
@@ -373,9 +394,14 @@ function ModuleDialog({ course, unit }: { course: EditableCourse; unit?: Unit })
       <Field name="topics" label="Topics">
         <Textarea name="topics" rows={4} maxLength={CATALOG_LIMITS.moduleTopics} defaultValue={unit?.topics} />
       </Field>
-      <Field name="practicals" label="Practicals" hint="One per line.">
-        <Textarea name="practicals" rows={3} defaultValue={unit?.practicals.join('\n')} />
-      </Field>
+      <ListEditor
+        name="practicals"
+        label="Practicals"
+        noun="practical"
+        initial={(unit?.practicals ?? []).map((text) => ({ text }))}
+        max={CATALOG_LIMITS.practicals}
+        maxLength={CATALOG_LIMITS.practical}
+      />
     </FormDialog>
   );
 }
@@ -393,7 +419,16 @@ function TextDialog({
   icon: PageIconName;
   title: string;
   action: Parameters<typeof FormDialog>[0]['action'];
-  fields: { name: string; label: string; hint: string; lines: string[] }[];
+  // The fields round (mock-up F5): each list a row an item.
+  fields: {
+    name: string;
+    label: string;
+    hint?: string;
+    noun: string;
+    max: number;
+    maxLength: number;
+    lines: string[];
+  }[];
 }) {
   return (
     <FormDialog
@@ -407,9 +442,16 @@ function TextDialog({
     >
       <input type="hidden" name="courseId" value={course.id} />
       {fields.map((field) => (
-        <Field key={field.name} name={field.name} label={field.label} hint={field.hint}>
-          <Textarea name={field.name} rows={6} defaultValue={field.lines.join('\n')} />
-        </Field>
+        <ListEditor
+          key={field.name}
+          name={field.name}
+          label={field.label}
+          hint={field.hint}
+          noun={field.noun}
+          initial={field.lines.map((text) => ({ text }))}
+          max={field.max}
+          maxLength={field.maxLength}
+        />
       ))}
     </FormDialog>
   );

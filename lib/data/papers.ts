@@ -50,6 +50,18 @@ async function bankScope(source: { offeringId?: Types.ObjectId | null; ownerIds:
   return { courseId: offering?.courseId ?? new Types.ObjectId() };
 }
 
+// The topics a drawing section can be limited to: those of the bank's reviewed questions, the most used first, with
+// how many questions have each (the builder's suggestions). A bank holds at most BANK_LIMITS.perBank questions.
+export async function bankTopics(source: { offeringId?: Types.ObjectId | null; ownerIds: Types.ObjectId[] }) {
+  const counts = await BankItem.aggregate<{ _id: string; n: number }>([
+    { $match: { ...(await bankScope(source)), topic: { $type: 'string' }, aiDraft: { $ne: true } } },
+    { $group: { _id: '$topic', n: { $sum: 1 } } },
+    { $sort: { n: -1, _id: 1 } },
+    { $limit: 100 },
+  ]);
+  return counts.map((c) => ({ topic: c._id, questions: c.n }));
+}
+
 // The bank questions each drawing section can choose from: objective questions of a type the test's mode allows
 // (a drawn question is worth the section's marks, which a rubric could not follow, A-118), matching its
 // outcomes and topics. Bounded by BANK_LIMITS.perBank.

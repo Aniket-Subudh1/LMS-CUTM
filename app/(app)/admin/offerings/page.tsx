@@ -3,18 +3,24 @@ import type { Metadata } from 'next';
 import { ArrowsClockwiseIcon, PlusIcon, TrashIcon, UserSwitchIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
-import { createOfferings, deleteOffering, refreshEvaluation, setOfferingStatus, updateOfferingFaculty } from './actions';
+import {
+  createOfferings,
+  deleteOffering,
+  refreshEvaluation,
+  setOfferingStatus,
+  updateOfferingFaculty,
+} from './actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
+import { PeoplePicker } from '@/components/people-picker';
 import { RowMenu, type RowMenuItem } from '@/components/row-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { Textarea } from '@/components/ui/textarea';
 import {
   getOfferingStats,
   listBatchesForSelect,
@@ -258,13 +264,18 @@ async function NewOffering({
             )}
             <FieldErrors name="faculty[]" />
           </fieldset>
-          <Field
-            name="otherFaculty"
-            label="Faculty from other departments (optional)"
-            hint="Their emails, separated by commas. One to five faculty in all."
-          >
-            <Textarea name="otherFaculty" rows={2} />
-          </Field>
+          <div className="grid gap-2">
+            <span className="text-sm font-medium">Faculty from other departments (optional)</span>
+            <PeoplePicker
+              name="faculty[]"
+              initial={[]}
+              max={5}
+              scope="faculty"
+              placeholder="Search staff by name or email"
+            />
+            <p className="text-muted-foreground text-xs">One to five faculty in all, with those ticked above.</p>
+            <FieldErrors name="otherFaculty" />
+          </div>
           {/* Shown only when the chosen course has project credits (CSS only); the server checks it either way. */}
           <fieldset className="hidden gap-2 group-has-[option[data-project]:checked]/offering:grid">
             <legend className="mb-2 text-sm font-medium">How projects are tracked</legend>
@@ -324,15 +335,19 @@ function FacultyCell({ offering }: { offering: OfferingRow }) {
         successMessage="Faculty saved."
       >
         <input type="hidden" name="offeringId" value={offering.id} />
-        <Field name="otherFaculty" label="Faculty emails" hint="One to five, separated by commas or new lines.">
-          <Textarea
-            name="otherFaculty"
-            rows={4}
-            required
-            defaultValue={offering.faculty.map((f) => f.email).join('\n')}
+        <div className="grid gap-2">
+          <span className="text-sm font-medium">Faculty</span>
+          <PeoplePicker
+            name="faculty[]"
+            initial={offering.faculty.map((f) => ({ id: f.id, name: f.name, detail: f.email, staff: true }))}
+            max={5}
+            scope="faculty"
+            placeholder="Search faculty by name or email"
           />
-        </Field>
-        <FieldErrors name="faculty[]" />
+          <p className="text-muted-foreground text-xs">One to five faculty, from any department.</p>
+          <FieldErrors name="faculty[]" />
+          <FieldErrors name="otherFaculty" />
+        </div>
       </FormDialog>
     </div>
   );

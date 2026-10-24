@@ -108,7 +108,7 @@ export type OfferingRow = {
   title: string;
   termCode: string;
   status: (typeof OFFERING_STATUSES)[number];
-  faculty: { name: string; email: string }[];
+  faculty: { id: string; name: string; email: string }[];
   students: number;
   // M06: a credit offering whose marks are not locked, so an admin may refresh its evaluation policy.
   refreshable: boolean;
@@ -167,7 +167,7 @@ export async function listOfferings(
     ]),
   ]);
   const termCodes = new Map(terms.map((t) => [String(t._id), t.code]));
-  const people = new Map(faculty.map((f) => [String(f._id), { name: f.name, email: f.email }]));
+  const people = new Map(faculty.map((f) => [String(f._id), { id: String(f._id), name: f.name, email: f.email }]));
   const students = new Map(counts.map((c) => [String(c._id), c.n]));
   return {
     rows: docs.map((o) => ({

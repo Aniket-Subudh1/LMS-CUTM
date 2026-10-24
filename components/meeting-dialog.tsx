@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
 import { saveMeeting } from '@/app/(app)/meetings/actions';
-import { Field, FieldErrors } from '@/components/action-form';
+import { Field } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageIcon } from '@/components/page-icon';
-import { PeoplePicker } from '@/components/people-picker';
+import { MeetingPeople } from '@/components/meeting-people';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import type { MeetingDetail } from '@/lib/data/meetings';
 import { istDayKey, istTimeOfDay } from '@/lib/domain/time';
-import { MEETING_LIMITS } from '@/lib/schemas/live';
 
 // M03c T4, mock-up R2-A: "New meeting" on the Meetings page (`?new=meeting`) and "Edit" on a meeting's page. Everyone
 // invited gets an email with the link and a calendar file; people from the LMS also get a notification.
@@ -46,43 +44,14 @@ export function MeetingDialog({ meeting, trigger }: { meeting?: MeetingDetail; t
           <Input name="endTime" type="time" required defaultValue={end ? istTimeOfDay(end) : '17:00'} />
         </Field>
       </div>
-      <div className="grid gap-2">
-        <span className="text-sm font-medium">Co-hosts</span>
-        <PeoplePicker
-          name="coHost[]"
-          initial={meeting?.coHosts ?? []}
-          max={MEETING_LIMITS.coHosts}
-          staffOnly
-          placeholder="Add a co-host"
-        />
-        <p className="text-muted-foreground text-xs">Hosts let guests in, mute, remove and record. Staff only.</p>
-        <FieldErrors name="coHost[]" />
-      </div>
-      <div className="grid gap-2">
-        <span className="text-sm font-medium">People from the LMS</span>
-        <PeoplePicker
-          name="member[]"
-          initial={meeting?.members ?? []}
-          max={MEETING_LIMITS.members}
-          placeholder="Search by name, roll number or email"
-        />
-        <p className="text-muted-foreground text-xs">
-          Staff, and the students you teach or oversee. Up to {MEETING_LIMITS.members}.
-        </p>
-        <FieldErrors name="member[]" />
-      </div>
-      <Field
-        name="guests"
-        label="Guests by email"
-        hint={`One a line, up to ${MEETING_LIMITS.guests}. Each gets their own link and waits in a lobby until a host lets them in.`}
-      >
-        <Textarea
-          name="guests"
-          rows={3}
-          defaultValue={meeting?.guests?.map((g) => g.email).join('\n')}
-          placeholder="name@example.com"
-        />
-      </Field>
+      <MeetingPeople
+        owner={meeting?.owner ?? null}
+        initial={{
+          coHosts: meeting?.coHosts ?? [],
+          members: meeting?.members ?? [],
+          guests: meeting?.guests?.map((g) => g.email) ?? [],
+        }}
+      />
     </FormDialog>
   );
 }

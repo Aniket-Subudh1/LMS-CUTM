@@ -5,14 +5,15 @@ import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from '@phosphor-icons/react/ssr';
 import Loading from '../../../loading';
 import { saveSettings } from '../actions';
+import { ChipInput } from '@/components/chip-input';
 import { ActionForm, Field } from '@/components/action-form';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
+import { GradeScaleEditor, LanguagesEditor } from '@/components/settings-tables';
 import { Section } from '@/components/section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
-import { Textarea } from '@/components/ui/textarea';
 import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
 import { coursePercentage, RUBRICS } from '@/lib/domain/evaluation';
 import { gradeFor } from '@/lib/domain/grades';
@@ -159,15 +160,7 @@ function CodeRunner({
         >
           <ActionForm action={saveSettings} submitLabel="Save" successMessage="Saved. New runs follow this.">
             <input type="hidden" name="key" value={page.key} />
-            <Field name="languages" label="Languages" hint={page.fieldHelp.languages}>
-              <Textarea
-                name="languages"
-                required
-                rows={6}
-                className="font-mono text-[0.8125rem]"
-                defaultValue={page.value.languages.map((l) => `${l.key} | ${l.label} | ${l.runnerId}`).join('\n')}
-              />
-            </Field>
+            <LanguagesEditor name="languages" initial={page.value.languages} hint={page.fieldHelp.languages} />
             <Field
               name="runCooldownSec"
               label="Wait between runs"
@@ -235,15 +228,12 @@ function Grading({ page }: { page: SettingsPage<'grading'> }) {
             successMessage="Saved. Grade sheets worked out from now follow this."
           >
             <input type="hidden" name="key" value={page.key} />
-            <Field name="scale" label="Grade scale" hint={page.fieldHelp.scale}>
-              <Textarea
-                name="scale"
-                required
-                rows={9}
-                className="max-w-72 font-mono text-[0.8125rem]"
-                defaultValue={page.value.scale.map((g) => `${g.grade} | ${g.minPct} | ${g.points}`).join('\n')}
-              />
-            </Field>
+            <GradeScaleEditor
+              name="scale"
+              initial={page.value.scale}
+              recommended={page.defaults.scale}
+              hint={page.fieldHelp.scale}
+            />
             <div className="grid gap-4 sm:grid-cols-3">
               <Field
                 name="absentGrade"
@@ -401,14 +391,16 @@ function Projects({ page }: { page: SettingsPage<'projects'> }) {
                 className="w-40 tabular-nums"
               />
             </Field>
-            <Field name="messageStopWords" label="Messages that say nothing" hint={page.fieldHelp.messageStopWords}>
-              <Textarea
-                name="messageStopWords"
-                rows={6}
-                defaultValue={page.value.messageStopWords.join('\n')}
-                className="max-w-xs font-mono text-[0.8125rem]"
-              />
-            </Field>
+            <ChipInput
+              name="messageStopWords"
+              label="Messages that say nothing"
+              kind="phrase"
+              initial={page.value.messageStopWords}
+              max={50}
+              maxLength={40}
+              placeholder="Add a message"
+              hint={page.fieldHelp.messageStopWords}
+            />
           </ActionForm>
         </Section>
       </div>

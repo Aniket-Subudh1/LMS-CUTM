@@ -35,8 +35,8 @@ const languageLines = (value: unknown) =>
           return { key, label, runnerId };
         });
 
-// 06 §7, 07 §6 (M08): UGC CBCS letter grades; only O from 90 % is in CUTM's Examination Policy (Q-40). A form posts
-// the scale as lines of `grade | from % | points`; a stored value is the parsed list.
+// 06 §7, 07 §6 (M08): UGC CBCS letter grades; only O from 90 % is in CUTM's Examination Policy (Q-40). The form's
+// table posts the scale as lines of `grade | from % | points`; a stored value is the parsed list.
 const SCALE = [
   { grade: 'O', minPct: 90, points: 10 },
   { grade: 'A+', minPct: 80, points: 9 },
@@ -205,7 +205,7 @@ export const SETTINGS = {
     description: 'The languages code questions can use, and how often a student may run their code.',
     fieldHelp: {
       languages:
-        'One language a line: a short key, the name students see, and the code runner’s id for it, separated by |. A question keeps the keys it was written with, so remove a language only when no running test uses it.',
+        'The key is what questions keep (lower-case letters, like cpp), so remove a language only when no running test uses it. The runner id is the code runner’s number for the language.',
       runCooldownSec:
         'The wait between two runs by the same student. Each question also has its own limit on runs; there are at most 200 runs an hour.',
     },
@@ -265,7 +265,7 @@ export const SETTINGS = {
   },
   projects: {
     // M07 (07 §12): proposed values for the commit metrics; the client has not set them. The stock commit messages are
-    // typed one a line (or with commas); a stored value is the list.
+    // chips the form posts separated by commas (new lines work too); a stored value is the list.
     schema: z.object({
       lastMinuteHours: z.coerce
         .number({ error: 'Enter a number of hours.' })
@@ -298,7 +298,7 @@ export const SETTINGS = {
       lastMinuteHours: 'Commits this many hours before a project is due count as last-minute.',
       hugeCommitLines: 'A commit that adds and removes more lines than this together is flagged as huge.',
       messageStopWords:
-        'Commit messages that say nothing, one a line. A message that is one of these, or shorter than 10 characters, does not count as a good message.',
+        'A message that is one of these, or shorter than 10 characters, does not count as a good message.',
     },
   },
   grading: {
@@ -349,7 +349,7 @@ export const SETTINGS = {
     description: 'How a course’s percentage becomes a grade and grade points on the grade sheet.',
     fieldHelp: {
       scale:
-        'One grade a line: the grade, the lowest percentage that earns it, and its points, separated by |. Highest first; the last starts at 0. The course percentage is rounded up before it is graded.',
+        'Highest grade first; each runs from its own % up to the grade above it. The last grade starts at 0, so every mark gets one. The course percentage is rounded up before it is graded.',
       absentGrade:
         'The grade of a course where the student is AB in any external part. Its credits still count in the SGPA.',
       absentPoints: 'The grade points of that course.',

@@ -181,7 +181,8 @@ export function parseBloomLevels(text: string): { levels: BloomLevel[]; extra: b
 
 const KIND_PREFIX = /^(practice|practical|lab|project)\s*:\s*/i;
 
-// The session-plan editor: one session per line, "Practice:" or "Project:" in front for those sessions.
+// The session plan as the form posts it (a row each in its editor): one session per line, "Practice:" or "Project:"
+// in front for those sessions.
 export function parseSessionLines(text: string): { topic: string; kind: SessionKind }[] {
   return text
     .split(/\r?\n/)
@@ -193,11 +194,6 @@ export function parseSessionLines(text: string): { topic: string; kind: SessionK
       return { topic: line.replace(KIND_PREFIX, '').trim() || line, kind };
     });
 }
-
-export const formatSessionLines = (sessions: readonly { topic: string; kind: SessionKind }[]) =>
-  sessions
-    .map((s) => (s.kind === 'theory' ? s.topic : `${s.kind === 'project' ? 'Project' : 'Practice'}: ${s.topic}`))
-    .join('\n');
 
 // The number in "CO7"; 0 for anything else.
 export const coNumber = (code: string) => Number(/^CO(\d+)$/.exec(code)?.[1] ?? 0);

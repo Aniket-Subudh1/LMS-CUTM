@@ -6,13 +6,14 @@ import { z } from 'zod';
 import Loading from '../../loading';
 import { markReviewed, reimportCourse, saveCourse, saveSessionPlan, setCoordinator } from '../actions';
 import { CourseFields } from '../course-fields';
-import { ActionForm, Field } from '@/components/action-form';
+import { ActionForm } from '@/components/action-form';
 import { Checklist, type ChecklistStep } from '@/components/checklist';
 import { CourseOutcomes } from '@/components/course-outcomes';
 import { CourseSyllabus } from '@/components/course-syllabus';
 import { EmptyState } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
+import { ListEditor } from '@/components/list-editor';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
 import { Fact, Section } from '@/components/section';
@@ -20,12 +21,18 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { getCatalogCourse, listFacultyMatches, type CatalogCourse } from '@/lib/data/courses';
-import { creditTotal, formatCredits, formatSessionLines, type ReadinessKey } from '@/lib/domain/catalog';
+import { creditTotal, formatCredits, type ReadinessKey } from '@/lib/domain/catalog';
 import type { ActionResult } from '@/lib/errors';
 import { COURSE_TYPE_LABEL, formatDate, statusTone } from '@/lib/format';
-import { OUTCOME_CODES } from '@/lib/schemas/structure';
+import { CATALOG_LIMITS, OUTCOME_CODES } from '@/lib/schemas/structure';
+
+// The session plan's kinds; a theory session is written without a prefix (parseSessionLines).
+const SESSION_KIND_CHOICES = [
+  { value: 'theory', label: 'Theory', prefix: '' },
+  { value: 'practice', label: 'Practice', prefix: 'Practice' },
+  { value: 'project', label: 'Project', prefix: 'Project' },
+];
 
 export const metadata: Metadata = { title: 'Course' };
 
@@ -347,19 +354,20 @@ function SessionPlan({ course }: { course: CatalogCourse }) {
           param="sessions"
           icon={<PageIcon name="session" className="size-8" />}
           title="Session plan"
-          description="One session per line, in order. Put “Practice:” or “Project:” in front of practice and project sessions."
+          description="The sessions in order, each a theory, practice or project session."
           size="wide"
           action={saveSessionPlan}
           submitLabel="Save session plan"
         >
-          <Field name="sessions" label="Sessions">
-            <Textarea
-              name="sessions"
-              rows={14}
-              defaultValue={formatSessionLines(course.sessionPlan)}
-              placeholder={'Index of a point with respect to a closed curve\nProject: Study on residues'}
-            />
-          </Field>
+          <ListEditor
+            name="sessions"
+            label="Sessions"
+            noun="session"
+            initial={course.sessionPlan.map((s) => ({ text: s.topic, kind: s.kind }))}
+            kinds={SESSION_KIND_CHOICES}
+            max={CATALOG_LIMITS.sessions}
+            maxLength={CATALOG_LIMITS.sessionTopic}
+          />
         </Editor>
       }
     >

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { cancelMeeting, findPeople, saveMeeting, startMeeting } from '@/app/(app)/meetings/actions';
+import { cancelMeeting, findPeople, matchPeople, saveMeeting, startMeeting } from '@/app/(app)/meetings/actions';
 import {
   admitGuests,
   allowBack,
@@ -219,16 +219,23 @@ describe('scheduling a meeting (M03c T4)', () => {
     });
     expect(await saveMeeting({ ...base, ...slot(tomorrow(), 400) })).toMatchObject({ code: 'VALIDATION' });
     // The picker finds staff and the students the teacher teaches, never anyone else.
-    expect(await findPeople({ q: w.taught.email, staffOnly: false })).toMatchObject({
+    expect(await findPeople({ q: w.taught.email })).toMatchObject({
       ok: true,
-      data: [{ id: String(w.taught._id) }],
+      data: [{ id: String(w.taught._id), staff: false }],
     });
-    expect(await findPeople({ q: w.untaught.email, staffOnly: false })).toMatchObject({ ok: true, data: [] });
-    expect(await findPeople({ q: w.taught.email, staffOnly: true })).toMatchObject({ ok: true, data: [] });
-    expect(await findPeople({ q: w.colleague.email, staffOnly: true })).toMatchObject({
+    expect(await findPeople({ q: w.untaught.email })).toMatchObject({ ok: true, data: [] });
+    expect(await findPeople({ q: w.taught.email, scope: 'staff' })).toMatchObject({ ok: true, data: [] });
+    expect(await findPeople({ q: w.colleague.email, scope: 'staff' })).toMatchObject({
       ok: true,
-      data: [{ id: String(w.colleague._id) }],
+      data: [{ id: String(w.colleague._id), staff: true }],
     });
+    // A pasted list: the same people, matched by email or roll number; anyone else is left for the field to report.
+    const pasted = await matchPeople({ keys: [w.colleague.email.toUpperCase(), w.untaught.email, 'nobody@example.com'] });
+    expect(pasted).toMatchObject({
+      ok: true,
+      data: [{ key: w.colleague.email.toUpperCase(), person: { id: String(w.colleague._id), staff: true } }],
+    });
+    expect(pasted.ok && pasted.data).toHaveLength(1);
   });
 
   it('sends a new time to everyone, invites only the people added, and cancels for those taken off', async () => {

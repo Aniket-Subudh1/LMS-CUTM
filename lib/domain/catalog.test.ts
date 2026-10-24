@@ -5,7 +5,6 @@ import {
   creditTotal,
   extractCode,
   formatCredits,
-  formatSessionLines,
   inferBloom,
   mappingCoverage,
   mergeCos,
@@ -133,11 +132,9 @@ describe('session plan lines', () => {
     { topic: 'Write a program with loops', kind: 'practice' as const },
   ];
 
-  it('reads one session per line with a kind prefix and writes it back', () => {
-    const text = formatSessionLines(sessions);
-    expect(text).toBe(
-      'Index of a point with respect to a closed curve\nProject: Residue calculations\nPractice: Write a program with loops',
-    );
+  it('reads one session per line with a kind prefix, as the session plan editor posts them', () => {
+    const text =
+      'Index of a point with respect to a closed curve\nProject: Residue calculations\nPractice: Write a program with loops';
     expect(parseSessionLines(`${text}\n\n  `)).toEqual(sessions);
     expect(parseSessionLines('Lab: Set up Tomcat')).toEqual([{ topic: 'Set up Tomcat', kind: 'practice' }]);
   });

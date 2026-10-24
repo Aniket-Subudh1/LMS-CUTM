@@ -12,6 +12,7 @@ import {
   saveProgram,
   saveProgramOutcomes,
 } from '../../actions';
+import { ChipInput } from '@/components/chip-input';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
@@ -439,13 +440,16 @@ function BatchDialog({ programId, batch }: { programId: string; batch?: BatchRow
           <Input name="startYear" type="number" required min={1990} max={2100} defaultValue={batch?.startYear} />
         </Field>
       </div>
-      <Field
+      <ChipInput
         name="sections"
         label="Sections"
-        hint="Separate with commas or spaces, for example A, B, C. Leave empty for none."
-      >
-        <Input name="sections" defaultValue={batch?.sections.join(', ')} />
-      </Field>
+        kind="word"
+        initial={batch?.sections ?? []}
+        max={20}
+        maxLength={10}
+        placeholder="Add a section, like A"
+        hint="Leave it empty when the batch has no sections."
+      />
       <Field name="status" label="Status">
         <NativeSelect name="status" defaultValue={batch?.status ?? 'active'}>
           <NativeSelectOption value="active">Active</NativeSelectOption>
