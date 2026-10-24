@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { FileArrowUpIcon, UserPlusIcon } from '@phosphor-icons/react/ssr';
+import { DownloadSimpleIcon, FileArrowUpIcon, UserPlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { createUser, importUsers } from './actions';
@@ -252,6 +252,11 @@ function ImportUsers() {
           people are sent an invitation.
         </p>
       </div>
+      <Button asChild variant="outline" size="sm" className="w-fit">
+        <a href="/samples/users.csv" download>
+          <DownloadSimpleIcon /> Download sample CSV
+        </a>
+      </Button>
       <Field name="file" label="CSV file">
         <Input name="file" type="file" accept=".csv,text/csv" required />
       </Field>

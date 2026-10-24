@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CloudArrowDownIcon, FileArrowUpIcon } from '@phosphor-icons/react/ssr';
+import { CloudArrowDownIcon, DownloadSimpleIcon, FileArrowUpIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { importCourseList, startCoursewareImport } from './actions';
@@ -182,6 +182,11 @@ function UploadDialog() {
       submitLabel="Upload"
       successMessage="Course list imported."
     >
+      <Button asChild variant="outline" size="sm" className="w-fit">
+        <a href="/samples/course-list.csv" download>
+          <DownloadSimpleIcon /> Download sample CSV
+        </a>
+      </Button>
       <Field name="file" label="CSV file" hint="At most 5,000 rows. The columns are listed on this page.">
         <Input name="file" type="file" accept=".csv,text/csv" required />
       </Field>

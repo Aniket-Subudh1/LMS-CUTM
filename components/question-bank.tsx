@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+  DownloadSimpleIcon,
   InfoIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -416,6 +417,12 @@ export async function QuestionBank({
           successMessage="Questions imported."
         >
           {scope}
+          {/* A personal bank has no course outcomes, so its sample has no cos column. */}
+          <Button asChild variant="outline" size="sm" className="w-fit">
+            <a href={bank.courseTitle ? '/samples/question-bank.csv' : '/samples/my-question-bank.csv'} download>
+              <DownloadSimpleIcon /> Download sample CSV
+            </a>
+          </Button>
           <Field name="file" label="CSV file">
             <Input name="file" type="file" accept=".csv,text/csv" required />
           </Field>

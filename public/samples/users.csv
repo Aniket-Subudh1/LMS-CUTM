@@ -1,0 +1,6 @@
+role,name,email,rollno,employeeid,department,program,batchstartyear,section
+student,Asha Rao,asha.rao@example.com,2501CSE001,,,BTECH-CSE,2025,A
+student,Rahul Das,rahul.das@example.com,2501CSE002,,,BTECH-CSE,2025,B
+faculty,Meera Patnaik,meera.patnaik@example.com,,E1001,CSE,,,
+hod,Sanjay Mishra,sanjay.mishra@example.com,,E1002,CSE,,,
+support,Priya Nayak,priya.nayak@example.com,,,,,,

@@ -1,0 +1,6 @@
+type,question,options,answer,marks,difficulty,topic,bloom,cos,negative
+one answer,"Which structure is last in, first out?",Queue|Stack|Tree,2,1,easy,stacks,remember,CO1,0.25
+several answers,Which of these are linear structures?,Array|Tree|Queue|Graph,1|3,2,medium,structures,understand,CO1,
+true or false,"A queue is first in, first out.",,true,1,easy,queues,remember,CO1,
+number,How many bytes does an int take on a 32-bit system?,,4 ± 0,2,medium,types,apply,CO2,
+written answer,Explain recursion with an example.,,,5,hard,recursion,understand,CO1|CO2,

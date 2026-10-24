@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   buildInternalMarksCsv,
@@ -394,5 +395,19 @@ describe('checkEndSemRow', () => {
     [row(null, null, 40), 'theoryexternal is empty: give the mark, or AB.'],
   ])('refuses %o', (input, message) => {
     expect(checkEndSemRow(input, course)).toEqual({ ok: false, message });
+  });
+});
+
+// Each import's "Download sample CSV" (public/samples) is accepted by the parser it is for.
+describe('sample files', () => {
+  it.each([
+    ['users.csv', parseUsersCsv],
+    ['enrolment-changes.csv', parseEnrollmentCsv],
+    ['course-list.csv', parseCourseListCsv],
+    ['question-bank.csv', parseBankCsv],
+    ['my-question-bank.csv', parseBankCsv],
+    ['exam-marks.csv', parseEndSemCsv],
+  ] as const)('%s', (name, parse) => {
+    expect(parse(readFileSync(`public/samples/${name}`, 'utf8'))).toMatchObject({ ok: true });
   });
 });

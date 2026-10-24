@@ -445,6 +445,11 @@ function Upload({ view }: { view: ExamBatch }) {
       <ActionForm action={importEndSem} submitLabel="Upload" successMessage="Marks saved.">
         <input type="hidden" name="termId" value={view.term.id} />
         <input type="hidden" name="batchId" value={view.batch.id} />
+        <Button asChild variant="outline" size="sm" className="w-fit">
+          <a href="/samples/exam-marks.csv" download>
+            <DownloadSimpleIcon /> Download sample CSV
+          </a>
+        </Button>
         <Field
           name="file"
           label="The exam section’s file"

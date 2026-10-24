@@ -2554,3 +2554,33 @@ Twenty screens, each at 1440 px and 390 px:
 - One fix after looking at the shots: a stage-filling tile kept `relative` beside `absolute`, which the real component's `cn` removes, so the main tile collapsed.
 
 Shown to Aniket on one page: https://claude.ai/artifact/3eLKRW42zQFQf1dCNSyNPP (private).
+
+### 2026-10-24 · Deleting an offering, and a sample file for every CSV import · Claude Code, at Aniket's request
+
+Request: "1. Course Deletion Option to be added. (Offerings) 2. In all Import CSV, keep Download Sample CSV option. Import CSV not Courses, there you keep Download Sample CSV."
+
+**Created**
+- `deleteOffering` (`app/(app)/admin/offerings/actions.ts`), admins only. It removes a **draft** offering that has no lessons, live classes, assessments, projects or rubric marks. Its enrolments and internal-marks rows go in the same transaction, its cover is deleted from storage, and the audit gets `offering.deleted` (title, enrolments removed). An active or completed offering is refused (`CLOSED`). A draft that holds something is refused with what it holds: "It already has assessments and marks, so it is kept." (`CONFLICT`).
+- Offerings page: a draft row's ⋮ has Delete (after a separator when "Refresh the evaluation policy" is there too), with a confirmation that names the offering and how many students are unenrolled.
+- `public/samples/`: `users.csv`, `enrolment-changes.csv`, `course-list.csv`, `question-bank.csv`, `my-question-bank.csv` (a personal bank has no outcomes, so no `cos` column) and `exam-marks.csv`.
+- "Download sample CSV" (outline button, above the file box) in all five imports: Import users, Upload the course list, Upload a list of changes (People), Import questions (course and personal bank), Bring back the marks (Exams).
+- Tests: `lib/domain/csv.test.ts` "sample files" parses each sample with its import's parser; `tests/integration/offerings.test.ts` "deleteOffering" (2 tests).
+- Docs: 05 §3.8 (when an offering may be hard-deleted), 06 §8 (the samples), 08 §2 (`/admin/offerings`), 09 (permission row, `offering.deleted`). These four doc edits were committed inside `b7c6672 M03c(docs): the mock-up picks` by the M03c session working in the same folder; the code they describe is in the two commits after it.
+
+**Not done**
+- An active or completed offering cannot be deleted: it holds what students did (05 §1, no hard deletes of academic records). One activated by mistake stays (completed offerings are still shown to students), until Aniket says whether an active offering nobody has used yet may be deleted too.
+- A draft holding lessons, classes, assessments or projects is refused rather than emptied for the admin: those are the teachers' work, and some of it (a class that ran, a project) has no delete of its own.
+
+**Assumptions**
+- "Course deletion (Offerings)" means deleting an offering on `/admin/offerings`, not a catalogue course. Catalogue courses are archived (their status), never deleted.
+- The samples are fixed files, not built from each viewer's data. Their people use `example.com` addresses, so uploading a sample as it is invites nobody real. The course-list sample uses the seed's courses (from courseware), so uploading it unchanged leaves those courses as they are.
+- The check and the delete are not one atomic step: a lesson added in the same instant could be left without its offering. The same holds for deleting a live class; it was left that way.
+
+**Open questions** — none.
+
+**Verification**
+- `npm run check` → exit 0; `Test Files 38 passed (38)`, `Tests 614 passed (614)`.
+- `npm run test:integration` (mongodb-memory-server, local Redis) → exit 0; `Test Files 26 passed (26)`, `Tests 313 passed (313)`.
+- The sample test fails when a sample is broken: `remove` in place of `drop` in `enrolment-changes.csv` → `× enrolment-changes.csv`; restored.
+- `next dev` on the e2e database, signed in as the seed admin (Playwright, 1440 × 900): an active offering's ⋮ lists only "Refresh the evaluation policy"; a draft's lists it and Delete. The confirmation read "It is removed for good, and its student is unenrolled. …". After Delete offering the row went and the counts dropped from 43 to 42 offerings and 20 to 19 drafts. Each of the five dialogs (and the personal bank) downloaded its sample with the right name and header: users 5 rows, course list 4, enrolment changes 2, both banks 5, exam marks 3. For the Exams page, the seeded LAB0201 offering was locked in the e2e database for the check and unlocked after it.
+- The only browser console message was the sign-in page's existing warning about its photo (`fill` in a `sticky` parent).

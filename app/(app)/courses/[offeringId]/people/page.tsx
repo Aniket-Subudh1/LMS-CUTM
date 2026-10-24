@@ -4,6 +4,7 @@ import Link from 'next/link';
 import {
   ArrowCounterClockwiseIcon,
   CheckIcon,
+  DownloadSimpleIcon,
   FileArrowUpIcon,
   UserMinusIcon,
   UserPlusIcon,
@@ -347,6 +348,11 @@ function CsvDialog({ offeringId }: { offeringId: string }) {
       successMessage="Enrolment updated."
     >
       <input type="hidden" name="offeringId" value={offeringId} />
+      <Button asChild variant="outline" size="sm" className="w-fit">
+        <a href="/samples/enrolment-changes.csv" download>
+          <DownloadSimpleIcon /> Download sample CSV
+        </a>
+      </Button>
       <Field name="file" label="CSV file">
         <Input name="file" type="file" accept=".csv,text/csv" required />
       </Field>
