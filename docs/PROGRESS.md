@@ -24,7 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; decisions 5–8 (24 Oct 2026); rounds 2–3 mock-ups next; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | In progress — T0 round 1 picked; T1–T3 and the join sound committed on main in the 17 Oct "fix" commits and pushed; decisions 5–8 (24 Oct 2026); rounds 2–3 mock-ups drawn, waiting for the picks; T4–T11 not started | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
@@ -2520,3 +2520,37 @@ Request: "complete this" (M03c). Before T4, four points needed Aniket (`docs/mil
 **Open questions** — none new. Q-12 (hosting) now also decides where recording runs for real use.
 
 **Verification** — Docs only. The server's size is from the 16 Oct test-deployment entry. Versions and peers were checked with `npm view`.
+
+### 2026-10-24 · M03c/T0 Mock-ups, rounds 2 and 3 · Claude Code, at Aniket's request
+
+**Created** — the mock-up list's note and link in `docs/milestones/M03c-live-like-meet.md`; this entry.
+
+**Drawn** — On the e2e build on port 3100:
+- The live room, drawn with `LiveRoom`'s own classes on CUTM1602's room page (round 1's layout and controls as built). The camera pictures are placeholders.
+- Meetings, in faculty1's app shell.
+- The recording card on a class page of CUTM1602.
+
+Twenty screens, each at 1440 px and 390 px:
+- R2-A: the list, and New meeting.
+- R2-B: the invitation email.
+- R2-C: the lobby, before asking and while waiting.
+- R2-D: a guest asking to join.
+- R3-A: starting a recording, while it records, and the class page.
+- R3-B A (an Activities tab) and R3-B B (buttons in the bar).
+- R3-C: asking, answering, results.
+- R3-D: setting up, the invitation, inside a room.
+- R3-E: the whiteboard.
+- R3-F: captions.
+- R3-G: blur.
+
+**Not done** — T4–T11: they wait for the picks.
+
+**Assumptions** — none new.
+
+**Open questions** — none new.
+
+**Verification**
+- Every screen measured no wider than its window at both widths.
+- One fix after looking at the shots: a stage-filling tile kept `relative` beside `absolute`, which the real component's `cn` removes, so the main tile collapsed.
+
+Shown to Aniket on one page: https://claude.ai/artifact/3eLKRW42zQFQf1dCNSyNPP (private).

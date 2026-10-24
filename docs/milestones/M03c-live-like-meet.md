@@ -111,6 +111,8 @@ Drawn inside the real app at 1440 px and 390 px, with two variants where there i
 | R3-F | Captions on the stage | one |
 | R3-G | Background blur in More, and the blurred tile | one |
 
+Drawn on 24 Oct 2026 on the e2e data (CUTM1602's room, faculty1's Meetings, the class page) and shown to Aniket on one page: https://claude.ai/artifact/3eLKRW42zQFQf1dCNSyNPP (private).
+
 ## How the pieces work (verified against the installed SDKs and LiveKit's docs)
 
 - **Mute:** `RoomServiceClient.mutePublishedTrack` (a host can mute, not unmute, as in Meet).
