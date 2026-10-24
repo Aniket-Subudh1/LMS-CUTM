@@ -3042,3 +3042,22 @@ Aniket said "deploy it" after the mock-up round, so this builds the recommended 
   - **Afterwards:** every record the walk changed was put back, and its meeting removed. These were the batch, the offering's faculty, the course's session plan and objectives, the three settings, and the test's closing time, which the walk had moved to reopen it.
 - Screenshots of the real fields were looked at.
   - Fixed: a dialog stretches every native select to its width, which pushed out the co-host's name and put each session over three lines on a desktop. Both selects now sit in a box of their own width.
+
+### 2026-10-24 · The e2e database's tests from before sections, repaired · Claude Code, at Aniket's request
+
+Request: fix the 16 tests whose pages failed with "a.sections is not iterable" (found by the fields round).
+
+**What they were**
+- 16 tests and 11 attempts made by e2e runs on 17 Oct 2026, before M04b added sections, papers, extra time, proctoring and result rules.
+- The tests lacked `sections`, `extraTime`, `instructions`, `proctoring`, `snapshotsDeletedAt` and `results`, some also `ownerIds` and `countsToward`.
+- The attempts lacked their `paper` and twelve later fields.
+- They exist only in this Mac's e2e database. The shared development database (Atlas `test`) has one test, already in today's shape, and CI builds its e2e database afresh. So the fix is a repair of that data, not a change to the app.
+
+**Repaired** with a one-off script (session scratchpad, not in the repository; dry run first):
+- each missing field was set to the schema's own default, read from a blank `Assessment` or `Submission`;
+- each attempt got the paper it was given then, which before M04b was the test's own questions, with the same ids. Every recorded answer is on it (dry run: 0 of 0, 3 of 3, 1 of 1 …).
+- A second dry run found nothing left to do.
+
+**Created** — this entry. Nothing in the repository changed.
+
+**Verification** — Every page of the 16 tests opened, signed in as their teacher: the test, its builder, results, grading and monitor, and each attempt's grading page. Each attempt's student also opened their own view of the test. 98 pages, none an error page.
