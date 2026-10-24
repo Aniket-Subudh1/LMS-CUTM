@@ -8,12 +8,21 @@ import { requireRoomHost, roomAccess } from '@/lib/auth/access';
 import { endLiveSession } from '@/lib/data/live';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
-import { muteMicrophone, removeFromRoom, setHand, tell } from '@/lib/integrations/live';
+import { buildKey } from '@/lib/domain/uploads';
+import {
+  muteMicrophone,
+  recordingEnabled,
+  removeFromRoom,
+  setHand,
+  startRecording as recordRoom,
+  stopRecording as stopRoomRecording,
+  tell,
+} from '@/lib/integrations/live';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
 import { queueLiveControl } from '@/lib/queue';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
-import { MAX_REMOVED, RoomPeople, RoomPerson, RoomRef, RoomRight } from '@/lib/schemas/live';
+import { MAX_RECORDINGS, MAX_REMOVED, RoomPeople, RoomPerson, RoomRef, RoomRight } from '@/lib/schemas/live';
 
 // M03c T4: the room's actions, for a class and a meeting alike. Each takes the session; roomAccess works out from it who
 // the viewer is there (a class through its course, a meeting through its people). Anyone with an LMS account may be in
@@ -229,3 +238,67 @@ export const denyGuest = action(
     refresh();
   },
 );
+
+// --- Recording (M03c T5, decision 5): a host records the room, one recording at a time, straight to the bucket.
+// Everyone in the room is told; the recording appears on the class's or meeting's page once it is saved. Audited. ---
+
+export const startRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
+  const { offeringId, kind } = await requireRoomHost(viewer, sessionId);
+  if (!recordingEnabled()) throw new AppError('CONFLICT', 'Recording is not set up on this server.');
+  const { roomName } = await liveRoom(sessionId);
+  const key = buildKey('live-recording', sessionId, viewer.id, crypto.randomUUID(), 'video/mp4');
+  // Claimed first, so two hosts pressing at once start one recording.
+  const claimed = await LiveSession.updateOne(
+    {
+      _id: sessionId,
+      status: 'live',
+      'recordings.status': { $ne: 'recording' },
+      [`recordings.${MAX_RECORDINGS - 1}`]: { $exists: false },
+    },
+    { $push: { recordings: { key, by: viewer.id, startedAt: new Date(), status: 'recording' } } },
+  );
+  if (claimed.matchedCount === 0) {
+    throw new AppError('CONFLICT', `It is already being recorded, or has its ${MAX_RECORDINGS} recordings.`);
+  }
+  let egressId: string | null = null;
+  try {
+    egressId = await recordRoom(roomName, key);
+  } finally {
+    if (!egressId) await LiveSession.updateOne({ _id: sessionId }, { $pull: { recordings: { key } } });
+  }
+  if (!egressId) throw new AppError('CLOSED', 'Nobody is in the room yet.');
+  await LiveSession.updateOne(
+    { _id: sessionId, 'recordings.key': key },
+    { $set: { 'recordings.$.egressId': egressId } },
+  );
+  await writeAudit({
+    actorId: viewer.id,
+    action: 'live.recording_started',
+    entity: 'live_session',
+    entityId: sessionId,
+    ...(offeringId ? { offeringId } : {}),
+    after: { key },
+  });
+  const noun = kind === 'meeting' ? 'meeting' : 'class';
+  await tell(roomName, 'notice', `${viewer.name} started recording this ${noun}. It goes on the ${noun} page.`);
+  refresh();
+});
+
+export const stopRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
+  const { offeringId } = await requireRoomHost(viewer, sessionId);
+  await db();
+  const session = await LiveSession.findById(sessionId, { roomName: 1, recordings: 1 }).lean();
+  const running = session?.recordings?.find((r) => r.status === 'recording');
+  if (!session || !running) return refresh();
+  if (running.egressId) await stopRoomRecording(session.roomName, running.egressId);
+  await writeAudit({
+    actorId: viewer.id,
+    action: 'live.recording_stopped',
+    entity: 'live_session',
+    entityId: sessionId,
+    ...(offeringId ? { offeringId } : {}),
+    after: { key: running.key },
+  });
+  await tell(session.roomName, 'notice', `${viewer.name} stopped recording`);
+  refresh();
+});

@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
-import { ATTENDANCE_MODES, SESSION_KINDS, SESSION_STATUSES } from '@/lib/schemas/live';
+import { ATTENDANCE_MODES, RECORDING_STATUSES, SESSION_KINDS, SESSION_STATUSES } from '@/lib/schemas/live';
 
 // M03c T4: a meeting's guest, invited by email. Their personal link is their id signed with the session secret
 // (lib/auth/guest-link.ts), so nothing secret is stored. `name` is what they type in the lobby.
@@ -61,6 +61,20 @@ const liveSessionSchema = new Schema(
       },
       default: undefined,
     },
+    // M03c T5: recordings, the latest last (at most MAX_RECORDINGS). `egressId` is empty while one is being started;
+    // the egress webhook marks it saved, with its length, or failed.
+    recordings: [
+      {
+        _id: false,
+        egressId: { type: String, default: '' },
+        key: { type: String, required: true },
+        by: { type: Schema.Types.ObjectId, required: true },
+        startedAt: { type: Date, required: true },
+        endedAt: { type: Date },
+        durationSec: { type: Number },
+        status: { type: String, enum: RECORDING_STATUSES, required: true },
+      },
+    ],
     // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).
     waiting: [
       {

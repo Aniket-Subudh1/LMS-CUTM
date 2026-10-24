@@ -81,6 +81,22 @@ async function roomFinished({ roomName, at }: Extract<LiveEvent, { type: 'room_f
   }
 }
 
+// M03c T5: a recording's file is saved, or the recording failed. Its egressId was stored when it started; a start
+// event changes nothing.
+async function recorded({ roomName, egressId, status, durationSec, at }: Extract<LiveEvent, { type: 'recording' }>) {
+  if (status === 'active') return;
+  await LiveSession.updateOne(
+    { roomName, 'recordings.egressId': egressId },
+    {
+      $set: {
+        'recordings.$.status': status,
+        'recordings.$.endedAt': at,
+        ...(durationSec === null ? {} : { 'recordings.$.durationSec': durationSec }),
+      },
+    },
+  );
+}
+
 // 06 §3, T5: signed presence events from the live engine.
 export async function POST(request: Request): Promise<Response> {
   const rawBody = await request.text();
@@ -94,6 +110,7 @@ export async function POST(request: Request): Promise<Response> {
   if (event.type === 'ignored') return ok();
   await db();
   if (event.type === 'room_finished') await roomFinished(event);
+  else if (event.type === 'recording') await recorded(event);
   else if (objectId.safeParse(event.userId).success) await (event.type === 'joined' ? joined(event) : left(event));
   return ok();
 }

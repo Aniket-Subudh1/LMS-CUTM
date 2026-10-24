@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { attendancePct, deriveAttendance } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
-import { closeRoom, joinToken, type StudentRights } from '@/lib/integrations/live';
+import { closeRoom, joinToken, recordingEnabled, type StudentRights } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
@@ -243,6 +243,9 @@ export type SessionDetail = {
   removed: boolean;
   // M03c T2: for hosts while the class is live — what students may do, and who was removed, the latest first.
   controls: RoomControls | null;
+  // M03c T5: a host may record while it runs (where Egress is set up); its saved recordings, for whoever sees the class.
+  canRecord: boolean;
+  recordings: RecordingRow[];
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -260,6 +263,21 @@ export type RoomControls = {
 };
 
 type RoomDoc = Pick<LiveSessionDoc, 'studentsMay' | 'removed' | 'waiting' | 'meeting'>;
+
+// M03c T5: the saved recordings of a class or meeting, for its page, the earliest first.
+export type RecordingRow = { key: string; startedAt: Date; durationSec: number | null; by: string };
+
+export async function savedRecordings(doc: Pick<LiveSessionDoc, 'recordings'>): Promise<RecordingRow[]> {
+  const saved = (doc.recordings ?? []).filter((r) => r.status === 'saved');
+  if (saved.length === 0) return [];
+  const users = await User.find({ _id: { $in: saved.map((r) => r.by) } }, { name: 1 }).lean();
+  return saved.map((r) => ({
+    key: r.key,
+    startedAt: r.startedAt,
+    durationSec: r.durationSec ?? null,
+    by: users.find((u) => u._id.equals(r.by))?.name ?? 'A host',
+  }));
+}
 
 export async function roomControls(doc: RoomDoc): Promise<RoomControls> {
   const removed = doc.removed ?? [];
@@ -298,7 +316,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   if (!Types.ObjectId.isValid(sessionId)) notFound();
   const doc = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1 },
+    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, recordings: 1 },
   ).lean();
   if (!doc) notFound();
   const now = new Date();
@@ -308,7 +326,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   const removed = student && removedList.some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
   const rights = { ...ALL_RIGHTS, ...doc.studentsMay };
-  const [join, controls, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
+  const [join, controls, recordings, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
     live && !removed && (student || hosts)
       ? joinToken({
           roomName: doc.roomName,
@@ -319,6 +337,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
         })
       : null,
     live && hosts && !student ? roomControls(doc) : null,
+    savedRecordings(doc),
     student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
     student || !doc.startedAt
@@ -361,6 +380,8 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     join,
     removed,
     controls,
+    canRecord: live && hosts && !student && recordingEnabled(),
+    recordings,
     inClass,
     enrolled,
     summary:

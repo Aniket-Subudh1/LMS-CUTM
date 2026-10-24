@@ -2,10 +2,20 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import { cancelMeeting, findPeople, saveMeeting, startMeeting } from '@/app/(app)/meetings/actions';
-import { admitGuests, allowBack, denyGuest, endRoom, removeParticipant } from '@/app/(room)/actions';
+import {
+  admitGuests,
+  allowBack,
+  denyGuest,
+  endRoom,
+  removeParticipant,
+  startRecording,
+  stopRecording,
+} from '@/app/(room)/actions';
 import { askToJoin, stopAsking } from '@/app/(room)/m/[token]/actions';
+import { GET as file } from '@/app/api/files/[...key]/route';
 import { POST as webhook } from '@/app/api/webhooks/live/route';
 import { guestIdOf, guestLinkToken } from '@/lib/auth/guest-link';
+import { getSession } from '@/lib/data/live';
 import { getGuestLobby, getMeeting, getMeetingRoom, listMeetings } from '@/lib/data/meetings';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -19,7 +29,7 @@ import { Offering } from '@/lib/models/offering';
 import { computeQueue, mailQueue, redis } from '@/lib/queue';
 import { startComputeWorker } from '@/worker/jobs/compute';
 import { startMailWorker } from '@/worker/jobs/mail';
-import { enroll, makeOffering, makeUser, signInAs } from '../factories';
+import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
 
 type Sent = { to: string; subject: string; text: string; calendar?: { method: string; content: string } };
 const {
@@ -29,6 +39,7 @@ const {
   tell,
   removeFromRoom,
   closeRoom,
+  egress,
 } = vi.hoisted(() => ({
   events: new Map<string, LiveEvent>(),
   sendMail: vi.fn(async (message: Sent) => void message),
@@ -39,6 +50,12 @@ const {
   tell: vi.fn(async (roomName: string, topic: string, text: string) => void [roomName, topic, text]),
   removeFromRoom: vi.fn(async (roomName: string, identity: string) => void [roomName, identity]),
   closeRoom: vi.fn(async (roomName: string) => void roomName),
+  // M03c T5: the Egress calls; `open` false is a room nobody has joined yet.
+  egress: {
+    open: true,
+    start: vi.fn(async (roomName: string, key: string) => void [roomName, key]),
+    stop: vi.fn(async (roomName: string, egressId: string) => void [roomName, egressId]),
+  },
 }));
 vi.mock('@/lib/integrations/mail', () => ({ sendMail }));
 vi.mock('@/lib/integrations/live', async () => {
@@ -48,6 +65,12 @@ vi.mock('@/lib/integrations/live', async () => {
     tell,
     removeFromRoom,
     closeRoom,
+    recordingEnabled: () => true,
+    startRecording: async (roomName: string, key: string) => {
+      await egress.start(roomName, key);
+      return egress.open ? `EG_${key.slice(-12, -4)}` : null;
+    },
+    stopRecording: egress.stop,
     setRights: async () => undefined,
     setHand: async () => undefined,
     muteMicrophone: async () => true,
@@ -404,5 +427,87 @@ describe('ending a meeting', () => {
     await vi.waitFor(async () => expect((await LiveSession.findById(id).lean())?.finalizedAt).toBeInstanceOf(Date));
     expect(await LiveSession.findById(id).lean()).toMatchObject({ status: 'ended' });
     expect(await Attendance.countDocuments({ sessionId: id })).toBe(0);
+  });
+});
+
+describe('recording (M03c T5)', () => {
+  const get = (key: string) =>
+    file(new Request(`http://localhost:3000/api/files/${key}`), { params: Promise.resolve({ key: key.split('/') }) });
+  const saved = (roomName: string, egressId: string) =>
+    hook({ type: 'recording', roomName, egressId, status: 'saved', durationSec: 3120, at: new Date() });
+
+  it('lets a host record a meeting once at a time, tells the room, and plays it to its people only', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const ref = { sessionId: id };
+    await signInAs(w.taught);
+    await expect(startRecording(ref)).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.faculty);
+    tell.mockClear();
+    expect(await startRecording(ref)).toMatchObject({ ok: true });
+    expect(await startRecording(ref)).toMatchObject({ code: 'CONFLICT' });
+    const [recording] = (await LiveSession.findById(id).lean())?.recordings ?? [];
+    expect(recording).toMatchObject({ status: 'recording', egressId: expect.stringMatching(/^EG_/) });
+    expect(recording.key).toMatch(new RegExp(`^live-recording/${id}/${w.faculty._id}/[\\w-]+\\.mp4$`));
+    expect(tell).toHaveBeenCalledWith(
+      `ls-${id}`,
+      'notice',
+      `${w.faculty.name} started recording this meeting. It goes on the meeting page.`,
+    );
+    egress.stop.mockClear();
+    expect(await stopRecording(ref)).toMatchObject({ ok: true });
+    expect(egress.stop).toHaveBeenCalledWith(`ls-${id}`, recording.egressId);
+    // Not playable until Egress says the file is saved.
+    await signInAs(w.taught);
+    expect((await get(recording.key)).status).toBe(404);
+    await saved(`ls-${id}`, recording.egressId);
+    expect((await getMeeting(id)).recordings).toEqual([
+      { key: recording.key, startedAt: expect.any(Date), durationSec: 3120, by: w.faculty.name },
+    ]);
+    expect((await get(recording.key)).status).toBe(302);
+    await signInAs(w.untaught);
+    expect((await get(recording.key)).status).toBe(404);
+    expect(
+      await AuditLog.countDocuments({
+        entityId: id,
+        action: { $in: ['live.recording_started', 'live.recording_stopped'] },
+      }),
+    ).toBe(2);
+  });
+
+  it('records a class for its students to watch, and starts nothing in a room nobody has joined', async () => {
+    const w = await world();
+    const offering = await makeOffering({ facultyIds: [w.faculty._id], status: 'active' });
+    await enroll(offering._id, w.taught._id);
+    const _id = newId();
+    await LiveSession.create({
+      _id,
+      offeringId: offering._id,
+      title: 'Pointers',
+      scheduledStart: new Date(Date.now() - 10 * MIN),
+      scheduledEnd: new Date(Date.now() + 50 * MIN),
+      status: 'live',
+      startedAt: new Date(),
+      roomName: `ls-${_id}`,
+      attendanceMode: 'derived',
+      createdBy: w.faculty._id,
+    });
+    const ref = { sessionId: String(_id) };
+    await signInAs(w.faculty);
+    expect((await getSession(String(offering._id), String(_id))).canRecord).toBe(true);
+    egress.open = false;
+    expect(await startRecording(ref)).toMatchObject({ code: 'CLOSED' });
+    expect((await LiveSession.findById(_id).lean())?.recordings).toEqual([]);
+    egress.open = true;
+    expect(await startRecording(ref)).toMatchObject({ ok: true });
+    const [recording] = (await LiveSession.findById(_id).lean())?.recordings ?? [];
+    await saved(`ls-${_id}`, recording.egressId);
+    await signInAs(w.taught);
+    expect((await getSession(String(offering._id), String(_id))).recordings).toHaveLength(1);
+    expect((await getSession(String(offering._id), String(_id))).canRecord).toBe(false);
+    expect((await get(recording.key)).status).toBe(302);
+    await signInAs(w.untaught);
+    expect((await get(recording.key)).status).toBe(404);
   });
 });

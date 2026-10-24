@@ -56,6 +56,7 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
             : 'You take attendance on the class page, with “Take attendance”.'
         }
         controls={detail.controls}
+        canRecord={detail.canRecord}
       />
     );
   }

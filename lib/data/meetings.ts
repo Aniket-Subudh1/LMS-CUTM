@@ -4,9 +4,17 @@ import { isValidObjectId, Types } from 'mongoose';
 import { roomAccess, type RoomRole } from '@/lib/auth/access';
 import { guestIdOf } from '@/lib/auth/guest-link';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
-import { roomControls, START_EARLY_MS, toRow, type LiveSessionRow, type RoomControls } from '@/lib/data/live';
+import {
+  roomControls,
+  savedRecordings,
+  START_EARLY_MS,
+  toRow,
+  type LiveSessionRow,
+  type RecordingRow,
+  type RoomControls,
+} from '@/lib/data/live';
 import { db } from '@/lib/db';
-import { joinToken } from '@/lib/integrations/live';
+import { joinToken, recordingEnabled } from '@/lib/integrations/live';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
@@ -197,6 +205,7 @@ export type MeetingDetail = {
   guests: { id: string; email: string; name: string | null; state: GuestState }[] | null;
   canStartAt: Date;
   canEdit: boolean;
+  recordings: RecordingRow[];
 };
 
 function guestState(
@@ -219,6 +228,7 @@ async function findMeeting(viewer: Viewer, meetingId: string) {
     studentsMay: 1,
     removed: 1,
     waiting: 1,
+    recordings: 1,
   }).lean();
   if (!doc?.meeting) notFound();
   return { doc: { ...doc, meeting: doc.meeting }, role: access.role };
@@ -257,6 +267,7 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
         : null,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
     canEdit: role === 'host' && session.state === 'upcoming',
+    recordings: await savedRecordings(doc),
   };
 }
 
@@ -266,6 +277,7 @@ export type MeetingRoom = {
   join: { serverUrl: string; token: string } | null;
   removed: boolean;
   controls: RoomControls | null;
+  canRecord: boolean;
   invited: number;
   canStartAt: Date;
 };
@@ -297,6 +309,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
     join,
     removed,
     controls,
+    canRecord: live && host && recordingEnabled(),
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
   };

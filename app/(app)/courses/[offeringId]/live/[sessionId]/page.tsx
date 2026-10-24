@@ -23,6 +23,7 @@ import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
+import { RecordingList } from '@/components/recording-list';
 import { Fact, Section } from '@/components/section';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -187,6 +188,7 @@ async function LiveSessionView({
             </Alert>
           ))}
         {session.state === 'ended' && (staff ? <Summary detail={detail} /> : <MyResult detail={detail} />)}
+        <RecordingList recordings={detail.recordings} noun="class" />
         {(session.state === 'cancelled' || session.state === 'not_held') && (
           <section className="surface grid place-items-center gap-2 p-10 text-center">
             <span className="icon-chip size-12 [&_svg]:size-7">

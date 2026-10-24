@@ -25,6 +25,8 @@ const Env = z.object({
   LIVEKIT_API_URL: z.url(),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(32),
+  // M03c T5 (11 §2): `on` where a LiveKit Egress service runs beside the engine; recording is hidden otherwise.
+  LIVEKIT_EGRESS: z.enum(['on', 'off']).default('off'),
   // M04b (TP-09, 06 §4.4): a Judge0 CE server. Until the university runs its own (11 §2), Judge0's free public server,
   // which needs no token; students' code is sent to it (Q-55).
   CODE_RUNNER_URL: z.url().default('https://ce.judge0.com'),

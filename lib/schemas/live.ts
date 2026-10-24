@@ -46,6 +46,9 @@ export type StudentRight = (typeof STUDENT_RIGHTS)[number];
 export const ALL_RIGHTS: Record<StudentRight, boolean> = { share: true, unmute: true, chat: true };
 // 05 §4.3: the removed list stays a bounded read.
 export const MAX_REMOVED = 100;
+// M03c T5: a recording is `recording` while it runs, then `saved` (its file is in the bucket) or `failed`.
+export const RECORDING_STATUSES = ['recording', 'saved', 'failed'] as const;
+export const MAX_RECORDINGS = 20;
 
 // --- The room (M03c T4): its actions take the session alone; who may do what comes from the session (a class's course,
 // a meeting's hosts and members). A person in the room is their user id, or a guest's id. ---

@@ -203,6 +203,7 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | removed | `[{ userId: Id, at: D, by: Id }]` | M03c: students a host removed (in a meeting, members and guests: `userId` is then a guest's id); they get no join token until a host lets them back. At most 100 (`MAX_REMOVED`) |
 | meeting | `{ hostIds: [Id], memberIds: [Id], guests: [{ _id: Id, email: S, name: S?, admittedAt: D?, deniedAt: D? }], sequence: N }?` | M03c T4, meetings only. `hostIds` 1–5, the scheduler first (they stay a host), then co-hosts (staff); `memberIds` ≤ 50, people from the LMS; `guests` ≤ 20, by email (lower case), `name` as they type it in the lobby, `admittedAt`/`deniedAt` a host's answer in this meeting. A guest's link is their `_id` signed with the session secret (`lib/auth/guest-link.ts`): nothing secret is stored. `sequence` numbers the invitation's version for calendars (06 §8.7) |
 | waiting | `[{ guestId: Id, name: S, at: D }]` | M03c T4: guests asking to join, in the order they asked (≤ 20) |
+| recordings | `[{ egressId: S, key: S, by: Id, startedAt: D, endedAt: D?, durationSec: N?, status: S }]` | M03c T5: ≤ 20 (`MAX_RECORDINGS`), the latest last; `status` `recording` (at most one) · `saved` · `failed`, set by the egress webhook; `egressId` empty for the moment a host's start is claimed; `key` a `live-recording` object (06 §5) |
 | createdBy | Id | |
 
 Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique · M03c T4: `{ 'meeting.hostIds': 1, scheduledStart: -1 }` and `{ 'meeting.memberIds': 1, scheduledStart: -1 }` (the Meetings page) · `{ 'meeting.guests._id': 1 }` (a guest's link).
@@ -463,6 +464,7 @@ Invariants: never updated or deleted by application code. `before`/`after` hold 
 | Notifications | 90 days | TTL index |
 | Proctoring webcam snapshots | `snapshotRetentionDays` (90) after `resultsPublishedAt` (A-13; confirm Q-24) | The daily `proctorRetention` job deletes the objects, empties `proctor.snapshots` and sets the test's `snapshotsDeletedAt` (M04b) |
 | Lesson videos/documents | Until the lesson is deleted | Deleted with the lesson |
+| Class and meeting recordings (M03c T5) | Permanent with the session (no deletion yet) | — |
 | Submission files | Permanent with the submission | — |
 | syncRuns | 2 years | Monthly worker job |
 | BullMQ completed/failed jobs | Last 1,000 / 5,000 per queue | `removeOnComplete` / `removeOnFail` |

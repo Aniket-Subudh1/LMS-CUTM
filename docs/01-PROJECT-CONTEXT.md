@@ -43,7 +43,7 @@ Nothing in this section is built without written client approval recorded in `PR
 - Copying a course between terms. (A question bank shared across offerings is in scope since M04b: Aniket's change, 18 Oct 2026, TP-05.)
 - Plagiarism detection beyond M04b's similarity flag between hand-ins (ASG-04 part), course completion certificates (SKL-05), helpdesk/ticketing (SUP-03). Test scorecards and certificates are in scope since M04b (TP-12).
 - Excel / PDF export of attainment reports (CPP-10 part); those reports are printable from the browser. Excel and PDF exports of test results are in scope since M04b (TP-12).
-- Indirect attainment (course-exit surveys), at-risk alerting (ENG-04), live-class recordings (LIV-05).
+- Indirect attainment (course-exit surveys), at-risk alerting (ENG-04). (Recording a live class or meeting is in scope since M03c T5: Aniket's decision 1 of 17 Oct 2026; the recording plays on the class's or meeting's page, not in the content library.)
 - Chat / poll / hand-raise analytics, AI review of code diffs, AI-written feedback to students, any AI that writes marks or attendance, AI "cheating" verdicts in proctoring. (AI drafting questions and suggesting a grade band, each confirmed by a person, is in scope since M04b, TP-10.)
 - Multi-language UI. The UI is English.
 - Language switching, translation, ambient monitoring beyond the proctoring set in M05.
@@ -198,7 +198,7 @@ Priority: **Must** = stated in the call · **Should** = strongly implied · **Co
 | LIV-02 | Reuse the live-class solution from the team's previous platform | Must | M03 | Build on self-hosted LiveKit (dev decision 12 Oct 2026, ADR-18 — cheapest at scale, browser-only, scalable). Confirm with the client that this is the expected solution (Q-25) |
 | LIV-03 | Measure student engagement in live classes | Must | M03 | Build |
 | LIV-04 | Attendance captured in the live class, optionally derived from time engaged | Must | M03 | Build |
-| LIV-05 | Recordings saved to the content library | Could | — | Backlog |
+| LIV-05 | Recordings saved to the content library | Could | M03c | Build (M03c decision 1): recordings play on the class's or meeting's page |
 | ENG-01 | Apply AI to platform activity to track how much each student is studying | Must | M10 | Build (deterministic score + AI explanation; meaning **Q-26**) |
 | ENG-02 | Student-wise dashboard with drill-down | Must | M10 | Build |
 | ENG-03 | Suggested signals (video, live presence and interaction, quizzes, lab, timeliness, logins) | Could | M10 | Build only from signals already collected; chat/poll/hand-raise Backlog |

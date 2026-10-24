@@ -297,6 +297,9 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-190 | Someone without the role a room action needs meets 404, as with the course's host-only actions (T1–T3's actions answered a student FORBIDDEN before they moved to the session) | M03c | — |
 | A-191 | The guest lobby's camera check is M04b's device check (browser, connection, camera) in its white card, not the bare video tile drawn in R2-C | M03c | — |
 | A-192 | A meeting lasts at most 6 hours and ends on the day it starts (IST), as the dialog asks for one date | M03c | — |
+| A-193 | Recordings are kept with their class or meeting; nobody can delete one yet | M03c | — |
+| A-194 | A recording is the room as Egress's speaker layout shows it: whoever speaks large, the others small, a shared screen filling the frame | M03c | — |
+| A-195 | A class's recording plays for everyone who opens the class page (its students, teachers, the department's head, admins); a meeting's for its hosts and members, not its guests, who have no page | M03c | — |
 
 ## 5. Log
 
@@ -2644,3 +2647,56 @@ Built to decision 7 and the round-2 mock-ups (R2-A to R2-D, as drawn).
 - `npm run check` → exit 0, `Tests 620 passed (620)`.
 - `npm run test:integration` (local replica set and Redis) → `Test Files 27 passed (27)`, `Tests 323 passed (323)` (meetings 10, live 34).
 - `npm run build` → exit 0, with `/meetings`, `/meetings/[meetingId]`, `/meetings/[meetingId]/room` and `/m/[token]`. `npm run check:bundle` → clean.
+
+### 2026-10-24 · M03c/T5 Recording · Claude Code, at Aniket's request
+
+Built to decision 5 (recording on the current server) and mock-up R3-A, as drawn.
+
+**Created**
+- **The engine side:**
+  - `lib/integrations/live.ts`: `recordingEnabled`, `startRecording` (room composite, speaker layout, MP4 straight to the bucket with the LMS's S3 settings) and `stopRecording`. The webhook's `recording` event (`egressInfo`).
+  - `lib/env.ts`, `.env.example`, `tests/setup.ts`: `LIVEKIT_EGRESS`.
+- **The record:**
+  - `liveSessions.recordings` (≤ 20, `RECORDING_STATUSES`).
+  - The `live-recording` object type in `lib/schemas/uploads.ts` (Egress writes it; `createUpload` refuses it).
+  - The webhook marks a recording `saved` with its length, or `failed`.
+- **Actions** (`app/(room)/actions.ts`): `startRecording`, which claims first so two hosts cannot start two, and lets go when the room is not open; and `stopRecording`. Both are audited and tell the room.
+- **Reads:**
+  - `savedRecordings` (`lib/data/live.ts`).
+  - `canRecord` and `recordings` on the class page and the meeting's page and room.
+  - `/api/files` plays a `saved` recording to the class page's audience or the meeting's people.
+- **Screens:**
+  - `components/recording-list.tsx` (class page, meeting page).
+  - `LiveRoom`: Start and Stop recording in More for hosts, and "Recording" beside Live for everyone (`useIsRecording`).
+- **Tests:** `tests/integration/meetings.test.ts`, 2 more cases:
+  - a meeting: only hosts record, one at a time, the room is told; it is not playable before it is saved; its people may watch it and others may not; audited;
+  - a class: a room nobody has joined starts nothing and leaves no record; the class's students may watch it.
+- **Docs:**
+  - 01 §4 and LIV-05 (out of the backlog); 05 §4.3 and §8.
+  - 06 §4.3 (verified mapping), §5 (`live-recording`), §8.8; 08 (rows, `RecordingList`, `LiveRoom`).
+  - 09 (permissions, audit actions); 11 §2 and §4.1 (Egress, and how the test server runs it).
+
+**The test server** (65.20.89.9; decision 5; done over SSH by Claude Code):
+- **Docker:** `docker.io` 29.7.2 installed.
+- **Egress:** the `livekit-egress` container (livekit/egress v1.15.0, host network, 1.5 CPUs and 1800 MB at most, restarts by itself), with `/etc/livekit/egress.yaml` (11 §4.1).
+- **`livekit.yaml`:**
+  - gained Redis db 5;
+  - gained `rtc.interfaces.excludes: [docker0]`: Docker's bridge had appeared among the addresses LiveKit offered browsers, and now does not;
+  - the earlier file is `livekit.yaml.bak-20261024`.
+- **LiveKit restarts:** twice, with no room open (no room activity in the previous hour).
+- **`/etc/cutm-lms/app.env`:** gained `LIVEKIT_EGRESS=on`, used once this code is deployed.
+
+**Not done**
+- A recording through the LMS's own screens on the real server: that walk comes with the others after T10.
+- Deleting a recording (not asked; A-193).
+- Recording breakout rooms.
+
+**Assumptions** — A-193 to A-195 (§4).
+
+**Open questions** — none new. Q-12 decides where recording runs for real use (11 §4.1).
+
+**Verification**
+- **A real recording on the test server,** from this Mac: a test room, one participant (headless Chromium with a fake camera and microphone), `startRoomCompositeEgress` → `EGRESS_ACTIVE` after 15 s; `stopEgress` → `EGRESS_COMPLETE`, a 12.7 s MP4 of 2,079 KB, found in the bucket as `video/mp4`, then deleted with the room.
+- **An empty room:** the same request is aborted after a while with "Start signal not received". An earlier try without a participant showed it.
+- **The server afterwards:** Egress `service ready`, health 200, idle at 49 MB and under 1% CPU. LiveKit `active`, offering only 65.20.89.9. The LMS `/api/health` 200.
+- `npm run check` → exit 0, `Tests 620 passed (620)`. `npm run test:integration` → `Test Files 27 passed (27)`, `Tests 325 passed (325)`. `npm run build` → exit 0. `npm run check:bundle` → clean.

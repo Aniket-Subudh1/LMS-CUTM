@@ -85,6 +85,8 @@ vi.mock('@/lib/integrations/live', async () => {
     setRights,
     removeFromRoom,
     tell,
+    // M03c T5: recording is tested with meetings (meetings.test.ts).
+    recordingEnabled: () => false,
     roomPeople: async (roomName: string) => (roomName ? room.people : []),
     parseWebhook: async (rawBody: string, authorization: string | null) => {
       if (authorization !== 'signed') throw new AppError('FORBIDDEN', 'Invalid webhook signature');

@@ -7,6 +7,7 @@ import { ActionForm } from '@/components/action-form';
 import { MeetingDialog } from '@/components/meeting-dialog';
 import { PageHeader } from '@/components/page-header';
 import { PageIcon } from '@/components/page-icon';
+import { RecordingList } from '@/components/recording-list';
 import { Section } from '@/components/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -114,6 +115,7 @@ async function Meeting({ params }: { params: PageProps<'/meetings/[meetingId]'>[
           <People people={meeting.members} empty="Nobody else from the LMS is invited." />
         </Section>
       </div>
+      <RecordingList recordings={meeting.recordings} noun="meeting" />
       {meeting.guests && (
         <Section
           icon={<PageIcon name="envelope" className="size-8" />}

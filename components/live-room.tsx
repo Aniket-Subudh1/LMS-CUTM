@@ -20,6 +20,7 @@ import {
   StartAudio,
   useChat,
   useDataChannel,
+  useIsRecording,
   useLocalParticipant,
   useLocalParticipantPermissions,
   useParticipants,
@@ -47,6 +48,7 @@ import {
   PictureInPictureIcon,
   PushPinIcon,
   PushPinSlashIcon,
+  RecordIcon,
   SmileyIcon,
   StopIcon,
   UserMinusIcon,
@@ -67,6 +69,8 @@ import {
   raiseHand,
   removeParticipant,
   setStudentRight,
+  startRecording,
+  stopRecording,
 } from '@/app/(room)/actions';
 import { ActionForm } from '@/components/action-form';
 import { RoomNotice } from '@/components/room-notice';
@@ -123,6 +127,8 @@ type Props = {
   attendanceNote: string;
   // M03c T2, T4, hosts only: what the others may do, who was removed (the latest first), who is waiting to join.
   controls: RoomControls | null;
+  // M03c T5: a host may start and stop a recording (where Egress is set up).
+  canRecord?: boolean;
 };
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
 type Panel = 'people' | 'chat';
@@ -414,6 +420,8 @@ function Classroom(props: Props) {
   const screens = useTracks([Track.Source.ScreenShare]);
   const now = useNow();
   const wide = useWide();
+  // M03c T5: the engine says when an Egress recording runs, so everyone in the room sees it.
+  const recording = useIsRecording();
   const browser = useBrowser();
   // Unset until the viewer chooses: the people panel opens by itself on a wide screen only.
   const [choice, setChoice] = useState<Panel | null>();
@@ -704,14 +712,23 @@ function Classroom(props: Props) {
               <span className="truncate font-semibold">{props.title}</span>
               <span className="truncate text-white/60 max-md:hidden">{props.course}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-[0.8125rem] ring-1 ring-white/10">
-              <span className="bg-destructive size-2 rounded-full motion-safe:animate-pulse" />
-              <span className="font-semibold">Live</span>
-              {props.startedAt && now > 0 && (
-                <span className="text-white/60 tabular-nums">
-                  {clock(Math.max(0, now - Math.floor(props.startedAt.getTime() / 1000)))}
+            <div className="flex shrink-0 items-center gap-2">
+              {recording && (
+                <span className="flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1.5 text-[0.8125rem] font-semibold ring-1 ring-white/10">
+                  <span className="size-2 rounded-full bg-white motion-safe:animate-pulse" />
+                  <span className="max-sm:hidden">Recording</span>
+                  <span className="sm:hidden">Rec</span>
                 </span>
               )}
+              <div className="flex items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-[0.8125rem] ring-1 ring-white/10">
+                <span className="bg-destructive size-2 rounded-full motion-safe:animate-pulse" />
+                <span className="font-semibold">Live</span>
+                {props.startedAt && now > 0 && (
+                  <span className="text-white/60 tabular-nums">
+                    {clock(Math.max(0, now - Math.floor(props.startedAt.getTime() / 1000)))}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -887,6 +904,15 @@ function Classroom(props: Props) {
                   Sound when someone joins
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuSeparator />
+                {props.canRecord && (
+                  <DropdownMenuItem
+                    disabled={busy}
+                    onSelect={() => void run(() => (recording ? stopRecording(ref) : startRecording(ref)))}
+                  >
+                    <RecordIcon weight="fill" className="text-red-600" />
+                    {recording ? 'Stop recording' : 'Start recording'}
+                  </DropdownMenuItem>
+                )}
                 {browser.canPopOut && (
                   <DropdownMenuItem onSelect={openMini}>
                     <PictureInPictureIcon /> Pop out mini window

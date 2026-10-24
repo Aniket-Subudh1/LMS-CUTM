@@ -41,6 +41,8 @@
 | Meetings: schedule, change, cancel (M03c T4; their hosts) | — | ✔ | ✔ | ✔ | — |
 | Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
 | Meetings: host controls, let guests in or turn them away (their hosts) | — | ✔ | ✔ | ✔ | — |
+| Record a class or meeting (M03c T5; its hosts; everyone in the room is told; audited) | — | ✔ (host) | — | ✔ (host) | — |
+| Watch a recording (M03c T5) | ✔ (their class, or a meeting they are invited to) | ✔ | ○ (their department's classes) | ✔ (classes; meetings they are invited to) | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Attempt / submit | ✔ (enrolled, in window) | — | — | — | — |
@@ -159,6 +161,7 @@ Write `auditLogs` (05 §7.5) for these actions, in the same transaction as the c
 | `plan.published` | version, recipient count |
 | `attendance.marked` | status before/after, source |
 | `live.deleted` (M03b) | the class's title, status and scheduled start; only a class that never ran and has no attendance can be deleted |
+| `live.recording_started`, `live.recording_stopped` (M03c T5) | a host started or stopped recording a class or meeting; the object key |
 | `live.removed`, `live.allowed_back` (M03c) | the student removed from a running class or let back; a removed student gets no join token, a join with a token they kept is removed again by the webhook and not counted, and tokens live 10 minutes |
 | `assessment.published`, `assessment.results_published` | status; when a test's release rule publishes them (M04b), the actor is whoever chose the rule and the reason says so |
 | `submission.graded` | per-item marks before/after |

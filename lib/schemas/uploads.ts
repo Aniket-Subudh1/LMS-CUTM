@@ -10,6 +10,7 @@ export const uploadPurpose = z.enum([
   'submission',
   'proctor-snapshot',
   'test-file',
+  'live-recording',
 ]);
 export type UploadPurpose = z.infer<typeof uploadPurpose>;
 
@@ -45,6 +46,8 @@ export const UPLOAD_PURPOSES = {
     maxBytes: 200_000_000,
     accepts: 'PDF or Excel',
   },
+  // M03c T5: a class or meeting recorded by LiveKit Egress straight to the bucket, never uploaded by a browser.
+  'live-recording': { contentTypes: ['video/mp4'], maxBytes: 20_000_000_000, accepts: 'MP4 video' },
 } as const satisfies Record<
   UploadPurpose,
   { contentTypes: readonly string[]; maxBytes: number; accepts: string; image?: { width: number; height: number } }

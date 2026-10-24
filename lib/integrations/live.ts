@@ -2,7 +2,12 @@ import 'server-only';
 import {
   AccessToken,
   DataPacket_Kind,
+  EgressClient,
+  EgressStatus,
+  EncodedFileOutput,
+  EncodedFileType,
   RoomServiceClient,
+  S3Upload,
   ServerError,
   TrackSource,
   WebhookReceiver,
@@ -26,13 +31,25 @@ export type LiveEvent =
   | { type: 'joined'; roomName: string; userId: string; sid: string; host: boolean; at: Date }
   | { type: 'left'; roomName: string; userId: string; sid: string; joinedAt: Date; at: Date }
   | { type: 'room_finished'; roomName: string; at: Date }
+  // M03c T5: a recording started, saved its file, or failed.
+  | {
+      type: 'recording';
+      roomName: string;
+      egressId: string;
+      status: 'active' | 'saved' | 'failed';
+      durationSec: number | null;
+      at: Date;
+    }
   | { type: 'ignored' };
 
 let rooms: RoomServiceClient | undefined;
+let egress: EgressClient | undefined;
 let receiver: WebhookReceiver | undefined;
 
 const roomService = () =>
   (rooms ??= new RoomServiceClient(env().LIVEKIT_API_URL, env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET));
+const egressService = () =>
+  (egress ??= new EgressClient(env().LIVEKIT_API_URL, env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET));
 
 // A room nobody is in, or someone who has left, does not exist for the engine: there is nothing to change, and the
 // request returns `absent`.
@@ -151,6 +168,57 @@ export async function tell(roomName: string, topic: RoomTopic, text: string, ide
   );
 }
 
+// M03c T5: whether an Egress service runs beside the engine (11 §3.1).
+export const recordingEnabled = () => env().LIVEKIT_EGRESS === 'on';
+
+// M03c T5: the room as everyone sees it (Egress's speaker layout), recorded as MP4 straight to the bucket under `key`,
+// with the LMS's own storage settings, so the Egress service keeps no credentials. Returns the recording's id; null
+// when the room is not open (nobody has joined yet).
+export async function startRecording(roomName: string, key: string): Promise<string | null> {
+  const { S3_ENDPOINT, S3_REGION, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_FORCE_PATH_STYLE } = env();
+  const output = new EncodedFileOutput({
+    fileType: EncodedFileType.MP4,
+    filepath: key,
+    output: {
+      case: 's3',
+      value: new S3Upload({
+        accessKey: S3_ACCESS_KEY_ID,
+        secret: S3_SECRET_ACCESS_KEY,
+        region: S3_REGION,
+        bucket: S3_BUCKET,
+        endpoint: S3_ENDPOINT ?? '',
+        forcePathStyle: S3_FORCE_PATH_STYLE,
+      }),
+    },
+  });
+  const info = await request(
+    'startRecording',
+    roomName,
+    () => egressService().startRoomCompositeEgress(roomName, output, { layout: 'speaker' }),
+    null,
+  );
+  return info?.egressId ?? null;
+}
+
+// Stopping one that has already ended (the room closed meanwhile) changes nothing.
+export async function stopRecording(roomName: string, egressId: string): Promise<void> {
+  await request(
+    'stopRecording',
+    roomName,
+    async () => {
+      try {
+        await egressService().stopEgress(egressId);
+      } catch (error) {
+        if (error instanceof ServerError && error.code === 'failed_precondition') return;
+        throw error;
+      }
+    },
+    undefined,
+  );
+}
+
+const FAILED = [EgressStatus.EGRESS_FAILED, EgressStatus.EGRESS_ABORTED];
+
 export async function parseWebhook(rawBody: string, authorization: string | null): Promise<LiveEvent> {
   receiver ??= new WebhookReceiver(env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET);
   let event: Awaited<ReturnType<WebhookReceiver['receive']>>;
@@ -162,6 +230,21 @@ export async function parseWebhook(rawBody: string, authorization: string | null
   }
   // createdAt is in whole seconds (verified against LiveKit 1.13.9, 11 §3.1).
   const at = new Date(Number(event.createdAt) * 1000);
+  // M03c T5: egress events name their room in the recording, not in `room`. A file cut at Egress's time limit is
+  // still saved.
+  const recording = event.egressInfo;
+  if (recording && event.event.startsWith('egress_')) {
+    const file = recording.fileResults[0];
+    const ended = recording.status >= EgressStatus.EGRESS_COMPLETE;
+    return {
+      type: 'recording',
+      roomName: recording.roomName,
+      egressId: recording.egressId,
+      status: !ended ? 'active' : FAILED.includes(recording.status) || !file ? 'failed' : 'saved',
+      durationSec: file ? Math.round(Number(file.duration) / 1e9) : null,
+      at,
+    };
+  }
   const roomName = event.room?.name ?? '';
   const participant = event.participant;
   if (!roomName) return { type: 'ignored' };

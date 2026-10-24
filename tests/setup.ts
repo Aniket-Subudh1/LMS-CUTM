@@ -34,6 +34,7 @@ beforeAll(async () => {
     LIVEKIT_API_URL: 'http://live.test',
     LIVEKIT_API_KEY: 'test-live-key',
     LIVEKIT_API_SECRET: 'test-live-secret-at-least-32-characters',
+    LIVEKIT_EGRESS: 'on',
     CODE_RUNNER_URL: 'http://runner.test',
     LOG_LEVEL: 'error',
   });

@@ -6,6 +6,7 @@ import { presignDownload } from '@/lib/integrations/storage';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
+import { LiveSession } from '@/lib/models/live-session';
 import { Assessment } from '@/lib/models/assessment';
 import { Offering } from '@/lib/models/offering';
 import { Submission } from '@/lib/models/submission';
@@ -126,6 +127,21 @@ export async function GET(_request: Request, context: RouteContext<'/api/files/[
     const staff = await assessmentStaff(viewer, owner.contextId);
     if (!staff && !(file.submissionId && owner.userId === viewer.id)) return missing();
     return redirect(await presignDownload(key, file.fileName ?? 'results'));
+  }
+
+  if (owner.purpose === 'live-recording') {
+    // M03c T5: a saved recording, by its key, for whoever can open the class (its staff and students) or the meeting
+    // (its hosts and members). The context is the session.
+    const session = await LiveSession.findOne(
+      { _id: owner.contextId, recordings: { $elemMatch: { key, status: 'saved' } } },
+      { offeringId: 1, meeting: 1 },
+    ).lean();
+    if (!session) return missing();
+    const allowed = session.meeting
+      ? [...session.meeting.hostIds, ...session.meeting.memberIds].some((id) => id.equals(viewer.id))
+      : Boolean(session.offeringId && (await reach(viewer, { _id: String(session.offeringId) })));
+    if (!allowed) return missing();
+    return redirect(await presignDownload(key, 'recording.mp4'));
   }
 
   return missing();
