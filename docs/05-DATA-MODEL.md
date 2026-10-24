@@ -189,8 +189,8 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 ### 4.3 `liveSessions`
 | Field | Type | Rules |
 |---|---|---|
-| offeringId | Id | |
-| kind | S | `class` · `review` |
+| offeringId | Id? | required, except on a meeting (M03c T4), which has no course |
+| kind | S | `class` · `review` · `meeting` (M03c T4: a meeting outside classes, in the same room) |
 | reviewId | Id? | `review` sessions (M07): the project review they hold (§6.3a). Finalizing one writes no attendance: it is one team's, and the attendance part must not count it against the rest of the class |
 | title | S | ≤ 160 |
 | scheduledStart, scheduledEnd | D | start < end; duration ≤ 6 h |
@@ -199,12 +199,14 @@ Indexes: `{ lessonId: 1, studentId: 1 }` unique · `{ offeringId: 1, studentId: 
 | roomName | S | `ls-<sessionId>`; unique |
 | attendanceMode | S | `manual` · `derived` (skill offerings: always `derived`) |
 | finalizedAt | D? | derived attendance computed (07 §10); stored as `null` until then |
-| studentsMay | `{ share: B, unmute: B, chat: B }` | M03c: what students may do in the room — share their screen, turn on their microphone, send chat messages and reactions; each `true` until a host turns it off while the class runs. Classes from before M03c have no field and read as all `true` |
-| removed | `[{ userId: Id, at: D, by: Id }]` | M03c: students a host removed; they get no join token until a host lets them back. At most 100 (`MAX_REMOVED`) |
+| studentsMay | `{ share: B, unmute: B, chat: B }` | M03c: what students (in a meeting, everyone but the hosts) may do in the room — share their screen, turn on their microphone, send chat messages and reactions; each `true` until a host turns it off while it runs. Classes from before M03c have no field and read as all `true` |
+| removed | `[{ userId: Id, at: D, by: Id }]` | M03c: students a host removed (in a meeting, members and guests: `userId` is then a guest's id); they get no join token until a host lets them back. At most 100 (`MAX_REMOVED`) |
+| meeting | `{ hostIds: [Id], memberIds: [Id], guests: [{ _id: Id, email: S, name: S?, admittedAt: D?, deniedAt: D? }], sequence: N }?` | M03c T4, meetings only. `hostIds` 1–5, the scheduler first (they stay a host), then co-hosts (staff); `memberIds` ≤ 50, people from the LMS; `guests` ≤ 20, by email (lower case), `name` as they type it in the lobby, `admittedAt`/`deniedAt` a host's answer in this meeting. A guest's link is their `_id` signed with the session secret (`lib/auth/guest-link.ts`): nothing secret is stored. `sequence` numbers the invitation's version for calendars (06 §8.7) |
+| waiting | `[{ guestId: Id, name: S, at: D }]` | M03c T4: guests asking to join, in the order they asked (≤ 20) |
 | createdBy | Id | |
 
-Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique.
-Invariants: an offering holds at most 500 sessions (`scheduleSession` refuses the 501st, A-73), so its session reads are bounded. A `scheduled` session whose `scheduledEnd` has passed was never held; it keeps its status and produces no attendance.
+Indexes: `{ offeringId: 1, scheduledStart: -1 }` · `{ status: 1, scheduledEnd: 1 }` · `{ status: 1, finalizedAt: 1 }` (the hourly sweep's "ended, not finalized", M03) · `{ roomName: 1 }` unique · M03c T4: `{ 'meeting.hostIds': 1, scheduledStart: -1 }` and `{ 'meeting.memberIds': 1, scheduledStart: -1 }` (the Meetings page) · `{ 'meeting.guests._id': 1 }` (a guest's link).
+Invariants: an offering holds at most 500 sessions (`scheduleSession` refuses the 501st, A-73), so its session reads are bounded. A `scheduled` session whose `scheduledEnd` has passed was never held; it keeps its status and produces no attendance. A meeting (M03c T4) has no course and takes no attendance: its webhooks write none and finalizing it only sets `finalizedAt`; only its hosts and members reach it (A-185).
 
 ### 4.4 `attendance`
 | Field | Type | Rules |

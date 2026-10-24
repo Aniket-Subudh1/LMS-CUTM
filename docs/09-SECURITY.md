@@ -38,6 +38,9 @@
 | Live sessions: mute someone, mute everyone (M03c; off only, never on) | — | ✔ (host) | — | ✔ (host) | — |
 | Live sessions: remove a student, let them back (M03c; audited) | — | ✔ (host) | — | ✔ (host) | — |
 | Live sessions: turn off students' screen sharing, microphones, chat and reactions (M03c) | — | ✔ (host) | — | ✔ (host) | — |
+| Meetings: schedule, change, cancel (M03c T4; their hosts) | — | ✔ | ✔ | ✔ | — |
+| Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
+| Meetings: host controls, let guests in or turn them away (their hosts) | — | ✔ | ✔ | ✔ | — |
 | Attendance: manual mark / override | ◐ view | ✔ | ○ | ✔ | — |
 | Assessments: create, edit, publish | ○ (published) | ✔ | ○ | ✔ | — |
 | Attempt / submit | ✔ (enrolled, in window) | — | — | — | — |
@@ -82,6 +85,8 @@ Every exported DAL function and every action applies these filters; integration 
 | Live monitor and proctoring records (M04b) | their own warnings count and the monitor's messages to them; never their snapshots | of tests they manage: act (time, messages, end, waive) | of their department's offerings: watch and read | all |
 | Attendance, internal marks, lesson progress, engagement | `studentId = me` (engagement: not shown to students) | offering's | offering's | all |
 | End-sem marks, grade sheets | `studentId = me`, grade sheet `published` | — | — | all |
+| Meetings (M03c T4) | `meeting.hostIds ∋ me` or `meeting.memberIds ∋ me` | the same | the same | the same (no wider: a meeting is its people's, A-185); a guest reaches only their own meeting's lobby and room through their signed link |
+| People a meeting can invite (M03c T4) | — | staff; students enrolled in the offerings I teach | staff; users of my department | everyone |
 | Attainment (M09) | — (the Outcomes tab shows no attainment) | offering's (`teach`); "Work it out again" | offering's in their department (read); the programme report of their department's programmes | all |
 | Projects & tasks | `memberIds ∋ me` | offering's | offering's | all |
 | Users | self | students enrolled in my offerings (name, roll no, email) | users of my department | all |
@@ -114,6 +119,7 @@ Rules:
 | Monitor messages (M04b) | staff | 30 / min |
 | Files from the results (`requestTestFile`, M04b) | user | 10 / hour |
 | Beacon | user | 120 / 10 min |
+| A guest asking to join a meeting (`meeting-lobby`, M03c T4) | IP | 30 / 15 min |
 | AI suggestion (`ai`; M04b: `draftWithAi`, whatever it asks for; M09: `suggestItemTags`, `suggestCoMap`) | user | 30 / hour |
 | Work attainment out again (`requestAttainment`, M09) | offering | 1 / min |
 

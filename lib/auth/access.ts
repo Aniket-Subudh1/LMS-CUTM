@@ -7,6 +7,7 @@ import { AppError } from '@/lib/errors';
 import { Assessment } from '@/lib/models/assessment';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
+import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { TestGrant } from '@/lib/models/test-grant';
 import type { Viewer } from '@/lib/auth/session';
@@ -40,6 +41,36 @@ export const offeringAccess = cache(async (viewer: Viewer, offeringId: string): 
 export async function requireTeach(viewer: Viewer, offeringId: string): Promise<void> {
   const access = await offeringAccess(viewer, offeringId);
   if (access === 'learn' || (access === 'oversee' && !viewer.roles.includes('admin'))) notFound();
+}
+
+// M03c T4: who may do what in a live session's room, worked out from the session. A class follows its course: whoever
+// teaches it and admins host, its students take part, a head of department watches from the class page. A meeting
+// follows its people: its hosts host and its members take part; nobody else reaches it, admins included.
+export type RoomRole = 'host' | 'participant' | 'watch';
+export type RoomAccess = { role: RoomRole; kind: 'class' | 'review' | 'meeting'; offeringId: string | null };
+
+export const roomAccess = cache(async (viewer: Viewer, sessionId: string): Promise<RoomAccess> => {
+  if (!isValidObjectId(sessionId)) notFound();
+  await db();
+  const session = await LiveSession.findById(sessionId, { kind: 1, offeringId: 1, meeting: 1 }).lean();
+  if (!session) notFound();
+  if (session.kind === 'meeting') {
+    const is = (ids: Types.ObjectId[] | undefined) => ids?.some((id) => id.equals(viewer.id)) === true;
+    if (is(session.meeting?.hostIds)) return { role: 'host', kind: 'meeting', offeringId: null };
+    if (is(session.meeting?.memberIds)) return { role: 'participant', kind: 'meeting', offeringId: null };
+    notFound();
+  }
+  const offeringId = String(session.offeringId);
+  const access = await offeringAccess(viewer, offeringId);
+  const role =
+    access === 'teach' || viewer.roles.includes('admin') ? 'host' : access === 'learn' ? 'participant' : 'watch';
+  return { role, kind: session.kind, offeringId };
+});
+
+export async function requireRoomHost(viewer: Viewer, sessionId: string): Promise<RoomAccess> {
+  const access = await roomAccess(viewer, sessionId);
+  if (access.role !== 'host') notFound();
+  return access;
 }
 
 // CRS-07: a catalogue course's content is kept by the admins and by the faculty member who coordinates it.

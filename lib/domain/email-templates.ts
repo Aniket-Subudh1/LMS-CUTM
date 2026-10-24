@@ -90,6 +90,62 @@ export function testInvitationEmail(mail: {
   );
 }
 
+const dayFormat = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const clockFormat = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
+const meetingWhen = (start: Date, end: Date) =>
+  `${dayFormat.format(start)}, ${clockFormat.format(start)}–${clockFormat.format(end)}`;
+
+// M03c T4: a meeting's invitation, its update or its cancellation, with the calendar file (06 §8.7). A guest's link is
+// theirs alone and leads to the lobby; a member's opens the meeting after sign-in.
+export function meetingEmail(mail: {
+  to: string;
+  name: string | null;
+  method: 'REQUEST' | 'CANCEL';
+  changed: boolean;
+  title: string;
+  start: Date;
+  end: Date;
+  hosts: string[];
+  invitedBy: string;
+  link: string;
+  guest: boolean;
+  ics: string;
+}): MailSend {
+  const when = meetingWhen(mail.start, mail.end);
+  const hello = mail.name ? `Hello ${mail.name},` : 'Hello,';
+  const message =
+    mail.method === 'CANCEL'
+      ? compose(
+          mail.to,
+          `Cancelled: ${mail.title}`,
+          [hello, `“${mail.title}” on ${when} (Indian Standard Time) is cancelled or you are no longer invited.`],
+          { label: 'Open the CUTM LMS', href: mail.link },
+        )
+      : compose(
+          mail.to,
+          `${mail.changed ? 'Updated invitation' : 'Invitation'}: ${mail.title}`,
+          [
+            hello,
+            mail.changed
+              ? `${mail.invitedBy} changed the meeting “${mail.title}”.`
+              : `${mail.invitedBy} invited you to the meeting “${mail.title}” on the CUTM LMS.`,
+            `When: ${when} (Indian Standard Time).`,
+            `Hosts: ${mail.hosts.join(', ')}.`,
+            mail.guest
+              ? 'This link is yours alone. When you open it, you type your name and ask to join; a host lets you in. It works while the meeting runs.'
+              : 'The link opens the meeting after you sign in to the LMS.',
+          ],
+          { label: 'Join the meeting', href: mail.link },
+        );
+  return { ...message, calendar: { method: mail.method, content: mail.ics } };
+}
+
 export type CoursePlanMail = {
   to: string;
   name: string;

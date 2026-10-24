@@ -3,22 +3,24 @@ import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { Types } from 'mongoose';
 import {
-  allowBack,
   cancelSession,
   deleteSession,
   endSession,
-  lowerHands,
   markAttendance,
+  restoreSession,
+  scheduleSession,
+  startSession,
+  updateSession,
+} from '@/app/(app)/courses/[offeringId]/live/actions';
+import {
+  allowBack,
+  lowerHands,
   muteEveryone,
   muteParticipant,
   raiseHand,
   removeParticipant,
-  restoreSession,
-  scheduleSession,
   setStudentRight,
-  startSession,
-  updateSession,
-} from '@/app/(app)/courses/[offeringId]/live/actions';
+} from '@/app/(room)/actions';
 import { POST as beacon } from '@/app/api/beacon/route';
 import { POST as webhook } from '@/app/api/webhooks/live/route';
 import { getAttendanceSheet, getSession, listSessions, listTodaysLiveSessions } from '@/lib/data/live';
@@ -752,7 +754,7 @@ describe('raised hands (M03b)', () => {
   it('lets a student of the class raise a hand while the class runs, and nobody else', async () => {
     const w = await world();
     const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
-    const ref = { offeringId: w.offeringId, sessionId: String(session._id) };
+    const ref = { sessionId: String(session._id) };
     await signInAs(w.student);
     setHand.mockClear();
     expect(await raiseHand(ref)).toMatchObject({ ok: true });
@@ -770,11 +772,7 @@ describe('raised hands (M03b)', () => {
     const w = await world();
     const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
     const lower = (...ids: { _id: unknown }[]) =>
-      lowerHands({
-        offeringId: w.offeringId,
-        sessionId: String(session._id),
-        'identity[]': ids.map((u) => String(u._id)),
-      });
+      lowerHands({ sessionId: String(session._id), 'identity[]': ids.map((u) => String(u._id)) });
     setHand.mockClear();
     await signInAs(w.student);
     expect(await lower(w.student)).toMatchObject({ ok: true });
@@ -795,16 +793,18 @@ describe('host controls (M03c T2)', () => {
   async function running() {
     const w = await world();
     const session = await liveClass(w, { scheduledEnd: new Date(Date.now() + 30 * MIN) });
-    return { w, session, ref: { offeringId: w.offeringId, sessionId: String(session._id) } };
+    return { w, session, ref: { sessionId: String(session._id) } };
   }
 
   it('lets a host mute one person, who is told who did it, and nobody else mute anyone', async () => {
     const { w, session, ref } = await running();
     const identity = String(w.second._id);
-    await signInAs(w.student);
-    expect(await muteParticipant({ ...ref, identity })).toMatchObject({ ok: false, code: 'FORBIDDEN' });
-    await signInAs(w.hod);
-    await expect(muteParticipant({ ...ref, identity })).rejects.toThrow(NOT_FOUND);
+    // M03c T4: the room's actions work out access from the session, so a student and a head of department both meet a
+    // page that is not there, as with the course's other host-only actions.
+    for (const other of [w.student, w.hod]) {
+      await signInAs(other);
+      await expect(muteParticipant({ ...ref, identity })).rejects.toThrow(NOT_FOUND);
+    }
     await signInAs(w.faculty);
     muteMicrophone.mockClear();
     tell.mockClear();
@@ -843,10 +843,7 @@ describe('host controls (M03c T2)', () => {
       { identity: String(w.student._id), host: false, microphones: [] },
     ];
     await signInAs(w.student);
-    expect(await setStudentRight({ ...ref, right: 'unmute', allowed: false })).toMatchObject({
-      ok: false,
-      code: 'FORBIDDEN',
-    });
+    await expect(setStudentRight({ ...ref, right: 'unmute', allowed: false })).rejects.toThrow(NOT_FOUND);
     await signInAs(w.faculty);
     setRights.mockClear();
     tell.mockClear();
@@ -856,7 +853,11 @@ describe('host controls (M03c T2)', () => {
     expect(tell).toHaveBeenCalledWith(session.roomName, 'controls', 'unmute');
     await vi.waitFor(() => expect(setRights).toHaveBeenCalledWith(session.roomName, String(w.student._id), rights));
     expect(setRights).toHaveBeenCalledTimes(1);
-    expect((await getSession(w.offeringId, String(session._id))).controls).toEqual({ rights, removed: [] });
+    expect((await getSession(w.offeringId, String(session._id))).controls).toEqual({
+      rights,
+      removed: [],
+      waiting: [],
+    });
     // A student joining now gets a token without the microphone, and the engine is told again on their join in case
     // their token was issued just before the change. A host's join changes nothing.
     await signInAs(w.second);

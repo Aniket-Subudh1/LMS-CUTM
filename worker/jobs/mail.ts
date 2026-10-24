@@ -1,13 +1,16 @@
 import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
+import { guestLinkUrl } from '@/lib/auth/guest-link';
 import { passwordLink } from '@/lib/auth/tokens';
 import { formatCredits } from '@/lib/domain/catalog';
-import { coursePlanEmail, invitationEmail } from '@/lib/domain/email-templates';
+import { coursePlanEmail, invitationEmail, meetingEmail } from '@/lib/domain/email-templates';
+import { meetingIcs } from '@/lib/domain/ics';
 import { env } from '@/lib/env';
 import { sendMail } from '@/lib/integrations/mail';
 import { log } from '@/lib/log';
 import { Course } from '@/lib/models/course';
 import { Enrollment } from '@/lib/models/enrollment';
+import { LiveSession } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { User } from '@/lib/models/user';
@@ -104,10 +107,85 @@ async function coursePlanPublished(offeringId: string, version: number): Promise
   }
 }
 
+// M03c T4: one `mail/send` per person named, each with its own calendar file naming only them (06 §8.7). The job ids make
+// a re-run of this sequence a no-op, so an edit that only adds people sends to the new ones alone.
+async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>): Promise<void> {
+  const session = await LiveSession.findById(job.sessionId, {
+    title: 1,
+    scheduledStart: 1,
+    scheduledEnd: 1,
+    meeting: 1,
+  }).lean();
+  if (!session?.meeting) return;
+  const { meeting } = session;
+  const [hostUsers, users] = await Promise.all([
+    User.find({ _id: { $in: meeting.hostIds } }, { name: 1 }).lean(),
+    User.find({ _id: { $in: job.userIds }, status: { $ne: 'disabled' } }, { name: 1, email: 1 }).lean(),
+  ]);
+  const hosts = meeting.hostIds.flatMap((id) => hostUsers.find((u) => u._id.equals(id))?.name ?? []);
+  const { APP_URL, MAIL_FROM } = env();
+  const page = new URL(`/meetings/${job.sessionId}`, APP_URL).href;
+  const event = {
+    uid: `meeting-${job.sessionId}@${new URL(APP_URL).host}`,
+    sequence: job.sequence,
+    method: job.method,
+    stamp: new Date(),
+    start: session.scheduledStart,
+    end: session.scheduledEnd,
+    title: session.title,
+    organizer: { name: hosts[0] ?? 'CUTM LMS', email: /<([^>]+)>/.exec(MAIL_FROM)?.[1] ?? MAIL_FROM },
+  };
+  const recipients = [
+    ...users.map((u) => ({ key: String(u._id), email: u.email, name: u.name, link: page, guest: false })),
+    ...meeting.guests
+      .filter((g) => job.guestIds.includes(String(g._id)))
+      .map((g) => ({
+        key: String(g._id),
+        email: g.email,
+        name: g.name ?? null,
+        link: guestLinkUrl(String(g._id)),
+        guest: true,
+      })),
+    ...job.cancelTo.map((c) => ({
+      key: Buffer.from(c.email).toString('base64url'),
+      email: c.email,
+      name: c.name,
+      link: APP_URL,
+      guest: false,
+    })),
+  ];
+  await mailQueue().addBulk(
+    recipients.map((r) => ({
+      name: 'send' as const,
+      data: meetingEmail({
+        to: r.email,
+        name: r.name,
+        method: job.method,
+        changed: job.sequence > 0,
+        title: session.title,
+        start: session.scheduledStart,
+        end: session.scheduledEnd,
+        hosts,
+        invitedBy: hosts[0] ?? 'A host',
+        link: r.link,
+        guest: r.guest,
+        ics: meetingIcs({
+          ...event,
+          description: `${r.guest ? 'Your personal link' : 'Join'}: ${r.link}`,
+          url: r.link,
+          attendee: { name: r.name, email: r.email },
+        }),
+      }),
+      opts: { jobId: `mail-meeting-${job.sessionId}-${job.sequence}-${job.method}-${r.key}` },
+    })),
+  );
+}
+
 async function run(job: Job<MailSend | MailJob, void, 'send' | 'fanout'>): Promise<void> {
   if (job.name === 'send') return sendMail(MailSend.parse(job.data));
   const mail = MailJob.parse(job.data);
   if (mail.kind === 'invitation') return invite(mail.userIds);
+  if (mail.kind === 'meetingInvites') return meetingInvites(mail);
   return coursePlanPublished(mail.offeringId, mail.version);
 }
 

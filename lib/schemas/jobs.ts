@@ -6,6 +6,8 @@ export const MailSend = z.object({
   subject: z.string().min(1).max(200),
   text: z.string().min(1),
   html: z.string().min(1),
+  // M03c T4: a meeting invitation's calendar file (06 §8.7), sent as the message's calendar part.
+  calendar: z.object({ method: z.enum(['REQUEST', 'CANCEL']), content: z.string().min(1).max(20_000) }).optional(),
 });
 export type MailSend = z.infer<typeof MailSend>;
 
@@ -13,6 +15,17 @@ export type MailSend = z.infer<typeof MailSend>;
 export const MailJob = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('invitation'), userIds: z.array(objectId).min(1).max(500) }),
   z.object({ kind: z.literal('coursePlanPublished'), offeringId: objectId, version: z.number().int().min(1) }),
+  // M03c T4: a meeting's invitation (or its cancellation) to the people named; `cancelTo` are people taken off it,
+  // whose address the meeting no longer holds.
+  z.object({
+    kind: z.literal('meetingInvites'),
+    sessionId: objectId,
+    sequence: z.number().int().min(0),
+    method: z.enum(['REQUEST', 'CANCEL']),
+    userIds: z.array(objectId).max(60),
+    guestIds: z.array(objectId).max(20),
+    cancelTo: z.array(z.object({ email: z.email(), name: z.string().max(120).nullable() })).max(80),
+  }),
 ]);
 export type MailJob = z.infer<typeof MailJob>;
 

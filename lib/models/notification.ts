@@ -14,6 +14,11 @@ export const NOTIFICATION_KINDS = [
   'bank.drafted',
   'task.assigned',
   'gradeSheet.published',
+  // M03c T4: meetings, for the people from the LMS invited to them (guests are emailed only).
+  'meeting.invited',
+  'meeting.changed',
+  'meeting.cancelled',
+  'meeting.started',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

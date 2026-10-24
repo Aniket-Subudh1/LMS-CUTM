@@ -38,18 +38,18 @@ async function Room({ params }: { params: PageProps<'/courses/[offeringId]/live/
   if (session.state === 'live' && detail.join) {
     return (
       <LiveRoom
-        offeringId={offeringId}
         sessionId={session.id}
         serverUrl={detail.join.serverUrl}
         token={detail.join.token}
+        noun="class"
         trackFocus={detail.view === 'student'}
         host={detail.view !== 'student'}
-        classPage={classPage}
+        backHref={classPage}
         title={session.title}
         course={detail.offeringTitle}
         startedAt={session.startedAt}
         endsAt={session.scheduledEnd}
-        enrolled={detail.enrolled}
+        expected={detail.enrolled}
         attendanceNote={
           detail.category === 'skill' || session.attendanceMode === 'derived'
             ? `Attendance is automatic: present after ${formatPct(detail.thresholdPct)} of the class in the room.`

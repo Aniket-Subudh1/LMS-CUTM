@@ -289,6 +289,14 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-182 | In the programme report a course taught in several sections counts once, as the mean of its sections' values | M09 | Q-07 |
 | A-183 | Practice rubric marks and project reviews carry no CO tags and do not feed CO attainment; only assessment questions do | M09 | Q-07 |
 | A-184 | A test released "each person's at once" counts toward attainment once a teacher publishes its results (A-20) | M09 | — |
+| A-185 | A meeting is its people's: admins do not reach a meeting they are not invited to (they do reach every class) | M03c | — |
+| A-186 | Co-hosts are staff; people from the LMS are staff or students the scheduler can already see (09 §3); a guest is any email address, even one that belongs to an LMS account (they then come in as a guest) | M03c | — |
+| A-187 | Letting a guest in or turning them away is not audited (it changes no record), like what students may do (A-97); removing and letting back are | M03c | — |
+| A-188 | A guest let in comes straight back while the meeting runs; one turned away may ask again; the lobby holds at most the meeting's 20 guests | M03c | — |
+| A-189 | An invitation's calendar file names only its recipient and asks for no reply (`RSVP=FALSE`): Gmail and Outlook still show Yes · Maybe · No, but the LMS collects no answers | M03c | — |
+| A-190 | Someone without the role a room action needs meets 404, as with the course's host-only actions (T1–T3's actions answered a student FORBIDDEN before they moved to the session) | M03c | — |
+| A-191 | The guest lobby's camera check is M04b's device check (browser, connection, camera) in its white card, not the bare video tile drawn in R2-C | M03c | — |
+| A-192 | A meeting lasts at most 6 hours and ends on the day it starts (IST), as the dialog asks for one date | M03c | — |
 
 ## 5. Log
 
@@ -2584,3 +2592,55 @@ Request: "1. Course Deletion Option to be added. (Offerings) 2. In all Import CS
 - The sample test fails when a sample is broken: `remove` in place of `drop` in `enrolment-changes.csv` → `× enrolment-changes.csv`; restored.
 - `next dev` on the e2e database, signed in as the seed admin (Playwright, 1440 × 900): an active offering's ⋮ lists only "Refresh the evaluation policy"; a draft's lists it and Delete. The confirmation read "It is removed for good, and its student is unenrolled. …". After Delete offering the row went and the counts dropped from 43 to 42 offerings and 20 to 19 drafts. Each of the five dialogs (and the personal bank) downloaded its sample with the right name and header: users 5 rows, course list 4, enrolment changes 2, both banks 5, exam marks 3. For the Exams page, the seeded LAB0201 offering was locked in the e2e database for the check and unlocked after it.
 - The only browser console message was the sign-in page's existing warning about its photo (`fill` in a `sticky` parent).
+
+### 2026-10-24 · M03c/T4 Meetings, invitations and the guest lobby · Claude Code, at Aniket's request
+
+Built to decision 7 and the round-2 mock-ups (R2-A to R2-D, as drawn).
+
+**Created**
+- **One room for a class and a meeting:**
+  - `lib/schemas/live.ts`: `kind: 'meeting'`, `RoomRef`, `RoomPerson`, `RoomPeople`, `RoomRight`, `SaveMeeting`, `MeetingRef`, `FindPeople`, `guestToken`, `AskToJoin`, `GuestRef`, `MEETING_LIMITS`.
+  - `lib/models/live-session.ts`: `offeringId` optional for a meeting, `meeting { hostIds, memberIds, guests, sequence }`, `waiting`, three indexes.
+  - `lib/auth/access.ts`: `roomAccess` and `requireRoomHost`, access worked out from the session.
+  - T1–T3's room actions moved from the course to `app/(room)/actions.ts`, taking the session alone, with `admitGuests`, `denyGuest` and `endRoom` added. The class page keeps its own `endSession`; both end through `endLiveSession` (`lib/data/live.ts`). `roomControls` gives hosts the removed people (users or guests) and the waiting guests.
+  - The webhook and the finalize job write no attendance for a meeting. An admin's "Today's live classes" leaves meetings out.
+- **Meetings:**
+  - `lib/data/meetings.ts`: `listMeetings`, `getMeeting`, `getMeetingRoom`, `getGuestLobby`, `findPeople` and `requireInvitable`, the people a member of staff may invite (09 §3).
+  - `app/(app)/meetings/actions.ts`: `saveMeeting` (a new time or title, or people taken off, is a new version; added people alone are invited otherwise; people taken off get a cancellation), `cancelMeeting`, `startMeeting`, `findPeople`.
+  - Four notification kinds (`meeting.*`).
+- **Invitations:**
+  - `lib/domain/ics.ts` (+ test): one event naming only its recipient.
+  - `meetingEmail` in `lib/domain/email-templates.ts`.
+  - The `meetingInvites` mail job (`worker/jobs/mail.ts`).
+  - `sendMail` sends a calendar part (`icalEvent`).
+  - `lib/auth/guest-link.ts`: a guest's link is their id signed with the session secret.
+- **Screens:**
+  - `/meetings` (R2-A), `/meetings/[meetingId]`, `/meetings/[meetingId]/room`.
+  - `/m/[token]` (R2-C, exempt from `proxy.ts`).
+  - `components/meeting-dialog.tsx`, and `components/people-picker.tsx` (a client boundary).
+  - Meetings in the menu.
+  - `LiveRoom` takes `noun`, `guest`, `backHref` and `expected`, uses "Others" and "A host" in a meeting, and shows hosts the lobby (R2-D).
+  - `DataTable` takes `param`.
+- **Tests:**
+  - `tests/integration/meetings.test.ts`, 10 cases:
+    - scheduling, the people a teacher may invite, each invitation's own calendar file and link;
+    - versions, additions and cancellations;
+    - cancelling; who reaches a meeting; starting;
+    - the whole lobby with removal and the webhook; turning away; an altered link;
+    - ending without attendance.
+  - `tests/integration/live.test.ts` follows the moved actions.
+- **Docs:** 01 §3, 05 §4.3, 06 §4.2, §6, §8.7, §8.8, §9, 08 (routes, menu, inventory), 09 (permissions, scoping, rate limit), the M03c file (the design is on `liveSessions`; guest links signed).
+
+**Not done**
+- Not tried on a real LiveKit server yet: that walk comes after T10, with the other room features.
+- A guest's reactions and chat follow the rights like anyone's, but a guest cannot raise a hand (raising one needs an LMS account).
+
+**Assumptions** — A-185 to A-192 (§4).
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run lib/domain/ics.test.ts` → 6 passed.
+- `npm run check` → exit 0, `Tests 620 passed (620)`.
+- `npm run test:integration` (local replica set and Redis) → `Test Files 27 passed (27)`, `Tests 323 passed (323)` (meetings 10, live 34).
+- `npm run build` → exit 0, with `/meetings`, `/meetings/[meetingId]`, `/meetings/[meetingId]/room` and `/m/[token]`. `npm run check:bundle` → clean.

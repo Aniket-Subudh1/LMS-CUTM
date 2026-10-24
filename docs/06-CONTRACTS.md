@@ -97,9 +97,9 @@ Production target is Cloudflare R2 (ADR-19): `S3_ENDPOINT=https://<account-id>.r
 
 ### 4.2 Mail — `mail.ts` (M00)
 ```ts
-sendMail(message: { to: string; subject: string; text: string; html: string }): Promise<void>
+sendMail(message: { to: string; subject: string; text: string; html: string; calendar?: { method: 'REQUEST' | 'CANCEL'; content: string } }): Promise<void>
 ```
-Only the `mail` worker calls it. One recipient per message (no CC/BCC lists of students). HTML is built by pure template functions in `lib/domain/email-templates.ts` that HTML-escape every interpolated value.
+M03c T4: `calendar` is a meeting invitation's file (§8.7), sent as nodemailer's `icalEvent` (`invite.ics` with the method), which Gmail and Outlook show as an invitation. Only the `mail` worker calls it. One recipient per message (no CC/BCC lists of students). HTML is built by pure template functions in `lib/domain/email-templates.ts` that HTML-escape every interpolated value.
 
 ### 4.3 Live — `live.ts` (M03; self-hosted LiveKit — ADR-18)
 ```ts
@@ -218,7 +218,7 @@ All payload schemas live in `lib/schemas/jobs.ts`. Job ids use `-` separators (0
 | Queue / name | Payload | Job id | Idempotency | Effect |
 |---|---|---|---|---|
 | `mail/send` | `MailSend { to, subject, text, html }` (M00) | `mail-<ref>`, `ref` chosen by the producer (e.g. `reset-<userId>-<minuteBucket>`; M04b: `otp-<otpId>-<ms>` for a guest's code, `test-invite-<linkId>-<base64url(email)>-<day>` for an invitation, so a day's repeat to one address is dropped) | id dedupes | one email. M04b: `guestCodeEmail` (the code leads the subject, so a phone's notification shows it) and `testInvitationEmail` (`lib/domain/email-templates.ts`) |
-| `mail/fanout` | `MailJob` union: `invitation{userIds[]}` (M01) · `coursePlanPublished{offeringId, version}` (M02). A single known recipient (password reset) skips the fanout and enqueues `mail/send` directly | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
+| `mail/fanout` | `MailJob` union: `invitation{userIds[]}` (M01) · `coursePlanPublished{offeringId, version}` (M02) · `meetingInvites{sessionId, sequence, method, userIds[], guestIds[], cancelTo[{email, name}]}` (M03c T4: one `mail/send` per person, id `mail-meeting-<sessionId>-<sequence>-<method>-<recipient>`, each with its own §8.7 file; `cancelTo` are people taken off the meeting). A single known recipient (password reset) skips the fanout and enqueues `mail/send` directly | `<kind>-<id>[-<version>]` | id dedupes; per-recipient `mail/send` ids dedupe | enqueues one `mail/send` per recipient (chunks of 500). Results and grade-sheet events are in-app notifications only (no email) |
 | `compute/internalMarks` | `InternalMarksJob { offeringId }` (M06) | `ce-<offeringId>`, queued 5 s ahead; asking again while one waits does nothing, while one runs adds a follow-up (`queueInternalMarks`, the `queueTestStats` pattern: a minute bucket left M04b's ranks stale) | full recompute of every active student, one `bulkWrite`; skips skill and locked offerings | 07 §2 |
 | `compute/internalMarksNightly` | `{}` (M06) | scheduler | queues `compute/internalMarks` for every active credit offering | safety net |
 | `compute/attainment` | `AttainmentJob { offeringId }` (M09) | `att-<offeringId>`, queued 5 s ahead by `queueAttainment` (the `queueInternalMarks` pattern) | full recompute of the offering, one upsert of its record | 07 §4: skips skill offerings, runs on locked ones. Queued by `releaseResults`, a grade change on published results (`gradeSubmission`, `gradeCode`), `importEndSem` (each offering the file touched), `publishGradeSheets` (the batch's credit offerings in the term, EXM-06), `saveCoMap` and `deleteCo` (the course's active credit offerings) and "Work it out again" (`requestAttainment`). The programme report (07 §5) has no job (M09 decision 4) |
@@ -344,6 +344,14 @@ The §8.4 export with its three external columns filled in by the exam section. 
 - The three external columns are empty, for the exam section to fill in (§8.3).
 - At most 10,000 rows (the import's limit); a larger batch is refused with a message.
 
+### 8.7 Meeting invitation — `invite.ics` (M03c T4, `lib/domain/ics.ts`)
+RFC 5545, CRLF line ends, lines folded at 75 octets: `METHOD:REQUEST` (or `CANCEL`), one `VEVENT` with `UID:meeting-<sessionId>@<APP_URL host>`, `SEQUENCE` (`meeting.sequence`: a new time or title, or people taken off, is a new version), `DTSTAMP`, `DTSTART`, `DTEND` in UTC, `SUMMARY` (the title), `DESCRIPTION` and `URL`/`LOCATION` (the recipient's own link: a member's `/meetings/<id>`, a guest's `/m/<token>`), `ORGANIZER;CN="<first host>":mailto:<MAIL_FROM address>`, one `ATTENDEE` — the recipient alone, so no address reaches another person — with `RSVP=FALSE`, and `STATUS:CONFIRMED` or `CANCELLED`. Text values escape `\ ; ,` and new lines; a name loses double quotes. Test vector: `lib/domain/ics.test.ts`.
+
+### 8.8 The room and meetings (M03c T4)
+- **The room's actions** (`app/(room)/actions.ts`) take `{ sessionId }` (and `identity` or `identity[]`), for a class and a meeting alike; who may act comes from the session (`roomAccess`, `lib/auth/access.ts`: a class through `offeringAccess` — teach and admins host, learn takes part, a head of department watches; a meeting through `meeting.hostIds` and `memberIds`, nobody else, admins included). `raiseHand` (taking part), `lowerHands` (own, or any for a host), `muteParticipant`, `muteEveryone`, `setStudentRight`, `removeParticipant` (a class's students; a meeting's members and guests), `allowBack`, `endRoom`, `admitGuests` and `denyGuest` (hosts). Someone without the right role meets 404, as with the course's host-only actions.
+- **Meetings** (`app/(app)/meetings/actions.ts`, faculty, HoD, admin): `saveMeeting({ meetingId?, title, date, startTime, endTime, coHost[], member[], guests })` — co-hosts staff, ≤ 4; members ≤ 50 that the scheduler may invite (`requireInvitable`: staff, and the students they can see, 09 §3); guests ≤ 20 emails; the same IST day, at most 6 h; a change only while scheduled. `cancelMeeting({ meetingId })`, `startMeeting({ meetingId })` (hosts; from 15 minutes before to the end), `findPeople({ q, staffOnly })` (≤ 10). Reads (`lib/data/meetings.ts`): `listMeetings`, `getMeeting`, `getMeetingRoom`, `getGuestLobby(token)`.
+- **The guest** (`app/(room)/m/[token]/actions.ts`, signed out, 30 an IP per 15 min): `askToJoin({ token, name })` puts them on `waiting` (or straight back in if a host let them in before) and tells the hosts in the room (`controls` topic, text `lobby`); `stopAsking({ token })`. A guest's identity in the room is their guest id.
+
 ## 9. Notification kinds
 
 | Kind | Recipient | Created when | `href` |
@@ -360,3 +368,7 @@ The §8.4 export with its three external columns filled in by the exam section. 
 | `live.started` | enrolled students | the teacher started the session (M03 decision 1) | same |
 | `task.assigned` | assignee | tracker task assigned | `/courses/<id>/projects/<pid>` |
 | `gradeSheet.published` | students in the term | grade sheet published | `/results` |
+| `meeting.invited` | the co-hosts and people from the LMS added (M03c T4) | meeting scheduled, or they were added | `/meetings/<id>` |
+| `meeting.changed` | the others invited | its time or title changed | same |
+| `meeting.cancelled` | everyone invited but the host who cancelled | meeting cancelled | same |
+| `meeting.started` | everyone invited but the host who started it | meeting started | same |

@@ -5,14 +5,16 @@ import { offeringAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { getSettings } from '@/lib/data/settings';
 import { db } from '@/lib/db';
+import { AppError } from '@/lib/errors';
 import { attendancePct, deriveAttendance } from '@/lib/domain/attendance';
 import { istDateToDate, istDayKey } from '@/lib/domain/time';
-import { joinToken, type StudentRights } from '@/lib/integrations/live';
+import { closeRoom, joinToken, type StudentRights } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession, type LiveSessionDoc } from '@/lib/models/live-session';
 import { Offering } from '@/lib/models/offering';
 import { User } from '@/lib/models/user';
+import { queueLiveFinalize } from '@/lib/queue';
 import { pageSize } from '@/lib/schemas/common';
 import {
   ALL_RIGHTS,
@@ -61,7 +63,7 @@ const SESSION_FIELDS = {
   finalizedAt: 1,
 } as const;
 
-function toRow(doc: SessionDoc, now: Date): LiveSessionRow {
+export function toRow(doc: SessionDoc, now: Date): LiveSessionRow {
   const notHeld = doc.status === 'scheduled' && doc.scheduledEnd < now;
   return {
     id: String(doc._id),
@@ -240,7 +242,7 @@ export type SessionDetail = {
   join: { serverUrl: string; token: string } | null;
   removed: boolean;
   // M03c T2: for hosts while the class is live — what students may do, and who was removed, the latest first.
-  controls: { rights: StudentRights; removed: { id: string; name: string; at: Date }[] } | null;
+  controls: RoomControls | null;
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -249,6 +251,46 @@ export type SessionDetail = {
   thresholdPct: number;
 };
 
+// M03c T2, T4: what a host sees in People — what the others may do, who was removed (the latest first) and, in a
+// meeting, the guests waiting to join in the order they asked. Removed people are users, or a meeting's guests.
+export type RoomControls = {
+  rights: StudentRights;
+  removed: { id: string; name: string; at: Date }[];
+  waiting: { id: string; name: string; at: Date }[];
+};
+
+type RoomDoc = Pick<LiveSessionDoc, 'studentsMay' | 'removed' | 'waiting' | 'meeting'>;
+
+export async function roomControls(doc: RoomDoc): Promise<RoomControls> {
+  const removed = doc.removed ?? [];
+  const guests = doc.meeting?.guests ?? [];
+  const users =
+    removed.length > 0 ? await User.find({ _id: { $in: removed.map((r) => r.userId) } }, { name: 1 }).lean() : [];
+  const nameOf = (id: Types.ObjectId) =>
+    users.find((u) => u._id.equals(id))?.name ?? guests.find((g) => g._id.equals(id))?.name ?? 'A guest';
+  return {
+    rights: { ...ALL_RIGHTS, ...doc.studentsMay },
+    removed: removed.map((r) => ({ id: String(r.userId), name: nameOf(r.userId), at: r.at })).reverse(),
+    waiting: (doc.waiting ?? []).map((w) => ({ id: String(w.guestId), name: w.name, at: w.at })),
+  };
+}
+
+// T3, M03c T4: ending a class or a meeting for everyone. The room closes first, so a failure changes nothing and the host
+// can try again; the engine's room_finished may end it first. Either way it is ended and finalized (a meeting without
+// attendance).
+export async function endLiveSession(session: { _id: Types.ObjectId; status: SessionStatus; roomName: string }) {
+  if (session.status === 'live') {
+    await closeRoom(session.roomName);
+    await LiveSession.updateOne(
+      { _id: session._id, status: 'live' },
+      { $set: { status: 'ended', endedAt: new Date() } },
+    );
+  } else if (session.status !== 'ended') {
+    throw new AppError('CLOSED', 'It is not running.');
+  }
+  await queueLiveFinalize(String(session._id));
+}
+
 // T4, T9: one class, for whoever may see it; a student sees only their own attendance (09 §3).
 export async function getSession(offeringId: string, sessionId: string): Promise<SessionDetail> {
   const viewer = await requireViewer();
@@ -256,7 +298,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   if (!Types.ObjectId.isValid(sessionId)) notFound();
   const doc = await LiveSession.findOne(
     { _id: sessionId, offeringId },
-    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1 },
+    { ...SESSION_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1 },
   ).lean();
   if (!doc) notFound();
   const now = new Date();
@@ -266,7 +308,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
   const removed = student && removedList.some((r) => r.userId.equals(viewer.id));
   const live = doc.status === 'live';
   const rights = { ...ALL_RIGHTS, ...doc.studentsMay };
-  const [join, removedNames, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
+  const [join, controls, inClass, enrolled, stats, mine, { liveThresholdPct }] = await Promise.all([
     live && !removed && (student || hosts)
       ? joinToken({
           roomName: doc.roomName,
@@ -276,9 +318,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
           rights,
         })
       : null,
-    live && hosts && !student && removedList.length > 0
-      ? User.find({ _id: { $in: removedList.map((r) => r.userId) } }, { name: 1 }).lean()
-      : [],
+    live && hosts && !student ? roomControls(doc) : null,
     student || doc.status !== 'live' ? 0 : Attendance.countDocuments({ sessionId: doc._id, ...IN_CLASS }),
     Enrollment.countDocuments({ offeringId, status: 'active' }),
     student || !doc.startedAt
@@ -320,19 +360,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
     join,
     removed,
-    controls:
-      live && hosts && !student
-        ? {
-            rights,
-            removed: removedList
-              .map((r) => ({
-                id: String(r.userId),
-                name: removedNames.find((u) => u._id.equals(r.userId))?.name ?? 'A student',
-                at: r.at,
-              }))
-              .reverse(),
-          }
-        : null,
+    controls,
     inClass,
     enrolled,
     summary:
@@ -450,7 +478,7 @@ export async function listTodaysLiveSessions(): Promise<TodayClass[]> {
   await db();
   if (viewer.roles.includes('admin')) {
     const running = await LiveSession.find(
-      { status: 'live' },
+      { status: 'live', kind: { $ne: 'meeting' } },
       { offeringId: 1, title: 1, scheduledStart: 1, scheduledEnd: 1 },
     )
       .sort({ scheduledEnd: 1 })

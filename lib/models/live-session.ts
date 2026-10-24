@@ -1,9 +1,25 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 import { ATTENDANCE_MODES, SESSION_KINDS, SESSION_STATUSES } from '@/lib/schemas/live';
 
+// M03c T4: a meeting's guest, invited by email. Their personal link is their id signed with the session secret
+// (lib/auth/guest-link.ts), so nothing secret is stored. `name` is what they type in the lobby.
+const guestSchema = new Schema({
+  email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254 },
+  name: { type: String, trim: true, maxlength: 80 },
+  // In this meeting: a host let them in (they then come straight back while it runs), or turned them away.
+  admittedAt: { type: Date },
+  deniedAt: { type: Date },
+});
+
 const liveSessionSchema = new Schema(
   {
-    offeringId: { type: Schema.Types.ObjectId, required: true },
+    // A class's course; a meeting has none (M03c T4).
+    offeringId: {
+      type: Schema.Types.ObjectId,
+      required(this: { kind: string }) {
+        return this.kind !== 'meeting';
+      },
+    },
     kind: { type: String, enum: SESSION_KINDS, required: true, default: 'class' },
     // `review` sessions (M07): the project review they hold. Their finalizing writes no attendance (it is one team's).
     reviewId: { type: Schema.Types.ObjectId },
@@ -33,6 +49,27 @@ const liveSessionSchema = new Schema(
         by: { type: Schema.Types.ObjectId, required: true },
       },
     ],
+    // M03c T4, meetings only: the hosts (the scheduler first), the members from the LMS and the guests by email.
+    // `sequence` numbers the invitation, so calendars replace an earlier one (06 §8.7).
+    meeting: {
+      type: {
+        _id: false,
+        hostIds: { type: [Schema.Types.ObjectId], required: true },
+        memberIds: { type: [Schema.Types.ObjectId], default: [] },
+        guests: { type: [guestSchema], default: [] },
+        sequence: { type: Number, required: true, default: 0 },
+      },
+      default: undefined,
+    },
+    // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).
+    waiting: [
+      {
+        _id: false,
+        guestId: { type: Schema.Types.ObjectId, required: true },
+        name: { type: String, required: true, maxlength: 80 },
+        at: { type: Date, required: true },
+      },
+    ],
     createdBy: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: true },
@@ -43,6 +80,10 @@ liveSessionSchema.index({ status: 1, scheduledEnd: 1 });
 // The hourly sweep's "ended but not finalized" (05 §4.3).
 liveSessionSchema.index({ status: 1, finalizedAt: 1 });
 liveSessionSchema.index({ roomName: 1 }, { unique: true });
+// M03c T4: the Meetings page lists the meetings a person hosts or is invited to; a guest's link finds theirs.
+liveSessionSchema.index({ 'meeting.hostIds': 1, scheduledStart: -1 });
+liveSessionSchema.index({ 'meeting.memberIds': 1, scheduledStart: -1 });
+liveSessionSchema.index({ 'meeting.guests._id': 1 });
 
 export type LiveSessionDoc = InferSchemaType<typeof liveSessionSchema>;
 export const LiveSession: Model<LiveSessionDoc> =

@@ -6,7 +6,7 @@
 | Requirements | LIV-01–LIV-05, ATT-01–ATT-03, COM-03; new owner requests below |
 | Release | part of R1, before M04 |
 | Packages to add (each with its reason in 03 §3, in the commit that first uses it) | `@livekit/track-processors` 0.8.1 (background blur; 0.8.2 is under two weeks old); `@excalidraw/excalidraw` 0.18.1 (whiteboard, MIT); the recording uses `livekit-server-sdk`'s `EgressClient`, already installed |
-| Collections | `liveSessions` (removed people, locks; M03c T4–T7: `kind: 'meeting'`, the lobby, recording, polls, breakout rooms), new `meetings` (and its guests), new `pollAnswers` |
+| Collections | `liveSessions` (removed people, locks; T4–T7: `kind: 'meeting'` with its hosts, members and guests, the lobby, recording, polls, breakout rooms), new `pollAnswers` |
 | Env vars added | `LIVEKIT_EGRESS` (`on` where an Egress service runs; recording is hidden otherwise) |
 | Infrastructure | LiveKit **Egress** next to the LiveKit server on the test server, 65.20.89.9 (decision 5) |
 
@@ -48,8 +48,7 @@ Asked before T4, when Aniket said to complete the milestone:
 ## Design of T4–T10 (dev)
 
 - **A meeting is a live session without a course.**
-  - `meetings` holds what is scheduled: the title, when, the hosts, the members, the guests and their invitations.
-  - Each meeting has one `liveSessions` row (`kind: 'meeting'`, `meetingId`, no `offeringId`). That row holds the room, as a class's does: removed people, locks, the lobby, recording, polls and breakout rooms.
+  - It is one `liveSessions` row (`kind: 'meeting'`, no `offeringId`). Its hosts, members, guests and invitation version are on that row (`meeting`), beside the room as a class's: removed people, locks, the lobby, recording, polls and breakout rooms. (Built so in T4: a separate `meetings` collection would have kept a second copy of the title and times.)
   - So one room serves both. Its actions take the session and work out the viewer's access from it: a class through its course (`offeringAccess`), a meeting through its hosts and members. M04b's assessment actions work the same way (`assessmentAccess`).
   - T1–T3's actions move to that shape in T4. Meetings take no attendance.
 - **Scheduling (T4):**
@@ -59,7 +58,7 @@ Asked before T4, when Aniket said to complete the milestone:
 - **Invitations (T4):** an email to each member and guest, with the join link and an `.ics` calendar file.
   - The file is `METHOD:REQUEST`; a new time sends it again with a higher `SEQUENCE`, and cancelling sends `METHOD:CANCEL`.
   - Emails go through the mail queue. The mail adapter gains attachments (06 §4.2).
-  - A guest's link holds a token; only its hash is stored.
+  - A guest's link is their id signed with the session secret, so nothing secret is stored and a re-sent invitation keeps the same link.
 - **The guest lobby (T4):** `/m/<token>`, a public page like `/t/`.
   - It shows the meeting and its time, the guest's name, and a camera and microphone check, then "Ask to join".
   - The request goes on the session's `waiting` list. The server tells the hosts in the room (a `lobby` message), and People lists the waiting guests with Admit, Deny and Admit all.

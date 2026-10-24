@@ -35,30 +35,34 @@ async function addConnection(room: Room, userId: string, connection: Connection,
 }
 
 // M03c T2: someone a host removed who comes back with a token they kept is removed again and not counted. A student
-// whose token was issued just before a host changed what students may do gets the change now.
+// whose token was issued just before a host changed what students may do gets the change now. A meeting (T4) takes no
+// attendance: its removed members and guests are put out again, and the others get the current rights.
 async function joined({ roomName, userId, sid, host, at }: Extract<LiveEvent, { type: 'joined' }>) {
   const room = await LiveSession.findOne(
     { roomName, status: 'live' },
-    { offeringId: 1, studentsMay: 1, removed: { $elemMatch: { userId: new Types.ObjectId(userId) } } },
+    { kind: 1, offeringId: 1, studentsMay: 1, removed: { $elemMatch: { userId: new Types.ObjectId(userId) } } },
   ).lean();
   if (!room) return;
   if (room.removed?.length) return removeFromRoom(roomName, userId);
   const rights = { ...ALL_RIGHTS, ...room.studentsMay };
   if (!host && Object.values(rights).includes(false)) await setRights(roomName, userId, rights);
-  await addConnection(room, userId, { sid, joinedAt: at, leftAt: null });
+  if (room.offeringId)
+    await addConnection({ _id: room._id, offeringId: room.offeringId }, userId, { sid, joinedAt: at, leftAt: null });
 }
 
 // Leaves arrive after the class has ended too (ending it closes the room), so they apply in any status.
 async function left({ roomName, userId, sid, joinedAt, at }: Extract<LiveEvent, { type: 'left' }>) {
   const room = await LiveSession.findOne({ roomName, status: { $in: ['live', 'ended'] } }, { offeringId: 1 }).lean();
-  if (!room) return;
+  if (!room?.offeringId) return;
   const closed = await Attendance.updateOne(
     { sessionId: room._id, studentId: userId, 'presence.sid': sid },
     { $set: { 'presence.$[connection].leftAt': at } },
     { arrayFilters: [{ 'connection.sid': sid }] },
   );
   // Its join never arrived (or comes later): record the connection as one closed interval.
-  if (closed.matchedCount === 0) await addConnection(room, userId, { sid, joinedAt, leftAt: at });
+  if (closed.matchedCount === 0) {
+    await addConnection({ _id: room._id, offeringId: room.offeringId }, userId, { sid, joinedAt, leftAt: at });
+  }
 }
 
 // Q-50: the engine closes an empty room after about 20 s. Before the scheduled end that is a dropped connection, not

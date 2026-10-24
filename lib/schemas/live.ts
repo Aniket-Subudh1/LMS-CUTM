@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { istDate, istTime, objectId } from '@/lib/schemas/common';
 
-export const SESSION_KINDS = ['class', 'review'] as const;
+// M03c T4: a meeting is a live session without a course; its hosts, members and guests are on the session.
+export const SESSION_KINDS = ['class', 'review', 'meeting'] as const;
 export const SESSION_STATUSES = ['scheduled', 'live', 'ended', 'cancelled'] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export const ATTENDANCE_MODES = ['manual', 'derived'] as const;
@@ -35,12 +36,6 @@ const sessionFields = {
 export const ScheduleSession = z.object(sessionFields);
 export const UpdateSession = z.object({ ...sessionFields, sessionId: objectId });
 export const SessionRef = z.object({ offeringId: objectId, sessionId: objectId });
-// M03b: hands to lower — the viewer's own, or any for a host ("Lower all" sends everyone's, at most a room's worth).
-export const LowerHands = z.object({
-  offeringId: objectId,
-  sessionId: objectId,
-  'identity[]': z.array(objectId).min(1).max(1000),
-});
 
 // --- Host controls (M03c T2) ---
 
@@ -52,12 +47,70 @@ export const ALL_RIGHTS: Record<StudentRight, boolean> = { share: true, unmute: 
 // 05 §4.3: the removed list stays a bounded read.
 export const MAX_REMOVED = 100;
 
-export const PersonRef = z.object({ offeringId: objectId, sessionId: objectId, identity: objectId });
-export const SetStudentRight = z.object({
-  offeringId: objectId,
-  sessionId: objectId,
-  right: z.enum(STUDENT_RIGHTS),
-  allowed: z.boolean(),
+// --- The room (M03c T4): its actions take the session alone; who may do what comes from the session (a class's course,
+// a meeting's hosts and members). A person in the room is their user id, or a guest's id. ---
+
+export const RoomRef = z.object({ sessionId: objectId });
+export const RoomPerson = z.object({ sessionId: objectId, identity: objectId });
+// Hands to lower (the viewer's own, or any for a host: "Lower all" sends everyone's), guests to let in (M03b, T4).
+export const RoomPeople = z.object({ sessionId: objectId, 'identity[]': z.array(objectId).min(1).max(1000) });
+export const RoomRight = z.object({ sessionId: objectId, right: z.enum(STUDENT_RIGHTS), allowed: z.boolean() });
+
+// --- Meetings (M03c T4) ---
+
+// 05 §4.3: the scheduler and up to four co-hosts; members picked from the LMS; guests by email.
+export const MEETING_LIMITS = { coHosts: 4, members: 50, guests: 20, lengthMin: 360 } as const;
+
+const guestEmails = z
+  .string()
+  .max(5000)
+  .default('')
+  .transform((value) => [
+    ...new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ])
+  .pipe(
+    z
+      .array(z.email('One of these is not an email address.'))
+      .max(MEETING_LIMITS.guests, `Invite at most ${MEETING_LIMITS.guests} guests.`),
+  );
+
+// The dialog posts a day, a start and an end (IST, the same day), and the people as hidden `coHost[]` and `member[]`.
+export const SaveMeeting = z
+  .object({
+    meetingId: objectId.optional(),
+    title: z.string().trim().min(1, 'Enter a title.').max(160, 'Use at most 160 characters.'),
+    date: istDate,
+    startTime: istTime,
+    endTime: istTime,
+    'coHost[]': z
+      .array(objectId)
+      .max(MEETING_LIMITS.coHosts, `Add at most ${MEETING_LIMITS.coHosts} co-hosts.`)
+      .default([]),
+    'member[]': z
+      .array(objectId)
+      .max(MEETING_LIMITS.members, `Invite at most ${MEETING_LIMITS.members} people from the LMS.`)
+      .default([]),
+    guests: guestEmails,
+  })
+  .refine((m) => m.endTime > m.startTime, { path: ['endTime'], message: 'End after the start.' });
+export const MeetingRef = z.object({ meetingId: objectId });
+// The people picker's search: an email or roll number, or words of a name.
+export const FindPeople = z.object({
+  q: z.string().trim().min(2, 'Type at least two letters.').max(80),
+  staffOnly: z.boolean().default(false),
+});
+
+// A guest's personal link: their id and its signature (lib/auth/guest-link.ts).
+export const guestToken = z.string().regex(/^[a-f\d]{24}\.[A-Za-z\d_-]{43}$/, 'This link is not valid.');
+export const GuestRef = z.object({ token: guestToken });
+export const AskToJoin = z.object({
+  token: guestToken,
+  name: z.string().trim().min(2, 'Enter your name.').max(80, 'Use at most 80 characters.'),
 });
 
 // --- Attendance (ATT-01) ---

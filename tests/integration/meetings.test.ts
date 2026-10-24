@@ -1,0 +1,408 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { QueueEvents } from 'bullmq';
+import { Redis } from 'ioredis';
+import { cancelMeeting, findPeople, saveMeeting, startMeeting } from '@/app/(app)/meetings/actions';
+import { admitGuests, allowBack, denyGuest, endRoom, removeParticipant } from '@/app/(room)/actions';
+import { askToJoin, stopAsking } from '@/app/(room)/m/[token]/actions';
+import { POST as webhook } from '@/app/api/webhooks/live/route';
+import { guestIdOf, guestLinkToken } from '@/lib/auth/guest-link';
+import { getGuestLobby, getMeeting, getMeetingRoom, listMeetings } from '@/lib/data/meetings';
+import { db } from '@/lib/db';
+import { env } from '@/lib/env';
+import type { LiveEvent } from '@/lib/integrations/live';
+import { Attendance } from '@/lib/models/attendance';
+import { AuditLog } from '@/lib/models/audit-log';
+import { Enrollment } from '@/lib/models/enrollment';
+import { LiveSession } from '@/lib/models/live-session';
+import { Notification } from '@/lib/models/notification';
+import { Offering } from '@/lib/models/offering';
+import { computeQueue, mailQueue, redis } from '@/lib/queue';
+import { startComputeWorker } from '@/worker/jobs/compute';
+import { startMailWorker } from '@/worker/jobs/mail';
+import { enroll, makeOffering, makeUser, signInAs } from '../factories';
+
+type Sent = { to: string; subject: string; text: string; calendar?: { method: string; content: string } };
+const {
+  events: sentEvents,
+  sendMail,
+  joinToken,
+  tell,
+  removeFromRoom,
+  closeRoom,
+} = vi.hoisted(() => ({
+  events: new Map<string, LiveEvent>(),
+  sendMail: vi.fn(async (message: Sent) => void message),
+  joinToken: vi.fn(async (input: { userId: string; role: string }) => ({
+    serverUrl: 'ws://live.test',
+    token: `${input.role}-${input.userId}`,
+  })),
+  tell: vi.fn(async (roomName: string, topic: string, text: string) => void [roomName, topic, text]),
+  removeFromRoom: vi.fn(async (roomName: string, identity: string) => void [roomName, identity]),
+  closeRoom: vi.fn(async (roomName: string) => void roomName),
+}));
+vi.mock('@/lib/integrations/mail', () => ({ sendMail }));
+vi.mock('@/lib/integrations/live', async () => {
+  const { AppError } = await import('@/lib/errors');
+  return {
+    joinToken,
+    tell,
+    removeFromRoom,
+    closeRoom,
+    setRights: async () => undefined,
+    setHand: async () => undefined,
+    muteMicrophone: async () => true,
+    roomPeople: async () => [],
+    parseWebhook: async (rawBody: string, authorization: string | null) => {
+      if (authorization !== 'signed') throw new AppError('FORBIDDEN', 'Invalid webhook signature');
+      return sentEvents.get(rawBody) ?? { type: 'ignored' };
+    },
+  };
+});
+
+const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
+const MIN = 60_000;
+
+let compute: ReturnType<typeof startComputeWorker>;
+let mail: ReturnType<typeof startMailWorker>;
+let computeEvents: QueueEvents;
+
+beforeAll(async () => {
+  await db();
+  await Promise.all(
+    [Attendance, AuditLog, Enrollment, LiveSession, Notification, Offering].map(async (m) => {
+      await m.createCollection();
+      await m.createIndexes();
+    }),
+  );
+  compute = startComputeWorker(env().REDIS_URL);
+  mail = startMailWorker(env().REDIS_URL);
+  computeEvents = new QueueEvents('compute', {
+    connection: new Redis(env().REDIS_URL, { maxRetriesPerRequest: null }),
+  });
+  await computeEvents.waitUntilReady();
+});
+
+afterAll(async () => {
+  await Promise.all([
+    compute.close(),
+    mail.close(),
+    computeEvents.close(),
+    computeQueue().close(),
+    mailQueue().close(),
+  ]);
+  await redis().quit();
+});
+
+const hook = (event: LiveEvent) => {
+  const body = crypto.randomUUID();
+  sentEvents.set(body, event);
+  return webhook(
+    new Request('http://localhost:3000/api/webhooks/live', {
+      method: 'POST',
+      body,
+      headers: { authorization: 'signed' },
+    }),
+  );
+};
+
+// The IST day and times the dialog sends for a meeting from `start` lasting `minutes`.
+function slot(start: Date, minutes = 60) {
+  const local = (at: Date) => new Date(at.getTime() + 330 * MIN).toISOString();
+  const end = new Date(start.getTime() + minutes * MIN);
+  return { date: local(start).slice(0, 10), startTime: local(start).slice(11, 16), endTime: local(end).slice(11, 16) };
+}
+// Tomorrow at 10:00 IST, so a test never crosses midnight.
+function tomorrow(hourIst = 10) {
+  const day = new Date(Date.now() + 330 * MIN + 24 * 60 * MIN).toISOString().slice(0, 10);
+  return new Date(`${day}T${String(hourIst).padStart(2, '0')}:00:00+05:30`);
+}
+
+async function world() {
+  const faculty = await makeUser({ roles: ['faculty'] });
+  const colleague = await makeUser({ roles: ['faculty'] });
+  const taught = await makeUser({ roles: ['student'] });
+  const untaught = await makeUser({ roles: ['student'] });
+  const admin = await makeUser({ roles: ['admin'] });
+  const offering = await makeOffering({ facultyIds: [faculty._id], status: 'active' });
+  await enroll(offering._id, taught._id);
+  return { faculty, colleague, taught, untaught, admin };
+}
+type World = Awaited<ReturnType<typeof world>>;
+
+async function schedule(w: World, over: Partial<Parameters<typeof saveMeeting>[0]> = {}) {
+  await signInAs(w.faculty);
+  const result = await saveMeeting({
+    title: 'Project review with an industry mentor',
+    ...slot(tomorrow()),
+    'coHost[]': [String(w.colleague._id)],
+    'member[]': [String(w.taught._id)],
+    guests: 'rao.kumar@example.com\nRAO.KUMAR@example.com, sita@example.com',
+    ...over,
+  });
+  if (!result.ok) throw new Error(result.message);
+  return result.data.id;
+}
+
+const mailsTo = (id: string) =>
+  sendMail.mock.calls.map(([m]) => m).filter((m) => m.calendar?.content.includes(`meeting-${id}@`));
+
+describe('scheduling a meeting (M03c T4)', () => {
+  it('lets staff invite co-hosts, people they may invite and guests, and sends each an invitation of their own', async () => {
+    const w = await world();
+    sendMail.mockClear();
+    const id = await schedule(w);
+    const doc = await LiveSession.findById(id).lean();
+    expect(doc).toMatchObject({ kind: 'meeting', status: 'scheduled', roomName: `ls-${id}` });
+    expect(doc?.offeringId).toBeUndefined();
+    expect(doc?.meeting?.hostIds.map(String)).toEqual([String(w.faculty._id), String(w.colleague._id)]);
+    expect(doc?.meeting?.memberIds.map(String)).toEqual([String(w.taught._id)]);
+    expect(doc?.meeting?.guests.map((g) => g.email)).toEqual(['rao.kumar@example.com', 'sita@example.com']);
+    expect(await Notification.countDocuments({ kind: 'meeting.invited', href: `/meetings/${id}` })).toBe(2);
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4), { timeout: 10_000 });
+    for (const m of mailsTo(id)) {
+      expect(m.calendar?.method).toBe('REQUEST');
+      // Each calendar file names only its own recipient.
+      expect(m.calendar?.content.replace(/\r\n /g, '')).toContain(`RSVP=FALSE:mailto:${m.to}`);
+      expect(m.calendar?.content.match(/ATTENDEE/g)).toHaveLength(1);
+    }
+    const rao = mailsTo(id).find((m) => m.to === 'rao.kumar@example.com');
+    const token = /\/m\/([^\s]+)/.exec(rao?.text ?? '')?.[1] ?? '';
+    expect(guestIdOf(token)).toBe(String(doc?.meeting?.guests[0]._id));
+    expect(mailsTo(id).find((m) => m.to === w.taught.email)?.text).toContain(`/meetings/${id}`);
+  });
+
+  it('refuses a student scheduling, people the scheduler may not invite, a student co-host and a time that passed', async () => {
+    const w = await world();
+    await signInAs(w.taught);
+    expect(await saveMeeting({ title: 'x', ...slot(tomorrow()), guests: '' })).toMatchObject({ code: 'FORBIDDEN' });
+    await signInAs(w.faculty);
+    const base = { title: 'Review', ...slot(tomorrow()), guests: '' };
+    expect(await saveMeeting({ ...base, 'member[]': [String(w.untaught._id)] })).toMatchObject({ code: 'VALIDATION' });
+    expect(await saveMeeting({ ...base, 'coHost[]': [String(w.taught._id)] })).toMatchObject({ code: 'VALIDATION' });
+    expect(await saveMeeting({ ...base, ...slot(new Date(Date.now() - 120 * MIN)) })).toMatchObject({
+      code: 'VALIDATION',
+    });
+    expect(await saveMeeting({ ...base, ...slot(tomorrow(), 400) })).toMatchObject({ code: 'VALIDATION' });
+    // The picker finds staff and the students the teacher teaches, never anyone else.
+    expect(await findPeople({ q: w.taught.email, staffOnly: false })).toMatchObject({
+      ok: true,
+      data: [{ id: String(w.taught._id) }],
+    });
+    expect(await findPeople({ q: w.untaught.email, staffOnly: false })).toMatchObject({ ok: true, data: [] });
+    expect(await findPeople({ q: w.taught.email, staffOnly: true })).toMatchObject({ ok: true, data: [] });
+    expect(await findPeople({ q: w.colleague.email, staffOnly: true })).toMatchObject({
+      ok: true,
+      data: [{ id: String(w.colleague._id) }],
+    });
+  });
+
+  it('sends a new time to everyone, invites only the people added, and cancels for those taken off', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
+    const meeting = {
+      meetingId: id,
+      title: 'Project review with an industry mentor',
+      'coHost[]': [String(w.colleague._id)],
+    };
+    sendMail.mockClear();
+    // Someone added at the same time: only they are invited, at the same version.
+    const other = await makeUser({ roles: ['faculty'] });
+    expect(
+      await saveMeeting({
+        ...meeting,
+        ...slot(tomorrow()),
+        'member[]': [String(w.taught._id), String(other._id)],
+        guests: 'rao.kumar@example.com\nsita@example.com',
+      }),
+    ).toMatchObject({ ok: true });
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(1));
+    expect(mailsTo(id)[0]).toMatchObject({ to: other.email });
+    expect(mailsTo(id)[0].calendar?.content).toContain('SEQUENCE:0');
+    // A new time, and Sita taken off: version 1 to everyone left, a cancellation to Sita.
+    sendMail.mockClear();
+    expect(
+      await saveMeeting({
+        ...meeting,
+        ...slot(tomorrow(11)),
+        'member[]': [String(w.taught._id), String(other._id)],
+        guests: 'rao.kumar@example.com',
+      }),
+    ).toMatchObject({ ok: true });
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(5));
+    const sita = mailsTo(id).find((m) => m.to === 'sita@example.com');
+    expect(sita?.calendar).toMatchObject({ method: 'CANCEL' });
+    expect(
+      mailsTo(id)
+        .filter((m) => m.calendar?.method === 'REQUEST')
+        .map((m) => m.to)
+        .sort(),
+    ).toEqual([w.colleague.email, w.taught.email, other.email, 'rao.kumar@example.com'].sort());
+    expect(mailsTo(id).every((m) => m.calendar?.content.includes('SEQUENCE:1'))).toBe(true);
+    expect(await Notification.countDocuments({ kind: 'meeting.changed', href: `/meetings/${id}` })).toBe(3);
+    // Rao's link survives the new version.
+    const guest = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
+    expect((await getGuestLobby(guestLinkToken(String(guest?._id)))).guest.email).toBe('rao.kumar@example.com');
+  });
+
+  it('cancels for everyone, once; a co-host cannot change a meeting that has started', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
+    sendMail.mockClear();
+    await signInAs(w.colleague);
+    expect(await cancelMeeting({ meetingId: id })).toMatchObject({ ok: true });
+    expect(await cancelMeeting({ meetingId: id })).toMatchObject({ ok: true });
+    expect(await LiveSession.findById(id).lean()).toMatchObject({ status: 'cancelled', meeting: { sequence: 1 } });
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
+    expect(mailsTo(id).every((m) => m.calendar?.method === 'CANCEL')).toBe(true);
+    const live = await schedule(w);
+    await LiveSession.updateOne({ _id: live }, { $set: { status: 'live', startedAt: new Date() } });
+    await signInAs(w.colleague);
+    expect(await saveMeeting({ meetingId: live, title: 'Changed', ...slot(tomorrow()), guests: '' })).toMatchObject({
+      code: 'CLOSED',
+    });
+  });
+});
+
+describe('who reaches a meeting (09 §3)', () => {
+  it('lists it for its hosts and members only; its page and room are not found for anyone else, admins included', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    for (const user of [w.faculty, w.colleague, w.taught]) {
+      await signInAs(user);
+      expect((await listMeetings(1, 1)).upcoming.map((m) => m.id)).toContain(id);
+      expect((await getMeeting(id)).role).toBe(user === w.taught ? 'participant' : 'host');
+    }
+    await signInAs(w.taught);
+    expect((await getMeeting(id)).guests).toBeNull();
+    for (const user of [w.untaught, w.admin]) {
+      await signInAs(user);
+      expect((await listMeetings(1, 1)).upcoming.map((m) => m.id)).not.toContain(id);
+      await expect(getMeeting(id)).rejects.toThrow(NOT_FOUND);
+      await expect(getMeetingRoom(id)).rejects.toThrow(NOT_FOUND);
+    }
+  });
+
+  it('starts from 15 minutes before for a host, tells the people from the LMS, and gives each a token in their role', async () => {
+    const w = await world();
+    const id = await schedule(w, slot(new Date(Date.now() + 10 * MIN)));
+    await signInAs(w.taught);
+    await expect(startMeeting({ meetingId: id })).rejects.toThrow(NOT_FOUND);
+    expect((await getMeetingRoom(id)).join).toBeNull();
+    await signInAs(w.colleague);
+    expect(await startMeeting({ meetingId: id })).toMatchObject({ ok: true });
+    expect(await Notification.countDocuments({ kind: 'meeting.started', href: `/meetings/${id}` })).toBe(2);
+    expect((await getMeetingRoom(id)).join?.token).toBe(`host-${w.colleague._id}`);
+    await signInAs(w.taught);
+    expect(await getMeetingRoom(id)).toMatchObject({
+      host: false,
+      controls: null,
+      join: { token: `participant-${w.taught._id}` },
+    });
+    const later = await schedule(w);
+    await signInAs(w.faculty);
+    expect(await startMeeting({ meetingId: later })).toMatchObject({ code: 'CLOSED' });
+  });
+});
+
+describe('the guest lobby (decision 7)', () => {
+  async function running() {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const guests = (await LiveSession.findById(id).lean())?.meeting?.guests ?? [];
+    return { w, id, ref: { sessionId: id }, rao: guests[0], sita: guests[1] };
+  }
+
+  it('takes a guest from asking to the room, and keeps a removed guest out until a host lets them back', async () => {
+    const { w, id, ref, rao } = await running();
+    const token = guestLinkToken(String(rao._id));
+    const raoId = String(rao._id);
+    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'invited' }, join: null });
+    tell.mockClear();
+    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ ok: true });
+    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ ok: true });
+    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'controls', 'lobby');
+    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'waiting', name: 'Rao Kumar' }, join: null });
+    await signInAs(w.colleague);
+    expect((await getMeetingRoom(id)).controls?.waiting).toEqual([
+      { id: raoId, name: 'Rao Kumar', at: expect.any(Date) },
+    ]);
+    // Only a host lets people in.
+    await signInAs(w.taught);
+    await expect(admitGuests({ ...ref, 'identity[]': [raoId] })).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.colleague);
+    expect(await admitGuests({ ...ref, 'identity[]': [raoId] })).toMatchObject({ ok: true });
+    expect(await getGuestLobby(token)).toMatchObject({
+      guest: { state: 'admitted' },
+      join: { token: `participant-${raoId}` },
+    });
+    expect((await getMeetingRoom(id)).controls?.waiting).toEqual([]);
+    // Removed: no token, put out again if they come back with one they kept, and no attendance in a meeting.
+    removeFromRoom.mockClear();
+    expect(await removeParticipant({ ...ref, identity: raoId })).toMatchObject({ ok: true });
+    expect(removeFromRoom).toHaveBeenCalledWith(`ls-${id}`, raoId);
+    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'removed' }, join: null });
+    expect(await askToJoin({ token, name: 'Rao' })).toMatchObject({ code: 'FORBIDDEN' });
+    removeFromRoom.mockClear();
+    await hook({ type: 'joined', host: false, roomName: `ls-${id}`, userId: raoId, sid: 'PA_g', at: new Date() });
+    await hook({
+      type: 'joined',
+      host: false,
+      roomName: `ls-${id}`,
+      userId: String(w.taught._id),
+      sid: 'PA_t',
+      at: new Date(),
+    });
+    expect(removeFromRoom).toHaveBeenCalledExactlyOnceWith(`ls-${id}`, raoId);
+    expect(await Attendance.countDocuments({ sessionId: id })).toBe(0);
+    expect(await allowBack({ ...ref, identity: raoId })).toMatchObject({ ok: true });
+    expect(await getGuestLobby(token)).toMatchObject({
+      guest: { state: 'admitted' },
+      join: { token: `participant-${raoId}` },
+    });
+    expect(
+      await AuditLog.countDocuments({ entityId: id, action: { $in: ['live.removed', 'live.allowed_back'] } }),
+    ).toBe(2);
+  });
+
+  it('lets a turned-away guest ask again, or stop asking', async () => {
+    const { w, ref, sita } = await running();
+    const token = guestLinkToken(String(sita._id));
+    await askToJoin({ token, name: 'Sita Das' });
+    await signInAs(w.faculty);
+    expect(await denyGuest({ ...ref, identity: String(sita._id) })).toMatchObject({ ok: true });
+    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'denied' }, join: null });
+    await askToJoin({ token, name: 'Sita Das' });
+    expect((await getGuestLobby(token)).guest.state).toBe('waiting');
+    expect(await stopAsking({ token })).toMatchObject({ ok: true });
+    expect((await getGuestLobby(token)).guest.state).toBe('invited');
+  });
+
+  it('refuses an altered link, and asking before the meeting starts', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    const guest = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
+    const token = guestLinkToken(String(guest?._id));
+    await expect(getGuestLobby(`${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`)).rejects.toThrow(NOT_FOUND);
+    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ code: 'CLOSED' });
+  });
+});
+
+describe('ending a meeting', () => {
+  it('ends it for everyone from its room and finalizes it without attendance', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date(Date.now() - 30 * MIN) } });
+    await signInAs(w.taught);
+    await expect(endRoom({ sessionId: id })).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.colleague);
+    closeRoom.mockClear();
+    expect(await endRoom({ sessionId: id })).toMatchObject({ ok: true });
+    expect(closeRoom).toHaveBeenCalledWith(`ls-${id}`);
+    await vi.waitFor(async () => expect((await LiveSession.findById(id).lean())?.finalizedAt).toBeInstanceOf(Date));
+    expect(await LiveSession.findById(id).lean()).toMatchObject({ status: 'ended' });
+    expect(await Attendance.countDocuments({ sessionId: id })).toBe(0);
+  });
+});

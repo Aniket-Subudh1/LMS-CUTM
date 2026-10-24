@@ -57,15 +57,17 @@ import {
 } from '@phosphor-icons/react';
 import { DisconnectReason, RoomEvent, Track, type Participant, type RoomOptions } from 'livekit-client';
 import {
+  admitGuests,
   allowBack,
-  endSession,
+  denyGuest,
+  endRoom,
   lowerHands,
   muteEveryone,
   muteParticipant,
   raiseHand,
   removeParticipant,
   setStudentRight,
-} from '@/app/(app)/courses/[offeringId]/live/actions';
+} from '@/app/(room)/actions';
 import { ActionForm } from '@/components/action-form';
 import { RoomNotice } from '@/components/room-notice';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -92,33 +94,35 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/cn';
+import type { RoomControls } from '@/lib/data/live';
 import { formatTime, initials } from '@/lib/format';
 import type { StudentRight } from '@/lib/schemas/live';
 
-type Controls = {
-  rights: Record<StudentRight, boolean>;
-  removed: { id: string; name: string; at: Date }[];
-};
+// M03c T4: the room serves a class (and a project review) and a meeting; its words follow which.
+type Noun = 'class' | 'meeting';
 type Props = {
-  offeringId: string;
   sessionId: string;
   serverUrl: string;
   token: string;
-  // A student: focused time is counted (T5) and they may raise a hand. A host (the class's teachers, admins): may
-  // lower anyone's hand, mute, remove, set what students may do, and end the class.
+  noun: Noun;
+  // A student: focused time is counted (T5) and they may raise a hand. A host (the class's teachers and admins, a
+  // meeting's hosts): may lower anyone's hand, mute, remove, set what the others may do, let guests in, and end it.
   trackFocus: boolean;
   host: boolean;
-  // Where the class's attendance and summary are.
-  classPage: string;
+  // A meeting's guest (M03c T4): no hand to raise and no page to go back to.
+  guest?: boolean;
+  // The class page (attendance and the summary) or the meeting's page; none for a guest.
+  backHref: string | null;
   title: string;
   course: string;
   startedAt: Date | null;
   endsAt: Date;
-  enrolled: number;
-  // Said above "End class" for hosts: how attendance is taken in this class.
+  // A class's enrolled students; a meeting's invited people.
+  expected: number;
+  // Said above "End … for everyone" for hosts: how attendance is taken, or that a meeting takes none.
   attendanceNote: string;
-  // M03c T2, hosts only: what students may do, and who was removed (the latest first).
-  controls: Controls | null;
+  // M03c T2, T4, hosts only: what the others may do, who was removed (the latest first), who is waiting to join.
+  controls: RoomControls | null;
 };
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
 type Panel = 'people' | 'chat';
@@ -139,10 +143,14 @@ const LAYOUTS: { value: Layout; label: string; hint: string }[] = [
   { value: 'sidebar', label: 'Sidebar', hint: 'one large, faces at the side' },
 ];
 const RIGHTS: [StudentRight, string][] = [
-  ['share', 'Students can share their screen'],
-  ['unmute', 'Students can turn on their microphone'],
-  ['chat', 'Students can send chat messages and reactions'],
+  ['share', 'can share their screen'],
+  ['unmute', 'can turn on their microphone'],
+  ['chat', 'can send chat messages and reactions'],
 ];
+// Who the host controls limit, and the reason shown on a control a host turned off.
+const OTHERS: Record<Noun, string> = { class: 'Students', meeting: 'Others' };
+const lockedBy = (noun: Noun, what: string) =>
+  noun === 'class' ? `A teacher turned off ${what} for students` : `A host turned off ${what}`;
 // The join sound (Aniket, 17 Oct 2026): a soft bell made with Web Audio, so there is no file to load. At most one in
 // two seconds, so a crowd joining at the start rings once or twice.
 const JOIN_GAP_MS = 2_000;
@@ -178,7 +186,7 @@ const REACTIONS: [string, string][] = [
 // side panel with the people (host controls first for hosts, raised hands in the order raised) and the chat. M03c
 // adds Meet's layouts and pinning, a mini window that floats over other tabs and apps, reactions and host controls.
 export function LiveRoom(props: Props) {
-  const { sessionId, serverUrl, trackFocus, classPage } = props;
+  const { sessionId, serverUrl, trackFocus, backHref, noun, host } = props;
   const router = useRouter();
   const [state, setState] = useState<State>('in');
   // The token joined with. A host control refreshes the page, which brings a new token that must not reconnect the
@@ -220,12 +228,14 @@ export function LiveRoom(props: Props) {
         title: trackFocus ? 'You left the class' : 'You left the room',
         text: trackFocus
           ? 'Rejoin to carry on. Time away from the class does not count towards your attendance.'
-          : 'The class is still running for your students. Rejoin, and end it from the People panel when you are done.',
+          : host
+            ? `The ${noun} is still running for the others. Rejoin, and end it from the People panel when you are done.`
+            : 'Rejoin to carry on.',
         again: true,
       },
       replaced: {
         title: 'You joined from another tab or device',
-        text: 'A class plays in one place at a time. Rejoin here to move the class back to this tab.',
+        text: `A ${noun} plays in one place at a time. Rejoin here to move the ${noun} back to this tab.`,
         again: true,
       },
       dropped: {
@@ -234,18 +244,21 @@ export function LiveRoom(props: Props) {
         again: true,
       },
       ended: {
-        title: 'The class has ended',
-        text: 'Close this tab, or open the class page to see how it went.',
+        title: `The ${noun} has ended`,
+        text: backHref ? `Close this tab, or open the ${noun} page to see how it went.` : 'You can close this tab.',
         again: false,
       },
       failed: {
-        title: 'Could not connect to the class',
+        title: `Could not connect to the ${noun}`,
         text: 'The network may be blocking live video. Try again in a moment, or switch to another network.',
         again: true,
       },
       removed: {
-        title: 'You were removed from this class',
-        text: `A teacher removed you from “${props.title}”. You can join again if a teacher lets you back. Your time in the class so far still counts.`,
+        title: `You were removed from this ${noun}`,
+        text:
+          noun === 'class'
+            ? `A teacher removed you from “${props.title}”. You can join again if a teacher lets you back. Your time in the class so far still counts.`
+            : `A host removed you from “${props.title}”. You can join again if a host lets you back.`,
         again: false,
       },
     };
@@ -259,11 +272,13 @@ export function LiveRoom(props: Props) {
             <ArrowClockwiseIcon /> Rejoin
           </Button>
         ) : (
-          <Button asChild variant="outline" className="text-foreground">
-            <Link href={classPage}>
-              <ArrowLeftIcon /> Open the class page
-            </Link>
-          </Button>
+          backHref && (
+            <Button asChild variant="outline" className="text-foreground">
+              <Link href={backHref}>
+                <ArrowLeftIcon /> Open the {noun} page
+              </Link>
+            </Button>
+          )
         )}
       </RoomNotice>
     );
@@ -389,7 +404,7 @@ const byPlace = (a: TrackReferenceOrPlaceholder, b: TrackReferenceOrPlaceholder)
 };
 
 function Classroom(props: Props) {
-  const { offeringId, sessionId, host } = props;
+  const { sessionId, host, noun, guest = false } = props;
   const router = useRouter();
   const room = useRoomContext();
   const participants = useParticipants();
@@ -427,7 +442,7 @@ function Classroom(props: Props) {
   const students = participants.filter((p) => !isHost(p));
   const myHand = handOf(localParticipant);
   const place = handPlace(localParticipant);
-  const ref = { offeringId, sessionId };
+  const ref = { sessionId };
 
   // What this student may do now (M03c T2). The engine enforces it; the buttons only say so. An empty list of sources
   // allows them all.
@@ -550,6 +565,7 @@ function Classroom(props: Props) {
   const menuFor = (p: Participant, key: string) => (
     <PersonMenu
       p={p}
+      noun={noun}
       self={p.identity === me}
       host={host}
       pinned={pinned === key}
@@ -582,6 +598,8 @@ function Classroom(props: Props) {
   const mine = cameraOf(localParticipant);
   const latest = hands.at(-1);
   const toastKey = latest ? `${latest.identity}:${handOf(latest)}` : '';
+  // M03c T4: the guest who asked to join last, until a host answers.
+  const asking = props.controls?.waiting.at(-1);
   const tile = (t: TrackReferenceOrPlaceholder, className: string, isMain = false, fills = false) => (
     <Tile
       key={keyOf(t)}
@@ -677,8 +695,8 @@ function Classroom(props: Props) {
               <button
                 type="button"
                 onClick={() => void room.disconnect()}
-                aria-label="Leave the class"
-                title="Leave the class"
+                aria-label={`Leave the ${noun}`}
+                title={`Leave the ${noun}`}
                 className="grid size-7 shrink-0 place-items-center rounded-md bg-white/10 hover:bg-white/20"
               >
                 <XIcon className="size-4" />
@@ -705,6 +723,31 @@ function Classroom(props: Props) {
               >
                 {notice.text}
               </p>
+            )}
+            {host && asking && (
+              <div
+                role="status"
+                className="bg-background text-foreground flex max-w-full items-center gap-2.5 rounded-md py-1.5 pr-1.5 pl-3 text-[0.8125rem]"
+              >
+                <span className="truncate">
+                  <b className="font-semibold">{asking.name}</b> (guest) wants to join
+                </span>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void run(() => admitGuests({ ...ref, 'identity[]': [asking.id] }))}
+                >
+                  Admit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => void run(() => denyGuest({ ...ref, identity: asking.id }))}
+                >
+                  Deny
+                </Button>
+              </div>
             )}
             {host && latest && toastKey !== dismissed && (
               <div
@@ -772,17 +815,17 @@ function Classroom(props: Props) {
               source={Track.Source.Microphone}
               on={<MicrophoneIcon />}
               off={<MicrophoneSlashIcon />}
-              locked={may(Track.Source.Microphone) ? undefined : 'A teacher turned off microphones for students'}
+              locked={may(Track.Source.Microphone) ? undefined : lockedBy(noun, 'microphones')}
             />
             <MediaToggle source={Track.Source.Camera} on={<VideoCameraIcon />} off={<VideoCameraSlashIcon />} />
             <MediaToggle
               source={Track.Source.ScreenShare}
               on={<MonitorArrowUpIcon />}
               off={<MonitorArrowUpIcon />}
-              locked={may(Track.Source.ScreenShare) ? undefined : 'A teacher turned off screen sharing for students'}
+              locked={may(Track.Source.ScreenShare) ? undefined : lockedBy(noun, 'screen sharing')}
               className="max-sm:hidden"
             />
-            {!host && (
+            {!host && !guest && (
               <RoundButton
                 label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
                 pressed={myHand > 0}
@@ -794,7 +837,7 @@ function Classroom(props: Props) {
               </RoundButton>
             )}
             <RoundButton
-              label={mayChat ? 'Send a reaction' : 'A teacher turned off reactions for students'}
+              label={mayChat ? 'Send a reaction' : lockedBy(noun, 'reactions')}
               pressed={tray}
               onClick={() => setTray(!tray)}
               disabled={!mayChat}
@@ -921,7 +964,7 @@ function Classroom(props: Props) {
               now={now}
               participants={participants}
               hands={hands}
-              students={students.length}
+              inRoom={noun === 'class' ? students.length : participants.length}
               me={me}
               busy={busy}
               lower={lower}
@@ -933,9 +976,11 @@ function Classroom(props: Props) {
                 )
               }
               letBack={(identity) => void run(() => allowBack({ ...ref, identity }))}
+              admit={(identities) => void run(() => admitGuests({ ...ref, 'identity[]': identities }))}
+              deny={(identity) => void run(() => denyGuest({ ...ref, identity }))}
             />
           ) : (
-            <Chat me={me} locked={!mayChat} {...chat} />
+            <Chat me={me} noun={noun} locked={!mayChat} {...chat} />
           )}
         </aside>
       )}
@@ -946,10 +991,13 @@ function Classroom(props: Props) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removing ? nameOf(removing.p) : ''} from the class?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Remove {removing ? nameOf(removing.p) : ''} from the {noun}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              They leave the room now and cannot join again until a teacher lets them back. Their time in the class so
-              far still counts.
+              {noun === 'class'
+                ? 'They leave the room now and cannot join again until a teacher lets them back. Their time in the class so far still counts.'
+                : 'They leave the room now and cannot join again until a host lets them back.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -979,11 +1027,12 @@ function Classroom(props: Props) {
             }
             main={main}
             faces={faces.filter((t) => !main || keyOf(t) !== keyOf(main)).slice(0, 3)}
-            host={host}
+            noun={noun}
+            canRaise={!host && !guest}
             myHand={myHand}
             place={place}
             busy={busy}
-            mayUnmute={may(Track.Source.Microphone)}
+            micLock={may(Track.Source.Microphone) ? undefined : lockedBy(noun, 'microphones')}
             toggleHand={() => void toggleHand()}
             back={() => {
               window.focus();
@@ -1003,11 +1052,12 @@ function MiniWindow({
   elapsed,
   main,
   faces,
-  host,
+  noun,
+  canRaise,
   myHand,
   place,
   busy,
-  mayUnmute,
+  micLock,
   toggleHand,
   back,
   leave,
@@ -1016,11 +1066,12 @@ function MiniWindow({
   elapsed: string;
   main: TrackReferenceOrPlaceholder | undefined;
   faces: TrackReferenceOrPlaceholder[];
-  host: boolean;
+  noun: Noun;
+  canRaise: boolean;
   myHand: number;
   place: number;
   busy: boolean;
-  mayUnmute: boolean;
+  micLock: string | undefined;
   toggleHand: () => void;
   back: () => void;
   leave: () => void;
@@ -1057,9 +1108,9 @@ function MiniWindow({
           source={Track.Source.Microphone}
           on={<MicrophoneIcon />}
           off={<MicrophoneSlashIcon />}
-          locked={mayUnmute ? undefined : 'A teacher turned off microphones for students'}
+          locked={micLock}
         />
-        {!host && (
+        {canRaise && (
           <RoundButton
             label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
             pressed={myHand > 0}
@@ -1070,7 +1121,7 @@ function MiniWindow({
             <HandPalmIcon weight={myHand ? 'fill' : 'regular'} />
           </RoundButton>
         )}
-        <RoundButton label="Back to the class tab" onClick={back}>
+        <RoundButton label={`Back to the ${noun} tab`} onClick={back}>
           <ArrowSquareOutIcon />
         </RoundButton>
         <RoundButton label="Leave" onClick={leave} className="bg-destructive hover:bg-destructive/90">
@@ -1174,6 +1225,7 @@ function MoreTile({ more, onClick, className }: { more: number; onClick: () => v
 // Pin for me, for everyone; mute, lower the hand and remove (students only) for hosts (R1-B, R1-C).
 function PersonMenu({
   p,
+  noun,
   self,
   host,
   pinned,
@@ -1183,6 +1235,7 @@ function PersonMenu({
   onRemove,
 }: {
   p: Participant;
+  noun: Noun;
   self: boolean;
   host: boolean;
   pinned: boolean;
@@ -1220,7 +1273,7 @@ function PersonMenu({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={onRemove}>
-              <UserMinusIcon /> Remove from class
+              <UserMinusIcon /> Remove from {noun}
             </DropdownMenuItem>
           </>
         )}
@@ -1297,17 +1350,17 @@ function MediaToggle({
 }
 
 function People({
-  offeringId,
   sessionId,
+  noun,
   host,
   endsAt,
-  enrolled,
+  expected,
   attendanceNote,
   controls,
   now,
   participants,
   hands,
-  students,
+  inRoom,
   me,
   busy,
   lower,
@@ -1315,11 +1368,13 @@ function People({
   setRight,
   muteAll,
   letBack,
+  admit,
+  deny,
 }: Props & {
   now: number;
   participants: Participant[];
   hands: Participant[];
-  students: number;
+  inRoom: number;
   me: string;
   busy: boolean;
   lower: (identities: string[]) => Promise<boolean>;
@@ -1327,6 +1382,8 @@ function People({
   setRight: (right: StudentRight, allowed: boolean) => void;
   muteAll: () => void;
   letBack: (identity: string) => void;
+  admit: (identities: string[]) => void;
+  deny: (identity: string) => void;
 }) {
   const people = [...participants].sort(
     (a, b) => Number(isHost(b)) - Number(isHost(a)) || nameOf(a).localeCompare(nameOf(b)),
@@ -1336,13 +1393,51 @@ function People({
   return (
     <>
       <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto p-4">
+        {host && controls && controls.waiting.length > 0 && (
+          <section className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={heading}>Waiting to join · {controls.waiting.length}</h2>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => admit(controls.waiting.map((w) => w.id))}
+                className={small}
+              >
+                Admit all
+              </button>
+            </div>
+            <ul className="ring-gold/50 bg-gold/10 grid rounded-md px-3 py-1.5 ring-1">
+              {controls.waiting.map((w) => (
+                <li key={w.id} className="flex items-center gap-2.5 py-1.5 text-[0.8125rem]">
+                  <Avatar name={w.name} />
+                  <span className="grid min-w-0 flex-1">
+                    <span className="truncate">{w.name}</span>
+                    <span className="text-xs text-white/60">Guest · asked {ago(now, w.at.getTime())}</span>
+                  </span>
+                  <button type="button" disabled={busy} onClick={() => deny(w.id)} className={small}>
+                    Deny
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => admit([w.id])}
+                    className="bg-primary flex h-7 items-center rounded-md px-2.5 text-xs font-medium"
+                  >
+                    Admit
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {host && controls && (
           <section className="grid gap-1.5">
             <h2 className={heading}>Host controls</h2>
             <div className="grid gap-3 rounded-md p-3 ring-1 ring-white/10">
               {RIGHTS.map(([right, label]) => (
                 <label key={right} className="flex items-center justify-between gap-3 text-[0.8125rem]">
-                  {label}
+                  {OTHERS[noun]} {label}
                   <Switch
                     checked={controls.rights[right]}
                     disabled={busy}
@@ -1370,7 +1465,7 @@ function People({
 
         <dl className="grid grid-cols-3 gap-2">
           {[
-            [`${students}`, `of ${enrolled} in class`],
+            [`${inRoom}`, noun === 'class' ? `of ${expected} in class` : `of ${expected} invited`],
             [`${hands.length}`, hands.length === 1 ? 'hand raised' : 'hands raised'],
             [formatTime(endsAt), 'ends at'],
           ].map(([value, label]) => (
@@ -1472,17 +1567,19 @@ function People({
         <footer className="grid gap-2 border-t border-white/10 p-4 text-xs text-white/60">
           <p>{attendanceNote}</p>
           <ActionForm
-            action={endSession}
-            submitLabel="End class for everyone"
+            action={endRoom}
+            submitLabel={`End ${noun} for everyone`}
             submitVariant="destructive"
             submitIcon={<StopIcon weight="fill" />}
             fullWidth
             confirm={{
-              title: 'End the class for everyone?',
-              message: 'Everyone leaves the room and attendance is worked out from the time each student spent in it.',
+              title: `End the ${noun} for everyone?`,
+              message:
+                noun === 'class'
+                  ? 'Everyone leaves the room and attendance is worked out from the time each student spent in it.'
+                  : 'Everyone leaves the room.',
             }}
           >
-            <input type="hidden" name="offeringId" value={offeringId} />
             <input type="hidden" name="sessionId" value={sessionId} />
           </ActionForm>
         </footer>
@@ -1503,11 +1600,12 @@ function Avatar({ name }: { name: string }) {
 // only the people in the room at that moment. A host can turn it off for students (M03c T2).
 function Chat({
   me,
+  noun,
   locked,
   chatMessages,
   send,
   isSending,
-}: { me: string; locked: boolean } & ReturnType<typeof useChat>) {
+}: { me: string; noun: Noun; locked: boolean } & ReturnType<typeof useChat>) {
   const [draft, setDraft] = useState('');
   async function submit() {
     const text = draft.trim();
@@ -1518,7 +1616,7 @@ function Chat({
   return (
     <>
       <ol className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4">
-        <li className="text-xs text-white/60">Messages are not saved. Only the people in the class now see them.</li>
+        <li className="text-xs text-white/60">Messages are not saved. Only the people in the {noun} now see them.</li>
         {chatMessages.map((m) => {
           const mine = m.from?.identity === me;
           return (
@@ -1551,7 +1649,7 @@ function Chat({
           maxLength={500}
           disabled={locked}
           aria-label="Message"
-          placeholder={locked ? 'A teacher turned off chat for students' : 'Write a message'}
+          placeholder={locked ? lockedBy(noun, 'chat') : 'Write a message'}
           className="h-9 min-w-0 flex-1 rounded-md bg-white/10 px-3 text-[0.8125rem] outline-none placeholder:text-white/40 focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60"
         />
         <button

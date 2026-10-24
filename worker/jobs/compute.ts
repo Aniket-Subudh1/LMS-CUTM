@@ -103,8 +103,11 @@ async function finalizeLiveSession({ sessionId }: FinalizeLiveJob): Promise<void
       { session, projection: { offeringId: 1, kind: 1, startedAt: 1, endedAt: 1, attendanceMode: 1 } },
     ).lean();
     // Already finalized, or a class that never started: no attendance. A project review's class (M07) is one team's, so
-    // it is finalized without attendance rows that would count against the rest of the class.
-    if (!live?.startedAt || !live.endedAt || live.kind === 'review') return { students: 0, offeringId: null };
+    // it is finalized without attendance rows that would count against the rest of the class; a meeting (M03c T4) takes
+    // none.
+    if (!live?.startedAt || !live.endedAt || !live.offeringId || live.kind !== 'class') {
+      return { students: 0, offeringId: null };
+    }
     const { startedAt, endedAt, offeringId, attendanceMode } = live;
     const [enrolled, rows] = await Promise.all([
       Enrollment.distinct('studentId', { offeringId, status: 'active' }).session(session),

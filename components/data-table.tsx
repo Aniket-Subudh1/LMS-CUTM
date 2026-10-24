@@ -9,7 +9,15 @@ import { cn } from '@/lib/cn';
 
 type Column<T> = { header: string; cell: (row: T) => ReactNode; className?: string };
 
-type Paging = { total: number; page: number; pageSize: number; query: Record<string, string>; path: string };
+// `param` names the page parameter when a page has two paged lists (M03c T4: Meetings' upcoming list is `up`).
+type Paging = {
+  total: number;
+  page: number;
+  pageSize: number;
+  query: Record<string, string>;
+  path: string;
+  param?: string;
+};
 
 // Filters and sorting are GET parameters (04 §1): the links keep `query` and only change `page`. A short list with a
 // fixed cap (a team's members, at most 10) leaves the paging out and has no page links.
@@ -67,6 +75,7 @@ export function DataTable<T>(
           pageSize={props.pageSize}
           query={props.query}
           path={props.path}
+          param={props.param}
           className="border-t px-1 pt-3"
         />
       )}
