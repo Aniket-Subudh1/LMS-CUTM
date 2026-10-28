@@ -142,7 +142,7 @@ function CoverDialog({ workspace }: { workspace: Workspace }) {
     <FormDialog
       openParam="cover"
       trigger={
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" className="print:hidden">
           <ImageIcon /> {workspace.coverKey ? 'Change cover' : 'Add a cover'}
         </Button>
       }

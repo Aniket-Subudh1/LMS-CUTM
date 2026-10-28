@@ -7,6 +7,7 @@ import { attainmentSettings } from '@/lib/data/attainment';
 import { db } from '@/lib/db';
 import { computeProgramAttainment, type OfferingAttainment, type OutcomeCode } from '@/lib/domain/attainment';
 import { Attainment } from '@/lib/models/attainment';
+import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
@@ -73,6 +74,7 @@ export type ProgramAttainment = {
     code: string;
     title: string;
     terms: string;
+    sections: number;
     // An offering of it, for the link to its Outcomes tab.
     offeringId: string;
     outcomes: { code: OutcomeCode; value: number | null }[] | null;
@@ -145,11 +147,57 @@ export async function getProgramAttainment(input: {
           code: c.code,
           title: c.title,
           terms: [...new Set(mine.map((o) => termCode.get(String(o.termId)) ?? ''))].sort().join(', '),
+          sections: mine.length,
           offeringId: String(mine[0]._id),
           outcomes: merged.courses.find((m) => m.courseId === String(c._id))?.outcomes ?? null,
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code)),
     outcomes: merged.outcomes,
+  };
+}
+
+export type AttainmentFilters = {
+  programmes: { id: string; label: string }[];
+  batches: { id: string; label: string }[];
+  terms: { id: string; label: string }[];
+  programId: string | null;
+  batchId: string | null;
+  // Null: every term.
+  termId: string | null;
+};
+
+// T4 (mock-up A5): the report's choices — every programme for an admin, a head of department's own department's — and
+// the chosen ones. An id that is not among them falls back to the first programme, its newest batch and every term.
+export async function getAttainmentFilters(filter: {
+  programId?: string;
+  batchId?: string;
+  termId?: string;
+}): Promise<AttainmentFilters> {
+  const viewer = await requireViewer(['admin', 'hod']);
+  await db();
+  const admin = viewer.roles.includes('admin');
+  const [programs, terms] = await Promise.all([
+    admin || viewer.departmentId
+      ? Program.find(admin ? {} : { departmentId: viewer.departmentId }, { code: 1, name: 1 })
+          .sort({ code: 1 })
+          .limit(200)
+          .lean()
+      : [],
+    Term.find({}, { code: 1, name: 1 }).sort({ code: -1 }).limit(100).lean(),
+  ]);
+  const program = programs.find((p) => String(p._id) === filter.programId) ?? programs.at(0);
+  const batches = program
+    ? await Batch.find({ programId: program._id }, { name: 1 }).sort({ startYear: -1 }).limit(50).lean()
+    : [];
+  const batch = batches.find((b) => String(b._id) === filter.batchId) ?? batches.at(0);
+  const term = terms.find((t) => String(t._id) === filter.termId);
+  return {
+    programmes: programs.map((p) => ({ id: String(p._id), label: `${p.code} · ${p.name}` })),
+    batches: batches.map((b) => ({ id: String(b._id), label: b.name })),
+    terms: terms.map((t) => ({ id: String(t._id), label: `${t.code} · ${t.name}` })),
+    programId: program ? String(program._id) : null,
+    batchId: batch ? String(batch._id) : null,
+    termId: term ? String(term._id) : null,
   };
 }

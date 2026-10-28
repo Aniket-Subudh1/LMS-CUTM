@@ -48,7 +48,7 @@ export function TabNav({ tabs }: { tabs: Tab[] }) {
     return () => window.removeEventListener('resize', measure);
   }, [pathname]);
   return (
-    <div className="relative mb-5 min-w-0 lg:mb-6">
+    <div className="relative mb-5 min-w-0 lg:mb-6 print:hidden">
       {/* The row's own width never widens the page: it scrolls (inline-size containment, M06: 11 teacher tabs). The list
           is as wide as its tabs, so its underline runs under every tab when the row scrolls. */}
       <Tabs
