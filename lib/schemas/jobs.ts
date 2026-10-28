@@ -63,6 +63,8 @@ export const LiveControlJob = z.discriminatedUnion('op', [
   z.object({ op: z.literal('muteAll'), sessionId: objectId, byId: objectId, byName: z.string().min(1).max(120) }),
   // M03c T7: close the breakout rooms once their time is up (queued for then; a later close leaves it nothing to do).
   z.object({ op: z.literal('closeBreakouts'), sessionId: objectId }),
+  // M03c T13: settle recordings still marked as running with the engine, after a stop or the room closing.
+  z.object({ op: z.literal('settleRecordings'), sessionId: objectId }),
 ]);
 export type LiveControlJob = z.infer<typeof LiveControlJob>;
 

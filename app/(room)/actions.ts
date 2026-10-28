@@ -6,10 +6,12 @@ import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { requireRoomHost, roomAccess } from '@/lib/auth/access';
 import { endLiveSession } from '@/lib/data/live';
+import { settleRecordings } from '@/lib/data/recordings';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { buildKey } from '@/lib/domain/uploads';
 import {
+  activeRecordings,
   joinToken,
   muteMicrophone,
   recordingEnabled,
@@ -263,10 +265,17 @@ export const denyGuest = action(
 // --- Recording (M03c T5, decision 5): a host records the room, one recording at a time, straight to the bucket.
 // Everyone in the room is told; the recording appears on the class's or meeting's page once it is saved. Audited. ---
 
+const SETTLE_AFTER_STOP_MS = 2 * 60_000;
+
 export const startRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
   const { offeringId, kind } = await requireRoomHost(viewer, sessionId);
   if (!recordingEnabled()) throw new AppError('CONFLICT', 'Recording is not set up on this server.');
   const { roomName } = await liveRoom(sessionId);
+  // M03c T13: the engine says what is recording. A row it no longer runs (its webhook lost) is settled, not a block.
+  if (await LiveSession.exists({ _id: sessionId, 'recordings.status': 'recording' })) {
+    if ((await activeRecordings(roomName)).length > 0) throw new AppError('CONFLICT', 'It is already being recorded.');
+    await settleRecordings(sessionId, new Date());
+  }
   const key = buildKey('live-recording', sessionId, viewer.id, crypto.randomUUID(), 'video/mp4');
   // Claimed first, so two hosts pressing at once start one recording.
   const claimed = await LiveSession.updateOne(
@@ -283,7 +292,12 @@ export const startRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }
   }
   let egressId: string | null = null;
   try {
-    egressId = await recordRoom(roomName, key);
+    // A start that timed out may have started all the same: the engine is asked for a recording writing this file.
+    egressId = await recordRoom(roomName, key).catch(async (error: unknown) => {
+      const started = (await activeRecordings(roomName)).find((r) => r.key === key);
+      if (!started) throw error;
+      return started.egressId;
+    });
   } finally {
     if (!egressId) await LiveSession.updateOne({ _id: sessionId }, { $pull: { recordings: { key } } });
   }
@@ -305,22 +319,27 @@ export const startRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }
   refresh();
 });
 
+// M03c T13: every recording the engine runs for the room stops, whether or not the LMS stored its id. The engine saves
+// the file and says so (the webhook); the worker settles the row in two minutes in case that never arrives.
 export const stopRecording = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async ({ sessionId }, viewer) => {
   const { offeringId } = await requireRoomHost(viewer, sessionId);
-  await db();
-  const session = await LiveSession.findById(sessionId, { roomName: 1, recordings: 1 }).lean();
-  const running = session?.recordings?.find((r) => r.status === 'recording');
-  if (!session || !running) return refresh();
-  if (running.egressId) await stopRoomRecording(session.roomName, running.egressId);
+  const { roomName } = await liveRoom(sessionId);
+  const running = await activeRecordings(roomName);
+  if (running.length === 0) {
+    await settleRecordings(sessionId, new Date());
+    throw new AppError('CONFLICT', 'Nothing is being recorded.');
+  }
+  await Promise.all(running.map((r) => stopRoomRecording(roomName, r.egressId)));
+  await queueLiveControl({ op: 'settleRecordings', sessionId }, SETTLE_AFTER_STOP_MS);
   await writeAudit({
     actorId: viewer.id,
     action: 'live.recording_stopped',
     entity: 'live_session',
     entityId: sessionId,
     ...(offeringId ? { offeringId } : {}),
-    after: { key: running.key },
+    after: { keys: running.map((r) => r.key) },
   });
-  await tell(session.roomName, 'notice', `${viewer.name} stopped recording`);
+  await tell(roomName, 'notice', `${viewer.name} stopped recording. It goes on the page in a minute or two.`);
   refresh();
 });
 

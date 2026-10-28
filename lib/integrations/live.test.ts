@@ -85,6 +85,40 @@ describe('parseWebhook', () => {
     expect(await parseWebhook(track.body, track.authorization)).toEqual({ type: 'ignored' });
   });
 
+  // M03c T13: the file the LMS asked for names the recording even before it is written.
+  it('maps a recording by its id and the file it writes, saved, failed or running', async () => {
+    const recording = (status: string, fileResults: object[]) =>
+      signed({
+        event: status === 'EGRESS_ACTIVE' ? 'egress_started' : 'egress_ended',
+        egressInfo: {
+          egressId: 'EG_one',
+          roomName: 'ls-abc',
+          status,
+          roomComposite: { roomName: 'ls-abc', fileOutputs: [{ filepath: 'live-recording/a.mp4' }] },
+          fileResults,
+        },
+        createdAt: '1760596300',
+      });
+    const saved = await recording('EGRESS_COMPLETE', [{ filename: 'live-recording/a.mp4', duration: '20400000000' }]);
+    expect(await parseWebhook(saved.body, saved.authorization)).toEqual({
+      type: 'recording',
+      roomName: 'ls-abc',
+      at: new Date(1760596300_000),
+      egressId: 'EG_one',
+      key: 'live-recording/a.mp4',
+      status: 'saved',
+      durationSec: 20,
+    });
+    const failed = await recording('EGRESS_FAILED', []);
+    expect(await parseWebhook(failed.body, failed.authorization)).toMatchObject({
+      status: 'failed',
+      key: 'live-recording/a.mp4',
+      durationSec: null,
+    });
+    const running = await recording('EGRESS_ACTIVE', []);
+    expect(await parseWebhook(running.body, running.authorization)).toMatchObject({ status: 'active' });
+  });
+
   it('refuses a body that was changed, a wrong key and a missing signature', async () => {
     const { body, authorization } = await signed({ event: 'room_finished', room: { name: 'ls-abc' }, createdAt: '1' });
     await expect(parseWebhook(body.replace('ls-abc', 'ls-xyz'), authorization)).rejects.toMatchObject({

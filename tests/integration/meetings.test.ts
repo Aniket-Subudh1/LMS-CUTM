@@ -30,7 +30,7 @@ import { getSession } from '@/lib/data/live';
 import { getGuestLobby, getMeeting, getMeetingRoom, listMeetings } from '@/lib/data/meetings';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
-import type { LiveEvent } from '@/lib/integrations/live';
+import type { LiveEvent, Recording } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -62,9 +62,14 @@ const {
   tell: vi.fn(async (roomName: string, topic: string, text: string) => void [roomName, topic, text]),
   removeFromRoom: vi.fn(async (roomName: string, identity: string) => void [roomName, identity]),
   closeRoom: vi.fn(async (roomName: string) => void roomName),
-  // M03c T5: the Egress calls; `open` false is a room nobody has joined yet.
+  // M03c T5: the Egress calls; `open` false is a room nobody has joined yet. T13: the engine keeps what it records
+  // (`running`, by room) and what it finished (`ended`); `timeOut` makes the next start begin recording and then fail
+  // to answer, as a slow engine does.
   egress: {
     open: true,
+    timeOut: false,
+    running: new Map<string, Recording & { roomName: string }>(),
+    ended: new Map<string, Recording>(),
     start: vi.fn(async (roomName: string, key: string) => void [roomName, key]),
     stop: vi.fn(async (roomName: string, egressId: string) => void [roomName, egressId]),
   },
@@ -80,9 +85,24 @@ vi.mock('@/lib/integrations/live', async () => {
     recordingEnabled: () => true,
     startRecording: async (roomName: string, key: string) => {
       await egress.start(roomName, key);
-      return egress.open ? `EG_${key.slice(-12, -4)}` : null;
+      if (!egress.open) return null;
+      const egressId = `EG_${key.slice(-12, -4)}`;
+      egress.running.set(egressId, { roomName, egressId, key, status: 'active', durationSec: null });
+      if (egress.timeOut) {
+        egress.timeOut = false;
+        throw new AppError('INTEGRATION', 'The live-class service did not answer. Try again in a moment.');
+      }
+      return egressId;
     },
-    stopRecording: egress.stop,
+    stopRecording: async (roomName: string, egressId: string) => {
+      await egress.stop(roomName, egressId);
+      const running = egress.running.get(egressId);
+      egress.running.delete(egressId);
+      if (running) egress.ended.set(egressId, { ...running, status: 'saved', durationSec: 12 });
+    },
+    activeRecordings: async (roomName: string) => [...egress.running.values()].filter((r) => r.roomName === roomName),
+    recordingInfo: async (roomName: string, egressId: string) =>
+      egress.ended.get(egressId) ?? egress.running.get(egressId) ?? null,
     setRights: async () => undefined,
     setHand: async () => undefined,
     muteMicrophone: async () => true,
@@ -230,7 +250,9 @@ describe('scheduling a meeting (M03c T4)', () => {
       data: [{ id: String(w.colleague._id), staff: true }],
     });
     // A pasted list: the same people, matched by email or roll number; anyone else is left for the field to report.
-    const pasted = await matchPeople({ keys: [w.colleague.email.toUpperCase(), w.untaught.email, 'nobody@example.com'] });
+    const pasted = await matchPeople({
+      keys: [w.colleague.email.toUpperCase(), w.untaught.email, 'nobody@example.com'],
+    });
     expect(pasted).toMatchObject({
       ok: true,
       data: [{ key: w.colleague.email.toUpperCase(), person: { id: String(w.colleague._id), staff: true } }],
@@ -453,8 +475,9 @@ describe('ending a meeting', () => {
 describe('recording (M03c T5)', () => {
   const get = (key: string) =>
     file(new Request(`http://localhost:3000/api/files/${key}`), { params: Promise.resolve({ key: key.split('/') }) });
-  const saved = (roomName: string, egressId: string) =>
-    hook({ type: 'recording', roomName, egressId, status: 'saved', durationSec: 3120, at: new Date() });
+  const saved = (roomName: string, egressId: string, key = '') =>
+    hook({ type: 'recording', roomName, egressId, key, status: 'saved', durationSec: 3120, at: new Date() });
+  const recordingsOf = async (id: string) => (await LiveSession.findById(id).lean())?.recordings ?? [];
 
   it('lets a host record a meeting once at a time, tells the room, and plays it to its people only', async () => {
     const w = await world();
@@ -529,6 +552,48 @@ describe('recording (M03c T5)', () => {
     expect((await get(recording.key)).status).toBe(302);
     await signInAs(w.untaught);
     expect((await get(recording.key)).status).toBe(404);
+  });
+
+  it('takes the engine’s word: a start that timed out, a lost id, a lost webhook and the room closing (T13)', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const ref = { sessionId: id };
+    const roomName = `ls-${id}`;
+    await signInAs(w.faculty);
+
+    // The engine started recording but did not answer in time: the row keeps the recording it found.
+    egress.timeOut = true;
+    expect(await startRecording(ref)).toMatchObject({ ok: true });
+    const [first] = await recordingsOf(id);
+    expect(first).toMatchObject({ status: 'recording', egressId: expect.stringMatching(/^EG_/) });
+
+    // Its id is lost: Stop still stops what the engine records, and the webhook finds the row by its file.
+    await LiveSession.updateOne({ _id: id }, { $set: { 'recordings.0.egressId': '' } });
+    egress.stop.mockClear();
+    expect(await stopRecording(ref)).toMatchObject({ ok: true });
+    expect(egress.stop).toHaveBeenCalledWith(roomName, first.egressId);
+    await saved(roomName, first.egressId, first.key);
+    expect((await recordingsOf(id))[0]).toMatchObject({ status: 'saved', egressId: first.egressId, durationSec: 3120 });
+    expect(await stopRecording(ref)).toMatchObject({ code: 'CONFLICT', message: 'Nothing is being recorded.' });
+
+    // The engine finished one whose webhook never came: the next start settles it from the engine and records.
+    expect(await startRecording(ref)).toMatchObject({ ok: true });
+    const second = (await recordingsOf(id))[1];
+    egress.running.delete(second.egressId);
+    egress.ended.set(second.egressId, { egressId: second.egressId, key: second.key, status: 'saved', durationSec: 40 });
+    expect(await startRecording(ref)).toMatchObject({ ok: true });
+    expect((await recordingsOf(id)).map((r) => [r.status, r.durationSec ?? null])).toEqual([
+      ['saved', 3120],
+      ['saved', 40],
+      ['recording', null],
+    ]);
+
+    // The room closes with it recording and no word from the engine: the worker settles it.
+    const third = (await recordingsOf(id))[2];
+    egress.running.delete(third.egressId);
+    await queueLiveControl({ op: 'settleRecordings', sessionId: id });
+    await vi.waitFor(async () => expect((await recordingsOf(id))[2]?.status).toBe('failed'));
   });
 });
 

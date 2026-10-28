@@ -1,11 +1,12 @@
 import { Types } from 'mongoose';
+import { recordingEnded } from '@/lib/data/recordings';
 import { db, isDuplicateKey } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { parseWebhook, removeFromRoom, setRights, type LiveEvent } from '@/lib/integrations/live';
 import { Attendance } from '@/lib/models/attendance';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
-import { queueLiveFinalize } from '@/lib/queue';
+import { queueLiveControl, queueLiveFinalize } from '@/lib/queue';
 import { objectId } from '@/lib/schemas/common';
 import { ALL_RIGHTS } from '@/lib/schemas/live';
 
@@ -17,6 +18,7 @@ type Connection = { sid: string; joinedAt: Date; leftAt: Date | null };
 // M03c T7: a breakout room `<roomName>-b<n>` belongs to its class or meeting, so time there counts as time in the class.
 const sessionRoom = (roomName: string) => /^(ls-[a-f\d]{24})-b\d+$/.exec(roomName)?.[1] ?? roomName;
 type Room = { _id: Types.ObjectId; offeringId: Types.ObjectId };
+const SETTLE_AFTER_MS = 60_000;
 
 // One entry per connection (05 §4.4): a connection already recorded is not added again, so a repeated or late event
 // changes nothing. Teachers' and outsiders' identities are ignored.
@@ -74,8 +76,16 @@ async function left({ roomName, userId, sid, joinedAt, at }: Extract<LiveEvent, 
 // Q-50: the engine closes an empty room after about 20 s. Before the scheduled end that is a dropped connection, not
 // the end of the class: the room opens again when someone rejoins.
 async function roomFinished({ roomName, at }: Extract<LiveEvent, { type: 'room_finished' }>) {
-  const room = await LiveSession.findOne({ roomName }, { status: 1, scheduledEnd: 1, startedAt: 1 }).lean();
+  const room = await LiveSession.findOne(
+    { roomName },
+    { status: 1, scheduledEnd: 1, startedAt: 1, recordings: 1 },
+  ).lean();
   if (!room) return;
+  // M03c T13: the room closing ends its recording; a minute later, any still marked as running is settled with the
+  // engine, in case its own event never arrives.
+  if (room.recordings?.some((r) => r.status === 'recording')) {
+    await queueLiveControl({ op: 'settleRecordings', sessionId: String(room._id) }, SETTLE_AFTER_MS);
+  }
   if (room.status === 'live' && room.startedAt && at >= room.scheduledEnd) {
     await LiveSession.updateOne(
       { _id: room._id, status: 'live' },
@@ -85,22 +95,6 @@ async function roomFinished({ roomName, at }: Extract<LiveEvent, { type: 'room_f
   if (await LiveSession.exists({ _id: room._id, status: 'ended', finalizedAt: null })) {
     await queueLiveFinalize(String(room._id));
   }
-}
-
-// M03c T5: a recording's file is saved, or the recording failed. Its egressId was stored when it started; a start
-// event changes nothing.
-async function recorded({ roomName, egressId, status, durationSec, at }: Extract<LiveEvent, { type: 'recording' }>) {
-  if (status === 'active') return;
-  await LiveSession.updateOne(
-    { roomName, 'recordings.egressId': egressId },
-    {
-      $set: {
-        'recordings.$.status': status,
-        'recordings.$.endedAt': at,
-        ...(durationSec === null ? {} : { 'recordings.$.durationSec': durationSec }),
-      },
-    },
-  );
 }
 
 // 06 §3, T5: signed presence events from the live engine.
@@ -116,7 +110,8 @@ export async function POST(request: Request): Promise<Response> {
   if (event.type === 'ignored') return ok();
   await db();
   if (event.type === 'room_finished') await roomFinished(event);
-  else if (event.type === 'recording') await recorded(event);
+  // M03c T5: a recording's file is saved, or the recording failed; a start event changes nothing.
+  else if (event.type === 'recording') await recordingEnded(event.roomName, event, event.at);
   else if (objectId.safeParse(event.userId).success) await (event.type === 'joined' ? joined(event) : left(event));
   return ok();
 }

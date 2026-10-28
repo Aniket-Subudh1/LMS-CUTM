@@ -5,6 +5,7 @@ import { handInAttempts, totalOf } from '@/lib/data/attempts';
 import { recomputeAttainment } from '@/lib/data/attainment';
 import { workOutGradeSheets } from '@/lib/data/grade-sheets';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
+import { settleRecordings } from '@/lib/data/recordings';
 import { lockForRun } from '@/lib/data/locks';
 import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
@@ -199,6 +200,7 @@ async function closeBreakouts(sessionId: string, now: Date): Promise<void> {
 // M03c T2: once the class has ended there is no room to change.
 async function liveControl(job: LiveControlJob): Promise<void> {
   if (job.op === 'closeBreakouts') return closeBreakouts(job.sessionId, new Date());
+  if (job.op === 'settleRecordings') return settleRecordings(job.sessionId, new Date());
   const live = await LiveSession.findOne(
     { _id: job.sessionId, status: 'live' },
     { roomName: 1, studentsMay: 1 },

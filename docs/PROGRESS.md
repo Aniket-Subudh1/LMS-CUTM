@@ -3279,3 +3279,43 @@ Request: "plan and complete m9". The plan (T3, T4, T6, T7 and this report) was a
   - **AC-M09-04** — the briefs hold no seeded name, email or roll number, and the question and the map are unchanged after a suggestion (integration). Passed. Tried by hand as well: the suggestions stayed unsaved changes.
   - **AC-M09-05** — 0.4 / 0.6 gives CO1 2.4, and the record states the settings used (integration). Passed. The tab prints them in "Worked out … with: …".
 
+
+### 2026-10-28 · M03c/T13 Recording that starts, stops and saves · Claude Code, at Aniket's request
+
+Aniket: "the stop recording button doesn't work, recording should fully work". The room's button followed the engine (`room.isRecording`) and the server followed its own row, and nothing reconciled them. A start that timed out deleted the row while Egress kept recording, and Stop then found nothing to stop and said nothing. A lost webhook left a row "recording" for ever, so Start answered "already being recorded". There was no feedback while the engine took its ~15 s, and a rejected action left every button disabled.
+
+**Created**
+- **Adapter** (`lib/integrations/live.ts`):
+  - `activeRecordings(roomName)` uses `listEgress({ roomName, active: true })`.
+  - `recordingInfo(roomName, egressId)` uses `listEgress({ egressId })`.
+  - One mapping, `recordingOf`, serves both and the webhook. A recording's `key` is the file path the LMS asked for.
+- **The shared write** (`lib/data/recordings.ts`, used by the webhook, the start action, Stop and the worker):
+  - `recordingEnded` finds the row by `egressId`, or else by `key`.
+  - `settleRecordings` gives rows the engine no longer runs the engine's word: saved or failed, and failed when the engine has forgotten them.
+- **Actions** (`app/(room)/actions.ts`):
+  - **Start** settles a stale row instead of refusing. After a timed-out start, it keeps the recording the engine did begin.
+  - **Stop** stops whatever the engine records for the room, queues a settle for 2 minutes later, and says "Nothing is being recorded." when there is nothing.
+- **Webhook and worker:**
+  - `app/api/webhooks/live/route.ts`: the room closing with a recording queues a settle a minute later.
+  - `lib/schemas/jobs.ts` and `worker/jobs/compute.ts`: the `settleRecordings` live-control op.
+- **The room** (`components/live-room.tsx`):
+  - The recording item reads "Starting the recording…" or "Stopping the recording…" until the engine confirms, and after 45 s asks to try again.
+  - `run()` and `go()` always give the buttons back, and say when a request never reached the server.
+- **Tests:**
+  - `lib/integrations/live.test.ts`: egress webhooks, saved, failed and running, with the key.
+  - `tests/integration/meetings.test.ts`: the Egress mock now behaves like an engine. A new case covers a start that timed out, a lost id, a lost webhook and the worker's settle.
+- **Docs:** 05 (`recordings`), 06 §4.3 (the two adapter functions, `Recording`), §6 (`settleRecordings`), §8.8.
+
+**Not done** — The bar's own Record button and the board in the recording come in T16 and T17. A recording on the test server's Egress through the deployed app comes with T18's walk.
+
+**Assumptions** — none new.
+
+**Open questions** — none new.
+
+**Verification**
+- On this task's files alone (a detached worktree of `HEAD` with only T13's changes):
+  - `npx tsc --noEmit` → exit 0
+  - `npx eslint` on the changed files → exit 0
+  - `npx vitest run --project unit lib/integrations/live.test.ts` → 9 passed
+  - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 52 passed (52)`
+- Not run with a real Egress yet; that is T18's walk.

@@ -232,6 +232,8 @@ function ring(audio: AudioContext) {
     tone.stop(at + 0.9);
   }
 }
+// M03c T13: how long the host waits for the engine to start or stop a recording before being asked to try again.
+const RECORDING_WAIT_SEC = 45;
 const REACTIONS: [string, string][] = [
   ['👍', 'thumbs up'],
   ['❤️', 'heart'],
@@ -568,6 +570,10 @@ function Classroom(
   const wide = useWide();
   // M03c T5: the engine says when an Egress recording runs, so everyone in the room sees it.
   const recording = useIsRecording();
+  // M03c T13: the engine takes several seconds to start or stop one; until it does, the host's button says so.
+  const [asked, setAsked] = useState<{ record: boolean; at: number } | null>(null);
+  const recordingPending = asked !== null && asked.record !== recording && now - asked.at < RECORDING_WAIT_SEC;
+  const recordingLate = asked !== null && asked.record !== recording && !recordingPending;
   const browser = useBrowser();
   // Unset until the viewer chooses: the people panel opens by itself on a wide screen only.
   const [choice, setChoice] = useState<Panel | null>();
@@ -806,22 +812,37 @@ function Classroom(
     };
   }, [openMini]);
 
+  // A request that never reaches the server (a dropped connection, or a deploy since the page opened) says so, and the
+  // buttons come back either way.
   async function run(change: () => Promise<{ ok: boolean; message?: string }>) {
     setBusy(true);
     setError(null);
-    const result = await change();
-    setBusy(false);
-    if (!result.ok) setError(result.message ?? 'That did not work. Try again.');
-    return result.ok;
+    try {
+      const result = await change();
+      if (!result.ok) setError(result.message ?? 'That did not work. Try again.');
+      return result.ok;
+    } catch {
+      setError('That did not reach the server. Check your connection, or reload the page.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
   const lower = (identities: string[]) => run(() => lowerHands({ ...ref, 'identity[]': identities }));
   // M03c T7: move to a breakout room, or back (0).
   const go = async (to: number) => {
     setBusy(true);
-    const message = await switchTo(to);
-    setBusy(false);
-    if (message) setError(message);
+    try {
+      const message = await switchTo(to);
+      if (message) setError(message);
+    } finally {
+      setBusy(false);
+    }
   };
+  const record = (on: boolean) =>
+    void run(() => (on ? startRecording(ref) : stopRecording(ref))).then(
+      (ok) => ok && setAsked({ record: on, at: now }),
+    );
   const invited = !host && !inBreakout && (breakout?.mine ?? null) !== null;
   const inviteKey = breakout ? `${breakout.openedAt.getTime()}` : '';
   const toggleHand = () => (myHand ? lower([me]) : run(() => raiseHand(ref)));
@@ -1318,12 +1339,22 @@ function Classroom(
                   </DropdownMenuCheckboxItem>
                 )}
                 {props.canRecord && !inBreakout && (
-                  <DropdownMenuItem
-                    disabled={busy}
-                    onSelect={() => void run(() => (recording ? stopRecording(ref) : startRecording(ref)))}
-                  >
+                  <DropdownMenuItem disabled={busy || recordingPending} onSelect={() => record(!recording)}>
                     <RecordIcon weight="fill" className="text-red-600" />
-                    {recording ? 'Stop recording' : 'Start recording'}
+                    <span className="grid">
+                      {recordingPending
+                        ? asked?.record
+                          ? 'Starting the recording…'
+                          : 'Stopping the recording…'
+                        : recording
+                          ? 'Stop recording'
+                          : 'Start recording'}
+                      {recordingLate && (
+                        <span className="text-destructive text-xs">
+                          {asked?.record ? 'It did not start. Try again.' : 'It has not stopped yet. Try again.'}
+                        </span>
+                      )}
+                    </span>
                   </DropdownMenuItem>
                 )}
                 {browser.canPopOut && (

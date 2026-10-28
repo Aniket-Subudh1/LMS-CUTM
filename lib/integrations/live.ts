@@ -3,6 +3,7 @@ import {
   AccessToken,
   DataPacket_Kind,
   EgressClient,
+  type EgressInfo,
   EgressStatus,
   EncodedFileOutput,
   EncodedFileType,
@@ -35,15 +36,17 @@ export type LiveEvent =
   | { type: 'left'; roomName: string; userId: string; sid: string; joinedAt: Date; at: Date }
   | { type: 'room_finished'; roomName: string; at: Date }
   // M03c T5: a recording started, saved its file, or failed.
-  | {
-      type: 'recording';
-      roomName: string;
-      egressId: string;
-      status: 'active' | 'saved' | 'failed';
-      durationSec: number | null;
-      at: Date;
-    }
+  | ({ type: 'recording'; roomName: string; at: Date } & Recording)
   | { type: 'ignored' };
+
+// M03c T13: a recording as the engine tells it. `key` is the file it writes, so a recording whose id the LMS never
+// stored is still found by its file.
+export type Recording = {
+  egressId: string;
+  key: string;
+  status: 'active' | 'saved' | 'failed';
+  durationSec: number | null;
+};
 
 let rooms: RoomServiceClient | undefined;
 let egress: EgressClient | undefined;
@@ -203,6 +206,23 @@ export async function startRecording(roomName: string, key: string): Promise<str
   return info?.egressId ?? null;
 }
 
+// M03c T13: the recordings the engine is running for the room. The engine, not the LMS's row, says what is recording.
+export async function activeRecordings(roomName: string): Promise<Recording[]> {
+  const list = await request(
+    'activeRecordings',
+    roomName,
+    () => egressService().listEgress({ roomName, active: true }),
+    [],
+  );
+  return list.map(recordingOf);
+}
+
+// M03c T13: one recording, finished or not; null when the engine no longer knows it.
+export async function recordingInfo(roomName: string, egressId: string): Promise<Recording | null> {
+  const [info] = await request('recordingInfo', roomName, () => egressService().listEgress({ egressId }), []);
+  return info ? recordingOf(info) : null;
+}
+
 // Stopping one that has already ended (the room closed meanwhile) changes nothing.
 export async function stopRecording(roomName: string, egressId: string): Promise<void> {
   await request(
@@ -222,6 +242,20 @@ export async function stopRecording(roomName: string, egressId: string): Promise
 
 const FAILED = [EgressStatus.EGRESS_FAILED, EgressStatus.EGRESS_ABORTED];
 
+// The key is the file path the LMS asked for (`startRecording`), which a running recording has not written yet. A file
+// cut at Egress's time limit is still saved.
+function recordingOf(info: EgressInfo): Recording {
+  const file = info.fileResults[0];
+  const ended = info.status >= EgressStatus.EGRESS_COMPLETE;
+  const asked = info.request.case === 'roomComposite' ? info.request.value.fileOutputs[0]?.filepath : undefined;
+  return {
+    egressId: info.egressId,
+    key: asked ?? file?.filename ?? '',
+    status: !ended ? 'active' : FAILED.includes(info.status) || !file ? 'failed' : 'saved',
+    durationSec: file ? Math.round(Number(file.duration) / 1e9) : null,
+  };
+}
+
 export async function parseWebhook(rawBody: string, authorization: string | null): Promise<LiveEvent> {
   receiver ??= new WebhookReceiver(env().LIVEKIT_API_KEY, env().LIVEKIT_API_SECRET);
   let event: Awaited<ReturnType<WebhookReceiver['receive']>>;
@@ -233,20 +267,10 @@ export async function parseWebhook(rawBody: string, authorization: string | null
   }
   // createdAt is in whole seconds (verified against LiveKit 1.13.9, 11 §3.1).
   const at = new Date(Number(event.createdAt) * 1000);
-  // M03c T5: egress events name their room in the recording, not in `room`. A file cut at Egress's time limit is
-  // still saved.
+  // M03c T5: egress events name their room in the recording, not in `room`.
   const recording = event.egressInfo;
   if (recording && event.event.startsWith('egress_')) {
-    const file = recording.fileResults[0];
-    const ended = recording.status >= EgressStatus.EGRESS_COMPLETE;
-    return {
-      type: 'recording',
-      roomName: recording.roomName,
-      egressId: recording.egressId,
-      status: !ended ? 'active' : FAILED.includes(recording.status) || !file ? 'failed' : 'saved',
-      durationSec: file ? Math.round(Number(file.duration) / 1e9) : null,
-      at,
-    };
+    return { type: 'recording', roomName: recording.roomName, at, ...recordingOf(recording) };
   }
   const roomName = event.room?.name ?? '';
   const participant = event.participant;
