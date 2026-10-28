@@ -42,8 +42,41 @@ Asked before T4, when Aniket said to complete the milestone:
 
 5. **Recording runs on the current server**, 65.20.89.9, beside LiveKit. It has 2 vCPUs and 3.3 GB, and also runs the LMS, MongoDB and Redis. A recording can therefore slow the live class and the LMS while it runs. Aniket accepts this for trying it out; real use needs its own machine (M11, Q-12).
 6. **Captions are the host's own speech.** The host's browser recognises it (Chrome's or Edge's speech recognition, which may send the audio to Google or Microsoft) and sends the text to everyone in the room. Each person turns captions on or off for themselves. Students' speech is not captioned, so no student's voice leaves for captions.
-7. **Guests come in by personal link and a lobby.** Each invited guest's email holds their own link. They type their name and ask to join, and a host admits or turns them away. No account and no code.
+7. **Guests come in by personal link and a lobby.** Each invited guest's email holds their own link. They type their name and ask to join, and a host admits or turns them away. No account and no code. *Replaced by decision 9 (28 Oct 2026): a passcode, and no lobby.*
 8. **One mock-up round for everything left** (rounds 2 and 3 together). After the picks, T4–T10 are built straight through, one commit each.
+
+## Decisions (Aniket, 28 Oct 2026): the meeting fixes
+
+Asked after using the room. Aniket reported that invited people did not get a link they could use, that people without an account must be able to join and the link must be safe "like Zoom" with a passcode, that a shared screen stayed hidden while the whiteboard was open, that Stop recording did not work, that the whiteboard had no full screen and phones saw it narrow and portrait, that polls hid in a side tab, and that phones opened the back camera with no way to turn it round. The picks below were made on a plan, without a mock-up round (he chose to build straight from it). They replace decision 7 and R3-B's default.
+
+9. **A personal link and a passcode for everyone invited.** Every co-host, member and guest is emailed their own link and the meeting's 6-digit passcode. Signed in as that person, the link opens the meeting's room. Otherwise it asks for a name and the passcode, then joins straight away. No lobby: nobody waits for a host, and anyone not invited cannot get in. (Replaces decision 7.)
+10. **Labelled buttons on the bar.** Hosts' tools (Board, Poll, Record) are buttons of their own. On a phone, the bar holds five buttons and `⋯` opens a sheet of labelled tiles. A poll pops up in front of everyone. (Replaces R3-B's Activities tab.)
+11. **A recording shows the whiteboard.** While a recording runs with the board open, the presenter's browser sends the board as a video beside the cameras.
+12. **The whiteboard has its own full screen**, and phones see the presenter's landscape view.
+
+### Design of T12–T18 (dev)
+
+- **Invitations (T14):**
+  - The people field adds what was typed when it loses focus or the form is sent, so nothing typed is lost.
+  - Every invitation carries the person's own link (`/m/<token>`) and the passcode. A member's token signs the meeting and their user id; a guest's stays their guest id, so links already sent keep working.
+  - Hosts see the passcode on the meeting's page, and can copy anyone's link or send their invitation again.
+  - Signing in returns to the page that asked for it.
+- **Joining by link (T15):**
+  - The passcode is checked in constant time, with tries limited per link and per address.
+  - A right passcode gives the browser a sealed cookie for that meeting and person, until the meeting ends, so a reload comes straight back.
+  - A guest's identity is their guest id; a member who did not sign in joins as themselves, taking part. A co-host who did not sign in takes part too; running the meeting needs signing in.
+  - With a link, people answer polls and raise hands like everyone else. Guests still stay out of breakout rooms (A-201).
+  - Everyone sees a "Ready to join?" screen first: their own picture from the front camera, the microphone and camera switches, and Flip on a phone.
+- **Recording (T13):**
+  - The engine says what is recording. Stop stops every recording the engine runs for the room. Start clears a stored recording the engine no longer runs. A start that times out keeps its row if the engine started it anyway.
+  - The webhook finds a recording by its id or its file. After a room finishes, the worker settles any recording still marked as running.
+  - Hosts see "Starting…" and "Stopping…" until the engine confirms.
+- **The stage (T16):**
+  - The board and every shared screen are presentations. The newest fills the stage; the others wait as tiles, and a tap swaps them for that viewer. The board stays loaded while it waits.
+  - The board and a shared screen go full screen. A phone then turns to landscape where the browser lets it; an iPhone fills the window and asks to be turned sideways.
+  - Viewers follow the presenter's view, so a phone sees what the laptop sees, scaled. The presenter's laser and pointer reach everyone.
+  - The board's switches sit in a strip above it, not over Excalidraw's tools.
+- **Controls (T17):** as decision 10. People and Chat open as a sheet from the bottom of a phone or tablet. A host's Leave offers "End for everyone". Errors close themselves.
 
 ## Design of T4–T10 (dev)
 
@@ -112,7 +145,7 @@ Drawn inside the real app at 1440 px and 390 px, with two variants where there i
 
 Drawn on 24 Oct 2026 on the e2e data (CUTM1602's room, faculty1's Meetings, the class page) and shown to Aniket on one page: https://claude.ai/artifact/3eLKRW42zQFQf1dCNSyNPP (private).
 
-**Picks (24 Oct 2026):** Aniket said “yes start building” without choosing R3-B, so it is **A · an Activities tab** beside People and Chat (Google Meet's place, and a shorter bar on a phone); B moves three buttons if he prefers it. Everything else as drawn.
+**Picks (24 Oct 2026):** Aniket said “yes start building” without choosing R3-B, so it is **A · an Activities tab** beside People and Chat (Google Meet's place, and a shorter bar on a phone); B moves three buttons if he prefers it. Everything else as drawn. *On 28 Oct 2026 he chose buttons on the bar after all (decision 10).*
 
 ## How the pieces work (verified against the installed SDKs and LiveKit's docs)
 
@@ -141,6 +174,13 @@ Each task: database → backend → frontend, one commit, one PROGRESS entry.
 - **T9** Live captions.
 - **T10** Background blur.
 - **T11** Report: the walk of T4–T10 on the dev LiveKit server and the fixes it led to (PROGRESS, 24 Oct 2026).
+- **T12** Decisions 9–12 (this file, PROGRESS).
+- **T13** Recording that starts, stops and saves.
+- **T14** Invitations: a personal link and the passcode for everyone; copy and resend; signing in returns.
+- **T15** Joining by link and passcode; the "Ready to join?" screen; the front camera and Flip.
+- **T16** The stage: the board and shared screens together, full screen, following the presenter, the laser, the board in the recording.
+- **T17** The bar's labelled buttons, the phone's sheet, the poll's pop-up, and the remaining fixes.
+- **T18** Report: the walk of T12–T17 and its fixes.
 
 ## Not built
 

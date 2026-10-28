@@ -24,7 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T3 pushed on 17 Oct; T4–T11 committed on main on 24 Oct, not pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T11 pushed. The meeting fixes, T12–T18 (decisions 9–12, 28 Oct 2026), are being built | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
@@ -292,16 +292,16 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-185 | A meeting is its people's: admins do not reach a meeting they are not invited to (they do reach every class) | M03c | — |
 | A-186 | Co-hosts are staff; people from the LMS are staff or students the scheduler can already see (09 §3); a guest is any email address, even one that belongs to an LMS account (they then come in as a guest) | M03c | — |
 | A-187 | Letting a guest in or turning them away is not audited (it changes no record), like what students may do (A-97); removing and letting back are | M03c | — |
-| A-188 | A guest let in comes straight back while the meeting runs; one turned away may ask again; the lobby holds at most the meeting's 20 guests | M03c | — |
+| A-188 | A guest let in comes straight back while the meeting runs; one turned away may ask again; the lobby holds at most the meeting's 20 guests *Superseded on 28 Oct 2026 by decision 9: no lobby.* | M03c | — |
 | A-189 | An invitation's calendar file names only its recipient and asks for no reply (`RSVP=FALSE`): Gmail and Outlook still show Yes · Maybe · No, but the LMS collects no answers | M03c | — |
 | A-190 | Someone without the role a room action needs meets 404, as with the course's host-only actions (T1–T3's actions answered a student FORBIDDEN before they moved to the session) | M03c | — |
-| A-191 | The guest lobby's camera check is M04b's device check (browser, connection, camera) in its white card, not the bare video tile drawn in R2-C | M03c | — |
+| A-191 | The guest lobby's camera check is M04b's device check (browser, connection, camera) in its white card, not the bare video tile drawn in R2-C *Superseded on 28 Oct 2026 by the "Ready to join?" screen (T15).* | M03c | — |
 | A-192 | A meeting lasts at most 6 hours and ends on the day it starts (IST), as the dialog asks for one date | M03c | — |
 | A-193 | Recordings are kept with their class or meeting; nobody can delete one yet | M03c | — |
 | A-194 | A recording is the room as Egress's speaker layout shows it: whoever speaks large, the others small, a shared screen filling the frame | M03c | — |
 | A-195 | A class's recording plays for everyone who opens the class page (its students, teachers, the department's head, admins); a meeting's for its hosts and members, not its guests, who have no page | M03c | — |
 | A-196 | One poll is open at a time in a class or meeting | M03c | — |
-| A-197 | Guests do not take part in polls: an answer is kept per LMS account | M03c | — |
+| A-197 | Guests do not take part in polls: an answer is kept per LMS account *Superseded on 28 Oct 2026 by A-225.* | M03c | — |
 | A-198 | Who answered what is never shown, in the room or after (01 §4 keeps poll analytics out); the counts stay with the session. The mock-up's "who answered what is on the class page" is not built | M03c | — |
 | A-199 | Hosts see the counts by their page reading the polls again every 3 s while one is open, not by a message per answer | M03c | — |
 | A-200 | Breakout rooms take the people in the room when a host opens them; people who join later stay in the main room | M03c | — |
@@ -323,6 +323,15 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-216 | A drawn section names at most 10 topics, since the stored list holds 400 characters; the bank's 100 most used topics are suggested | fields round | — |
 | A-217 | An offering's faculty are found among faculty accounts of every department, the viewer included | fields round | — |
 | A-218 | M09's A1 is variant A, attainment first on the Outcomes tab, since Aniket asked for the build without picking (as with M03c's R3-B) | M09 | — |
+| A-219 | A meeting's passcode is 6 digits, kept as plain text on the meeting so hosts can read it out and invitations can carry it; it stays the same for the meeting's life | M03c (fixes) | — |
+| A-220 | Meetings scheduled before 28 Oct 2026 have no passcode, and their links still open them without one | M03c (fixes) | — |
+| A-221 | A co-host or member who opens their link signed out takes part under their own name; host controls need signing in | M03c (fixes) | — |
+| A-222 | A link takes at most 10 passcode tries in 15 minutes, and an address 30, across all links | M03c (fixes) | — |
+| A-223 | A right passcode lets that browser back into that meeting for 12 hours (a meeting lasts at most 6, A-192); another browser asks again | M03c (fixes) | — |
+| A-224 | Two browsers on one link are one person in the room: the later replaces the earlier, as LiveKit allows one connection per identity | M03c (fixes) | — |
+| A-225 | Guests answer polls and raise hands; a guest's answer is kept against their guest id, as a member's against their account | M03c (fixes) | — |
+| A-226 | An iPhone cannot turn the page to landscape by itself: in full screen the board fills the window and asks to be turned sideways | M03c (fixes) | — |
+| A-227 | The board in a recording is the presenter's view at 10 frames a second, without the laser's trail or the cursors | M03c (fixes) | — |
 
 ## 5. Log
 
@@ -3164,3 +3173,37 @@ Request: fix the 16 tests whose pages failed with "a.sections is not iterable" (
   - a standalone test refused, another teacher 404;
   - only the titled outcomes are sent, the untitled are named, and the map is unchanged;
   - on the catalogue, the first title by programme code.
+
+### 2026-10-28 · M03c/T12 The meeting fixes: decisions and plan · Claude Code, at Aniket's request
+
+Request (28 Oct 2026): invited people do not get a link they can use; someone without an account must be able to join, and the link must be safe "like Zoom" with a passcode. Also: a shared screen stays hidden while the whiteboard is open, Stop recording does not work, the whiteboard has no full screen and phones see it narrow and portrait, polls hide in a side tab, and phones open the back camera with no way to turn it round. "Plan everything and fix the complete UX." This request and the picks below are the written scope approval (AGENTS law 1).
+
+**What the code showed**
+- **Invitations:**
+  - The people field dropped an address typed without Enter, and the dialog still said the invitations were on their way.
+  - Members were emailed the meeting's page, which sends someone signed out to sign in and then to Home. Someone who never set a password could not join at all.
+- **Guest links:** a guest's link had no passcode. Once a guest had been let in, anyone holding the link came straight in.
+- **Recording:** the button followed the engine (`room.isRecording`) and the server followed its own row, and nothing reconciled the two. A start that timed out deleted the row while Egress kept recording; Stop then found nothing to stop and said nothing. There was no "Stopping…", and a rejected action left every button disabled.
+- **The stage:** with the board open, the stage drew only the board and the faces, so a shared screen was never shown.
+- **The whiteboard:** viewers did not follow the presenter's view, the laser was never sent, and there was no full screen.
+- **Polls** lived only in the side panel's Activities tab.
+- **The camera** was opened with no facing mode, and there was no Flip.
+
+**Picks:** decisions 9–12 in the M03c file:
+- link and passcode for everyone invited, no lobby;
+- labelled buttons on the bar;
+- the board in the recording;
+- the board's own full screen;
+- built straight from the plan, without mock-ups.
+
+**Created**
+- `docs/milestones/M03c-live-like-meet.md`: decisions 9–12, the design of T12–T18, and the tasks. Decision 7 and the R3-B pick are marked as replaced.
+- `docs/PROGRESS.md`: the M03c status row; A-219–A-227; A-188, A-191 and A-197 marked superseded; this entry.
+
+**Not done** — The build, T13–T18, follows.
+
+**Assumptions** — A-219–A-227 (§4).
+
+**Open questions** — none new.
+
+**Verification** — Docs only; nothing to run.
