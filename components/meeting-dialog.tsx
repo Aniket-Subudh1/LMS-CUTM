@@ -24,7 +24,7 @@ export function MeetingDialog({ meeting, trigger }: { meeting?: MeetingDetail; t
       trigger={trigger}
       openParam={meeting ? 'people' : 'meeting'}
       size="wide"
-      icon={<PageIcon name="live" className="size-8" />}
+      icon={<PageIcon name={running ? 'people' : 'meetings'} className="size-8" />}
       title={running ? 'People in this meeting' : meeting ? 'Change this meeting' : 'New meeting'}
       description={
         running

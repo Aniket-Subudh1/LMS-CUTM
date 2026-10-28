@@ -24,7 +24,7 @@ async function Results() {
     <>
       <div className="print:hidden">
         <PageHeader
-          icon={<PageIcon name="diploma" />}
+          icon={<PageIcon name="results" />}
           title="Results"
           description="Your grade sheets, once the university publishes them."
         />

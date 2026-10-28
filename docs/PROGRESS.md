@@ -3979,3 +3979,19 @@ Aniket: "AI can create questions … keep a visible button Create with AI". He c
 - `npx tsc --noEmit` → clean; `npx eslint` on the changed files → clean.
 - `npx vitest run tests/integration/ai-drafts.test.ts tests/integration/assessments.test.ts` → 29 passed.
 - Screenshots on the dev server (faculty1, CUTM1602): a draft quiz with one AI draft shows Create with AI, the draft's chip and Review, and "Question 2 is an AI draft to review"; the dialog lists CO1–CO3; the bank shows the filled Create with AI. The quiz was inserted for the screenshot and deleted after.
+
+### 2026-10-28 · Marks for the newer pages · Cursor
+
+Aniket asked for generated marks on the newer pages that were still sharing an older icon, or had none.
+
+**Created** — `public/icons/`: meetings, reports, exams, marks, projects, integrations, results, engagement, attainment, records, github.
+
+**Changed** — those keys in `components/page-icon.tsx`, and the places that name the thing: the sidebar (Reports, Meetings, Results, Exams, Integrations), the course tabs (Marks, Projects, Records), the report tabs, Meetings and its dialog, Results, Exams and a student’s grade sheet, Integrations (GitHub and the exam section), project pages and the project dialog, the Marks and Records sections, Attainment, Engagement, the grade-scale and CE-trend settings, the class attainment section, a student’s daily activity, the home “Disengaged” tile, and the “Evaluate with AI” heading. 08 §5.2.
+
+**Not done** — the full check, integration suite and production build were not re-run. Count tiles that report a status (locked, dropping, incomplete) still use Phosphor, as do buttons and row actions.
+
+**Assumptions** — A page uses its own mark. A status such as locked stays a line icon.
+
+**Open questions** — none.
+
+**Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied.

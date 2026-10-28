@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { cn } from '@/lib/cn';
 import assignment from '@/public/icons/assignment.png';
+import attainment from '@/public/icons/attainment.png';
 import attendance from '@/public/icons/attendance.png';
 import audit from '@/public/icons/audit.png';
 import badge from '@/public/icons/badge.png';
@@ -19,11 +20,15 @@ import dashboard from '@/public/icons/dashboard.png';
 import departments from '@/public/icons/departments.png';
 import devices from '@/public/icons/devices.png';
 import diploma from '@/public/icons/diploma.png';
+import engagement from '@/public/icons/engagement.png';
 import envelope from '@/public/icons/envelope.png';
 import evaluation from '@/public/icons/evaluation.png';
+import exams from '@/public/icons/exams.png';
 import fileq from '@/public/icons/fileq.png';
+import github from '@/public/icons/github.png';
 import globe from '@/public/icons/globe.png';
 import imports from '@/public/icons/imports.png';
+import integrations from '@/public/icons/integrations.png';
 import key from '@/public/icons/key.png';
 import lab from '@/public/icons/lab.png';
 import labtest from '@/public/icons/labtest.png';
@@ -31,8 +36,10 @@ import lesson from '@/public/icons/lesson.png';
 import lessons from '@/public/icons/lessons.png';
 import live from '@/public/icons/live.png';
 import mapping from '@/public/icons/mapping.png';
+import marks from '@/public/icons/marks.png';
 import matching from '@/public/icons/matching.png';
 import mcq from '@/public/icons/mcq.png';
+import meetings from '@/public/icons/meetings.png';
 import missing from '@/public/icons/missing.png';
 import msq from '@/public/icons/msq.png';
 import notifications from '@/public/icons/notifications.png';
@@ -45,11 +52,15 @@ import people from '@/public/icons/people.png';
 import plan from '@/public/icons/plan.png';
 import profile from '@/public/icons/profile.png';
 import programmes from '@/public/icons/programmes.png';
+import projects from '@/public/icons/projects.png';
 import quiz from '@/public/icons/quiz.png';
+import records from '@/public/icons/records.png';
+import reports from '@/public/icons/reports.png';
+import results from '@/public/icons/results.png';
 import session from '@/public/icons/session.png';
 import settings from '@/public/icons/settings.png';
-import sparkle from '@/public/icons/sparkle.png';
 import signin from '@/public/icons/signin.png';
+import sparkle from '@/public/icons/sparkle.png';
 import structure from '@/public/icons/structure.png';
 import terms from '@/public/icons/terms.png';
 import textq from '@/public/icons/textq.png';
@@ -60,6 +71,7 @@ import video from '@/public/icons/video.png';
 
 export const pageIcons = {
   assignment,
+  attainment,
   attendance,
   audit,
   badge,
@@ -78,11 +90,15 @@ export const pageIcons = {
   departments,
   devices,
   diploma,
+  engagement,
   envelope,
   evaluation,
+  exams,
   fileq,
+  github,
   globe,
   imports,
+  integrations,
   key,
   lab,
   labtest,
@@ -90,8 +106,10 @@ export const pageIcons = {
   lessons,
   live,
   mapping,
+  marks,
   matching,
   mcq,
+  meetings,
   missing,
   msq,
   notifications,
@@ -104,7 +122,11 @@ export const pageIcons = {
   plan,
   profile,
   programmes,
+  projects,
   quiz,
+  records,
+  reports,
+  results,
   session,
   settings,
   signin,

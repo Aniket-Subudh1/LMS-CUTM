@@ -120,7 +120,7 @@ function ClassMarks({
   const rubrics = sheet.components.filter((c) => c.key !== 'theory');
   return (
     <Section
-      icon={<PageIcon name="chart" className="size-8" />}
+      icon={<PageIcon name="marks" className="size-8" />}
       title="Internal marks"
       description="By the Examination Policy, from published results, live-class attendance and the rubrics."
       action={

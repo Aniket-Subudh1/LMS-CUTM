@@ -61,7 +61,7 @@ async function CeReport({ searchParams }: { searchParams: PageProps<'/reports/ce
   ];
   return (
     <PageHeader
-      icon={<PageIcon name="chart" />}
+      icon={<PageIcon name="marks" />}
       title="Continuous evaluation"
       description={`Internal marks of ${report.admin ? 'every department’s' : 'your department’s'} credit courses, from published results, attendance and rubrics.`}
     >

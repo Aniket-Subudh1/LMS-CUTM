@@ -6,12 +6,12 @@ import { AppError } from '@/lib/errors';
 import { log } from '@/lib/log';
 import type { AutoParseableTextFormat } from 'openai/lib/parser';
 import type { z } from 'zod';
-import { CoMapSuggestion, EngagementExplanation, ItemTagSuggestion } from '@/lib/schemas/ai';
+import { CoMapSuggestion, EngagementExplanation, ItemTagSuggestion, MarkSuggestions } from '@/lib/schemas/ai';
 import { AiDrafts, type AiDraft } from '@/lib/schemas/bank';
 
 // 06 §4.7. Only this file talks to the AI (OpenAI, Aniket's choice of 18 Oct 2026 for cost). It is sent what a teacher
-// types for it, the course's outcome statements and (M10) a student's engagement numbers under plain labels, never a
-// name, roll number or email (09 §12); what comes back is a suggestion or a summary a person reads, which changes
+// types for it, the course's outcome statements, (M10) a student's engagement numbers under plain labels and (Q-56) the
+// text of written and code answers with their questions, never a name, roll number or email (09 §12); what comes back is a suggestion or a summary a person reads, which changes
 // nothing by itself. The model is the OPENAI_MODEL setting.
 
 let client: OpenAI | undefined;
@@ -129,6 +129,44 @@ export async function suggestCoMap(input: {
     return [{ co, outcome, level, rationale: cell.rationale.trim().slice(0, 200) }];
   });
   return cells.length > 0 ? cells : null;
+}
+
+const MARKS = `You help a university teacher mark one student's written and code answers. For each answer, suggest
+the marks it earns out of the question's maximum, judged against the question, the model answer and the criteria when
+they are given; with criteria, give marks for each criterion in the order listed. Be fair and consistent: credit what is
+correct and relevant, and do not reward length. Give a one-sentence reason the teacher can check against the answer.
+The teacher decides every mark.`;
+
+// TP-10 (Q-56, Aniket 28 Oct 2026): suggested marks for a hand-in's written and code answers, each with a reason. Told
+// the questions, their model answers and criteria, and the answers as typed (code with how many tests passed), never
+// who wrote them. The caller checks every number against the question; what comes back changes no mark by itself.
+export async function suggestMarks(input: {
+  questions: readonly {
+    n: number;
+    prompt: string;
+    maxMarks: number;
+    modelAnswer: string;
+    criteria: readonly { criterion: string; maxMarks: number }[];
+    answer: string;
+    tests: { passed: number; total: number } | null;
+  }[];
+}): Promise<z.infer<typeof MarkSuggestions>['answers'] | null> {
+  const brief = input.questions
+    .map((q) =>
+      [
+        `Question ${q.n} (out of ${q.maxMarks}):\n${q.prompt}`,
+        q.modelAnswer && `Model answer:\n${q.modelAnswer}`,
+        q.criteria.length > 0 &&
+          `Criteria:\n${q.criteria.map((c, i) => `${i + 1}. ${c.criterion} (out of ${c.maxMarks})`).join('\n')}`,
+        q.tests && `Tests passed: ${q.tests.passed} of ${q.tests.total}`,
+        `Answer:\n${q.answer}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    )
+    .join('\n\n---\n\n');
+  const answer = await ask('suggestMarks', MARKS, brief, zodTextFormat(MarkSuggestions, 'marks'), 8_000);
+  return answer?.answers ?? null;
 }
 
 // M10 T5 (ENG-02, ADR-16): a summary of one student's engagement numbers, as the milestone wrote its instructions.

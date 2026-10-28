@@ -30,13 +30,13 @@ async function Integrations() {
   return (
     <>
       <PageHeader
-        icon={<PageIcon name="globe" />}
+        icon={<PageIcon name="integrations" />}
         title="Integrations"
         description="Services the LMS talks to, and background work that failed."
       />
       <div className="grid gap-5">
         <Section
-          icon={<PageIcon name="code" className="size-8" />}
+          icon={<PageIcon name="github" className="size-8" />}
           title="GitHub"
           description={
             github.ready
@@ -91,7 +91,7 @@ async function Integrations() {
           </p>
         </Section>
         <Section
-          icon={<PageIcon name="diploma" className="size-8" />}
+          icon={<PageIcon name="exams" className="size-8" />}
           title="Exam section"
           description="Files exchanged with the exam section, locks and grade sheets. Until the university’s exam system has an API, it is a CSV file each way."
         >

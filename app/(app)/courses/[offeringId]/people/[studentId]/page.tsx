@@ -104,7 +104,7 @@ async function StudentEngagement({
       )}
 
       <Section
-        icon={<PageIcon name="chart" className="size-8" />}
+        icon={<PageIcon name="engagement" className="size-8" />}
         title="Daily activity"
         description="Minutes of video and live class on each day of the period."
       >

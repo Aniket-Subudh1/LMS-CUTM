@@ -82,7 +82,7 @@ async function BatchExams({
   return (
     <>
       <PageHeader
-        icon={<PageIcon name="diploma" />}
+        icon={<PageIcon name="exams" />}
         title={view.batch.name}
         description={`${view.term.code} · ${view.term.name} · ${plural(view.students, 'student')} · ${plural(courses.length, 'credit course')}`}
         actions={
@@ -529,7 +529,7 @@ function SheetActions({ view }: { view: ExamBatch }) {
       {counts.published > 0 && (
         <FormDialog
           trigger={<Button variant="outline">Unpublish…</Button>}
-          icon={<ExamIcon />}
+          icon={<PageIcon name="results" className="size-8" />}
           title="Unpublish this batch’s grade sheets?"
           description={`Students stop seeing ${plural(counts.published, 'grade sheet')}, and their end-semester marks can be changed again. Publish again when they are right.`}
           action={unpublishGradeSheets}

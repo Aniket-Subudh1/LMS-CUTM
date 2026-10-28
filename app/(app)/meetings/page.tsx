@@ -89,7 +89,7 @@ async function Meetings({ searchParams }: { searchParams: PageProps<'/meetings'>
   return (
     <div className="grid gap-5">
       <PageHeader
-        icon={<PageIcon name="live" />}
+        icon={<PageIcon name="meetings" />}
         title="Meetings"
         description="Meetings outside classes, with people from the LMS and guests by email. Everyone invited gets an email with the link and a calendar file."
         actions={
@@ -104,7 +104,7 @@ async function Meetings({ searchParams }: { searchParams: PageProps<'/meetings'>
           )
         }
       />
-      <Section icon={<PageIcon name="session" className="size-8" />} title="Upcoming" description="Soonest first.">
+      <Section icon={<PageIcon name="meetings" className="size-8" />} title="Upcoming" description="Soonest first.">
         <DataTable
           columns={columns(false)}
           rows={list.upcoming}
@@ -119,7 +119,7 @@ async function Meetings({ searchParams }: { searchParams: PageProps<'/meetings'>
           bare
         />
       </Section>
-      <Section icon={<PageIcon name="terms" className="size-8" />} title="Past" description="Latest first.">
+      <Section icon={<PageIcon name="session" className="size-8" />} title="Past" description="Latest first.">
         <DataTable
           columns={columns(true)}
           rows={list.past}

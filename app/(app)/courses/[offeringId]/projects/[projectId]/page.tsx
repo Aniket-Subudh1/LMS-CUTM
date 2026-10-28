@@ -180,7 +180,7 @@ function Github({ view, github }: { view: ProjectView; github: GithubView }) {
   if (!github.ready) {
     return (
       <Section
-        icon={<PageIcon name="code" className="size-8" />}
+        icon={<PageIcon name="github" className="size-8" />}
         title="GitHub"
         description="GitHub is not set up for the LMS yet. Ask an administrator."
       >
@@ -191,7 +191,7 @@ function Github({ view, github }: { view: ProjectView; github: GithubView }) {
   if (!project.repo) {
     return (
       <Section
-        icon={<PageIcon name="code" className="size-8" />}
+        icon={<PageIcon name="github" className="size-8" />}
         title="Link the repository"
         description="CSE projects live on GitHub. Once linked, the team’s commits arrive here within a minute of each push."
       >
@@ -207,7 +207,7 @@ function Github({ view, github }: { view: ProjectView; github: GithubView }) {
   return (
     <>
       <Section
-        icon={<PageIcon name="code" className="size-8" />}
+        icon={<PageIcon name="github" className="size-8" />}
         title="Team activity"
         description="From the repository’s commits, merges left out. The suggested score helps a teacher mark a review; the teacher enters the marks."
       >
@@ -408,7 +408,7 @@ function Deadlines({ view }: { view: ProjectView }) {
   if (!tracker) return null;
   return (
     <Section
-      icon={<PageIcon name="chart" className="size-8" />}
+      icon={<PageIcon name="projects" className="size-8" />}
       title="Deadlines"
       description="Per member, from the board (07 §13). Students send their own tasks for review; the teacher marks them done."
     >

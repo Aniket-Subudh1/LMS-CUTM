@@ -52,7 +52,7 @@ async function AttainmentReport({ searchParams }: { searchParams: PageProps<'/re
       : null;
   return (
     <PageHeader
-      icon={<PageIcon name="chart" />}
+      icon={<PageIcon name="attainment" />}
       title="Programme attainment"
       description="Each PO and PSO of a programme’s batch, from its courses’ latest attainment. Worked out each time you open it."
       actions={report && report.courses.length > 0 && <PrintButton />}

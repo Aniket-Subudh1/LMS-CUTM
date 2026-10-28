@@ -33,13 +33,13 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/home', label: 'Dashboard', icon: 'dashboard', roles: [...ASSIGNABLE_ROLES] },
       { href: '/courses', label: 'My courses', icon: 'courses', roles: ['student', 'faculty', 'hod', 'admin'] },
       // M06 (DSH-02): internal marks across a department's courses; M09 adds attainment and M10 engagement, as tabs.
-      { href: '/reports', label: 'Reports', icon: 'chart', roles: ['hod', 'admin'] },
+      { href: '/reports', label: 'Reports', icon: 'reports', roles: ['hod', 'admin'] },
       { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
       // M04b (TP-02): standalone tests, and those a share link let anyone into (a candidate's whole LMS).
       { href: '/tests', label: 'Tests', icon: 'evaluation' },
-      { href: '/meetings', label: 'Meetings', icon: 'live', roles: ['student', 'faculty', 'hod', 'admin'] },
+      { href: '/meetings', label: 'Meetings', icon: 'meetings', roles: ['student', 'faculty', 'hod', 'admin'] },
       // M08 (DSH-07): a student's published grade sheets.
-      { href: '/results', label: 'Results', icon: 'diploma', roles: ['student'] },
+      { href: '/results', label: 'Results', icon: 'results', roles: ['student'] },
       { href: '/notifications', label: 'Notifications', icon: 'notifications' },
     ],
   },
@@ -60,10 +60,10 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/admin/offerings', label: 'Offerings', icon: 'offerings', roles: ['admin'] },
       { href: '/admin/imports', label: 'Imports', icon: 'imports', roles: ['admin'] },
       // M08: locks, the exam section's file and grade sheets, a batch at a time.
-      { href: '/admin/exams', label: 'Exams', icon: 'diploma', roles: ['admin'] },
+      { href: '/admin/exams', label: 'Exams', icon: 'exams', roles: ['admin'] },
       { href: '/admin/settings', label: 'Settings', icon: 'settings', roles: ['admin'] },
       // M07 T9: GitHub's state and every queue's failed jobs.
-      { href: '/admin/integrations', label: 'Integrations', icon: 'globe', roles: ['admin'] },
+      { href: '/admin/integrations', label: 'Integrations', icon: 'integrations', roles: ['admin'] },
       { href: '/admin/audit', label: 'Audit log', icon: 'audit', roles: ['admin'] },
       { href: '/admin/users', label: 'Users', icon: 'users', roles: ['admin', 'support'] },
     ],

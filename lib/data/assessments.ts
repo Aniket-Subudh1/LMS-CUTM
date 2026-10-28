@@ -1208,6 +1208,8 @@ export async function listSubmissions(assessmentId: string, filter: HandInFilter
 export type GradingView = {
   path: string;
   canGrade: boolean;
+  // TP-10 (Q-56): whether "Suggest marks with AI" is offered.
+  aiReady: boolean;
   locked: boolean;
   assessment: { id: string; title: string; maxMarks: number; status: AssessmentDoc['status'] };
   // The questions of this attempt's own paper (M04b), with each one's section title.
@@ -1313,6 +1315,7 @@ export async function getSubmissionForGrading(assessmentId: string, submissionId
   return {
     path: assessmentPath(offeringId, assessmentId),
     canGrade: access === 'manage' && !locked,
+    aiReady: aiConfigured(),
     locked,
     assessment: { id: String(doc._id), title: doc.title, maxMarks: doc.maxMarks, status: doc.status },
     items,

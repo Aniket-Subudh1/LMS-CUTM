@@ -227,9 +227,9 @@ function Grading({ page }: { page: SettingsPage<'grading'> }) {
   ];
   return (
     <>
-      <Header page={page} icon={<PageIcon name="diploma" />} />
+      <Header page={page} icon={<PageIcon name="results" />} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Section icon={<PageIcon name="diploma" className="size-8" />} title="Grades" description={changed(page)}>
+        <Section icon={<PageIcon name="results" className="size-8" />} title="Grades" description={changed(page)}>
           <ActionForm
             action={saveSettings}
             submitLabel="Save"
@@ -277,7 +277,7 @@ function Grading({ page }: { page: SettingsPage<'grading'> }) {
           </ActionForm>
         </Section>
         <Section
-          icon={<PageIcon name="diploma" className="size-8" />}
+          icon={<PageIcon name="results" className="size-8" />}
           title="Worked example"
           description="Graded by the saved scale."
         >
@@ -625,10 +625,10 @@ function CeTrend({ page }: { page: SettingsPage<'ceTrend'> }) {
   ] as const;
   return (
     <>
-      <Header page={page} icon={<PageIcon name="chart" />} />
+      <Header page={page} icon={<PageIcon name="marks" />} />
       <div className="max-w-3xl">
         <Section
-          icon={<PageIcon name="chart" className="size-8" />}
+          icon={<PageIcon name="marks" className="size-8" />}
           title="When is a student rising or dropping?"
           description={changed(page)}
         >

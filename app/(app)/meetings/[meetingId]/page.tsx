@@ -90,7 +90,7 @@ async function Meeting({ params }: { params: PageProps<'/meetings/[meetingId]'>[
   return (
     <div className="grid gap-5">
       <PageHeader
-        icon={<PageIcon name="live" />}
+        icon={<PageIcon name="meetings" />}
         title={session.title}
         description={`${formatDay(session.scheduledStart)}, ${formatTime(session.scheduledStart)}–${formatTime(session.scheduledEnd)} · ${STATE[session.state]}`}
         actions={

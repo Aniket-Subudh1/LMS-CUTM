@@ -41,13 +41,13 @@ async function WorkspaceHeader({ params }: { params: LayoutProps<'/courses/[offe
     ...(learn ? [] : [{ href: `${base}/bank`, label: 'Question bank', icon: mark('bank') }]),
     // REC-01, REC-02: learning records for theory, lab records for practice.
     ...(workspace.category === 'ugc' && (workspace.credits.theory > 0 || workspace.credits.practice > 0)
-      ? [{ href: `${base}/records`, label: 'Records', icon: mark('books') }]
+      ? [{ href: `${base}/records`, label: 'Records', icon: mark('records') }]
       : []),
     // M06 (CE-09, DSH-02): internal marks, for a credit course.
-    ...(workspace.category === 'ugc' ? [{ href: `${base}/marks`, label: 'Marks', icon: mark('chart') }] : []),
+    ...(workspace.category === 'ugc' ? [{ href: `${base}/marks`, label: 'Marks', icon: mark('marks') }] : []),
     // M07 (PRJ-01): the class's teams, for a course with project credits.
     ...(workspace.category === 'ugc' && workspace.credits.project > 0
-      ? [{ href: `${base}/projects`, label: 'Projects', icon: mark('course') }]
+      ? [{ href: `${base}/projects`, label: 'Projects', icon: mark('projects') }]
       : []),
     ...(learn ? [] : [{ href: `${base}/people`, label: 'People', icon: mark('people') }]),
   ];

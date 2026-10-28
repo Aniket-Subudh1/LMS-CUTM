@@ -13,6 +13,14 @@ export const ItemTagSuggestion = z.object({
 export const CoMapSuggestion = z.object({
   cells: z.array(z.object({ co: z.string(), outcome: z.string(), level: z.number(), rationale: z.string() })),
 });
+// TP-10 (Q-56): the marks the AI suggests for a hand-in's written and code answers, by question number; `criteria` in
+// the rubric's order, empty without one.
+export const MarkSuggestions = z.object({
+  answers: z.array(
+    z.object({ question: z.number(), marks: z.number(), criteria: z.array(z.number()), reason: z.string() }),
+  ),
+});
+export const SuggestMarks = z.object({ submissionId: objectId });
 // M10 T5: the drill-down's "Explain with AI".
 export const EngagementExplanation = z.object({ summary: z.string() });
 

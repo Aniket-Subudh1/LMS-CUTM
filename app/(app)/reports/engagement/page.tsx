@@ -70,7 +70,7 @@ async function Report({ searchParams }: { searchParams: PageProps<'/reports/enga
   ];
   return (
     <PageHeader
-      icon={<PageIcon name="people" />}
+      icon={<PageIcon name="engagement" />}
       title="Engagement"
       description={`How much the students of ${report.admin ? 'every department’s' : 'your department’s'} courses are studying, from last night's scores.`}
     >

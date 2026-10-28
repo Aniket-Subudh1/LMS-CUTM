@@ -17,6 +17,7 @@ import {
 import { gradeSubmission, rerunCode, waivePenalty } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm, FieldErrors } from '@/components/action-form';
 import { RichTextView } from '@/components/rich-text-view';
+import { SuggestMarks } from '@/components/suggest-marks';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -192,6 +193,9 @@ export async function GradingPage({
             }
           >
             <input type="hidden" name="submissionId" value={s.id} />
+            {view.aiReady && view.items.some((item) => item.type === 'text' || item.type === 'code') && (
+              <SuggestMarks />
+            )}
             {questions}
           </ActionForm>
         </div>
@@ -326,6 +330,7 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
             <span className="sr-only">Marks for question {n}</span>
             <Input
               name="marks[]"
+              data-marks={item.id}
               type="number"
               min={-item.negativeMarks}
               max={item.maxMarks}
@@ -347,6 +352,7 @@ function QuestionCard({ item, n, view }: { item: TeacherItem; n: number; view: G
                 <input type="hidden" name="criterion[]" value={`${item.id}:${criterion.id}`} />
                 <Input
                   name="criterionMarks[]"
+                  data-criterion={criterion.id}
                   type="number"
                   min={0}
                   max={criterion.maxMarks}

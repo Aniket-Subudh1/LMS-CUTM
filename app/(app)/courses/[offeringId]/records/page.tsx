@@ -52,7 +52,7 @@ async function Records({
     const list = await listOfferingAssessments(offeringId, { records: true }, page);
     return (
       <Section
-        icon={<PageIcon name="books" className="size-8" />}
+        icon={<PageIcon name="records" className="size-8" />}
         title="Records"
         description="Your lab records and learning record. Write in the editor or upload photos of your notebook."
       >
@@ -88,7 +88,7 @@ async function Records({
   return (
     <>
       <Section
-        icon={<PageIcon name="books" className="size-8" />}
+        icon={<PageIcon name="records" className="size-8" />}
         title="Records"
         description="Learning and lab records. Open a cell to read and grade it."
         action={

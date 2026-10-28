@@ -37,7 +37,7 @@ export function ProjectDialog({
     <FormDialog
       openParam={openParam}
       size="wide"
-      icon={<PageIcon name="course" className="size-8" />}
+      icon={<PageIcon name="projects" className="size-8" />}
       title={project ? 'Edit the project' : 'New project'}
       description="A team of this class. A student is in one project at a time."
       action={saveProject}

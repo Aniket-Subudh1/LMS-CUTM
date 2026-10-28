@@ -18,12 +18,13 @@ import { db } from '@/lib/db';
 import { countedAttempt, deadlineAt, windowState } from '@/lib/domain/attempts';
 import { rubricTotal } from '@/lib/domain/grading';
 import { isPermutation } from '@/lib/domain/order';
+import { plainText } from '@/lib/domain/rich-text';
 import { roundHalfUp } from '@/lib/domain/round';
 import { earnsCertificate } from '@/lib/domain/test-files';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
-import { aiConfigured } from '@/lib/integrations/ai';
+import { aiConfigured, suggestMarks as askMarks } from '@/lib/integrations/ai';
 import { formatDateTime } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
 import { BankItem } from '@/lib/models/bank-item';
@@ -70,7 +71,8 @@ import {
   WaivePenalty,
 } from '@/lib/schemas/assessment';
 import { AddFromBank, DraftIntoTest } from '@/lib/schemas/bank';
-import { marks as marksInput, ROLES } from '@/lib/schemas/common';
+import { SuggestMarks } from '@/lib/schemas/ai';
+import { marks as marksInput, RichTextDoc, ROLES } from '@/lib/schemas/common';
 
 const TEACH = ['admin', 'faculty'] as const;
 
@@ -695,7 +697,10 @@ export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, 
   const drafts = assessment.items.flatMap((item, i) => (item.aiDraft ? [i + 1] : []));
   if (drafts.length > 0) {
     const list = drafts.length === 1 ? `question ${drafts[0]}` : `questions ${drafts.join(', ')}`;
-    throw new AppError('VALIDATION', `Review the AI draft${drafts.length === 1 ? '' : 's'} (${list}) before publishing.`);
+    throw new AppError(
+      'VALIDATION',
+      `Review the AI draft${drafts.length === 1 ? '' : 's'} (${list}) before publishing.`,
+    );
   }
   const unbalanced = assessment.items.flatMap((item, i) =>
     item.rubric && rubricTotal(item.rubric.map((row) => row.maxMarks)) !== item.maxMarks ? [i + 1] : [],
@@ -893,6 +898,82 @@ export const gradeSubmission = action({ input: GradeSubmission, roles: TEACH }, 
     redirect(next ? `${list}/${next._id}` : list);
   }
   refresh();
+});
+
+// Long answers are cut, so one hand-in stays one request of bounded size.
+const ANSWER_CHARS = 6000;
+const textOf = (doc: unknown) => {
+  const parsed = RichTextDoc.safeParse(doc);
+  return parsed.success ? plainText(parsed.data) : '';
+};
+
+// TP-10 (Q-56, Aniket 28 Oct 2026): marks the AI suggests for one hand-in's written and code answers, each with a reason.
+// Nothing is stored and no mark changes: the grader accepts a suggestion into the mark box and saves the form, which
+// `gradeSubmission` checks and audits as always. Sent: the questions, model answers, criteria and the answers' text,
+// never the student's name, roll number or email (09 §12). A suggestion outside the question's marks is dropped.
+export const suggestMarks = action({ input: SuggestMarks, roles: TEACH }, async (input, viewer) => {
+  await db();
+  const attempt = await Submission.findById(input.submissionId, {
+    assessmentId: 1,
+    status: 1,
+    paper: 1,
+    answers: 1,
+    results: 1,
+  }).lean();
+  if (!attempt) throw new AppError('NOT_FOUND', 'Hand-in not found.');
+  const { offeringId } = await requireManage(viewer, String(attempt.assessmentId));
+  await assertUnlocked(offeringId);
+  if (attempt.status === 'in_progress') throw new AppError('CONFLICT', 'This attempt is still running.');
+  if (!aiConfigured()) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
+  const asked = attempt.paper.flatMap((item, i) => {
+    const stored = attempt.answers?.[String(item._id)];
+    const answer =
+      item.type === 'text' ? textOf(stored?.text) : item.type === 'code' ? (stored?.code?.source ?? '') : '';
+    if (answer.trim() === '') return [];
+    const results = attempt.results.filter((r) => r.itemId.equals(item._id));
+    return [
+      {
+        item,
+        question: {
+          n: i + 1,
+          prompt: textOf(item.prompt),
+          maxMarks: item.maxMarks,
+          modelAnswer: textOf(item.explanation),
+          criteria: (item.rubric ?? []).map((c) => ({ criterion: c.criterion, maxMarks: c.maxMarks })),
+          answer: (item.type === 'code' ? `(${stored?.code?.language ?? 'code'})\n${answer}` : answer).slice(
+            0,
+            ANSWER_CHARS,
+          ),
+          tests:
+            item.type === 'code' && results.length > 0
+              ? { passed: results.filter((r) => r.status === 'accepted').length, total: results.length }
+              : null,
+        },
+      },
+    ];
+  });
+  if (asked.length === 0)
+    throw new AppError('CONFLICT', 'There is no written or code answer here to suggest marks for.');
+  await limit('ai-marks', viewer.id, 120, 60 * 60_000);
+  const answers = (await askMarks({ questions: asked.map((a) => a.question) })) ?? [];
+  const byNumber = new Map(asked.map((a) => [a.question.n, a.item]));
+  const seen = new Set<number>();
+  return answers.flatMap((suggestion) => {
+    const item = byNumber.get(suggestion.question);
+    if (!item || seen.has(suggestion.question)) return [];
+    seen.add(suggestion.question);
+    const rubric = item.rubric ?? [];
+    const reason = suggestion.reason.trim().slice(0, 300);
+    const base = { itemId: String(item._id), n: suggestion.question, maxMarks: item.maxMarks, reason };
+    if (rubric.length > 0) {
+      const given = suggestion.criteria;
+      if (given.length !== rubric.length || given.some((m, i) => !(m >= 0 && m <= rubric[i].maxMarks))) return [];
+      const criteria = rubric.map((c, i) => ({ id: String(c._id), marks: roundHalfUp(given[i], 2) }));
+      return [{ ...base, marks: rubricTotal(criteria.map((c) => c.marks)), criteria }];
+    }
+    if (!(suggestion.marks >= 0 && suggestion.marks <= item.maxMarks)) return [];
+    return [{ ...base, marks: roundHalfUp(suggestion.marks, 2), criteria: [] }];
+  });
 });
 
 // TP-11 (07 §19): when the results go out and what they show — answers, explanations, a leaderboard and the

@@ -110,7 +110,7 @@ function Attainment({
   return (
     <>
       <Section
-        icon={<PageIcon name="chart" className="size-8" />}
+        icon={<PageIcon name="attainment" className="size-8" />}
         title="Attainment"
         description="How far this class reached each outcome: published results (CIE) and the end-semester marks (SEE)."
         action={actions}

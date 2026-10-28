@@ -650,7 +650,7 @@ function kpis(
         label: 'Disengaged',
         value: count.format(low),
         note: teaching.some((c) => c.scored > 0) ? 'as of last night' : 'scored nightly',
-        icon: 'chart',
+        icon: 'engagement',
       },
     ];
   }

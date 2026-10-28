@@ -49,7 +49,7 @@ async function Projects({
     const mine = view.rows[0];
     return (
       <Section
-        icon={<PageIcon name="course" className="size-8" />}
+        icon={<PageIcon name="projects" className="size-8" />}
         title="Your project"
         description={mine ? `${mine.title} · guide ${mine.guide} · ${dates(mine)}` : 'You are not in a project yet.'}
         action={
@@ -91,7 +91,7 @@ async function Projects({
   return (
     <>
       <Section
-        icon={<PageIcon name="course" className="size-8" />}
+        icon={<PageIcon name="projects" className="size-8" />}
         title="Projects"
         description={
           view.mode === 'github'

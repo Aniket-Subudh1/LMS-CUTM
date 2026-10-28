@@ -1,8 +1,7 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CheckCircleIcon, ExamIcon, LockSimpleIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { LockSimpleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { DataTable } from '@/components/data-table';
@@ -32,15 +31,31 @@ async function Exams({ searchParams }: { searchParams: PageProps<'/admin/exams'>
   const { page, term } = Search.parse(await searchParams);
   const view = await getExamsTerm(term, page);
   const query: Record<string, string> = view.termId ? { term: view.termId } : {};
-  const tiles: { icon: Icon; value: string; label: string }[] = [
-    { icon: UsersThreeIcon, value: String(view.totals.batches), label: 'Batches this term' },
-    { icon: LockSimpleIcon, value: `${view.totals.locked} of ${view.totals.courses}`, label: 'Courses locked' },
-    { icon: ExamIcon, value: String(view.totals.ready), label: 'Grade sheets ready' },
-    { icon: CheckCircleIcon, value: String(view.totals.published), label: 'Grade sheets published' },
+  const tiles: { icon: ReactNode; value: string; label: string }[] = [
+    {
+      icon: <PageIcon name="users" className="size-7" />,
+      value: String(view.totals.batches),
+      label: 'Batches this term',
+    },
+    {
+      icon: <LockSimpleIcon className="size-[1.125rem]" />,
+      value: `${view.totals.locked} of ${view.totals.courses}`,
+      label: 'Courses locked',
+    },
+    {
+      icon: <PageIcon name="exams" className="size-7" />,
+      value: String(view.totals.ready),
+      label: 'Grade sheets ready',
+    },
+    {
+      icon: <PageIcon name="results" className="size-7" />,
+      value: String(view.totals.published),
+      label: 'Grade sheets published',
+    },
   ];
   return (
     <PageHeader
-      icon={<PageIcon name="diploma" />}
+      icon={<PageIcon name="exams" />}
       title="Exams"
       description="Lock each batch’s internal marks, exchange them with the exam section, and publish grade sheets."
     >
@@ -57,7 +72,7 @@ async function Exams({ searchParams }: { searchParams: PageProps<'/admin/exams'>
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className="size-[1.125rem]" />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className="text-lg leading-tight font-semibold tabular-nums">{tile.value}</dd>

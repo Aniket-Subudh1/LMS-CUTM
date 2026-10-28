@@ -38,7 +38,7 @@ async function BatchSheet({
     <>
       <div className="print:hidden">
         <PageHeader
-          icon={<PageIcon name="diploma" />}
+          icon={<PageIcon name="results" />}
           title={sheet.student.name}
           description={`${sheet.student.rollNo} · ${sheet.student.batch} · as the student sees it once published`}
           actions={
