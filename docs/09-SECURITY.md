@@ -40,7 +40,8 @@
 | Live sessions: turn off students' screen sharing, microphones, chat and reactions (M03c) | — | ✔ (host) | — | ✔ (host) | — |
 | Meetings: schedule, change, cancel (M03c T4; their hosts) | — | ✔ | ✔ | ✔ | — |
 | Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
-| Meetings: host controls, let guests in or turn them away (their hosts) | — | ✔ | ✔ | ✔ | — |
+| Meetings: join by one's own link without signing in, with the passcode (M03c T14; invited people, guests included; taking part, never hosting, A-221) | ✔ | ✔ | ✔ | ✔ | — |
+| Meetings: host controls; see the passcode, copy anyone's link, send one invitation again (their hosts, T14) | — | ✔ | ✔ | ✔ | — |
 | Record a class or meeting (M03c T5; its hosts; everyone in the room is told; audited) | — | ✔ (host) | — | ✔ (host) | — |
 | Polls (M03c T6; not audited, no record): ask, see counts, show, end | — | ✔ (host) | — | ✔ (host) | — |
 | Polls: answer (those taking part; never guests); see own answer, and counts once shown | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
@@ -127,7 +128,8 @@ Rules:
 | Monitor messages (M04b) | staff | 30 / min |
 | Files from the results (`requestTestFile`, M04b) | user | 10 / hour |
 | Beacon | user | 120 / 10 min |
-| A guest asking to join a meeting (`meeting-lobby`, M03c T4) | IP | 30 / 15 min |
+| A wrong meeting passcode (`meeting-passcode`, M03c T14; a right one gives its tries back) | link · IP | 10 · 30 / 15 min |
+| Sending a meeting invitation again (`meeting-resend`, M03c T14) | meeting and person | 3 / hour |
 | AI suggestion (`ai`; M04b: `draftWithAi`, whatever it asks for; M09: `suggestItemTags`, `suggestCoMap`) | user | 30 / hour |
 | Work attainment out again (`requestAttainment`, M09) | offering | 1 / min |
 
@@ -220,7 +222,9 @@ The CSP deliberately does not restrict scripts (a nonce-based script policy forc
 - Session: 12 h TTL; `sessionVersion` check on every request (02 §6). "Sign out everywhere" and password change increment it.
 - **Guests (M04b, TP-03).** A guest registers on a guests link with name and email; a 6-digit code (`crypto.randomInt`) goes to that email and lives 10 minutes with 5 tries. Only its HMAC-SHA256 (keyed with `SESSION_PASSWORD`, bound to the email and the link) is stored (05 §5.2c). Confirming it makes or finds a `candidate` account — no password, role exactly `['candidate']` — and signs it in. An email that belongs to any other account never signs in by code (CONFLICT at registration, FORBIDDEN at confirmation): it signs in with its password on the same page, so a guest link is never a way into a staff or student account. A link's access code is compared in constant time; the link's token (18 random bytes) is its only secret. The link page masks the pending email (`ri••••@gmail.com`).
 - `proxy.ts` lets `/t/<token>` through without a session (it is public by design); every other check is in its actions.
-- `proxy.ts` also lets through a meeting guest's `/m/<token>` (M03c T4) and the static files a guest's room loads signed out: `/excalidraw/` (the whiteboard's fonts) and `/mediapipe/` (the blur's model and runtime). They hold nothing private.
+- `proxy.ts` also lets through a meeting's personal links, `/m/<token>` (M03c T4), and the static files a room opened by link loads signed out: `/excalidraw/` (the whiteboard's fonts) and `/mediapipe/` (the blur's model and runtime). They hold nothing private.
+- **Meeting links and the passcode (M03c T14, decision 9).** Everyone invited has a personal link, signed with `SESSION_PASSWORD` (a guest's id, or the meeting and a member's account), so it cannot be made up or moved to another meeting, and it stops working when the person is taken off. Without signing in, the link alone shows only the meeting's title, time and hosts; joining needs the meeting's 6-digit passcode (`crypto.randomInt`), compared in constant time and limited per link and per IP. A right passcode gives that browser a sealed `lms_meeting` cookie (iron-session, httpOnly, `sameSite=lax`, 12 h) for that meeting as that person; another browser asks again. Joining by link never makes anyone a host: hosting needs signing in (A-221). A removed person gets no token, and the webhook puts out one who comes back with a kept token. The lobby, where a host let guests in, was removed with decision 9.
+- **Returning after sign-in (M03c T14).** `proxy.ts` sends a signed-out request to `/login?next=<path>`; `login` redirects to `next` only when it is a path on this site (`NextPath`: starts with one `/`, no `//`, no backslash, no spaces), and to `/home` otherwise, so it is never an open redirect.
 - Server Actions are POST-only and Next.js checks `Origin` against `Host`; route handlers that mutate (`/api/beacon`) rely on the `sameSite=lax` cookie, which browsers do not send on cross-site POSTs; webhooks rely on signatures.
 
 ## 10. Assessment secrecy

@@ -2,8 +2,9 @@ import 'server-only';
 import { notFound } from 'next/navigation';
 import { isValidObjectId, Types } from 'mongoose';
 import { roomAccess, type RoomRole } from '@/lib/auth/access';
-import { guestIdOf } from '@/lib/auth/guest-link';
-import { requireViewer, type Viewer } from '@/lib/auth/session';
+import { meetingPassHolder } from '@/lib/auth/meeting-pass';
+import { linkHolderOf, meetingLinkUrl } from '@/lib/auth/meeting-link';
+import { getViewer, requireViewer, type Viewer } from '@/lib/auth/session';
 import {
   roomBreakout,
   roomControls,
@@ -231,7 +232,8 @@ export async function listMeetings(upcomingPage: number, pastPage: number): Prom
   };
 }
 
-export type GuestState = 'invited' | 'waiting' | 'denied' | 'admitted' | 'removed';
+// T14: a guest has joined once they have given a name; a removed one stays out until a host lets them back.
+export type GuestState = 'invited' | 'joined' | 'removed';
 
 export type MeetingDetail = {
   id: string;
@@ -243,19 +245,17 @@ export type MeetingDetail = {
   members: Person[];
   // Hosts only: who was invited by email and where they are.
   guests: { id: string; email: string; name: string | null; state: GuestState }[] | null;
+  // T14, hosts only: the passcode (null for a meeting scheduled before passcodes) and each person's own link, by id,
+  // to copy or send again.
+  invitation: { passcode: string | null; links: Record<string, string> } | null;
   canStartAt: Date;
   canEdit: boolean;
   recordings: RecordingRow[];
 };
 
-function guestState(
-  doc: Pick<LiveSessionDoc, 'removed' | 'waiting'>,
-  guest: { _id: Types.ObjectId; admittedAt?: Date | null; deniedAt?: Date | null },
-): GuestState {
+function guestState(doc: Pick<LiveSessionDoc, 'removed'>, guest: { _id: Types.ObjectId; name?: string | null }) {
   if (doc.removed?.some((r) => r.userId.equals(guest._id))) return 'removed';
-  if (doc.waiting?.some((w) => w.guestId.equals(guest._id))) return 'waiting';
-  if (guest.admittedAt) return 'admitted';
-  return guest.deniedAt ? 'denied' : 'invited';
+  return guest.name ? 'joined' : 'invited';
 }
 
 async function findMeeting(viewer: Viewer, meetingId: string) {
@@ -267,7 +267,6 @@ async function findMeeting(viewer: Viewer, meetingId: string) {
     roomName: 1,
     studentsMay: 1,
     removed: 1,
-    waiting: 1,
     recordings: 1,
     polls: 1,
     breakout: 1,
@@ -297,6 +296,7 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
     };
   };
   const [owner, ...coHosts] = doc.meeting.hostIds.map(person);
+  const sessionId = String(doc._id);
   return {
     id: meetingId,
     session,
@@ -312,6 +312,22 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
             name: g.name ?? null,
             state: guestState(doc, g),
           }))
+        : null,
+    invitation:
+      role === 'host'
+        ? {
+            passcode: doc.meeting.passcode ?? null,
+            links: Object.fromEntries([
+              ...[...doc.meeting.hostIds, ...doc.meeting.memberIds].map((id) => [
+                String(id),
+                meetingLinkUrl({ kind: 'member', sessionId, userId: String(id) }),
+              ]),
+              ...doc.meeting.guests.map((g) => [
+                String(g._id),
+                meetingLinkUrl({ kind: 'guest', guestId: String(g._id) }),
+              ]),
+            ]),
+          }
         : null,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
     canEdit: role === 'host' && session.state === 'upcoming',
@@ -371,46 +387,84 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
   };
 }
 
-export type GuestLobby = {
+// T14 (decision 9): whom a personal link names, in which meeting, while they are still invited to it — a guest by their
+// guest id, a member or co-host by their account.
+export async function findLinkedMeeting(token: string) {
+  const holder = linkHolderOf(token);
+  if (!holder) return null;
+  const ids = holder.kind === 'guest' ? [holder.guestId] : [holder.sessionId, holder.userId];
+  if (!ids.every((id) => isValidObjectId(id))) return null;
+  await db();
+  const fields = { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, board: 1 } as const;
+  if (holder.kind === 'guest') {
+    const id = new Types.ObjectId(holder.guestId);
+    const doc = await LiveSession.findOne({ kind: 'meeting', 'meeting.guests._id': id }, fields).lean();
+    const guest = doc?.meeting?.guests.find((g) => g._id.equals(id));
+    if (!doc?.meeting || !guest) return null;
+    const person = { kind: 'guest' as const, id: holder.guestId, name: guest.name ?? null, email: guest.email };
+    return { doc: { ...doc, meeting: doc.meeting }, person };
+  }
+  const userId = new Types.ObjectId(holder.userId);
+  const [doc, user] = await Promise.all([
+    LiveSession.findOne(
+      { _id: holder.sessionId, kind: 'meeting', $or: [{ 'meeting.hostIds': userId }, { 'meeting.memberIds': userId }] },
+      fields,
+    ).lean(),
+    User.findOne({ _id: userId, status: { $ne: 'disabled' } }, { name: 1, email: 1 }).lean(),
+  ]);
+  if (!doc?.meeting || !user) return null;
+  const person = { kind: 'member' as const, id: holder.userId, name: user.name, email: user.email };
+  return { doc: { ...doc, meeting: doc.meeting }, person };
+}
+
+export type MeetingLink = {
   sessionId: string;
   session: LiveSessionRow;
   hosts: string;
-  guest: { email: string; name: string | null; state: GuestState };
+  person: { kind: 'guest' | 'member'; name: string | null; email: string };
+  // Signed in as the person the link names: their own room opens instead.
+  signedIn: boolean;
+  removed: boolean;
+  asksPasscode: boolean;
+  // While it runs, for a browser holding this person's pass (T14).
   join: { serverUrl: string; token: string } | null;
   board: { studentsDraw: boolean } | null;
   invited: number;
 };
 
-// The guest's page (decision 7): their personal link names them. Signed out; a link whose signature does not match,
-// or whose guest was taken off the meeting, is not found.
-export async function getGuestLobby(token: string): Promise<GuestLobby> {
-  const guestId = guestIdOf(token);
-  if (!guestId || !isValidObjectId(guestId)) notFound();
-  await db();
-  const doc = await LiveSession.findOne(
-    { kind: 'meeting', 'meeting.guests._id': new Types.ObjectId(guestId) },
-    { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, waiting: 1, board: 1 },
-  ).lean();
-  const guest = doc?.meeting?.guests.find((g) => g._id.equals(guestId));
-  if (!doc?.meeting || !guest) notFound();
-  const state = guestState(doc, guest);
-  const hosts = await User.find({ _id: { $in: doc.meeting.hostIds } }, { name: 1 }).lean();
+// The page a personal link opens, signed out. Not found when the link is altered or its person was taken off.
+export async function getMeetingLink(token: string): Promise<MeetingLink> {
+  const linked = await findLinkedMeeting(token);
+  if (!linked) notFound();
+  const { doc, person } = linked;
+  const sessionId = String(doc._id);
+  const [viewer, holder, hosts] = await Promise.all([
+    getViewer(),
+    meetingPassHolder(sessionId),
+    User.find({ _id: { $in: doc.meeting.hostIds } }, { name: 1 }).lean(),
+  ]);
+  const removed = (doc.removed ?? []).some((r) => r.userId.equals(person.id));
+  const live = doc.status === 'live';
   return {
-    sessionId: String(doc._id),
+    sessionId,
     session: toRow(doc, new Date()),
     hosts: doc.meeting.hostIds.map((id) => hosts.find((u) => u._id.equals(id))?.name ?? 'Someone').join(', '),
-    guest: { email: guest.email, name: guest.name ?? null, state },
+    person: { kind: person.kind, name: person.name, email: person.email },
+    signedIn: person.kind === 'member' && viewer?.id === person.id,
+    removed,
+    asksPasscode: Boolean(doc.meeting.passcode),
+    // A co-host who did not sign in takes part; hosting needs signing in (A-221).
     join:
-      doc.status === 'live' && state === 'admitted'
+      live && !removed && holder === person.id
         ? await joinToken({
             roomName: doc.roomName,
-            userId: guestId,
-            name: guest.name ?? guest.email,
-            role: 'guest',
+            userId: person.id,
+            name: person.name ?? person.email,
+            role: person.kind === 'guest' ? 'guest' : 'participant',
             rights: { ...ALL_RIGHTS, ...doc.studentsMay },
           })
         : null,
-    board: doc.status === 'live' && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
   };
 }

@@ -101,8 +101,9 @@ const clockFormat = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata',
 const meetingWhen = (start: Date, end: Date) =>
   `${dayFormat.format(start)}, ${clockFormat.format(start)}–${clockFormat.format(end)}`;
 
-// M03c T4: a meeting's invitation, its update or its cancellation, with the calendar file (06 §8.7). A guest's link is
-// theirs alone and leads to the lobby; a member's opens the meeting after sign-in.
+// M03c T4: a meeting's invitation, its update or its cancellation, with the calendar file (06 §8.7). T14 (decision 9):
+// everyone's link is their own and opens the meeting with the passcode, no account needed; signed in to the LMS, a
+// member's opens it as them. A meeting from before passcodes has none (A-220).
 export function meetingEmail(mail: {
   to: string;
   name: string | null;
@@ -115,6 +116,7 @@ export function meetingEmail(mail: {
   invitedBy: string;
   link: string;
   guest: boolean;
+  passcode: string | null;
   ics: string;
 }): MailSend {
   const when = meetingWhen(mail.start, mail.end);
@@ -137,9 +139,10 @@ export function meetingEmail(mail: {
               : `${mail.invitedBy} invited you to the meeting “${mail.title}” on the CUTM LMS.`,
             `When: ${when} (Indian Standard Time).`,
             `Hosts: ${mail.hosts.join(', ')}.`,
+            ...(mail.passcode ? [`Passcode: ${mail.passcode}`] : []),
             mail.guest
-              ? 'This link is yours alone. When you open it, you type your name and ask to join; a host lets you in. It works while the meeting runs.'
-              : 'The link opens the meeting after you sign in to the LMS.',
+              ? `This link is yours alone. Open it once the meeting starts${mail.passcode ? ', type your name and the passcode,' : ' and type your name'} and you are in. No account is needed.`
+              : `This link is yours alone. Signed in to the LMS, it opens the meeting; otherwise ${mail.passcode ? 'type the passcode to join' : 'it joins you'} without signing in.`,
           ],
           { label: 'Join the meeting', href: mail.link },
         );

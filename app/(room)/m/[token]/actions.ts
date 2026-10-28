@@ -1,67 +1,56 @@
 'use server';
 
 import { refresh } from 'next/cache';
-import { Types } from 'mongoose';
+import { timingSafeEqual } from 'node:crypto';
 import { publicAction } from '@/lib/action';
-import { guestIdOf } from '@/lib/auth/guest-link';
-import { db } from '@/lib/db';
+import { grantMeetingPass } from '@/lib/auth/meeting-pass';
+import { findLinkedMeeting } from '@/lib/data/meetings';
 import { AppError } from '@/lib/errors';
-import { tell } from '@/lib/integrations/live';
 import { LiveSession } from '@/lib/models/live-session';
 import { clientIp, limit } from '@/lib/rate-limit';
-import { AskToJoin, GuestRef } from '@/lib/schemas/live';
+import { JoinMeeting } from '@/lib/schemas/live';
 
-// M03c T4 (decision 7): a guest's lobby, signed out. Their personal link is the only key: it names the guest, and a
-// host decides who comes in. Asking is limited per address (09 §4).
+// M03c T14 (decision 9): joining by a personal link without signing in. The link names the person; the passcode in
+// their invitation lets this browser in as them (a sealed cookie, A-223). Wrong passcodes are limited per link and per
+// address (A-222, 09 §4); a right one gives its tries back.
 
 const MINUTE = 60_000;
 
-async function guestMeeting(token: string) {
-  await limit('meeting-lobby', await clientIp(), 30, 15 * MINUTE);
-  const guestId = guestIdOf(token);
-  if (!guestId) throw new AppError('NOT_FOUND', 'This link is not valid.');
-  await db();
-  const id = new Types.ObjectId(guestId);
-  const doc = await LiveSession.findOne(
-    { kind: 'meeting', 'meeting.guests._id': id },
-    { status: 1, roomName: 1, meeting: 1, removed: { $elemMatch: { userId: id } } },
-  ).lean();
-  const guest = doc?.meeting?.guests.find((g) => g._id.equals(id));
-  if (!doc || !guest) throw new AppError('NOT_FOUND', 'This link is no longer valid. Ask a host for a new invitation.');
+const same = (given: string, passcode: string) =>
+  given.length === passcode.length && timingSafeEqual(Buffer.from(given), Buffer.from(passcode));
+
+export const joinMeeting = publicAction(JoinMeeting, async ({ token, name, passcode }) => {
+  const byAddress = await limit('meeting-passcode-ip', await clientIp(), 30, 15 * MINUTE);
+  const byLink = await limit('meeting-passcode', token, 10, 15 * MINUTE);
+  const linked = await findLinkedMeeting(token);
+  if (!linked) throw new AppError('NOT_FOUND', 'This link is no longer valid. Ask a host for a new invitation.');
+  const { doc, person } = linked;
   if (doc.status !== 'live') {
     throw new AppError(
       'CLOSED',
       doc.status === 'scheduled' ? 'The meeting has not started yet.' : 'The meeting is over.',
     );
   }
-  if (doc.removed?.length) throw new AppError('FORBIDDEN', 'A host removed you from this meeting.');
-  return { doc, guest, id };
-}
-
-// Asking again after being turned away is allowed; a guest already let in goes straight in with the name they give.
-export const askToJoin = publicAction(AskToJoin, async ({ token, name }) => {
-  const { doc, guest, id } = await guestMeeting(token);
-  const named = { 'meeting.guests.$[g].name': name };
-  if (guest.admittedAt) {
-    await LiveSession.updateOne({ _id: doc._id }, { $set: named }, { arrayFilters: [{ 'g._id': id }] });
-  } else {
-    await LiveSession.updateOne(
-      { _id: doc._id, status: 'live', 'waiting.guestId': { $ne: id } },
-      {
-        $set: named,
-        $unset: { 'meeting.guests.$[g].deniedAt': '' },
-        $push: { waiting: { guestId: id, name, at: new Date() } },
-      },
-      { arrayFilters: [{ 'g._id': id }] },
-    );
-    await tell(doc.roomName, 'controls', 'lobby');
+  if (doc.removed?.some((r) => r.userId.equals(person.id))) {
+    throw new AppError('FORBIDDEN', 'A host removed you from this meeting.');
   }
-  refresh();
-});
-
-export const stopAsking = publicAction(GuestRef, async ({ token }) => {
-  const { doc, id } = await guestMeeting(token);
-  await LiveSession.updateOne({ _id: doc._id }, { $pull: { waiting: { guestId: id } } });
-  await tell(doc.roomName, 'controls', 'lobby');
+  if (person.kind === 'guest' && name.length < 2) {
+    throw new AppError('VALIDATION', 'Enter your name.', {
+      name: ['Enter your name. Everyone in the meeting sees it.'],
+    });
+  }
+  if (doc.meeting.passcode && !same(passcode, doc.meeting.passcode)) {
+    throw new AppError('VALIDATION', 'That passcode is not right.', {
+      passcode: ['Not right. It is the six digits in your invitation email.'],
+    });
+  }
+  await Promise.all([byAddress.refund(), byLink.refund()]);
+  if (person.kind === 'guest') {
+    await LiveSession.updateOne(
+      { _id: doc._id, 'meeting.guests._id': person.id },
+      { $set: { 'meeting.guests.$.name': name } },
+    );
+  }
+  await grantMeetingPass(String(doc._id), person.id);
   refresh();
 });

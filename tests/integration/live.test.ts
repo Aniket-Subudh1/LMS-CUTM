@@ -858,7 +858,6 @@ describe('host controls (M03c T2)', () => {
     expect((await getSession(w.offeringId, String(session._id))).controls).toEqual({
       rights,
       removed: [],
-      waiting: [],
     });
     // A student joining now gets a token without the microphone, and the engine is told again on their join in case
     // their token was issued just before the change. A host's join changes nothing.

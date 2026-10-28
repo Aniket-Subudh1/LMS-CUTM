@@ -176,8 +176,8 @@ Each task: database → backend → frontend, one commit, one PROGRESS entry.
 - **T11** Report: the walk of T4–T10 on the dev LiveKit server and the fixes it led to (PROGRESS, 24 Oct 2026).
 - **T12** Decisions 9–12 (this file, PROGRESS).
 - **T13** Recording that starts, stops and saves.
-- **T14** Invitations: a personal link and the passcode for everyone; copy and resend; signing in returns.
-- **T15** Joining by link and passcode; the "Ready to join?" screen; the front camera and Flip.
+- **T14** Invitations and the way in: a personal link and the passcode for everyone; joining by link (the lobby goes); copy and resend; signing in returns.
+- **T15** The "Ready to join?" screen; the front camera and Flip; polls and hands for people who joined by link.
 - **T16** The stage: the board and shared screens together, full screen, following the presenter, the laser, the board in the recording.
 - **T17** The bar's labelled buttons, the phone's sheet, the poll's pop-up, and the remaining fixes.
 - **T18** Report: the walk of T12–T17 and its fixes.

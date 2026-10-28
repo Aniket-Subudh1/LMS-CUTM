@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ActionForm, Field } from '@/components/action-form';
@@ -8,7 +9,13 @@ import { login } from '../actions';
 
 export const metadata: Metadata = { title: 'Sign in' };
 
-export default function LoginPage() {
+// M03c T14: the page that sent here, to return to (the action checks it is one of ours).
+async function NextField({ searchParams }: { searchParams: PageProps<'/login'>['searchParams'] }) {
+  const { next } = await searchParams;
+  return typeof next === 'string' ? <input type="hidden" name="next" value={next} /> : null;
+}
+
+export default function LoginPage({ searchParams }: PageProps<'/login'>) {
   return (
     <div className="grid gap-8">
       <div className="grid justify-items-center gap-4 text-center">
@@ -19,6 +26,9 @@ export default function LoginPage() {
         </div>
       </div>
       <ActionForm action={login} submitLabel="Sign in" fullWidth>
+        <Suspense>
+          <NextField searchParams={searchParams} />
+        </Suspense>
         <Field name="email" label="Email">
           <Input
             name="email"

@@ -221,47 +221,6 @@ export const endRoom = action({ input: RoomRef, roles: ASSIGNABLE_ROLES }, async
   refresh();
 });
 
-// --- The lobby (M03c T4, decision 7): guests a host lets in come straight back while the meeting runs; a guest turned
-// away may ask again. Not audited: letting someone into a call changes no record (A-97). ---
-
-export const admitGuests = action(
-  { input: RoomPeople, roles: ASSIGNABLE_ROLES },
-  async ({ sessionId, 'identity[]': identities }, viewer) => {
-    await requireRoomHost(viewer, sessionId);
-    const { roomName } = await liveRoom(sessionId);
-    const ids = identities.map((id) => new Types.ObjectId(id));
-    await LiveSession.updateOne(
-      { _id: sessionId, status: 'live' },
-      {
-        $set: { 'meeting.guests.$[g].admittedAt': new Date() },
-        $unset: { 'meeting.guests.$[g].deniedAt': '' },
-        $pull: { waiting: { guestId: { $in: ids } } },
-      },
-      { arrayFilters: [{ 'g._id': { $in: ids } }] },
-    );
-    await tell(roomName, 'controls', 'lobby');
-    refresh();
-  },
-);
-
-export const denyGuest = action(
-  { input: RoomPerson, roles: ASSIGNABLE_ROLES },
-  async ({ sessionId, identity }, viewer) => {
-    await requireRoomHost(viewer, sessionId);
-    const { roomName } = await liveRoom(sessionId);
-    await LiveSession.updateOne(
-      { _id: sessionId, status: 'live' },
-      {
-        $set: { 'meeting.guests.$[g].deniedAt': new Date() },
-        $pull: { waiting: { guestId: new Types.ObjectId(identity) } },
-      },
-      { arrayFilters: [{ 'g._id': new Types.ObjectId(identity) }] },
-    );
-    await tell(roomName, 'controls', 'lobby');
-    refresh();
-  },
-);
-
 // --- Recording (M03c T5, decision 5): a host records the room, one recording at a time, straight to the bucket.
 // Everyone in the room is told; the recording appears on the class's or meeting's page once it is saved. Audited. ---
 

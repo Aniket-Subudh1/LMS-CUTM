@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+// M03c T14: sign-in comes back to the page that asked for it.
 export function proxy(request: NextRequest) {
   if (!request.cookies.has('lms_session')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const login = new URL('/login', request.url);
+    const { pathname, search } = request.nextUrl;
+    if (pathname !== '/') login.searchParams.set('next', `${pathname}${search}`);
+    return NextResponse.redirect(login);
   }
   return NextResponse.next();
 }

@@ -1,6 +1,6 @@
 import { Worker, type Job } from 'bullmq';
 import { Redis } from 'ioredis';
-import { guestLinkUrl } from '@/lib/auth/guest-link';
+import { meetingLinkUrl } from '@/lib/auth/meeting-link';
 import { passwordLink } from '@/lib/auth/tokens';
 import { formatCredits } from '@/lib/domain/catalog';
 import { coursePlanEmail, invitationEmail, meetingEmail } from '@/lib/domain/email-templates';
@@ -108,7 +108,8 @@ async function coursePlanPublished(offeringId: string, version: number): Promise
 }
 
 // M03c T4: one `mail/send` per person named, each with its own calendar file naming only them (06 §8.7). The job ids make
-// a re-run of this sequence a no-op, so an edit that only adds people sends to the new ones alone.
+// a re-run of this sequence a no-op, so an edit that only adds people sends to the new ones alone; a host's "Send again"
+// (`resentAt`) is a new one. T14 (decision 9): everyone's link is their own, and the passcode goes with it.
 async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>): Promise<void> {
   const session = await LiveSession.findById(job.sessionId, {
     title: 1,
@@ -124,7 +125,7 @@ async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>)
   ]);
   const hosts = meeting.hostIds.flatMap((id) => hostUsers.find((u) => u._id.equals(id))?.name ?? []);
   const { APP_URL, MAIL_FROM } = env();
-  const page = new URL(`/meetings/${job.sessionId}`, APP_URL).href;
+  const passcode = meeting.passcode ?? null;
   const event = {
     uid: `meeting-${job.sessionId}@${new URL(APP_URL).host}`,
     sequence: job.sequence,
@@ -136,14 +137,20 @@ async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>)
     organizer: { name: hosts[0] ?? 'CUTM LMS', email: /<([^>]+)>/.exec(MAIL_FROM)?.[1] ?? MAIL_FROM },
   };
   const recipients = [
-    ...users.map((u) => ({ key: String(u._id), email: u.email, name: u.name, link: page, guest: false })),
+    ...users.map((u) => ({
+      key: String(u._id),
+      email: u.email,
+      name: u.name,
+      link: meetingLinkUrl({ kind: 'member', sessionId: job.sessionId, userId: String(u._id) }),
+      guest: false,
+    })),
     ...meeting.guests
       .filter((g) => job.guestIds.includes(String(g._id)))
       .map((g) => ({
         key: String(g._id),
         email: g.email,
         name: g.name ?? null,
-        link: guestLinkUrl(String(g._id)),
+        link: meetingLinkUrl({ kind: 'guest', guestId: String(g._id) }),
         guest: true,
       })),
     ...job.cancelTo.map((c) => ({
@@ -161,7 +168,7 @@ async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>)
         to: r.email,
         name: r.name,
         method: job.method,
-        changed: job.sequence > 0,
+        changed: job.changed,
         title: session.title,
         start: session.scheduledStart,
         end: session.scheduledEnd,
@@ -169,14 +176,17 @@ async function meetingInvites(job: Extract<MailJob, { kind: 'meetingInvites' }>)
         invitedBy: hosts[0] ?? 'A host',
         link: r.link,
         guest: r.guest,
+        passcode,
         ics: meetingIcs({
           ...event,
-          description: `${r.guest ? 'Your personal link' : 'Join'}: ${r.link}`,
+          description: `Your link: ${r.link}${passcode ? `\nPasscode: ${passcode}` : ''}`,
           url: r.link,
           attendee: { name: r.name, email: r.email },
         }),
       }),
-      opts: { jobId: `mail-meeting-${job.sessionId}-${job.sequence}-${job.method}-${r.key}` },
+      opts: {
+        jobId: `mail-meeting-${job.sessionId}-${job.sequence}-${job.method}-${r.key}${job.resentAt ? `-${job.resentAt}` : ''}`,
+      },
     })),
   );
 }

@@ -9,7 +9,8 @@ import type { MeetingDetail } from '@/lib/data/meetings';
 import { istDayKey, istTimeOfDay } from '@/lib/domain/time';
 
 // M03c T4, mock-up R2-A: "New meeting" on the Meetings page (`?new=meeting`) and "Edit" on a meeting's page. Everyone
-// invited gets an email with the link and a calendar file; people from the LMS also get a notification.
+// invited gets an email with their own link, the passcode (T14) and a calendar file; people from the LMS also get a
+// notification.
 export function MeetingDialog({ meeting, trigger }: { meeting?: MeetingDetail; trigger?: ReactNode }) {
   const start = meeting?.session.scheduledStart;
   const end = meeting?.session.scheduledEnd;
@@ -23,7 +24,7 @@ export function MeetingDialog({ meeting, trigger }: { meeting?: MeetingDetail; t
       description={
         meeting
           ? 'A new time or title is sent to everyone again; people you add are invited, people you take off are told.'
-          : 'Everyone invited gets an email with the link and a calendar file.'
+          : 'Everyone invited gets an email with their own link, the passcode and a calendar file.'
       }
       action={saveMeeting}
       submitLabel={meeting ? 'Save and tell everyone' : 'Schedule and send invitations'}

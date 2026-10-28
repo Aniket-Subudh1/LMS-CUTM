@@ -24,7 +24,8 @@ const initials = (name: string) =>
 // The fields round, mock-up F1 A (like Google Calendar's guests): one box for everyone. A name, roll number or email
 // finds people from the LMS; an email that is nobody's invites a guest; a pasted list is matched at once and what
 // happened is said. Below, everyone invited with their role: staff may be made co-hosts there (at most four), students
-// take part, guests wait in the lobby. The form receives `coHost[]`, `member[]` and `guests` as before.
+// take part. The form receives `coHost[]`, `member[]` and `guests` as before. M03c T14: what is still typed in the box
+// is added when it loses focus, and is sent as `typed` too, so pressing Send without Enter invites them all the same.
 export function MeetingPeople({
   owner,
   initial,
@@ -195,7 +196,12 @@ export function MeetingPeople({
             }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
-            disabled={busy}
+            onBlur={() => {
+              if (q && !busy) void resolve(q, false);
+            }}
+            // Read-only, not disabled, while it looks people up: a disabled box is left out of the form.
+            name="typed"
+            readOnly={busy}
             placeholder="Add people or email addresses"
             role="combobox"
             aria-autocomplete="list"
@@ -237,7 +243,7 @@ export function MeetingPeople({
                     <span className="text-muted-foreground truncate text-xs">
                       {option.kind === 'person'
                         ? `${option.person.staff ? 'Staff' : 'Student'} · ${option.person.detail}`
-                        : 'They get their own link and wait in the lobby until a host lets them in.'}
+                        : 'They get their own link and the passcode by email; no account is needed.'}
                     </span>
                   </span>
                 </li>
@@ -246,8 +252,8 @@ export function MeetingPeople({
           )}
         </div>
         <p id={`${id}-hint`} className="text-muted-foreground text-xs leading-relaxed">
-          Type a name, roll number or email, or paste a list from a sheet or an email. People from the LMS sign in to
-          join; anyone else is a guest with their own link.
+          Type a name, roll number or email, or paste a list from a sheet or an email. Everyone gets their own link and
+          the meeting’s passcode by email; anyone not in the LMS is a guest.
         </p>
         {message && (
           <p
@@ -317,9 +323,7 @@ export function MeetingPeople({
               {avatar('@', true)}
               <span className="grid min-w-0 flex-1">
                 <span className="truncate text-[0.8125rem] font-medium">{email}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  Gets their own link and waits in the lobby
-                </span>
+                <span className="text-muted-foreground truncate text-xs">Gets their own link and the passcode</span>
               </span>
               <span className="text-muted-foreground shrink-0 text-xs">Guest</span>
               {remove(email, () => setGuests(guests.filter((g) => g !== email)))}
@@ -327,12 +331,13 @@ export function MeetingPeople({
           ))}
         </ul>
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Co-hosts are staff, at most {MEETING_LIMITS.coHosts}; they let guests in, mute, remove and record.
+          Co-hosts are staff, at most {MEETING_LIMITS.coHosts}; they mute, remove and record.
         </p>
       </div>
       <FieldErrors name="coHost[]" />
       <FieldErrors name="member[]" />
       <FieldErrors name="guests" />
+      <FieldErrors name="typed" />
       <input type="hidden" name="guests" value={guests.join('\n')} />
     </div>
   );

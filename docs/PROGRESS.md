@@ -327,7 +327,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-219 | A meeting's passcode is 6 digits, kept as plain text on the meeting so hosts can read it out and invitations can carry it; it stays the same for the meeting's life | M03c (fixes) | — |
 | A-220 | Meetings scheduled before 28 Oct 2026 have no passcode, and their links still open them without one | M03c (fixes) | — |
 | A-221 | A co-host or member who opens their link signed out takes part under their own name; host controls need signing in | M03c (fixes) | — |
-| A-222 | A link takes at most 10 passcode tries in 15 minutes, and an address 30, across all links | M03c (fixes) | — |
+| A-222 | A link takes at most 10 wrong passcodes in 15 minutes, and an address 30 across all links; a right passcode gives its tries back | M03c (fixes) | — |
 | A-223 | A right passcode lets that browser back into that meeting for 12 hours (a meeting lasts at most 6, A-192); another browser asks again | M03c (fixes) | — |
 | A-224 | Two browsers on one link are one person in the room: the later replaces the earlier, as LiveKit allows one connection per identity | M03c (fixes) | — |
 | A-225 | Guests answer polls and raise hands; a guest's answer is kept against their guest id, as a member's against their account | M03c (fixes) | — |
@@ -3319,3 +3319,63 @@ Aniket: "the stop recording button doesn't work, recording should fully work". T
   - `npx vitest run --project unit lib/integrations/live.test.ts` → 9 passed
   - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 52 passed (52)`
 - Not run with a real Egress yet; that is T18's walk.
+
+### 2026-10-28 · M03c/T14 Invitations and the way in: a personal link and the passcode for everyone · Claude Code, at Aniket's request
+
+Aniket: "the meeting link is not going to the person who is added … he must be able to join even if he doesn't have an account … keep the link secure, like Zoom where a password is given". What the code showed:
+- The people field dropped an address typed without Enter.
+- Members were emailed the meeting's page, which sent anyone signed out to sign in and then to Home.
+- A guest's link had no passcode, and once let in, anyone holding it came straight back.
+
+T14 also takes the join by link and passcode that the plan gave to T15, since both change the same page and actions. T15 keeps the "Ready to join?" screen, the camera, and polls and hands by link.
+
+**Created**
+- **Links:**
+  - `lib/auth/meeting-link.ts` (was `guest-link.ts`): a member's or co-host's personal link, `<sessionId>.<userId>.<sig>`, beside a guest's `<guestId>.<sig>`. Links already emailed keep working.
+  - `meetingLink` in `lib/schemas/live.ts` accepts both.
+- **The passcode and the pass:**
+  - `meeting.passcode` (`lib/models/live-session.ts`): six digits, set when a meeting is scheduled.
+  - `lib/auth/meeting-pass.ts`: the sealed `lms_meeting` cookie a right passcode gives.
+- **The lobby removed:** `waiting`, the guests' `admittedAt` and `deniedAt`, `askToJoin`, `stopAsking`, `admitGuests`, `denyGuest`, People's waiting list and the "wants to join" notice.
+- **Joining** (`app/(room)/m/[token]/`): `joinMeeting` checks the passcode and limits wrong ones. The page opens a signed-in member's own room. Otherwise it asks a guest's name or shows "Joining as …", then the passcode; a member's link also offers "Sign in instead".
+  - **Reads:** `findLinkedMeeting` and `getMeetingLink` (`lib/data/meetings.ts`, replacing `getGuestLobby`). `getMeeting` gains `invitation` for hosts: the passcode and everyone's link.
+- **Invitations:**
+  - **The people field** (`components/meeting-people.tsx`):
+    - What is typed is added when the box loses focus, and it is sent as `typed`.
+    - `saveMeeting` adds it as Enter would, or says who it could not add.
+    - The box is read-only rather than disabled while it looks people up, so its text is still sent.
+  - **The emails:** everyone gets their own link and the passcode, in the email and the calendar file (`worker/jobs/mail.ts`, `lib/domain/email-templates.ts`). "Updated invitation" goes only when the time or title changed (`changed`).
+  - **Send again:** `resendInvitation` (3 an hour per person).
+- **The meeting's page:** "How people join" with the passcode and "Copy passcode". Every person's row has "Copy link" and "Send again" (hosts, while it is ahead or running). Guests show Invited, Joined or Removed.
+- **Signing in returns:** `proxy.ts` adds `?next=`, the login page carries it, and `login` follows it only to a path on this site (`NextPath`, with a unit test).
+- **Tests:**
+  - `tests/integration/meetings.test.ts`:
+    - everyone's own link and the passcode in every invitation;
+    - what was typed;
+    - "Invitation" against "Updated invitation";
+    - a guest joining, a wrong passcode and a removed guest;
+    - a member's own room, and members and co-hosts joining signed out;
+    - a link taken off or moved to another meeting;
+    - the passcode limit;
+    - copy and Send again.
+  - `tests/integration/live.test.ts`: no `waiting` in the controls.
+  - `lib/schemas/auth.test.ts`: the return path.
+- **Docs:**
+  - 05 (`meeting`, no `waiting`, `pollAnswers`);
+  - 06 (`meetingInvites`, §8.7, §8.8 joining by link);
+  - 08 (the two routes);
+  - 09 (permissions, two rate limits, links and the passcode, returning after sign-in);
+  - the M03c task list.
+
+**Not done**
+- The "Ready to join?" screen replacing the test lobby's device check, and polls and hands for people who joined by link: T15.
+- Whether an email was delivered is not shown; "Send again" and "Copy link" are the way round a lost one.
+
+**Assumptions** — A-219–A-224 (A-222 now counts wrong passcodes only).
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 650 passed (650)`.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 54 passed (54)` (with T13's).
+- Redis on this Mac stopped at about 14:12, during the other session's runs. I started a local `redis-server` (no persistence files) to finish these runs.

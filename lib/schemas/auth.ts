@@ -6,7 +6,17 @@ export const Password = z.string().min(10, 'Use at least 10 characters.').max(12
 const matching = <T extends { password: string; confirm: string }>(v: T) => v.password === v.confirm;
 const mismatch = { message: 'The passwords do not match.', path: ['confirm'] };
 
-export const LoginInput = z.object({ email: Email, password: z.string().min(1, 'Enter your password.').max(128) });
+// M03c T14: where sign-in returns to — a path on this site only. `//host` and `/\host` are other sites to a browser, so
+// they (and anything else) fall back to Home.
+export const NextPath = z
+  .string()
+  .max(500)
+  .regex(/^\/(?![/\\])[^\s\\]*$/);
+export const LoginInput = z.object({
+  email: Email,
+  password: z.string().min(1, 'Enter your password.').max(128),
+  next: NextPath.optional().catch(undefined),
+});
 export const ResetRequestInput = z.object({ email: Email });
 export const ResetInput = z
   .object({ token: z.string().min(1), password: Password, confirm: z.string() })

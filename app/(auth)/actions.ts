@@ -16,9 +16,9 @@ import { LoginInput, ResetInput, ResetRequestInput } from '@/lib/schemas/auth';
 const MINUTE = 60_000;
 const EXPIRED = 'This link has expired or was already used.';
 
-export const login = publicAction(LoginInput, async ({ email, password }) => {
+export const login = publicAction(LoginInput, async ({ email, password, next }) => {
   await passwordSignIn(email, password);
-  redirect('/home');
+  redirect(next ?? '/home');
 });
 
 export async function logout(): Promise<void> {

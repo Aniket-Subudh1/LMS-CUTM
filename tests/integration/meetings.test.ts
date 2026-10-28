@@ -1,15 +1,21 @@
+import { randomInt } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
-import { cancelMeeting, findPeople, matchPeople, saveMeeting, startMeeting } from '@/app/(app)/meetings/actions';
 import {
-  admitGuests,
+  cancelMeeting,
+  findPeople,
+  matchPeople,
+  resendInvitation,
+  saveMeeting,
+  startMeeting,
+} from '@/app/(app)/meetings/actions';
+import {
   allowBack,
   answerPoll,
   closeBoard,
   closeBreakouts,
   createPoll,
-  denyGuest,
   endPoll,
   endRoom,
   messageBreakouts,
@@ -22,12 +28,12 @@ import {
   startRecording,
   stopRecording,
 } from '@/app/(room)/actions';
-import { askToJoin, stopAsking } from '@/app/(room)/m/[token]/actions';
+import { joinMeeting } from '@/app/(room)/m/[token]/actions';
 import { GET as file } from '@/app/api/files/[...key]/route';
 import { POST as webhook } from '@/app/api/webhooks/live/route';
-import { guestIdOf, guestLinkToken } from '@/lib/auth/guest-link';
+import { linkHolderOf, meetingLinkToken } from '@/lib/auth/meeting-link';
 import { getSession } from '@/lib/data/live';
-import { getGuestLobby, getMeeting, getMeetingRoom, listMeetings } from '@/lib/data/meetings';
+import { getMeeting, getMeetingLink, getMeetingRoom, listMeetings } from '@/lib/data/meetings';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import type { LiveEvent, Recording } from '@/lib/integrations/live';
@@ -42,6 +48,7 @@ import { computeQueue, mailQueue, queueLiveControl, redis } from '@/lib/queue';
 import { startComputeWorker } from '@/worker/jobs/compute';
 import { startMailWorker } from '@/worker/jobs/mail';
 import { enroll, makeOffering, makeUser, newId, signInAs } from '../factories';
+import { switchBrowser } from '../next-request';
 
 type Sent = { to: string; subject: string; text: string; calendar?: { method: string; content: string } };
 const {
@@ -200,6 +207,14 @@ async function schedule(w: World, over: Partial<Parameters<typeof saveMeeting>[0
 
 const mailsTo = (id: string) =>
   sendMail.mock.calls.map(([m]) => m).filter((m) => m.calendar?.content.includes(`meeting-${id}@`));
+const linkIn = (text = '') => /\/m\/([^\s]+)/.exec(text)?.[1] ?? '';
+const guestLink = (guestId: unknown) => meetingLinkToken({ kind: 'guest', guestId: String(guestId) });
+// A signed-out browser of its own, on an address of its own, so passcode limits never carry between tests or runs.
+function signedOut(): Map<string, string> {
+  const cookies = new Map<string, string>();
+  switchBrowser(cookies, `10.${randomInt(256)}.${randomInt(256)}.${randomInt(256)}`);
+  return cookies;
+}
 
 describe('scheduling a meeting (M03c T4)', () => {
   it('lets staff invite co-hosts, people they may invite and guests, and sends each an invitation of their own', async () => {
@@ -220,10 +235,30 @@ describe('scheduling a meeting (M03c T4)', () => {
       expect(m.calendar?.content.replace(/\r\n /g, '')).toContain(`RSVP=FALSE:mailto:${m.to}`);
       expect(m.calendar?.content.match(/ATTENDEE/g)).toHaveLength(1);
     }
+    // T14 (decision 9): everyone's own link, and the passcode in every invitation and calendar file.
+    const passcode = doc?.meeting?.passcode ?? '';
+    expect(passcode).toMatch(/^\d{6}$/);
     const rao = mailsTo(id).find((m) => m.to === 'rao.kumar@example.com');
-    const token = /\/m\/([^\s]+)/.exec(rao?.text ?? '')?.[1] ?? '';
-    expect(guestIdOf(token)).toBe(String(doc?.meeting?.guests[0]._id));
-    expect(mailsTo(id).find((m) => m.to === w.taught.email)?.text).toContain(`/meetings/${id}`);
+    expect(linkHolderOf(linkIn(rao?.text))).toEqual({ kind: 'guest', guestId: String(doc?.meeting?.guests[0]._id) });
+    const taught = mailsTo(id).find((m) => m.to === w.taught.email);
+    expect(linkHolderOf(linkIn(taught?.text))).toEqual({ kind: 'member', sessionId: id, userId: String(w.taught._id) });
+    for (const m of mailsTo(id)) {
+      expect(m.text).toContain(`Passcode: ${passcode}`);
+      expect(m.calendar?.content.replace(/\r\n /g, '')).toContain(`Passcode: ${passcode}`);
+      expect(m.subject).toMatch(/^Invitation: /);
+    }
+  });
+
+  it('invites what was still typed in the people box, and says who it could not add (T14)', async () => {
+    const w = await world();
+    const id = await schedule(w, { 'member[]': [], guests: '', typed: `${w.taught.email}, new.guest@example.com` });
+    const doc = await LiveSession.findById(id).lean();
+    expect(doc?.meeting?.memberIds.map(String)).toEqual([String(w.taught._id)]);
+    expect(doc?.meeting?.guests.map((g) => g.email)).toEqual(['new.guest@example.com']);
+    expect(await saveMeeting({ title: 'Review', ...slot(tomorrow()), guests: '', typed: 'Asha' })).toMatchObject({
+      code: 'VALIDATION',
+      fieldErrors: { typed: ['“asha” is nobody you can invite, and not an email address.'] },
+    });
   });
 
   it('refuses a student scheduling, people the scheduler may not invite, a student co-host and a time that passed', async () => {
@@ -283,6 +318,7 @@ describe('scheduling a meeting (M03c T4)', () => {
     await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(1));
     expect(mailsTo(id)[0]).toMatchObject({ to: other.email });
     expect(mailsTo(id)[0].calendar?.content).toContain('SEQUENCE:0');
+    expect(mailsTo(id)[0].subject).toMatch(/^Invitation: /);
     // A new time, and Sita taken off: version 1 to everyone left, a cancellation to Sita.
     sendMail.mockClear();
     expect(
@@ -303,10 +339,11 @@ describe('scheduling a meeting (M03c T4)', () => {
         .sort(),
     ).toEqual([w.colleague.email, w.taught.email, other.email, 'rao.kumar@example.com'].sort());
     expect(mailsTo(id).every((m) => m.calendar?.content.includes('SEQUENCE:1'))).toBe(true);
+    expect(mailsTo(id).filter((m) => m.subject.startsWith('Updated invitation: '))).toHaveLength(4);
     expect(await Notification.countDocuments({ kind: 'meeting.changed', href: `/meetings/${id}` })).toBe(3);
     // Rao's link survives the new version.
     const guest = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
-    expect((await getGuestLobby(guestLinkToken(String(guest?._id)))).guest.email).toBe('rao.kumar@example.com');
+    expect((await getMeetingLink(guestLink(guest?._id))).person.email).toBe('rao.kumar@example.com');
   });
 
   it('cancels for everyone, once; a co-host cannot change a meeting that has started', async () => {
@@ -370,46 +407,52 @@ describe('who reaches a meeting (09 §3)', () => {
   });
 });
 
-describe('the guest lobby (decision 7)', () => {
+describe('joining by a personal link and the passcode (T14, decision 9)', () => {
   async function running() {
     const w = await world();
     const id = await schedule(w);
     await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
-    const guests = (await LiveSession.findById(id).lean())?.meeting?.guests ?? [];
-    return { w, id, ref: { sessionId: id }, rao: guests[0], sita: guests[1] };
+    const doc = await LiveSession.findById(id).lean();
+    const guests = doc?.meeting?.guests ?? [];
+    const passcode = doc?.meeting?.passcode ?? '';
+    const wrong = passcode === '111111' ? '222222' : '111111';
+    return { w, id, ref: { sessionId: id }, rao: guests[0], passcode, wrong };
   }
 
-  it('takes a guest from asking to the room, and keeps a removed guest out until a host lets them back', async () => {
-    const { w, id, ref, rao } = await running();
-    const token = guestLinkToken(String(rao._id));
+  it('lets a guest in with the passcode under their name, and keeps a removed guest out until a host lets them back', async () => {
+    const { w, id, ref, rao, passcode, wrong } = await running();
+    const token = guestLink(rao._id);
     const raoId = String(rao._id);
-    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'invited' }, join: null });
-    tell.mockClear();
-    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ ok: true });
-    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ ok: true });
-    expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'controls', 'lobby');
-    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'waiting', name: 'Rao Kumar' }, join: null });
-    await signInAs(w.colleague);
-    expect((await getMeetingRoom(id)).controls?.waiting).toEqual([
-      { id: raoId, name: 'Rao Kumar', at: expect.any(Date) },
-    ]);
-    // Only a host lets people in.
-    await signInAs(w.taught);
-    await expect(admitGuests({ ...ref, 'identity[]': [raoId] })).rejects.toThrow(NOT_FOUND);
-    await signInAs(w.colleague);
-    expect(await admitGuests({ ...ref, 'identity[]': [raoId] })).toMatchObject({ ok: true });
-    expect(await getGuestLobby(token)).toMatchObject({
-      guest: { state: 'admitted' },
-      // A guest's own role keeps them out of the breakout setup (A-201).
-      join: { token: `guest-${raoId}` },
+    const raos = signedOut();
+    expect(await getMeetingLink(token)).toMatchObject({
+      person: { kind: 'guest', email: 'rao.kumar@example.com' },
+      signedIn: false,
+      asksPasscode: true,
+      join: null,
     });
-    expect((await getMeetingRoom(id)).controls?.waiting).toEqual([]);
+    expect(await joinMeeting({ token, name: 'Rao Kumar', passcode: wrong })).toMatchObject({
+      code: 'VALIDATION',
+      fieldErrors: { passcode: ['Not right. It is the six digits in your invitation email.'] },
+    });
+    expect(await joinMeeting({ token, name: 'R', passcode })).toMatchObject({ code: 'VALIDATION' });
+    expect(await joinMeeting({ token, name: 'Rao Kumar', passcode })).toMatchObject({ ok: true });
+    // A guest's own role keeps them out of the breakout setup (A-201).
+    expect((await getMeetingLink(token)).join?.token).toBe(`guest-${raoId}`);
+    // Another browser with the same link asks for the passcode again (A-223).
+    signedOut();
+    expect((await getMeetingLink(token)).join).toBeNull();
+    await signInAs(w.faculty);
+    expect((await getMeeting(id)).guests?.find((g) => g.id === raoId)).toMatchObject({
+      name: 'Rao Kumar',
+      state: 'joined',
+    });
     // Removed: no token, put out again if they come back with one they kept, and no attendance in a meeting.
     removeFromRoom.mockClear();
     expect(await removeParticipant({ ...ref, identity: raoId })).toMatchObject({ ok: true });
     expect(removeFromRoom).toHaveBeenCalledWith(`ls-${id}`, raoId);
-    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'removed' }, join: null });
-    expect(await askToJoin({ token, name: 'Rao' })).toMatchObject({ code: 'FORBIDDEN' });
+    switchBrowser(raos);
+    expect(await getMeetingLink(token)).toMatchObject({ removed: true, join: null });
+    expect(await joinMeeting({ token, name: 'Rao', passcode })).toMatchObject({ code: 'FORBIDDEN' });
     removeFromRoom.mockClear();
     await hook({ type: 'joined', host: false, roomName: `ls-${id}`, userId: raoId, sid: 'PA_g', at: new Date() });
     await hook({
@@ -422,36 +465,87 @@ describe('the guest lobby (decision 7)', () => {
     });
     expect(removeFromRoom).toHaveBeenCalledExactlyOnceWith(`ls-${id}`, raoId);
     expect(await Attendance.countDocuments({ sessionId: id })).toBe(0);
+    await signInAs(w.faculty);
     expect(await allowBack({ ...ref, identity: raoId })).toMatchObject({ ok: true });
-    expect(await getGuestLobby(token)).toMatchObject({
-      guest: { state: 'admitted' },
-      join: { token: `guest-${raoId}` },
-    });
+    switchBrowser(raos);
+    expect((await getMeetingLink(token)).join?.token).toBe(`guest-${raoId}`);
     expect(
       await AuditLog.countDocuments({ entityId: id, action: { $in: ['live.removed', 'live.allowed_back'] } }),
     ).toBe(2);
   });
 
-  it('lets a turned-away guest ask again, or stop asking', async () => {
-    const { w, ref, sita } = await running();
-    const token = guestLinkToken(String(sita._id));
-    await askToJoin({ token, name: 'Sita Das' });
-    await signInAs(w.faculty);
-    expect(await denyGuest({ ...ref, identity: String(sita._id) })).toMatchObject({ ok: true });
-    expect(await getGuestLobby(token)).toMatchObject({ guest: { state: 'denied' }, join: null });
-    await askToJoin({ token, name: 'Sita Das' });
-    expect((await getGuestLobby(token)).guest.state).toBe('waiting');
-    expect(await stopAsking({ token })).toMatchObject({ ok: true });
-    expect((await getGuestLobby(token)).guest.state).toBe('invited');
+  it('opens a member’s own room when they are signed in, and lets members and co-hosts join without signing in', async () => {
+    const { w, id, passcode } = await running();
+    const token = meetingLinkToken({ kind: 'member', sessionId: id, userId: String(w.taught._id) });
+    await signInAs(w.taught);
+    expect(await getMeetingLink(token)).toMatchObject({
+      signedIn: true,
+      person: { kind: 'member', name: w.taught.name },
+    });
+    await signInAs(w.untaught);
+    expect((await getMeetingLink(token)).signedIn).toBe(false);
+    signedOut();
+    expect(await joinMeeting({ token, passcode })).toMatchObject({ ok: true });
+    expect((await getMeetingLink(token)).join?.token).toBe(`participant-${w.taught._id}`);
+    // A co-host who did not sign in takes part; hosting needs signing in (A-221).
+    const cohost = meetingLinkToken({ kind: 'member', sessionId: id, userId: String(w.colleague._id) });
+    expect(await joinMeeting({ token: cohost, passcode })).toMatchObject({ ok: true });
+    expect((await getMeetingLink(cohost)).join?.token).toBe(`participant-${w.colleague._id}`);
+    // Taken off the meeting, their link no longer opens it; nor does it open another meeting.
+    await LiveSession.updateOne({ _id: id }, { $pull: { 'meeting.memberIds': w.taught._id } });
+    await expect(getMeetingLink(token)).rejects.toThrow(NOT_FOUND);
+    expect(await joinMeeting({ token, passcode })).toMatchObject({ code: 'NOT_FOUND' });
+    const other = await schedule(w);
+    const borrowed = token.replace(id, other);
+    await expect(getMeetingLink(borrowed)).rejects.toThrow(NOT_FOUND);
   });
 
-  it('refuses an altered link, and asking before the meeting starts', async () => {
+  it('limits wrong passcodes per link, and refuses an altered link and joining before the start', async () => {
     const w = await world();
     const id = await schedule(w);
-    const guest = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
-    const token = guestLinkToken(String(guest?._id));
-    await expect(getGuestLobby(`${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`)).rejects.toThrow(NOT_FOUND);
-    expect(await askToJoin({ token, name: 'Rao Kumar' })).toMatchObject({ code: 'CLOSED' });
+    const doc = await LiveSession.findById(id).lean();
+    const token = guestLink(doc?.meeting?.guests[0]._id);
+    const passcode = doc?.meeting?.passcode ?? '';
+    signedOut();
+    await expect(getMeetingLink(`${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`)).rejects.toThrow(NOT_FOUND);
+    expect(await joinMeeting({ token, name: 'Rao Kumar', passcode })).toMatchObject({ code: 'CLOSED' });
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const wrong = passcode === '111111' ? '222222' : '111111';
+    for (let i = 0; i < 9; i++) {
+      expect(await joinMeeting({ token, name: 'Rao Kumar', passcode: wrong })).toMatchObject({ code: 'VALIDATION' });
+    }
+    // The CLOSED try above counted too: ten in all, and then even the right passcode waits.
+    expect(await joinMeeting({ token, name: 'Rao Kumar', passcode })).toMatchObject({ code: 'RATE_LIMITED' });
+  });
+
+  it('lets a host copy anyone’s link and send one person’s invitation again, a few times an hour', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
+    const doc = await LiveSession.findById(id).lean();
+    const raoId = String(doc?.meeting?.guests[0]._id);
+    await signInAs(w.taught);
+    expect((await getMeeting(id)).invitation).toBeNull();
+    await expect(resendInvitation({ meetingId: id, personId: raoId })).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.colleague);
+    const { invitation } = await getMeeting(id);
+    expect(invitation?.passcode).toBe(doc?.meeting?.passcode);
+    expect(linkHolderOf(linkIn(invitation?.links[raoId]))).toEqual({ kind: 'guest', guestId: raoId });
+    expect(linkHolderOf(linkIn(invitation?.links[String(w.taught._id)]))).toMatchObject({ kind: 'member' });
+    sendMail.mockClear();
+    expect(await resendInvitation({ meetingId: id, personId: raoId })).toMatchObject({ ok: true });
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(1));
+    expect(mailsTo(id)[0]).toMatchObject({
+      to: 'rao.kumar@example.com',
+      subject: expect.stringMatching(/^Invitation: /),
+    });
+    expect(await resendInvitation({ meetingId: id, personId: raoId })).toMatchObject({ ok: true });
+    expect(await resendInvitation({ meetingId: id, personId: raoId })).toMatchObject({ ok: true });
+    expect(await resendInvitation({ meetingId: id, personId: raoId })).toMatchObject({ code: 'RATE_LIMITED' });
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(3));
+    expect(await resendInvitation({ meetingId: id, personId: String(w.untaught._id) })).toMatchObject({
+      code: 'NOT_FOUND',
+    });
   });
 });
 
@@ -801,7 +895,7 @@ describe('the whiteboard (M03c T8)', () => {
     await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
     const ref = { sessionId: id };
     const rao = (await LiveSession.findById(id).lean())?.meeting?.guests[0];
-    const token = guestLinkToken(String(rao?._id));
+    const token = guestLink(rao?._id);
     await signInAs(w.taught);
     await expect(openBoard({ ...ref, studentsDraw: true })).rejects.toThrow(NOT_FOUND);
     expect((await getMeetingRoom(id)).board).toBeNull();
@@ -811,7 +905,7 @@ describe('the whiteboard (M03c T8)', () => {
     expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'board', 'opened');
     await signInAs(w.taught);
     expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: false });
-    expect((await getGuestLobby(token)).board).toEqual({ studentsDraw: false });
+    expect((await getMeetingLink(token)).board).toEqual({ studentsDraw: false });
     await signInAs(w.colleague);
     expect(await setBoardDrawing({ ...ref, allowed: true })).toMatchObject({ ok: true });
     expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: true });

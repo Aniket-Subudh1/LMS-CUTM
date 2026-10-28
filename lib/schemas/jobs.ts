@@ -16,7 +16,8 @@ export const MailJob = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('invitation'), userIds: z.array(objectId).min(1).max(500) }),
   z.object({ kind: z.literal('coursePlanPublished'), offeringId: objectId, version: z.number().int().min(1) }),
   // M03c T4: a meeting's invitation (or its cancellation) to the people named; `cancelTo` are people taken off it,
-  // whose address the meeting no longer holds.
+  // whose address the meeting no longer holds. T14: `changed` says the meeting itself changed (people only added get
+  // a plain invitation); `resentAt` makes a host's "Send again" a new email rather than a repeat of the last.
   z.object({
     kind: z.literal('meetingInvites'),
     sessionId: objectId,
@@ -25,6 +26,8 @@ export const MailJob = z.discriminatedUnion('kind', [
     userIds: z.array(objectId).max(60),
     guestIds: z.array(objectId).max(20),
     cancelTo: z.array(z.object({ email: z.email(), name: z.string().max(120).nullable() })).max(80),
+    changed: z.boolean().default(false),
+    resentAt: z.number().int().optional(),
   }),
 ]);
 export type MailJob = z.infer<typeof MailJob>;

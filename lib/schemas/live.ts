@@ -155,6 +155,8 @@ export const SaveMeeting = z
       .max(MEETING_LIMITS.members, `Invite at most ${MEETING_LIMITS.members} people from the LMS.`)
       .default([]),
     guests: guestEmails,
+    // T14: what is still in the people box when the form is sent, added as Enter would add it.
+    typed: z.string().trim().max(2000).default(''),
   })
   .refine((m) => m.endTime > m.startTime, { path: ['endTime'], message: 'End after the start.' });
 export const MeetingRef = z.object({ meetingId: objectId });
@@ -170,13 +172,19 @@ export const MatchPeople = z.object({
   keys: z.array(z.string().trim().min(1).max(120)).min(1).max(100),
 });
 
-// A guest's personal link: their id and its signature (lib/auth/guest-link.ts).
-export const guestToken = z.string().regex(/^[a-f\d]{24}\.[A-Za-z\d_-]{43}$/, 'This link is not valid.');
-export const GuestRef = z.object({ token: guestToken });
-export const AskToJoin = z.object({
-  token: guestToken,
-  name: z.string().trim().min(2, 'Enter your name.').max(80, 'Use at most 80 characters.'),
+// A personal meeting link (lib/auth/meeting-link.ts): a guest's id, or the meeting's and a member's, and the signature.
+export const meetingLink = z
+  .string()
+  .regex(/^[a-f\d]{24}(\.[a-f\d]{24})?\.[A-Za-z\d_-]{43}$/, 'This link is not valid.');
+// T14 (decision 9): joining by that link without signing in. A guest gives their name; a member joins under their own.
+// Meetings scheduled before passcodes ask for none (A-220), so the box may be absent.
+export const JoinMeeting = z.object({
+  token: meetingLink,
+  name: z.string().trim().max(80, 'Use at most 80 characters.').default(''),
+  passcode: z.string().trim().max(20).default(''),
 });
+// A host sends one person's invitation again: a member's or co-host's account, or a guest.
+export const ResendInvitation = z.object({ meetingId: objectId, personId: objectId });
 
 // --- Attendance (ATT-01) ---
 

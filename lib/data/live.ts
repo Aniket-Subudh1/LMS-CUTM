@@ -262,15 +262,14 @@ export type SessionDetail = {
   thresholdPct: number;
 };
 
-// M03c T2, T4: what a host sees in People — what the others may do, who was removed (the latest first) and, in a
-// meeting, the guests waiting to join in the order they asked. Removed people are users, or a meeting's guests.
+// M03c T2, T4: what a host sees in People — what the others may do and who was removed (the latest first). Removed
+// people are users, or a meeting's guests.
 export type RoomControls = {
   rights: StudentRights;
   removed: { id: string; name: string; at: Date }[];
-  waiting: { id: string; name: string; at: Date }[];
 };
 
-type RoomDoc = Pick<LiveSessionDoc, 'studentsMay' | 'removed' | 'waiting' | 'meeting'>;
+type RoomDoc = Pick<LiveSessionDoc, 'studentsMay' | 'removed' | 'meeting'>;
 
 // M03c T5: the saved recordings of a class or meeting, for its page, the earliest first.
 export type RecordingRow = { key: string; startedAt: Date; durationSec: number | null; by: string };
@@ -297,7 +296,6 @@ export async function roomControls(doc: RoomDoc): Promise<RoomControls> {
   return {
     rights: { ...ALL_RIGHTS, ...doc.studentsMay },
     removed: removed.map((r) => ({ id: String(r.userId), name: nameOf(r.userId), at: r.at })).reverse(),
-    waiting: (doc.waiting ?? []).map((w) => ({ id: String(w.guestId), name: w.name, at: w.at })),
   };
 }
 
@@ -427,7 +425,6 @@ export async function getSession(offeringId: string, sessionId: string): Promise
       roomName: 1,
       studentsMay: 1,
       removed: 1,
-      waiting: 1,
       recordings: 1,
       polls: 1,
       breakout: 1,

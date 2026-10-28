@@ -74,13 +74,11 @@ import {
   type VideoCaptureOptions,
 } from 'livekit-client';
 import {
-  admitGuests,
   allowBack,
   answerPoll,
   closeBoard,
   closeBreakouts,
   createPoll,
-  denyGuest,
   endPoll,
   endRoom,
   lowerHands,
@@ -151,7 +149,7 @@ type Props = {
   expected: number;
   // Said above "End … for everyone" for hosts: how attendance is taken, or that a meeting takes none.
   attendanceNote: string;
-  // M03c T2, T4, hosts only: what the others may do, who was removed (the latest first), who is waiting to join.
+  // M03c T2, hosts only: what the others may do and who was removed (the latest first).
   controls: RoomControls | null;
   // M03c T5: a host may start and stop a recording (where Egress is set up).
   canRecord?: boolean;
@@ -897,8 +895,6 @@ function Classroom(
   const toastKey = latest ? `${latest.identity}:${handOf(latest)}` : '';
   // M03c T6: a poll the viewer has yet to answer marks the Activities tab.
   const unanswered = !host && props.polls.some((poll) => poll.status === 'open' && poll.mine === null);
-  // M03c T4: the guest who asked to join last, until a host answers.
-  const asking = props.controls?.waiting.at(-1);
   const tile = (t: TrackReferenceOrPlaceholder, className: string, isMain = false, fills = false) => (
     <Tile
       key={keyOf(t)}
@@ -1082,31 +1078,6 @@ function Classroom(
               >
                 {notice.text}
               </p>
-            )}
-            {host && !inBreakout && asking && (
-              <div
-                role="status"
-                className="bg-background text-foreground flex max-w-full items-center gap-2.5 rounded-md py-1.5 pr-1.5 pl-3 text-[0.8125rem]"
-              >
-                <span className="truncate">
-                  <b className="font-semibold">{asking.name}</b> (guest) wants to join
-                </span>
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => void run(() => admitGuests({ ...ref, 'identity[]': [asking.id] }))}
-                >
-                  Admit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void run(() => denyGuest({ ...ref, identity: asking.id }))}
-                >
-                  Deny
-                </Button>
-              </div>
             )}
             {host && latest && toastKey !== dismissed && (
               <div
@@ -1472,8 +1443,6 @@ function Classroom(
                 )
               }
               letBack={(identity) => void run(() => allowBack({ ...ref, identity }))}
-              admit={(identities) => void run(() => admitGuests({ ...ref, 'identity[]': identities }))}
-              deny={(identity) => void run(() => denyGuest({ ...ref, identity }))}
             />
           ) : panel === 'chat' ? (
             <Chat me={me} noun={noun} locked={!mayChat} {...chat} />
@@ -1889,8 +1858,6 @@ function People({
   setRight,
   muteAll,
   letBack,
-  admit,
-  deny,
 }: Props & {
   now: number;
   participants: Participant[];
@@ -1903,8 +1870,6 @@ function People({
   setRight: (right: StudentRight, allowed: boolean) => void;
   muteAll: () => void;
   letBack: (identity: string) => void;
-  admit: (identities: string[]) => void;
-  deny: (identity: string) => void;
 }) {
   const people = [...participants].sort(
     (a, b) => Number(isHost(b)) - Number(isHost(a)) || nameOf(a).localeCompare(nameOf(b)),
@@ -1914,44 +1879,6 @@ function People({
   return (
     <>
       <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto p-4">
-        {host && controls && controls.waiting.length > 0 && (
-          <section className="grid gap-1.5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className={heading}>Waiting to join · {controls.waiting.length}</h2>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => admit(controls.waiting.map((w) => w.id))}
-                className={small}
-              >
-                Admit all
-              </button>
-            </div>
-            <ul className="ring-gold/50 bg-gold/10 grid rounded-md px-3 py-1.5 ring-1">
-              {controls.waiting.map((w) => (
-                <li key={w.id} className="flex items-center gap-2.5 py-1.5 text-[0.8125rem]">
-                  <Avatar name={w.name} />
-                  <span className="grid min-w-0 flex-1">
-                    <span className="truncate">{w.name}</span>
-                    <span className="text-xs text-white/60">Guest · asked {ago(now, w.at.getTime())}</span>
-                  </span>
-                  <button type="button" disabled={busy} onClick={() => deny(w.id)} className={small}>
-                    Deny
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => admit([w.id])}
-                    className="bg-primary flex h-7 items-center rounded-md px-2.5 text-xs font-medium"
-                  >
-                    Admit
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
         {host && controls && (
           <section className="grid gap-1.5">
             <h2 className={heading}>Host controls</h2>

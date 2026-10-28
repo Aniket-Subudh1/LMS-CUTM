@@ -8,13 +8,10 @@ import {
 } from '@/lib/schemas/live';
 
 // M03c T4: a meeting's guest, invited by email. Their personal link is their id signed with the session secret
-// (lib/auth/guest-link.ts), so nothing secret is stored. `name` is what they type in the lobby.
+// (lib/auth/meeting-link.ts), so nothing secret is stored. `name` is the name they last joined with (T14).
 const guestSchema = new Schema({
   email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254 },
   name: { type: String, trim: true, maxlength: 80 },
-  // In this meeting: a host let them in (they then come straight back while it runs), or turned them away.
-  admittedAt: { type: Date },
-  deniedAt: { type: Date },
 });
 
 const liveSessionSchema = new Schema(
@@ -56,7 +53,9 @@ const liveSessionSchema = new Schema(
       },
     ],
     // M03c T4, meetings only: the hosts (the scheduler first), the members from the LMS and the guests by email.
-    // `sequence` numbers the invitation, so calendars replace an earlier one (06 §8.7).
+    // `sequence` numbers the invitation, so calendars replace an earlier one (06 §8.7). T14 (decision 9): `passcode`,
+    // six digits, is asked of anyone joining by their personal link without signing in; meetings scheduled before it
+    // have none (A-220).
     meeting: {
       type: {
         _id: false,
@@ -64,6 +63,7 @@ const liveSessionSchema = new Schema(
         memberIds: { type: [Schema.Types.ObjectId], default: [] },
         guests: { type: [guestSchema], default: [] },
         sequence: { type: Number, required: true, default: 0 },
+        passcode: { type: String, match: /^\d{6}$/ },
       },
       default: undefined,
     },
@@ -126,15 +126,6 @@ const liveSessionSchema = new Schema(
       },
       default: undefined,
     },
-    // M03c T4: guests asking to join, in the order they asked (at most MEETING_LIMITS.guests).
-    waiting: [
-      {
-        _id: false,
-        guestId: { type: Schema.Types.ObjectId, required: true },
-        name: { type: String, required: true, maxlength: 80 },
-        at: { type: Date, required: true },
-      },
-    ],
     createdBy: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: true },
