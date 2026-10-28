@@ -776,9 +776,11 @@ describe('raised hands (M03b)', () => {
     const lower = (...ids: { _id: unknown }[]) =>
       lowerHands({ sessionId: String(session._id), 'identity[]': ids.map((u) => String(u._id)) });
     setHand.mockClear();
+    tell.mockClear();
     await signInAs(w.student);
     expect(await lower(w.student)).toMatchObject({ ok: true });
     expect(setHand).toHaveBeenLastCalledWith(session.roomName, String(w.student._id), null);
+    expect(tell).not.toHaveBeenCalled();
     await expect(lower(w.second)).rejects.toThrow(NOT_FOUND);
     await signInAs(w.hod);
     await expect(lower(w.student)).rejects.toThrow(NOT_FOUND);
@@ -788,6 +790,11 @@ describe('raised hands (M03b)', () => {
       expect(await lower(w.student, w.second, w.student)).toMatchObject({ ok: true });
       expect(setHand.mock.calls.map(([, identity]) => identity)).toEqual([String(w.student._id), String(w.second._id)]);
     }
+    // M03c T17: they are told who lowered it.
+    expect(tell).toHaveBeenLastCalledWith(session.roomName, 'notice', `${w.admin.name} lowered your hand`, [
+      String(w.student._id),
+      String(w.second._id),
+    ]);
   });
 });
 

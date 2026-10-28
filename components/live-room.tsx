@@ -4,6 +4,7 @@ import '@livekit/components-styles';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -25,6 +26,7 @@ import {
   useIsRecording,
   useLocalParticipant,
   useLocalParticipantPermissions,
+  useMediaDeviceSelect,
   useParticipants,
   usePersistentUserChoices,
   usePreviewTracks,
@@ -40,6 +42,7 @@ import {
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
   CameraRotateIcon,
+  CaretUpIcon,
   DeviceRotateIcon,
   ChartBarIcon,
   PencilSimpleLineIcon,
@@ -48,6 +51,7 @@ import {
   ClosedCaptioningIcon,
   CornersInIcon,
   CornersOutIcon,
+  DotsThreeIcon,
   DotsThreeVerticalIcon,
   HandPalmIcon,
   MicrophoneIcon,
@@ -173,7 +177,7 @@ const Whiteboard = dynamic(() => import('@/components/whiteboard').then((m) => m
   loading: () => <p className="grid h-full place-items-center text-sm text-slate-500">Opening the whiteboard…</p>,
 });
 type State = 'in' | 'left' | 'replaced' | 'dropped' | 'ended' | 'failed' | 'removed';
-type Panel = 'people' | 'chat' | 'activities';
+type Panel = 'people' | 'chat';
 type Layout = 'auto' | 'tiled' | 'spotlight' | 'sidebar';
 type View = { layout: Layout; hideNoVideo: boolean; showSelf: boolean; joinSound: boolean };
 type Float = { id: number; emoji: string; name: string };
@@ -423,12 +427,20 @@ export function LiveRoom(props: Props) {
   return (
     <div className="relative flex min-h-0 flex-1">
       {deviceFailed && (
-        <Alert className="absolute inset-x-4 top-16 z-30 mx-auto max-w-lg">
+        <Alert className="absolute inset-x-4 top-16 z-30 mx-auto max-w-lg pr-10">
           <MicrophoneSlashIcon />
           <AlertTitle>Your microphone or camera could not start</AlertTitle>
           <AlertDescription>
             Allow them for this site (the icon at the left of the address bar), or carry on watching and listening.
           </AlertDescription>
+          <button
+            type="button"
+            aria-label="Close this message"
+            onClick={() => setDeviceFailed(false)}
+            className="text-muted-foreground hover:text-foreground absolute top-2 right-2 grid size-7 place-items-center rounded-md"
+          >
+            <XIcon className="size-4" />
+          </button>
         </Alert>
       )}
       <LiveKitRoom
@@ -557,6 +569,27 @@ const usePortrait = () =>
   );
 // The stage's key for the board among the presentations (a screen's is `identity:source`).
 const BOARD = 'board';
+// M03c T17: one of the bar's tools, drawn as a button, a menu item or a tile as the stage's width allows.
+type Tool = {
+  key: string;
+  label: string;
+  // The word under the icon on a wide bar, where room is short.
+  caption?: string;
+  icon: ReactNode;
+  onSelect: () => void;
+  // Why it is unavailable (a host's lock), or what went wrong.
+  hint?: string;
+  pressed?: boolean;
+  badge?: number;
+  disabled?: boolean;
+};
+// Phones and tablets cannot share a screen from the browser; computers can.
+const useCanShare = () =>
+  useSyncExternalStore(
+    never,
+    () => typeof navigator.mediaDevices?.getDisplayMedia === 'function',
+    () => false,
+  );
 
 // M03c T15: Flip is for phones and tablets, which have a front and a back camera; a computer keeps its one camera.
 const touchQuery = '(pointer: coarse)';
@@ -987,6 +1020,191 @@ function Classroom(
     />
   );
 
+  // M03c T17 (decision 10): the bar follows the stage's own width, which the side panel narrows: labelled buttons with the
+  // hosts' tools on a wide stage, icons with the tools in More on a narrower one, and on a phone five buttons and a
+  // sheet of labelled tiles.
+  const stageBox = useRef<HTMLDivElement>(null);
+  const [stageWidth, setStageWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const box = stageBox.current;
+    if (!box) return;
+    const observer = new ResizeObserver(([entry]) => setStageWidth(entry.contentRect.width));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+  // Hosts' bars carry four more tools, so they need a wider stage before the words show.
+  const bar = stageWidth < 576 ? 'phone' : stageWidth < (host ? 1000 : 820) ? 'medium' : 'wide';
+  const [sheet, setSheet] = useState(false);
+  const [dialog, setDialog] = useState<'poll' | 'rooms' | null>(null);
+  const [confirm, setConfirm] = useState<'stop' | 'end' | null>(null);
+  const canShare = useCanShare();
+  // An error says itself for eight seconds, or until closed.
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
+  // T17: a poll pops up in front of the people taking part until they answer it or put it aside ("Later"), and its
+  // results pop up once a host shows them; the Poll button brings it back. Hosts ask and follow it in a dialog.
+  const openPoll = props.polls.find((p) => p.status === 'open');
+  const unanswered = !host && openPoll?.mine === null;
+  // Results already showing when the viewer joined do not pop up: only those shown while they are in the room.
+  const [aside, setAside] = useState(() => props.polls.filter((p) => p.answered !== null).map((p) => `r:${p.id}`));
+  const [pollAsked, setPollAsked] = useState(false);
+  const shownResults = (p: RoomPoll) => p.answered !== null && !aside.includes(`r:${p.id}`);
+  const lastResults = [...props.polls].reverse().find((p) => p.status === 'ended' && shownResults(p));
+  const popPoll =
+    host || inBreakout
+      ? undefined
+      : openPoll && (pollAsked || (openPoll.mine === null && !aside.includes(openPoll.id)) || shownResults(openPoll))
+        ? openPoll
+        : lastResults;
+  const putAside = (poll: RoomPoll) => {
+    setPollAsked(false);
+    setAside([...aside, poll.id, `r:${poll.id}`]);
+  };
+  const answer = (pollId: string, optionId: string) =>
+    void run(() => (guest ? answerPollByLink : answerPoll)({ ...ref, pollId, optionId })).then((ok) => {
+      if (!ok) return;
+      setPollAsked(false);
+      setNotice({ id: Date.now(), text: 'Your answer was sent.' });
+    });
+  const pollActions = {
+    noun,
+    busy,
+    answer,
+    end: (pollId: string) => void run(() => endPoll({ ...ref, pollId })),
+    show: (pollId: string) => void run(() => showPollResults({ ...ref, pollId })),
+  };
+
+  // The bar's tools, drawn as buttons on a wide stage, as items in More on a narrower one, and as tiles on a phone.
+  const recordLabel = recordingPending
+    ? asked?.record
+      ? 'Starting…'
+      : 'Stopping…'
+    : recording
+      ? 'Stop recording'
+      : 'Record';
+  const shareTool: Tool | null = canShare
+    ? {
+        key: 'share',
+        label: sharing ? 'Stop sharing' : 'Share screen',
+        caption: sharing ? 'Stop' : 'Share',
+        hint: may(Track.Source.ScreenShare) ? undefined : lockedBy(noun, 'screen sharing'),
+        icon: <MonitorArrowUpIcon />,
+        pressed: sharing,
+        disabled: sharePending || !may(Track.Source.ScreenShare),
+        onSelect: () => void share(),
+      }
+    : null;
+  const tools: Tool[] = [
+    {
+      key: 'react',
+      label: 'React',
+      hint: mayChat ? undefined : lockedBy(noun, 'reactions'),
+      icon: <SmileyIcon />,
+      pressed: tray,
+      disabled: !mayChat,
+      onSelect: () => setTray(!tray),
+    },
+    {
+      key: 'captions',
+      label: 'Captions',
+      icon: <ClosedCaptioningIcon />,
+      pressed: captionsOn,
+      badge: !captionsOn && caption ? 1 : 0,
+      onSelect: () => setCaptionsOn(!captionsOn),
+    },
+  ];
+  const hostTools: Tool[] =
+    host && !inBreakout
+      ? [
+          {
+            key: 'board',
+            label: props.board ? 'Close board' : 'Whiteboard',
+            caption: 'Board',
+            icon: <PencilSimpleLineIcon />,
+            pressed: props.board !== null,
+            disabled: busy,
+            onSelect: () =>
+              void run(() => (props.board ? closeBoard(ref) : openBoard({ ...ref, studentsDraw: false }))),
+          },
+          {
+            key: 'poll',
+            label: 'Poll',
+            icon: <ChartBarIcon />,
+            pressed: openPoll !== undefined,
+            onSelect: () => setDialog('poll'),
+          },
+          ...(props.canRecord
+            ? [
+                {
+                  key: 'record',
+                  label: recordLabel,
+                  caption: recordingPending ? '…' : recording ? 'Stop' : 'Record',
+                  hint: recordingLate
+                    ? asked?.record
+                      ? 'It did not start. Try again.'
+                      : 'It has not stopped yet. Try again.'
+                    : undefined,
+                  icon: <RecordIcon weight="fill" className="text-red-500" />,
+                  pressed: recording,
+                  disabled: busy || recordingPending,
+                  onSelect: () => (recording ? setConfirm('stop') : record(true)),
+                },
+              ]
+            : []),
+          {
+            key: 'rooms',
+            label: 'Breakout rooms',
+            caption: 'Rooms',
+            icon: <SquaresFourIcon />,
+            pressed: breakout !== null,
+            onSelect: () => setDialog('rooms'),
+          },
+        ]
+      : [];
+  // The people taking part get a Poll button while one is open, to bring it back.
+  const pollTool: Tool | null =
+    !host && !inBreakout && openPoll
+      ? {
+          key: 'poll',
+          label: 'Poll',
+          icon: <ChartBarIcon />,
+          badge: unanswered ? 1 : 0,
+          onSelect: () => setPollAsked(true),
+        }
+      : null;
+  const viewTools: Tool[] = [
+    ...(browser.canPopOut
+      ? [{ key: 'mini', label: 'Mini window', icon: <PictureInPictureIcon />, onSelect: openMini }]
+      : []),
+    ...(browser.canFullscreen
+      ? [
+          {
+            key: 'full',
+            label: browser.fullscreen ? 'Exit full screen' : 'Full screen',
+            icon: browser.fullscreen ? <CornersInIcon /> : <CornersOutIcon />,
+            onSelect: () => void toggleFullscreen(),
+          },
+        ]
+      : []),
+  ];
+  const toggles = [
+    {
+      label: 'Hide people without video',
+      checked: view.hideNoVideo,
+      set: (on: boolean) => setView({ ...view, hideNoVideo: on }),
+    },
+    { label: 'Show my own tile', checked: view.showSelf, set: (on: boolean) => setView({ ...view, showSelf: on }) },
+    {
+      label: 'Sound when someone joins',
+      checked: view.joinSound,
+      set: (on: boolean) => setView({ ...view, joinSound: on }),
+    },
+  ];
+
   // M03c T8: the whiteboard, while a host has one open (the main room only).
   const board = inBreakout ? null : props.board;
   const canDraw = host || (board?.studentsDraw === true && mayChat);
@@ -1003,9 +1221,12 @@ function Classroom(
   const presenterOf = board
     ? (participants.find((p) => p.identity === board.by && isHost(p)) ?? participants.find(isHost))
     : undefined;
-  const presenter = presenterOf
-    ? { identity: presenterOf.identity, name: presenterOf.identity === me ? 'you' : nameOf(presenterOf) }
-    : null;
+  const presenterName = presenterOf ? (presenterOf.identity === me ? 'you' : nameOf(presenterOf)) : null;
+  const presenterIdentity = presenterOf?.identity ?? null;
+  const presenter = useMemo(
+    () => (presenterIdentity && presenterName ? { identity: presenterIdentity, name: presenterName } : null),
+    [presenterIdentity, presenterName],
+  );
 
   // M03c T16: what is being presented — the open board and every shared screen. The newest fills the stage and the
   // others wait as tiles beside it; a viewer may put one of them on the stage (until something new is presented), and a
@@ -1052,15 +1273,14 @@ function Classroom(
   const mine = cameraOf(localParticipant);
   const latest = hands.at(-1);
   const toastKey = latest ? `${latest.identity}:${handOf(latest)}` : '';
-  // M03c T6: a poll the viewer has yet to answer marks the Activities tab.
-  const unanswered = !host && props.polls.some((poll) => poll.status === 'open' && poll.mine === null);
   const tile = (t: TrackReferenceOrPlaceholder, className: string, isMain = false, fills = false) => (
     <Tile
       key={keyOf(t)}
       trackRef={t}
       fit={t.source === Track.Source.ScreenShare ? 'contain' : 'cover'}
       className={className}
-      labelClassName={fills ? 'max-sm:bottom-20' : undefined}
+      // A tile filling the stage keeps its name above the bar.
+      labelClassName={fills ? 'bottom-20' : undefined}
       label={
         t.source === Track.Source.ScreenShare
           ? `${t.participant.identity === me ? 'You are' : `${nameOf(t.participant)} is`} presenting`
@@ -1080,15 +1300,14 @@ function Classroom(
   // T16: the presentation alone on the screen — the browser's full screen where it allows it, turned to landscape on a
   // phone that can turn; elsewhere (an iPhone) the stage fills the window and asks for the phone to be turned. Leaving
   // the browser's full screen (Esc) leaves it too.
-  const stageBox = useRef<HTMLDivElement>(null);
   const [focused, setFocused] = useState(false);
   const portrait = usePortrait();
   const focus = () => {
     setFocused(true);
-    const box = stageBox.current;
-    if (!box || !document.fullscreenEnabled) return;
+    if (!document.fullscreenEnabled) return;
+    // The whole page goes full screen, so menus and dialogs (drawn outside the stage) still show; the stage fills it.
     // Refused full screen, or a phone that will not turn, still leaves the presentation filling the window.
-    void box
+    void document.documentElement
       .requestFullscreen()
       .then(() => (canFlip ? screen.orientation.lock?.('landscape') : undefined))
       .catch(() => undefined);
@@ -1122,10 +1341,12 @@ function Classroom(
   // Excalidraw is not loaded again.
   const boardStage = board && (
     <div
+      // Hidden by opacity, not visibility, which Excalidraw's own controls override; `inert` keeps clicks and focus out.
+      inert={!boardShown}
       className={cn(
         'absolute inset-0 flex flex-col overflow-hidden bg-white text-slate-900',
         !full && 'rounded-lg',
-        !boardShown && 'invisible',
+        !boardShown && 'opacity-0',
       )}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 bg-slate-900 px-2.5 text-[0.8125rem] text-white">
@@ -1220,7 +1441,8 @@ function Classroom(
         className={cn(
           'absolute inset-0 flex flex-col gap-2 lg:flex-row',
           // In full screen the bar stays below the presentation, for the microphone and Leave.
-          full ? 'pb-18' : 'px-2 pt-14 pb-20',
+          // A phone on its side (a short screen) keeps the bars' room small and gives the rest to the stage.
+          full ? 'pb-18' : 'px-2 pt-14 pb-20 [@media(max-height:500px)]:pt-12 [@media(max-height:500px)]:pb-17',
         )}
       >
         <div className="relative min-h-0 min-w-0 flex-1">
@@ -1231,7 +1453,7 @@ function Classroom(
           )}
         </div>
         {strip && (
-          <div className="flex h-20 shrink-0 gap-2 overflow-x-auto sm:h-24 lg:h-auto lg:w-56 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto">
+          <div className="flex h-20 shrink-0 gap-2 overflow-x-auto sm:h-24 lg:h-auto lg:w-56 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto [@media(max-height:500px)]:hidden">
             {waitingTiles}
             {others.map((t) => tile(t, stripTile))}
           </div>
@@ -1278,6 +1500,20 @@ function Classroom(
     );
   }
 
+  const barButton = (t: Tool, labelled: boolean) => (
+    <RoundButton
+      key={t.key}
+      label={t.hint ?? t.label}
+      caption={labelled ? (t.caption ?? t.label) : undefined}
+      pressed={t.pressed}
+      badge={t.badge}
+      disabled={t.disabled}
+      onClick={t.onSelect}
+    >
+      {t.icon}
+    </RoundButton>
+  );
+
   return (
     <>
       <div className="relative flex min-w-0 flex-1 flex-col p-2 sm:p-3">
@@ -1297,16 +1533,7 @@ function Classroom(
           )}
 
           <div className={cn('absolute inset-x-3 top-3 flex items-start justify-between gap-3', full && 'hidden')}>
-            <div className="flex min-w-0 items-center gap-2.5 rounded-md bg-black/60 py-1 pr-3 pl-1 text-[0.8125rem] ring-1 ring-white/10">
-              <button
-                type="button"
-                onClick={() => void room.disconnect()}
-                aria-label={`Leave the ${noun}`}
-                title={`Leave the ${noun}`}
-                className="grid size-7 shrink-0 place-items-center rounded-md bg-white/10 hover:bg-white/20"
-              >
-                <XIcon className="size-4" />
-              </button>
+            <div className="flex min-w-0 items-center gap-2.5 rounded-md bg-black/60 px-3 py-1.5 text-[0.8125rem] ring-1 ring-white/10">
               <span className="truncate font-semibold">{inBreakout ? `Breakout room ${inRoom}` : props.title}</span>
               <span className="truncate text-white/60 max-md:hidden">{inBreakout ? props.title : props.course}</span>
             </div>
@@ -1381,12 +1608,20 @@ function Classroom(
           </div>
 
           {error && (
-            <p
+            <div
               role="alert"
-              className="bg-destructive absolute bottom-20 left-1/2 max-w-[calc(100%-1.5rem)] -translate-x-1/2 rounded-md px-3 py-1.5 text-[0.8125rem] text-white"
+              className="bg-destructive absolute bottom-22 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md py-1 pr-1 pl-3 text-[0.8125rem] text-white"
             >
-              {error}
-            </p>
+              <span className="min-w-0">{error}</span>
+              <button
+                type="button"
+                aria-label="Close this message"
+                onClick={() => setError(null)}
+                className="grid size-7 shrink-0 place-items-center rounded-md hover:bg-white/15"
+              >
+                <XIcon className="size-3.5" />
+              </button>
+            </div>
           )}
 
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-20">
@@ -1422,7 +1657,7 @@ function Classroom(
           )}
 
           {invited && skipped !== inviteKey && breakout && (
-            <div className="absolute inset-0 z-10 grid place-items-center bg-black/40 p-4">
+            <div className="absolute inset-0 z-30 grid place-items-center bg-black/40 p-4">
               <div className="bg-background text-foreground grid w-full max-w-sm gap-3 rounded-lg p-5 shadow-lg">
                 <h2 className="text-lg font-semibold">Breakout room {breakout.mine} is open</h2>
                 <p className="text-muted-foreground text-sm">
@@ -1444,8 +1679,99 @@ function Classroom(
             </div>
           )}
 
+          {/* T17: a poll pops up in front of the people taking part. */}
+          {popPoll && (
+            <section
+              aria-label="Poll"
+              className="absolute bottom-22 left-1/2 z-30 grid max-h-[calc(100%-7rem)] w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg bg-(--lk-bg) shadow-lg ring-1 ring-white/20"
+            >
+              <header className="flex items-center justify-between gap-3 border-b border-white/10 py-1.5 pr-1.5 pl-4">
+                <h2 className="flex items-center gap-2 text-[0.8125rem] font-semibold">
+                  <ChartBarIcon className="size-4" />
+                  {popPoll.status === 'open' ? (popPoll.mine ? 'Poll · answered' : 'A host asks') : 'Poll results'}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => putAside(popPoll)}
+                  className="h-7 rounded-md px-2.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+                >
+                  {popPoll.status === 'open' && popPoll.mine === null ? 'Later' : 'Close'}
+                </button>
+              </header>
+              <div className="overflow-y-auto p-3">
+                <PollCard key={popPoll.id} poll={popPoll} host={false} {...pollActions} />
+              </div>
+            </section>
+          )}
+          {/* Hosts follow an open poll from a small card while its dialog is closed. */}
+          {host && !inBreakout && openPoll && dialog === null && (
+            <button
+              type="button"
+              onClick={() => setDialog('poll')}
+              className="absolute bottom-22 left-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-md bg-black/75 px-3 py-2 text-left text-[0.8125rem] ring-1 ring-white/15 hover:bg-black/90"
+            >
+              <ChartBarIcon className="size-4 shrink-0" />
+              <span className="truncate">
+                Poll · {openPoll.answered ?? 0} answered · <span className="underline underline-offset-2">Open</span>
+              </span>
+            </button>
+          )}
+
+          {dialog && (
+            <Overlay title={dialog === 'poll' ? 'Poll' : 'Breakout rooms'} onClose={() => setDialog(null)}>
+              {dialog === 'poll' ? (
+                openPoll ? (
+                  <div className="grid gap-4 p-4">
+                    <PollCard key={openPoll.id} poll={openPoll} host {...pollActions} />
+                  </div>
+                ) : (
+                  <PollForm
+                    noun={noun}
+                    busy={busy}
+                    create={async (poll) => void (await run(() => createPoll({ ...ref, ...poll })))}
+                  />
+                )
+              ) : breakout ? (
+                <div className="p-4">
+                  <BreakoutStatus
+                    breakout={breakout}
+                    now={now}
+                    busy={busy}
+                    visit={(n) => {
+                      setDialog(null);
+                      void go(n);
+                    }}
+                    close={() => void run(() => closeBreakouts(ref))}
+                    message={(text) => run(() => messageBreakouts({ ...ref, text }))}
+                  />
+                </div>
+              ) : (
+                <BreakoutForm
+                  people={participants
+                    .filter((p) => !isHost(p) && !isGuest(p))
+                    .map((p) => ({ id: p.identity, name: nameOf(p) }))}
+                  busy={busy}
+                  open={async (rooms) => {
+                    if (await run(() => openBreakouts({ ...ref, ...rooms }))) setDialog(null);
+                  }}
+                />
+              )}
+              {dialog === 'poll' && props.polls.some((p) => p.status === 'ended') && (
+                <section className="grid gap-3 border-t border-white/10 p-4">
+                  <h3 className={SECTION_HEADING}>Earlier in this {noun}</h3>
+                  {props.polls
+                    .filter((p) => p.status === 'ended')
+                    .reverse()
+                    .map((p) => (
+                      <PollCard key={p.id} poll={p} host {...pollActions} />
+                    ))}
+                </section>
+              )}
+            </Overlay>
+          )}
+
           {tray && (
-            <div className="absolute bottom-19 left-1/2 flex -translate-x-1/2 gap-0.5 rounded-full bg-black/70 p-1.5 ring-1 ring-white/10">
+            <div className="absolute bottom-20 left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 gap-0.5 overflow-x-auto rounded-full bg-black/70 p-1.5 ring-1 ring-white/10">
               {REACTIONS.map(([emoji, label]) => (
                 <button
                   key={emoji}
@@ -1453,7 +1779,7 @@ function Classroom(
                   aria-label={`Send ${label}`}
                   title={label}
                   onClick={() => react(emoji)}
-                  className="grid size-9 place-items-center rounded-full text-2xl hover:bg-white/15 sm:size-10"
+                  className="grid size-9 shrink-0 place-items-center rounded-full text-2xl hover:bg-white/15 sm:size-10"
                 >
                   {emoji}
                 </button>
@@ -1461,17 +1787,122 @@ function Classroom(
             </div>
           )}
 
-          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/70 p-1.5 ring-1 ring-white/10 sm:gap-2">
+          {/* T17, on a phone: every feature as a labelled tile, and the settings below them. */}
+          {sheet && (
+            <Overlay title="More" onClose={() => setSheet(false)} bottom>
+              <div className="grid grid-cols-4 gap-2 p-3">
+                {(
+                  [
+                    {
+                      key: 'people',
+                      label: 'People',
+                      icon: <UsersIcon />,
+                      badge: hands.length,
+                      onSelect: () => open('people'),
+                    },
+                    {
+                      key: 'chat',
+                      label: 'Chat',
+                      icon: <ChatCircleIcon />,
+                      badge: unread,
+                      onSelect: () => open('chat'),
+                    },
+                    ...(pollTool ? [pollTool] : []),
+                    ...tools,
+                    ...hostTools,
+                    ...(shareTool ? [shareTool] : []),
+                    ...viewTools,
+                  ] satisfies Tool[]
+                ).map((t: Tool) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    disabled={t.disabled}
+                    title={t.hint}
+                    onClick={() => {
+                      setSheet(false);
+                      t.onSelect();
+                    }}
+                    className={cn(
+                      'relative grid justify-items-center gap-1.5 rounded-lg bg-white/8 px-1 py-3 text-center text-[0.6875rem] leading-tight disabled:opacity-50 [&_svg]:size-6',
+                      t.pressed && 'bg-primary',
+                    )}
+                  >
+                    {t.icon}
+                    {t.label}
+                    {(t.badge ?? 0) > 0 && (
+                      <span className="bg-gold text-foreground absolute top-1 right-1 grid h-4.5 min-w-4.5 place-items-center rounded-full px-1 text-[0.6875rem] font-bold tabular-nums">
+                        {t.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-4 border-t border-white/10 p-4 text-[0.8125rem]">
+                <Choices
+                  label="Layout"
+                  value={view.layout}
+                  options={LAYOUTS}
+                  set={(layout) => setView({ ...view, layout })}
+                />
+                <Choices label="Your background" value={blur} options={BLURS} set={setBlur} />
+                {toggles.map((t) => (
+                  <label key={t.label} className="flex items-center justify-between gap-3">
+                    {t.label}
+                    <Switch
+                      checked={t.checked}
+                      onCheckedChange={t.set}
+                      className="data-[state=unchecked]:bg-white/20"
+                    />
+                  </label>
+                ))}
+                {host && (
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="grid">
+                      Caption my speech
+                      <span className="text-xs text-white/60">
+                        {browser.canCaption
+                          ? 'Your browser sends your voice to Google or Microsoft to turn it into text.'
+                          : 'Use Chrome or Edge to caption your speech.'}
+                      </span>
+                    </span>
+                    <Switch
+                      checked={captioning}
+                      disabled={!browser.canCaption}
+                      onCheckedChange={setCaptioning}
+                      className="data-[state=unchecked]:bg-white/20"
+                    />
+                  </label>
+                )}
+              </div>
+            </Overlay>
+          )}
+
+          <div
+            className={cn(
+              'absolute bottom-3 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-1.5 bg-black/70 p-1.5 ring-1 ring-white/10',
+              bar === 'wide' ? 'rounded-2xl' : 'rounded-full',
+            )}
+          >
             <MediaToggle
               source={Track.Source.Microphone}
               on={<MicrophoneIcon />}
               off={<MicrophoneSlashIcon />}
+              caption={bar === 'wide' ? 'Mic' : undefined}
               locked={may(Track.Source.Microphone) ? undefined : lockedBy(noun, 'microphones')}
             />
+            {bar === 'wide' && (
+              <DeviceMenu
+                label="Choose your microphone and speaker"
+                kinds={['audioinput', 'audiooutput']}
+                onError={showError}
+              />
+            )}
             <MediaToggle
               source={Track.Source.Camera}
               on={<VideoCameraIcon />}
               off={<VideoCameraSlashIcon />}
+              caption={bar === 'wide' ? 'Camera' : undefined}
               // It starts facing the way the viewer last chose, and with its background blurred before anything is
               // sent.
               turnOn={() =>
@@ -1480,24 +1911,12 @@ function Classroom(
                   .catch(() => setError('Your camera could not start.'))
               }
             />
-            <RoundButton
-              label={
-                may(Track.Source.ScreenShare)
-                  ? sharing
-                    ? 'Stop sharing your screen'
-                    : 'Share your screen'
-                  : lockedBy(noun, 'screen sharing')
-              }
-              pressed={sharing}
-              onClick={() => void share()}
-              disabled={sharePending || !may(Track.Source.ScreenShare)}
-              className="max-sm:hidden"
-            >
-              <MonitorArrowUpIcon />
-            </RoundButton>
+            {bar === 'wide' && <DeviceMenu label="Choose your camera" kinds={['videoinput']} onError={showError} />}
+            {bar !== 'phone' && shareTool && barButton(shareTool, bar === 'wide')}
             {!host && !inBreakout && (
               <RoundButton
                 label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
+                caption={bar === 'wide' ? (myHand ? 'Lower' : 'Hand') : undefined}
                 pressed={myHand > 0}
                 onClick={() => void toggleHand()}
                 disabled={busy}
@@ -1506,167 +1925,159 @@ function Classroom(
                 <HandPalmIcon weight={myHand ? 'fill' : 'regular'} />
               </RoundButton>
             )}
-            <RoundButton
-              label={mayChat ? 'Send a reaction' : lockedBy(noun, 'reactions')}
-              pressed={tray}
-              onClick={() => setTray(!tray)}
-              disabled={!mayChat}
-              className="max-sm:hidden"
-            >
-              <SmileyIcon />
-            </RoundButton>
-            <RoundButton
-              label={captionsOn ? 'Turn off captions' : 'Turn on captions'}
-              pressed={captionsOn}
-              onClick={() => setCaptionsOn(!captionsOn)}
-              badge={!captionsOn && caption ? 1 : 0}
-              className="max-sm:hidden"
-            >
-              <ClosedCaptioningIcon />
-            </RoundButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <RoundButton label="More options">
-                  <DotsThreeVerticalIcon weight="bold" />
-                </RoundButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="center" className="w-72">
-                <DropdownMenuLabel>Layout</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={view.layout}
-                  onValueChange={(value) => {
-                    const layout = LAYOUTS.find((l) => l.value === value)?.value;
-                    if (layout) setView({ ...view, layout });
-                  }}
-                >
-                  {LAYOUTS.map((l) => (
-                    <DropdownMenuRadioItem key={l.value} value={l.value}>
-                      {l.label}
-                      <span className="text-muted-foreground ml-auto text-xs">{l.hint}</span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  checked={view.hideNoVideo}
-                  onCheckedChange={(checked) => setView({ ...view, hideNoVideo: checked })}
-                >
-                  Hide people without video
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={view.showSelf}
-                  onCheckedChange={(checked) => setView({ ...view, showSelf: checked })}
-                >
-                  Show my own tile
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={view.joinSound}
-                  onCheckedChange={(checked) => setView({ ...view, joinSound: checked })}
-                >
-                  Sound when someone joins
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Your background</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={blur}
-                  onValueChange={(value) => setBlur(BLURS.find((b) => b.value === value)?.value ?? 'off')}
-                >
-                  {BLURS.map((b) => (
-                    <DropdownMenuRadioItem key={b.value} value={b.value}>
-                      {b.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                {host && (
-                  <DropdownMenuCheckboxItem
-                    checked={captioning}
-                    disabled={!browser.canCaption}
-                    onCheckedChange={(checked) => setCaptioning(checked)}
-                  >
-                    <span className="grid">
-                      Caption my speech
-                      <span className="text-muted-foreground text-xs">
-                        {browser.canCaption
-                          ? 'Your browser sends your voice to Google or Microsoft to turn it into text.'
-                          : 'Use Chrome or Edge to caption your speech.'}
-                      </span>
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                )}
-                {props.canRecord && !inBreakout && (
-                  <DropdownMenuItem disabled={busy || recordingPending} onSelect={() => record(!recording)}>
-                    <RecordIcon weight="fill" className="text-red-600" />
-                    <span className="grid">
-                      {recordingPending
-                        ? asked?.record
-                          ? 'Starting the recording…'
-                          : 'Stopping the recording…'
-                        : recording
-                          ? 'Stop recording'
-                          : 'Start recording'}
-                      {recordingLate && (
-                        <span className="text-destructive text-xs">
-                          {asked?.record ? 'It did not start. Try again.' : 'It has not stopped yet. Try again.'}
+            {bar === 'wide' && tools.map((t) => barButton(t, true))}
+            {bar !== 'phone' && pollTool && barButton(pollTool, bar === 'wide')}
+            {bar === 'wide' && hostTools.length > 0 && (
+              <>
+                <span className="mx-0.5 h-8 w-px bg-white/15" />
+                {hostTools.map((t) => barButton(t, true))}
+              </>
+            )}
+            {bar === 'phone' ? (
+              <RoundButton
+                label="More: people, chat, polls and settings"
+                onClick={() => setSheet(true)}
+                badge={hands.length + unread + (unanswered ? 1 : 0)}
+              >
+                <DotsThreeIcon weight="bold" />
+              </RoundButton>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <RoundButton label="More options" caption={bar === 'wide' ? 'More' : undefined}>
+                    <DotsThreeVerticalIcon weight="bold" />
+                  </RoundButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="center" className="max-h-[70vh] w-72 overflow-y-auto">
+                  {bar === 'medium' &&
+                    [...tools, ...hostTools].map((t) => (
+                      <DropdownMenuItem key={t.key} disabled={t.disabled} onSelect={t.onSelect}>
+                        {t.icon}
+                        <span className="grid">
+                          {t.pressed && t.key === 'react' ? 'Hide reactions' : t.label}
+                          {t.hint && <span className="text-muted-foreground text-xs">{t.hint}</span>}
                         </span>
-                      )}
-                    </span>
-                  </DropdownMenuItem>
-                )}
-                {browser.canPopOut && (
-                  <DropdownMenuItem onSelect={openMini}>
-                    <PictureInPictureIcon /> Pop out mini window
-                  </DropdownMenuItem>
-                )}
-                {browser.canFullscreen && (
-                  <DropdownMenuItem onSelect={() => void toggleFullscreen()}>
-                    {browser.fullscreen ? <CornersInIcon /> : <CornersOutIcon />}
-                    {browser.fullscreen ? 'Exit full screen' : 'Full screen'}
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem className="sm:hidden" onSelect={() => setCaptionsOn(!captionsOn)}>
-                  <ClosedCaptioningIcon /> {captionsOn ? 'Turn off captions' : 'Turn on captions'}
-                </DropdownMenuItem>
-                <DropdownMenuItem className="sm:hidden" disabled={!mayChat} onSelect={() => setTray(!tray)}>
-                  <SmileyIcon /> {tray ? 'Hide reactions' : 'Send a reaction'}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <span className="mx-0.5 h-6 w-px bg-white/15 max-sm:hidden" />
-            <RoundButton
-              label="People"
-              pressed={panel === 'people'}
-              onClick={() => open('people')}
-              badge={hands.length}
-            >
-              <UsersIcon />
-            </RoundButton>
-            <RoundButton label="Chat" pressed={panel === 'chat'} onClick={() => open('chat')} badge={unread}>
-              <ChatCircleIcon />
-            </RoundButton>
-            <span className="mx-0.5 h-6 w-px bg-white/15 max-sm:hidden" />
+                      </DropdownMenuItem>
+                    ))}
+                  {bar === 'medium' && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel>Layout</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={view.layout}
+                    onValueChange={(value) => {
+                      const layout = LAYOUTS.find((l) => l.value === value)?.value;
+                      if (layout) setView({ ...view, layout });
+                    }}
+                  >
+                    {LAYOUTS.map((l) => (
+                      <DropdownMenuRadioItem key={l.value} value={l.value}>
+                        {l.label}
+                        <span className="text-muted-foreground ml-auto text-xs">{l.hint}</span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                  <DropdownMenuSeparator />
+                  {toggles.map((t) => (
+                    <DropdownMenuCheckboxItem key={t.label} checked={t.checked} onCheckedChange={t.set}>
+                      {t.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Your background</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={blur}
+                    onValueChange={(value) => setBlur(BLURS.find((b) => b.value === value)?.value ?? 'off')}
+                  >
+                    {BLURS.map((b) => (
+                      <DropdownMenuRadioItem key={b.value} value={b.value}>
+                        {b.label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                  <DropdownMenuSeparator />
+                  {host && (
+                    <DropdownMenuCheckboxItem
+                      checked={captioning}
+                      disabled={!browser.canCaption}
+                      onCheckedChange={(checked) => setCaptioning(checked)}
+                    >
+                      <span className="grid">
+                        Caption my speech
+                        <span className="text-muted-foreground text-xs">
+                          {browser.canCaption
+                            ? 'Your browser sends your voice to Google or Microsoft to turn it into text.'
+                            : 'Use Chrome or Edge to caption your speech.'}
+                        </span>
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  )}
+                  {viewTools.map((t) => (
+                    <DropdownMenuItem key={t.key} onSelect={t.onSelect}>
+                      {t.icon} {t.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {bar !== 'phone' && (
+              <>
+                <span className="mx-0.5 h-6 w-px bg-white/15" />
+                <RoundButton
+                  label="People"
+                  caption={bar === 'wide' ? 'People' : undefined}
+                  pressed={panel === 'people'}
+                  onClick={() => open('people')}
+                  badge={hands.length}
+                >
+                  <UsersIcon />
+                </RoundButton>
+                <RoundButton
+                  label="Chat"
+                  caption={bar === 'wide' ? 'Chat' : undefined}
+                  pressed={panel === 'chat'}
+                  onClick={() => open('chat')}
+                  badge={unread}
+                >
+                  <ChatCircleIcon />
+                </RoundButton>
+                <span className="mx-0.5 h-6 w-px bg-white/15" />
+              </>
+            )}
             {(inBreakout || (invited && skipped === inviteKey)) && (
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void go(inBreakout ? 0 : (breakout?.mine ?? 0))}
+                aria-label={inBreakout ? `Back to the ${noun}` : `Join room ${breakout?.mine}`}
                 className="flex h-10 items-center gap-2 rounded-full bg-white/10 px-3 text-[0.8125rem] font-semibold hover:bg-white/20 sm:h-11"
               >
                 <ArrowUUpLeftIcon className="size-5" />
-                <span className="max-sm:hidden">
-                  {inBreakout ? `Back to the ${noun}` : `Join room ${breakout?.mine}`}
-                </span>
+                {bar !== 'phone' && (inBreakout ? `Back to the ${noun}` : `Join room ${breakout?.mine}`)}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => void room.disconnect()}
-              aria-label="Leave"
-              className="bg-destructive hover:bg-destructive/90 flex h-10 items-center gap-2 rounded-full px-2.5 text-[0.8125rem] font-semibold text-white sm:h-11 sm:px-4"
-            >
-              <PhoneDisconnectIcon className="size-5" />
-              <span className="max-sm:hidden">Leave</span>
-            </button>
+            {/* A host leaves, or ends it for everyone; anyone else just leaves. */}
+            {host && !inBreakout ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" aria-label="Leave or end" className={LEAVE}>
+                    <PhoneDisconnectIcon className="size-5" />
+                    {bar !== 'phone' && 'Leave'}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-64">
+                  <DropdownMenuItem onSelect={() => void room.disconnect()}>
+                    <PhoneDisconnectIcon /> Leave the {noun}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onSelect={() => setConfirm('end')}>
+                    <StopIcon weight="fill" /> End the {noun} for everyone
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <button type="button" onClick={() => void room.disconnect()} aria-label="Leave" className={LEAVE}>
+                <PhoneDisconnectIcon className="size-5" />
+                {bar !== 'phone' && 'Leave'}
+              </button>
+            )}
           </div>
           <StartAudio
             label="Turn on sound"
@@ -1676,9 +2087,10 @@ function Classroom(
       </div>
 
       {panel && (
-        <aside className="flex w-88 shrink-0 flex-col border-l border-white/10 bg-(--lk-bg) max-lg:absolute max-lg:inset-0 max-lg:z-20 max-lg:w-full max-lg:border-l-0">
+        // Beside the stage on a wide screen; on a narrower one it rises from the bottom, leaving the stage in view.
+        <aside className="flex w-88 shrink-0 flex-col border-l border-white/10 bg-(--lk-bg) max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:h-[70dvh] max-lg:w-full max-lg:rounded-t-xl max-lg:border-t max-lg:border-l-0">
           <header className="flex items-center gap-1 border-b border-white/10 p-2">
-            {(inBreakout ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map((tab) => (
+            {(['people', 'chat'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -1689,9 +2101,6 @@ function Classroom(
                 )}
               >
                 {tab}
-                {tab === 'activities' && unanswered && (
-                  <span className="bg-gold absolute top-1.5 right-2 size-2 rounded-full" aria-label="A poll is open" />
-                )}
               </button>
             ))}
             <button
@@ -1724,35 +2133,44 @@ function Classroom(
               }
               letBack={(identity) => void run(() => allowBack({ ...ref, identity }))}
             />
-          ) : panel === 'chat' ? (
-            <Chat me={me} noun={noun} locked={!mayChat} {...chat} />
           ) : (
-            <Activities
-              host={host}
-              noun={noun}
-              polls={props.polls}
-              breakout={breakout}
-              people={participants
-                .filter((p) => !isHost(p) && !isGuest(p))
-                .map((p) => ({ id: p.identity, name: nameOf(p) }))}
-              now={now}
-              boardOpen={props.board !== null}
-              openBoard={() => void run(() => openBoard({ ...ref, studentsDraw: false }))}
-              openRooms={(rooms) => run(() => openBreakouts({ ...ref, ...rooms }))}
-              closeRooms={() => void run(() => closeBreakouts(ref))}
-              messageRooms={(text) => run(() => messageBreakouts({ ...ref, text }))}
-              visit={(room) => void go(room)}
-              busy={busy}
-              create={(poll) => run(() => createPoll({ ...ref, ...poll }))}
-              answer={(pollId, optionId) =>
-                void run(() => (guest ? answerPollByLink : answerPoll)({ ...ref, pollId, optionId }))
-              }
-              end={(pollId) => void run(() => endPoll({ ...ref, pollId }))}
-              show={(pollId) => void run(() => showPollResults({ ...ref, pollId }))}
-            />
+            <Chat me={me} noun={noun} locked={!mayChat} {...chat} />
           )}
         </aside>
       )}
+
+      {/* T17: stopping a recording and ending for everyone are asked first. */}
+      <AlertDialog open={confirm !== null} onOpenChange={(isOpen) => !isOpen && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm === 'stop' ? 'Stop recording?' : `End the ${noun} for everyone?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm === 'stop'
+                ? `The recording is saved and appears on the ${noun} page in a minute or two.`
+                : noun === 'class'
+                  ? 'Everyone leaves the room and attendance is worked out from the time each student spent in it.'
+                  : 'Everyone leaves the room.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                const asked = confirm;
+                setConfirm(null);
+                if (asked === 'stop') record(false);
+                else void run(() => endRoom(ref));
+              }}
+            >
+              <StopIcon weight="fill" /> {confirm === 'stop' ? 'Stop recording' : `End the ${noun}`}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={removing?.open === true}
@@ -2152,14 +2570,161 @@ function ReadyToJoin({
   );
 }
 
+const LEAVE =
+  'bg-destructive hover:bg-destructive/90 flex h-10 shrink-0 items-center gap-2 rounded-full px-2.5 text-[0.8125rem] font-semibold text-white sm:h-11 sm:px-4';
+
+// M03c T17: a dark card over the stage — the hosts' poll and breakout rooms, and a phone's sheet of tools (`bottom`). It
+// stays inside the stage, so it shows in full screen too; Escape or a click outside closes it.
+function Overlay({
+  title,
+  onClose,
+  bottom = false,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  bottom?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn('absolute inset-0 z-40 grid bg-black/50', bottom ? 'items-end' : 'place-items-center p-3')}
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.key === 'Escape' && onClose()}
+        className={cn(
+          'grid max-h-full w-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-(--lk-bg) ring-1 ring-white/15',
+          bottom ? 'max-h-[85%] rounded-t-xl' : 'max-w-md rounded-lg shadow-lg',
+        )}
+      >
+        <header className="flex items-center justify-between gap-3 border-b border-white/10 py-1.5 pr-1.5 pl-4">
+          <h2 className="text-[0.9375rem] font-semibold">{title}</h2>
+          <button
+            type="button"
+            aria-label="Close"
+            autoFocus
+            onClick={onClose}
+            className="grid size-8 place-items-center rounded-md text-white/70 hover:bg-white/10 hover:text-white"
+          >
+            <XIcon className="size-4" />
+          </button>
+        </header>
+        <div className="min-h-0 overflow-y-auto">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+// A setting with a few choices, as a row of chips (a phone's sheet).
+function Choices<T extends string>({
+  label,
+  value,
+  options,
+  set,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  set: (value: T) => void;
+}) {
+  return (
+    <fieldset className="grid gap-2">
+      <legend className={cn(SECTION_HEADING, 'mb-2')}>{label}</legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={value === o.value}
+            onClick={() => set(o.value)}
+            className={cn(
+              'h-8 rounded-md px-3 ring-1',
+              value === o.value ? 'bg-primary ring-primary' : 'ring-white/20',
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+// M03c T17: Mic ▾ and Camera ▾ on a wide stage's bar — which microphone, speaker or camera the room uses. The list is
+// read when the menu opens, without asking for permission again; a browser that cannot choose the speaker lists none.
+const DEVICE_KINDS: Record<'audioinput' | 'audiooutput' | 'videoinput', string> = {
+  audioinput: 'Microphone',
+  audiooutput: 'Speaker',
+  videoinput: 'Camera',
+};
+function DeviceMenu({
+  label,
+  kinds,
+  onError,
+}: {
+  label: string;
+  kinds: (keyof typeof DEVICE_KINDS)[];
+  onError: (message: string) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          className="-ml-1 grid h-10 w-5 shrink-0 place-items-center rounded-full text-white/70 hover:text-white"
+        >
+          <CaretUpIcon weight="bold" className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-72">
+        {kinds.map((kind) => (
+          <DeviceChoice key={kind} kind={kind} onError={onError} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+function DeviceChoice({ kind, onError }: { kind: keyof typeof DEVICE_KINDS; onError: (message: string) => void }) {
+  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind, requestPermissions: false });
+  if (devices.length === 0) return null;
+  return (
+    <>
+      <DropdownMenuLabel>{DEVICE_KINDS[kind]}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={activeDeviceId}
+        onValueChange={(id) =>
+          void setActiveMediaDevice(id).catch(() =>
+            onError(`That ${DEVICE_KINDS[kind].toLowerCase()} could not start.`),
+          )
+        }
+      >
+        {devices.map((d, i) => (
+          <DropdownMenuRadioItem key={d.deviceId || i} value={d.deviceId}>
+            {d.label || `${DEVICE_KINDS[kind]} ${i + 1}`}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </>
+  );
+}
+
+// M03c T17: with a caption (a wide stage's bar), the word sits under the icon, as in Zoom.
 function RoundButton({
   label,
+  caption,
   pressed,
   badge = 0,
   className,
   children,
   ...button
-}: ComponentProps<'button'> & { label: string; pressed?: boolean; badge?: number }) {
+}: ComponentProps<'button'> & { label: string; caption?: string; pressed?: boolean; badge?: number }) {
   return (
     <button
       type="button"
@@ -2167,13 +2732,15 @@ function RoundButton({
       title={label}
       aria-pressed={pressed}
       className={cn(
-        'relative grid size-10 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-60 sm:size-11 [&_svg]:size-5',
+        'relative grid size-10 shrink-0 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-60 sm:size-11 [&_svg]:size-5',
+        caption && 'sm:h-12 sm:w-auto sm:min-w-14 sm:gap-0.5 sm:rounded-xl sm:px-2 sm:py-1',
         pressed && 'bg-primary hover:bg-primary/90',
         className,
       )}
       {...button}
     >
       {children}
+      {caption && <span className="text-[0.6875rem] leading-none font-medium whitespace-nowrap">{caption}</span>}
       {badge > 0 && (
         <span className="bg-gold text-foreground absolute -top-1 -right-1 grid h-4.5 min-w-4.5 place-items-center rounded-full px-1 text-[0.6875rem] font-bold tabular-nums">
           {badge}
@@ -2187,6 +2754,7 @@ function MediaToggle({
   source,
   on,
   off,
+  caption,
   locked,
   turnOn,
   className,
@@ -2194,6 +2762,7 @@ function MediaToggle({
   source: Track.Source.Microphone | Track.Source.Camera;
   on: ReactNode;
   off: ReactNode;
+  caption?: string;
   // Why a host has turned this off for students, if they have.
   locked?: string;
   // How to turn it on, when not the usual way (a camera with its background blurred).
@@ -2206,6 +2775,7 @@ function MediaToggle({
   return (
     <RoundButton
       label={label}
+      caption={caption}
       onClick={() => (!enabled && turnOn ? turnOn() : void toggle())}
       disabled={pending || locked !== undefined}
       className={cn(!enabled && 'bg-red-500/20 text-red-300', className)}
@@ -2423,159 +2993,6 @@ type Person = { id: string; name: string };
 // M03c T6 (mock-ups R3-B A, R3-C): the Activities tab. Hosts start a poll, watch the answers come in, show the results
 // and end it; the others answer the open poll and see the results once a host shows them. Breakout rooms and the
 // whiteboard join the hosts' list in T7 and T8.
-function Activities({
-  host,
-  noun,
-  polls,
-  breakout,
-  people,
-  now,
-  boardOpen,
-  openBoard,
-  openRooms,
-  closeRooms,
-  messageRooms,
-  visit,
-  busy,
-  create,
-  answer,
-  end,
-  show,
-}: {
-  host: boolean;
-  noun: Noun;
-  polls: RoomPoll[];
-  breakout: RoomBreakout | null;
-  people: Person[];
-  now: number;
-  boardOpen: boolean;
-  openBoard: () => void;
-  openRooms: (rooms: NewRooms) => Promise<boolean>;
-  closeRooms: () => void;
-  messageRooms: (text: string) => Promise<boolean>;
-  visit: (room: number) => void;
-  busy: boolean;
-  create: (poll: NewPoll) => Promise<boolean>;
-  answer: (pollId: string, optionId: string) => void;
-  end: (pollId: string) => void;
-  show: (pollId: string) => void;
-}) {
-  const [asking, setAsking] = useState(false);
-  const [splitting, setSplitting] = useState(false);
-  if (splitting && !breakout) {
-    return (
-      <BreakoutForm
-        people={people}
-        busy={busy}
-        cancel={() => setSplitting(false)}
-        open={async (rooms) => {
-          if (await openRooms(rooms)) setSplitting(false);
-        }}
-      />
-    );
-  }
-  const open = polls.find((p) => p.status === 'open');
-  const earlier = polls.filter((p) => p.status === 'ended').reverse();
-  if (asking) {
-    return (
-      <PollForm
-        noun={noun}
-        busy={busy}
-        cancel={() => setAsking(false)}
-        create={async (poll) => {
-          if (await create(poll)) setAsking(false);
-        }}
-      />
-    );
-  }
-  const card = { host, noun, busy, answer, end, show };
-  return (
-    <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto p-4">
-      {host && !open && (
-        <section className="grid gap-2">
-          <h2 className={SECTION_HEADING}>Activities</h2>
-          <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
-            <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
-              <ChartBarIcon />
-            </span>
-            <span className="grid min-w-0 flex-1 gap-0.5">
-              <span className="text-[0.8125rem] font-semibold">Polls</span>
-              <span className="text-xs text-white/60">Ask a quick question; answers come in live.</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setAsking(true)}
-              className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium"
-            >
-              New poll
-            </button>
-          </div>
-        </section>
-      )}
-      {host && !breakout && (
-        <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
-            <SquaresFourIcon />
-          </span>
-          <span className="grid min-w-0 flex-1 gap-0.5">
-            <span className="text-[0.8125rem] font-semibold">Breakout rooms</span>
-            <span className="text-xs text-white/60">Split the {noun} into small groups for a while.</span>
-          </span>
-          <button
-            type="button"
-            disabled={people.length < 2}
-            onClick={() => setSplitting(true)}
-            className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium disabled:opacity-50"
-          >
-            Set up
-          </button>
-        </div>
-      )}
-      {host && !boardOpen && (
-        <div className="flex items-start gap-3 rounded-md p-3 ring-1 ring-white/10">
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-white/10 [&_svg]:size-5">
-            <PencilSimpleLineIcon />
-          </span>
-          <span className="grid min-w-0 flex-1 gap-0.5">
-            <span className="text-[0.8125rem] font-semibold">Whiteboard</span>
-            <span className="text-xs text-white/60">Draw on the stage; let the others draw too.</span>
-          </span>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={openBoard}
-            className="bg-primary h-7 rounded-md px-2.5 text-xs font-medium disabled:opacity-50"
-          >
-            Open
-          </button>
-        </div>
-      )}
-      {host && breakout && (
-        <BreakoutStatus
-          breakout={breakout}
-          now={now}
-          busy={busy}
-          visit={visit}
-          close={closeRooms}
-          message={messageRooms}
-        />
-      )}
-      {open && <PollCard poll={open} {...card} />}
-      {!host && !open && earlier.length === 0 && (
-        <p className="text-[0.8125rem] text-white/60">No poll is open. When a host asks one, it appears here.</p>
-      )}
-      {earlier.length > 0 && (
-        <section className="grid gap-3">
-          <h2 className={SECTION_HEADING}>Earlier in this {noun}</h2>
-          {earlier.map((p) => (
-            <PollCard key={p.id} poll={p} {...card} />
-          ))}
-        </section>
-      )}
-    </div>
-  );
-}
-
 // M03c T7 (mock-up R3-D): how many rooms, for how long, and who goes where — dealt out in turn, shuffled at random on
 // request, and changed person by person.
 const LIMITS_MIN = [0, 5, 10, 15, 20, 30, 45, 60, 90, 120];
@@ -2585,12 +3002,10 @@ const deal = (people: Person[], rooms: number) =>
 function BreakoutForm({
   people,
   busy,
-  cancel,
   open,
 }: {
   people: Person[];
   busy: boolean;
-  cancel: () => void;
   open: (rooms: NewRooms) => Promise<void>;
 }) {
   const [rooms, setRooms] = useState(Math.min(20, Math.max(2, Math.ceil(people.length / 5))));
@@ -2612,14 +3027,7 @@ function BreakoutForm({
       }}
       className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4"
     >
-      <button
-        type="button"
-        onClick={cancel}
-        className="flex items-center gap-2 justify-self-start text-[0.8125rem] text-white/60 hover:text-white"
-      >
-        <ArrowLeftIcon className="size-4" /> Activities
-      </button>
-      <h2 className="text-[0.9375rem] font-semibold">Breakout rooms</h2>
+      <p className="text-[0.8125rem] text-white/70">Split the room into small groups for a while.</p>
       <div className="grid grid-cols-2 gap-3 text-[0.8125rem]">
         <label className="grid gap-1.5">
           Rooms
@@ -2757,17 +3165,7 @@ function BreakoutStatus({
   );
 }
 
-function PollForm({
-  noun,
-  busy,
-  cancel,
-  create,
-}: {
-  noun: Noun;
-  busy: boolean;
-  cancel: () => void;
-  create: (poll: NewPoll) => Promise<void>;
-}) {
+function PollForm({ noun, busy, create }: { noun: Noun; busy: boolean; create: (poll: NewPoll) => Promise<void> }) {
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [showResults, setShowResults] = useState(true);
@@ -2779,14 +3177,7 @@ function PollForm({
       }}
       className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4"
     >
-      <button
-        type="button"
-        onClick={cancel}
-        className="flex items-center gap-2 justify-self-start text-[0.8125rem] text-white/60 hover:text-white"
-      >
-        <ArrowLeftIcon className="size-4" /> Activities
-      </button>
-      <h2 className="text-[0.9375rem] font-semibold">New poll</h2>
+      <p className="text-[0.8125rem] text-white/70">Ask a quick question; the answers come in live.</p>
       <label className="grid gap-1.5 text-[0.8125rem]">
         Question
         <input
@@ -2970,11 +3361,16 @@ function Chat({
   isSending,
 }: { me: string; noun: Noun; locked: boolean } & ReturnType<typeof useChat>) {
   const [draft, setDraft] = useState('');
-  async function submit() {
+  const [failed, setFailed] = useState(false);
+  // A message that does not go stays in the box, to send again.
+  function submit() {
     const text = draft.trim();
     if (!text) return;
-    await send(text);
-    setDraft('');
+    setFailed(false);
+    send(text).then(
+      () => setDraft(''),
+      () => setFailed(true),
+    );
   }
   return (
     <>
@@ -3002,10 +3398,15 @@ function Chat({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void submit();
+          submit();
         }}
-        className="flex gap-2 border-t border-white/10 p-3"
+        className="flex flex-wrap gap-2 border-t border-white/10 p-3"
       >
+        {failed && (
+          <p role="alert" className="w-full text-xs text-red-300">
+            Your message was not sent. Check your connection and send it again.
+          </p>
+        )}
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

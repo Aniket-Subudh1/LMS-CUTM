@@ -58,7 +58,8 @@ test('faculty runs a live class; a student joins and is marked present', async (
       page.context().waitForEvent('page'),
       page.getByRole('link', { name: 'Join class' }).click({ timeout: 60_000 }),
     ]);
-    // The room's own controls (M03b "A · Stage and side panel") show once it has connected.
+    // M03c T15: "Ready to join?" first, then the room's own controls show once it has connected.
+    await room.getByRole('button', { name: 'Join now' }).click({ timeout: 30_000 });
     await expect(room.getByRole('button', { name: 'People', exact: true })).toBeVisible({ timeout: 30_000 });
     return room;
   };

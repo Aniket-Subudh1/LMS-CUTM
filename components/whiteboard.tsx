@@ -1,7 +1,7 @@
 'use client';
 
 import '@excalidraw/excalidraw/index.css';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { CaptureUpdateAction, DEFAULT_LASER_COLOR, Excalidraw, reconcileElements } from '@excalidraw/excalidraw';
 import type { RemoteExcalidrawElement } from '@excalidraw/excalidraw/data/reconcile';
 import type {
@@ -77,7 +77,8 @@ const colourOf = (identity: string) => {
   return { background: colour, stroke: colour };
 };
 
-export function Whiteboard({
+// Memoised: the room draws itself every second (its clock), and Excalidraw need not.
+export const Whiteboard = memo(function Whiteboard({
   canDraw,
   host,
   presenter,
@@ -354,4 +355,4 @@ export function Whiteboard({
       )}
     </div>
   );
-}
+});

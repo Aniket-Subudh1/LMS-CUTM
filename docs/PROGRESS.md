@@ -3465,3 +3465,56 @@ What the code did:
 - `npm run check` → exit 0, `Tests 650 passed (650)`.
 - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
 - In the browser: walked in T18.
+
+### 2026-10-28 · M03c/T17 The bar's labelled buttons, the phone's sheet, the poll's pop-up, and the remaining fixes · Claude Code, at Aniket's request
+
+Aniket: "poll appears inside the bar instead of popping up in front where user has to find where is actually the feature; all the main action should be easily accessible … there are various UI UX issues fix them all". Decision 10: labelled buttons on the bar.
+
+**Created**
+- **`components/live-room.tsx`:**
+  - **The bar** follows the stage's own width, which the side panel narrows; window sizes would let a host's bar overflow beside an open panel.
+    - **Wide** (from 820 px; 1,000 px for hosts): labelled buttons.
+      - Mic ▾ and Camera ▾ choose the microphone, speaker and camera (`useMediaDeviceSelect`, no new permission prompt).
+      - Then Share, Hand, React, Captions, Poll for the people taking part, and Board, Poll, Record and Rooms for hosts.
+      - Then More, People, Chat and Leave.
+    - **Medium:** icons, with the rest in More.
+    - **A phone:** microphone, camera, hand, `⋯` and Leave. `⋯` opens a sheet of labelled tiles with the settings as chips and switches.
+    - The tools are one list drawn three ways (`Tool`).
+  - **Polls:**
+    - The Activities tab is gone.
+    - A poll pops up in front of the people taking part, with Later. Answering closes it and says so.
+    - Results pop up when a host shows them; results already showing when someone joins do not.
+    - Hosts ask and follow the poll in a dialog, and see "Poll · N answered" while it is closed.
+    - Rooms opens the breakout setup or status in a dialog.
+    - The dialogs and the sheet are dark cards inside the stage (`Overlay`), so they work in full screen.
+  - **Recording** asks before it stops.
+  - **Leaving:** a host's Leave offers Leave, or End for everyone (asked first). The duplicate leave button at the top is gone.
+  - **Errors** close themselves after 8 s or with ×, and the device alert can be closed. A chat message that fails to send stays in the box with a note.
+  - **Narrower screens:** People and Chat rise from the bottom, leaving the stage in view. A phone on its side keeps the bars small and hides the faces under a presentation.
+  - **From the walk:**
+    - Full screen covers the whole page rather than the stage element, so menus and dialogs, drawn outside the stage, still show in it.
+    - The waiting board is hidden by opacity and `inert`; Excalidraw's own controls showed through `visibility: hidden`.
+    - A tile filling the stage keeps its name above the bar.
+    - Bar captions are short, so a recording host's bar fits.
+  - **The board is memoised** (`components/whiteboard.tsx`), so the room's clock no longer redraws Excalidraw every second.
+- **`app/(room)/actions.ts`:** a hand a host lowers tells its owner who lowered it.
+- **`app/(room)/meetings/[meetingId]/room/page.tsx`:** the "Ready to start" text no longer mentions the lobby.
+- **Tests:**
+  - `tests/integration/live.test.ts`: the lowered-hand notice.
+  - `tests/e2e/live.spec.ts`: "Join now" before the room.
+- **Docs:** 06 §8.8, 08 (`LiveRoom`).
+
+**Not done**
+- The per-second clock still re-renders the room's tiles; only the board was taken out of it.
+- `tests/e2e/live.spec.ts` was changed but not run: it needs the LiveKit server at `ws://localhost:7880`, which is not running on this Mac.
+- There is no meeting e2e spec yet; the scripted walk in T18 stands in for it.
+
+**Assumptions** — none new.
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 650 passed (650)`.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
+- `npm run build` → exit 0.
+- The browser walk is in T18's entry.

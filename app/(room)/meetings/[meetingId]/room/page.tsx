@@ -96,7 +96,7 @@ async function Room({ params }: { params: PageProps<'/meetings/[meetingId]/room'
     return (
       <RoomNotice
         title={canStart ? 'Ready to start' : `You can start the meeting from ${formatTime(room.canStartAt)}`}
-        text={`It is set for ${when}. Everyone from the LMS is told the moment you start; guests waiting on their link are let into the lobby.`}
+        text={`It is set for ${when}. Everyone from the LMS is told the moment you start, and anyone waiting on their own link can join with the passcode.`}
       >
         {canStart ? (
           <div className="text-foreground">

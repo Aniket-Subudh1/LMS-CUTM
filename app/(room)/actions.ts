@@ -80,7 +80,11 @@ export const lowerHands = action(
     if (identities.length === 1 && identities[0] === viewer.id) await roomAccess(viewer, sessionId);
     else await requireRoomHost(viewer, sessionId);
     const { roomName } = await liveRoom(sessionId);
-    await Promise.all([...new Set(identities)].map((identity) => setHand(roomName, identity, null)));
+    const people = [...new Set(identities)];
+    await Promise.all(people.map((identity) => setHand(roomName, identity, null)));
+    // M03c T17: someone whose hand a host lowered is told who did it.
+    const others = people.filter((identity) => identity !== viewer.id);
+    if (others.length > 0) await tell(roomName, 'notice', `${viewer.name} lowered your hand`, others);
   },
 );
 
