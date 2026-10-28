@@ -3901,3 +3901,30 @@ Three static Home layouts with the same content, each for faculty, a student and
 **Open questions** — none new.
 
 **Verification** — `npx tsc --noEmit` → clean; `npx eslint components/live-room.tsx` → clean.
+
+### 2026-10-28 · Home: every role's count tiles; offerings by readiness instead of audit activity · Cursor agent, at Aniket's request
+
+Aniket: "keep the KPI and stats cards in student and faculty as well like admin", and on the admin's bar chart: "I don't want to see any recent activity stats; show me the necessary info for better utilisation". He picked "this term's offerings by readiness" from three options.
+
+**Created** (*changed*)
+- *`lib/schemas/structure.ts`*: `OFFERING_NEEDS` (draft, no_teacher, no_students, no_plan, ready) — an offering's first gap, in that order.
+- *`lib/data/offerings.ts`*: `offeringNeeds(termId)` (admin only) counts a term's offerings by first gap in one aggregate; the `$lookup` takes at most one active enrolment per offering on the `{ offeringId, status }` index. `listOfferings` takes `need` and then pages and counts with the same stages, so a bar's count and its list agree. Term and department filters are now ObjectIds, as an aggregate's `$match` is not cast.
+- *`lib/data/workspace.ts`*: `getHomeSummary()` gains `student` (active courses; present of the classes marked present or absent; lessons completed of those published, all in active offerings) and `toGrade` (faculty: submitted hand-ins on published assessments of their non-completed offerings). `admin` loses `recent`, `activity` and `mostActive` and gains `readiness` (the current term, else the latest by code).
+- *`app/(app)/home/page.tsx`*: four tiles for every role (08 §6); the admin's "Offerings in <term>" bars, each to the filtered list; the activity bars, Most active and Recent activity removed.
+- *`app/(app)/admin/offerings/page.tsx`*: the `need` filter ("Any readiness" select). *`lib/format.ts`*: `NEED_LABEL`.
+- *`tests/integration/workspace.test.ts`*: each role's summary; a student's attendance and lessons count active courses only and skip unmarked classes; faculty count only their own submitted hand-ins; five offerings, one per gap, are counted once each and listed by the same filter; `offeringNeeds` is admin only.
+- Docs: 08 §6 Home, M01 (`getHomeSummary`).
+
+**Not done** — Nothing of this request.
+
+**Assumptions**
+- An offering with no active enrolment is "No students" even if it is active; "No course plan" means the plan was never published.
+- Faculty "To grade" counts hand-ins awaiting marks across all their published assessments; Home's Needs attention still lists only the top five.
+- A student who is also faculty sees the faculty tiles.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → clean; `npx eslint` on the changed files → clean.
+- `npx vitest run tests/integration/workspace.test.ts tests/integration/offerings.test.ts` → 40 passed. The first run caught the uncast `termId` in the readiness filter.
+- Screenshots of the dev server against the seed (`.mockups/home/real.mjs admin faculty student faculty-phone`): admin "Offerings in 2026-ODD" with 2 drafts, 1 without students, 5 without a plan; faculty Teaching 3, Students 60, To grade 0; student Courses 5, Attendance 0 of 5 classes, Lessons 0 of 1.

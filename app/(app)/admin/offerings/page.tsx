@@ -31,9 +31,9 @@ import {
   type OfferingRow,
 } from '@/lib/data/offerings';
 import { listDepartmentsForSelect } from '@/lib/data/structure';
-import { statusTone } from '@/lib/format';
+import { NEED_LABEL, statusTone } from '@/lib/format';
 import { objectId, page as pageParam, pageSize } from '@/lib/schemas/common';
-import { OFFERING_STATUSES, PROJECT_MODES } from '@/lib/schemas/structure';
+import { OFFERING_NEEDS, OFFERING_STATUSES, PROJECT_MODES } from '@/lib/schemas/structure';
 
 export const metadata: Metadata = { title: 'Offerings' };
 
@@ -43,6 +43,8 @@ const Search = z.object({
   term: objectId.optional().catch(undefined),
   department: objectId.optional().catch(undefined),
   status: z.enum(OFFERING_STATUSES).optional().catch(undefined),
+  // Admin Home's readiness bars open the offerings with that first gap.
+  need: z.enum(OFFERING_NEEDS).optional().catch(undefined),
   // The New offering dialog's first step: the batch, whose programme's curriculum and faculty it lists.
   batch: objectId.optional().catch(undefined),
 });
@@ -56,15 +58,15 @@ export default function OfferingsPage({ searchParams }: PageProps<'/admin/offeri
 }
 
 async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/offerings'>['searchParams'] }) {
-  const { page, q, term, department, status, batch } = Search.parse(await searchParams);
+  const { page, q, term, department, status, need, batch } = Search.parse(await searchParams);
   const [{ rows, total }, terms, departments, stats] = await Promise.all([
-    listOfferings(page, { q, termId: term, departmentId: department, status }),
+    listOfferings(page, { q, termId: term, departmentId: department, status, need }),
     listTermsForSelect(),
     listDepartmentsForSelect(),
     getOfferingStats(),
   ]);
   const query = Object.fromEntries(
-    Object.entries({ q, term, department, status }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+    Object.entries({ q, term, department, status, need }).filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
   return (
     <PageHeader
@@ -105,6 +107,14 @@ async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/off
           {OFFERING_STATUSES.map((s) => (
             <NativeSelectOption key={s} value={s}>
               {s.charAt(0).toUpperCase() + s.slice(1)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+        <NativeSelect name="need" aria-label="Readiness" defaultValue={need ?? ''}>
+          <NativeSelectOption value="">Any readiness</NativeSelectOption>
+          {OFFERING_NEEDS.map((n) => (
+            <NativeSelectOption key={n} value={n}>
+              {NEED_LABEL[n]}
             </NativeSelectOption>
           ))}
         </NativeSelect>

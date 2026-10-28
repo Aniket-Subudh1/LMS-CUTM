@@ -65,6 +65,9 @@ export type CoursewarePage = {
   blocks: CoursewareBlock[];
 };
 export const OFFERING_STATUSES = ['draft', 'active', 'completed'] as const;
+// An offering's first gap, in this order (08 §6): admin Home's bars and the offerings list's filter.
+export const OFFERING_NEEDS = ['draft', 'no_teacher', 'no_students', 'no_plan', 'ready'] as const;
+export type OfferingNeed = (typeof OFFERING_NEEDS)[number];
 export const PROJECT_MODES = ['github', 'tracker'] as const;
 
 // Form fields arrive as strings and an empty field is ''. These helpers turn that into "missing".

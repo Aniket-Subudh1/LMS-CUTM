@@ -13,8 +13,8 @@ import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
-import type { OFFERING_STATUSES } from '@/lib/schemas/structure';
-import type { Types } from 'mongoose';
+import type { OFFERING_STATUSES, OfferingNeed } from '@/lib/schemas/structure';
+import { Types, type PipelineStage } from 'mongoose';
 
 type Option = { id: string; label: string };
 
@@ -119,7 +119,56 @@ export type OfferingFilter = {
   termId?: string;
   departmentId?: string;
   status?: (typeof OFFERING_STATUSES)[number];
+  need?: OfferingNeed;
 };
+
+// Each offering's first gap as `need`: still a draft, no teacher, no active student, no published course plan, else
+// ready. One indexed look-up per offering ({ offeringId, status }), stopping at the first student.
+const needStages = (): PipelineStage[] => [
+  {
+    $lookup: {
+      from: Enrollment.collection.name,
+      localField: '_id',
+      foreignField: 'offeringId',
+      pipeline: [{ $match: { status: 'active' } }, { $limit: 1 }, { $project: { _id: 1 } }],
+      as: 'anyStudent',
+    },
+  },
+  {
+    $addFields: {
+      need: {
+        $switch: {
+          branches: [
+            { case: { $eq: ['$status', 'draft'] }, then: 'draft' },
+            { case: { $eq: [{ $size: '$facultyIds' }, 0] }, then: 'no_teacher' },
+            { case: { $eq: [{ $size: '$anyStudent' }, 0] }, then: 'no_students' },
+            { case: { $eq: [{ $ifNull: ['$plan.publishedAt', null] }, null] }, then: 'no_plan' },
+          ],
+          default: 'ready',
+        },
+      },
+    },
+  },
+];
+
+// Admin Home's bars: a term's offerings counted by their first gap.
+export async function offeringNeeds(termId: Types.ObjectId): Promise<Record<OfferingNeed, number>> {
+  await requireViewer(['admin']);
+  await db();
+  const rows = await Offering.aggregate<{ _id: OfferingNeed; n: number }>([
+    { $match: { termId } },
+    ...needStages(),
+    { $group: { _id: '$need', n: { $sum: 1 } } },
+  ]);
+  const count = (need: OfferingNeed) => rows.find((r) => r._id === need)?.n ?? 0;
+  return {
+    draft: count('draft'),
+    no_teacher: count('no_teacher'),
+    no_students: count('no_students'),
+    no_plan: count('no_plan'),
+    ready: count('ready'),
+  };
+}
 
 export type OfferingStats = { total: number; active: number; draft: number; completed: number };
 
@@ -145,19 +194,49 @@ export async function listOfferings(
   const q = filters.q?.trim();
   const filter = {
     ...(q ? { $text: { $search: q } } : {}),
-    ...(filters.termId ? { termId: filters.termId } : {}),
-    ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
+    // ObjectIds, not strings: an aggregate's $match is not cast as find's filter is.
+    ...(filters.termId ? { termId: new Types.ObjectId(filters.termId) } : {}),
+    ...(filters.departmentId ? { departmentId: new Types.ObjectId(filters.departmentId) } : {}),
     ...(filters.status ? { status: filters.status } : {}),
   };
-  const [docs, total] = await Promise.all([
-    Offering.find(filter, { title: 1, termId: 1, status: 1, facultyIds: 1, category: 1, lockedAt: 1 })
-      // A word search lists the closest matches first (text score); otherwise the usual order.
-      .sort('$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
-      .lean(),
-    Offering.countDocuments(filter),
-  ]);
+  const projection = { title: 1, termId: 1, status: 1, facultyIds: 1, category: 1, lockedAt: 1 } as const;
+  // A word search lists the closest matches first (text score); otherwise the usual order.
+  const sort: Record<string, -1 | { $meta: 'textScore' }> =
+    '$text' in filter ? { score: { $meta: 'textScore' }, _id: -1 } : { _id: -1 };
+  const [docs, total] = filters.need
+    ? await Promise.all([
+        Offering.aggregate<{
+          _id: Types.ObjectId;
+          title: string;
+          termId: Types.ObjectId;
+          status: (typeof OFFERING_STATUSES)[number];
+          facultyIds: Types.ObjectId[];
+          category: 'ugc' | 'skill';
+          lockedAt?: Date | null;
+        }>([
+          { $match: filter },
+          ...needStages(),
+          { $match: { need: filters.need } },
+          { $sort: sort },
+          { $skip: (page - 1) * pageSize },
+          { $limit: pageSize },
+          { $project: projection },
+        ]),
+        Offering.aggregate<{ n: number }>([
+          { $match: filter },
+          ...needStages(),
+          { $match: { need: filters.need } },
+          { $count: 'n' },
+        ]).then((rows) => rows[0]?.n ?? 0),
+      ])
+    : await Promise.all([
+        Offering.find(filter, projection)
+          .sort(sort)
+          .skip((page - 1) * pageSize)
+          .limit(pageSize)
+          .lean(),
+        Offering.countDocuments(filter),
+      ]);
   const [terms, faculty, counts] = await Promise.all([
     Term.find({ _id: { $in: docs.map((o) => o.termId) } }, { code: 1 }).lean(),
     User.find({ _id: { $in: docs.flatMap((o) => o.facultyIds) } }, { name: 1, email: 1 }).lean(),

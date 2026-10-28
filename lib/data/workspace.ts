@@ -6,6 +6,7 @@ import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { escapeRegex } from '@/lib/data/courses';
+import { offeringNeeds } from '@/lib/data/offerings';
 import { readSnapshot, type EngagementSnapshot } from '@/lib/data/engagement';
 import { getSettings } from '@/lib/data/settings';
 import { countedScore } from '@/lib/domain/attempts';
@@ -15,7 +16,6 @@ import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { formatDate } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
-import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
 import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -34,6 +34,7 @@ import { SETTINGS } from '@/lib/schemas/settings';
 import {
   MAX_ENROLLMENTS,
   type COURSE_TYPES,
+  type OfferingNeed,
   type OFFERING_STATUSES,
   type SESSION_KINDS,
 } from '@/lib/schemas/structure';
@@ -208,17 +209,19 @@ export type HomeSummary = {
   myOfferings: number | null;
   // Active enrolments across the offerings the viewer teaches or oversees; null without faculty or hod.
   enrolments: number | null;
+  // Home's tiles for a student: their active courses, the live classes they attended of those with attendance taken,
+  // and the lessons they completed of those published in them.
+  student: { courses: number; attended: number; held: number; completed: number; published: number } | null;
+  // Hand-ins waiting for marks across the published assessments of the classes the viewer teaches; null without faculty.
+  toGrade: number | null;
   admin: {
     programs: number;
     courses: number;
     activeOfferings: number;
     users: number;
     invited: number;
-    recent: { id: string; at: Date; actor: string; action: string; entity: string }[];
-    // Audit entries per IST day for the last seven days, oldest first; `day` is that day's midnight in IST.
-    activity: { day: Date; count: number }[];
-    // The three people with the most audit entries in those seven days.
-    mostActive: { id: string; name: string; count: number }[];
+    // The current term's offerings by their first gap (08 §6); null when no term exists.
+    readiness: { term: { id: string; code: string }; counts: Record<OfferingNeed, number> } | null;
   } | null;
 };
 
@@ -228,7 +231,7 @@ export async function getHomeSummary(): Promise<HomeSummary> {
   const isAdmin = viewer.roles.includes('admin');
   const learns = viewer.roles.some((r) => r === 'hod' || r === 'faculty' || r === 'student');
   const teaches = viewer.roles.some((r) => r === 'hod' || r === 'faculty');
-  const [myOfferings, enrolments, admin] = await Promise.all([
+  const [myOfferings, enrolments, student, toGrade, admin] = await Promise.all([
     !isAdmin && learns ? Offering.countDocuments(await offeringScope(viewer)) : null,
     teaches
       ? Offering.find({ $or: teachingScope(viewer) }, { _id: 1 })
@@ -237,66 +240,79 @@ export async function getHomeSummary(): Promise<HomeSummary> {
             Enrollment.countDocuments({ offeringId: { $in: taught.map((o) => o._id) }, status: 'active' }),
           )
       : null,
+    viewer.roles.includes('student') ? studentSummary(viewer.id) : null,
+    viewer.roles.includes('faculty') ? waitingForMarks(viewer.id) : null,
     isAdmin ? adminSummary() : null,
   ]);
-  return { myOfferings, enrolments, admin };
+  return { myOfferings, enrolments, student, toGrade, admin };
 }
 
-const DAY_MS = 86_400_000;
+async function studentSummary(studentId: string): Promise<NonNullable<HomeSummary['student']>> {
+  const enrolled = await Enrollment.find({ studentId, status: 'active' }, { offeringId: 1 }).limit(100).lean();
+  const active = await Offering.find(
+    { _id: { $in: enrolled.map((e) => e.offeringId) }, status: 'active' },
+    { _id: 1 },
+  ).lean();
+  const offeringId = { $in: active.map((o) => o._id) };
+  const [marked, published, completed] = await Promise.all([
+    Attendance.aggregate<{ attended: number; held: number }>([
+      { $match: { offeringId, studentId: new Types.ObjectId(studentId), status: { $in: ['present', 'absent'] } } },
+      {
+        $group: {
+          _id: null,
+          held: { $sum: 1 },
+          attended: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+        },
+      },
+    ]),
+    Lesson.countDocuments({ offeringId, published: true }),
+    LessonProgress.countDocuments({ offeringId, studentId, completedAt: { $ne: null } }),
+  ]);
+  return {
+    courses: active.length,
+    attended: marked[0]?.attended ?? 0,
+    held: marked[0]?.held ?? 0,
+    completed,
+    published,
+  };
+}
+
+async function waitingForMarks(facultyId: string): Promise<number> {
+  const offerings = await Offering.find({ facultyIds: facultyId, status: { $ne: 'completed' } }, { _id: 1 })
+    .limit(100)
+    .lean();
+  const published = await Assessment.find(
+    { offeringId: { $in: offerings.map((o) => o._id) }, status: 'published' },
+    { _id: 1 },
+  )
+    .limit(100 * ASSESSMENT_LIMITS.perOffering)
+    .lean();
+  return published.length === 0
+    ? 0
+    : Submission.countDocuments({ assessmentId: { $in: published.map((a) => a._id) }, status: 'submitted' });
+}
 
 async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
-  const today = istDateToDate(istDayKey(new Date()));
-  const days = Array.from({ length: 7 }, (_, i) => new Date(today.getTime() - (6 - i) * DAY_MS));
-  const week = { at: { $gte: days[0] } };
-  const [programs, courses, activeOfferings, users, invited, recent, perDay, perActor] = await Promise.all([
+  const [programs, courses, activeOfferings, users, invited, term] = await Promise.all([
     Program.countDocuments({ status: 'active' }),
     Course.estimatedDocumentCount(),
     Offering.countDocuments({ status: 'active' }),
     User.estimatedDocumentCount(),
     // Every user has a role, so matching all of them lets the { roles, status } index serve a count by status.
     User.countDocuments({ roles: { $in: ROLES }, status: 'invited' }),
-    AuditLog.find({}, { at: 1, actorId: 1, action: 1, entity: 1 }).sort({ at: -1 }).limit(6).lean(),
-    AuditLog.aggregate<{ _id: string; count: number }>([
-      { $match: week },
-      {
-        $group: {
-          _id: { $dateToString: { date: '$at', format: '%Y-%m-%d', timezone: 'Asia/Kolkata' } },
-          count: { $sum: 1 },
-        },
-      },
-    ]),
-    AuditLog.aggregate<{ _id: Types.ObjectId; count: number }>([
-      { $match: week },
-      { $group: { _id: '$actorId', count: { $sum: 1 } } },
-      { $sort: { count: -1, _id: 1 } },
-      { $limit: 3 },
-    ]),
+    Term.findOne({ status: 'current' }, { code: 1 })
+      .lean()
+      .then((current) => current ?? Term.findOne({}, { code: 1 }).sort({ code: -1 }).lean()),
   ]);
-  const actors = await User.find(
-    { _id: { $in: [...recent.map((a) => a.actorId), ...perActor.map((a) => a._id)] } },
-    { name: 1 },
-  ).lean();
-  const names = new Map(actors.map((u) => [String(u._id), u.name]));
-  const counts = new Map(perDay.map((d) => [d._id, d.count]));
   return {
     programs,
     courses,
     activeOfferings,
     users,
     invited,
-    recent: recent.map((a) => ({
-      id: String(a._id),
-      at: a.at,
-      actor: names.get(String(a.actorId)) ?? 'Unknown user',
-      action: a.action,
-      entity: a.entity,
-    })),
-    activity: days.map((day) => ({ day, count: counts.get(istDayKey(day)) ?? 0 })),
-    mostActive: perActor.map((a) => ({
-      id: String(a._id),
-      name: names.get(String(a._id)) ?? 'Unknown user',
-      count: a.count,
-    })),
+    readiness: term
+      ? { term: { id: String(term._id), code: term.code }, counts: await offeringNeeds(term._id) }
+      : null,
   };
 }
 

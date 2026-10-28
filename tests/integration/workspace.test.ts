@@ -1,10 +1,12 @@
+import type { Types } from 'mongoose';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { fillCalendarFromCourse } from '@/app/(app)/courses/[offeringId]/plan/actions';
 import { getOfferingCourse } from '@/lib/data/courses';
 import { db } from '@/lib/db';
-import { istDateToDate, istDayKey } from '@/lib/domain/time';
+import { istDayKey } from '@/lib/domain/time';
+import { listOfferings, offeringNeeds } from '@/lib/data/offerings';
 import { getHomeSummary, getWorkspace, listMyOfferings, listRoster } from '@/lib/data/workspace';
-import { AuditLog } from '@/lib/models/audit-log';
+import { Attendance } from '@/lib/models/attendance';
 import { Course } from '@/lib/models/course';
 import { Department } from '@/lib/models/department';
 import { Enrollment } from '@/lib/models/enrollment';
@@ -12,8 +14,20 @@ import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
+import { Submission } from '@/lib/models/submission';
 import { Term } from '@/lib/models/term';
-import { enroll, form, makeCourse, makeOffering, makeProgram, makeUser, newId, signInAs } from '../factories';
+import type { OfferingNeed } from '@/lib/schemas/structure';
+import {
+  enroll,
+  form,
+  makeAssessment,
+  makeCourse,
+  makeOffering,
+  makeProgram,
+  makeUser,
+  newId,
+  signInAs,
+} from '../factories';
 import { switchBrowser } from '../next-request';
 
 const NOT_FOUND = 'NEXT_HTTP_ERROR_FALLBACK;404';
@@ -191,70 +205,135 @@ describe('getHomeSummary', () => {
       enroll(w.draftA._id, other._id),
       enroll(w.offB._id, other._id),
     ]);
+    const none = { student: null, toGrade: null, admin: null };
 
     await signInAs(w.facultyA);
-    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, admin: null });
+    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, ...none, toGrade: 0 });
     await signInAs(w.hodA);
-    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, admin: null });
+    expect(await getHomeSummary()).toEqual({ myOfferings: 2, enrolments: 2, ...none });
     await signInAs(student);
-    expect(await getHomeSummary()).toEqual({ myOfferings: 1, enrolments: null, admin: null });
+    expect(await getHomeSummary()).toEqual({
+      myOfferings: 1,
+      enrolments: null,
+      ...none,
+      student: { courses: 1, attended: 0, held: 0, completed: 0, published: 0 },
+    });
     await signInAs(await makeUser({ roles: ['support'] }));
-    expect(await getHomeSummary()).toEqual({ myOfferings: null, enrolments: null, admin: null });
+    expect(await getHomeSummary()).toEqual({ myOfferings: null, enrolments: null, ...none });
   });
 
-  it('gives admins the programme, catalogue and user counts and the latest audit entries', async () => {
-    const admin = await makeUser({ roles: ['admin'], name: 'Audit Admin' });
+  it('gives a student their attendance and lessons in active courses only, and a teacher the hand-ins awaiting marks', async () => {
+    const w = await world();
+    const student = await makeUser({ roles: ['student'] });
+    const done = await makeOffering({ status: 'completed', title: 'Done' });
+    await Promise.all([enroll(w.offA._id, student._id), enroll(done._id, student._id)]);
+    const mark = (offeringId: Types.ObjectId, status?: 'present' | 'absent') => ({
+      sessionId: newId(),
+      offeringId,
+      studentId: student._id,
+      status,
+      source: 'manual' as const,
+    });
+    await Attendance.create([
+      mark(w.offA._id, 'present'),
+      mark(w.offA._id, 'present'),
+      mark(w.offA._id, 'absent'),
+      mark(w.offA._id),
+      mark(done._id, 'absent'),
+    ]);
+    const moduleId = newId();
+    const lessons = await Lesson.create(
+      [true, true, false].map((published, order) => ({
+        offeringId: w.offA._id,
+        moduleId,
+        order,
+        kind: 'link' as const,
+        title: `L${order}`,
+        published,
+      })),
+    );
+    await LessonProgress.create({
+      offeringId: w.offA._id,
+      lessonId: lessons[0]._id,
+      studentId: student._id,
+      completedAt: new Date(),
+    });
+    await signInAs(student);
+    expect((await getHomeSummary()).student).toEqual({ courses: 1, attended: 2, held: 3, completed: 1, published: 2 });
+
+    const quiz = await makeAssessment({ offeringId: w.offA._id, createdBy: w.facultyA._id });
+    const attempt = (studentId: Types.ObjectId, status: 'submitted' | 'graded') => ({
+      assessmentId: quiz._id,
+      offeringId: w.offA._id,
+      studentId,
+      attemptNo: 1,
+      status,
+      startedAt: new Date(),
+      deadlineAt: new Date(),
+      submittedAt: new Date(),
+    });
+    await Submission.create([attempt(student._id, 'submitted'), attempt(newId(), 'graded')]);
+    await signInAs(w.facultyA);
+    expect((await getHomeSummary()).toGrade).toBe(1);
+    await signInAs(w.facultyB);
+    expect((await getHomeSummary()).toGrade).toBe(0);
+  });
+
+  it('gives admins the platform counts and the current term by readiness', async () => {
+    const admin = await makeUser({ roles: ['admin'] });
     await signInAs(admin);
     const before = await getHomeSummary();
     await world();
     await makeUser({ roles: ['faculty', 'hod'], status: 'invited' });
-    const entry = await AuditLog.create({
-      at: new Date(Date.now() + 60_000),
-      actorId: admin._id,
-      action: 'user.created',
-      entity: 'user',
-      entityId: newId(),
-    });
     const after = await getHomeSummary();
     expect(after.myOfferings).toBeNull();
+    expect(after.student).toBeNull();
     expect(after.admin).toMatchObject({
       activeOfferings: (before.admin?.activeOfferings ?? 0) + 2,
       invited: (before.admin?.invited ?? 0) + 1,
     });
-    expect(after.admin?.recent[0]).toEqual({
-      id: String(entry._id),
-      at: entry.at,
-      actor: 'Audit Admin',
-      action: 'user.created',
-      entity: 'user',
+    expect(after.admin?.readiness?.term.code).toMatch(/^WT\d+$/);
+  });
+});
+
+describe('offeringNeeds and the need filter', () => {
+  it('counts each offering once, by its first gap, and lists the same offerings', async () => {
+    const w = await world();
+    const student = await makeUser({ roles: ['student'] });
+    const base = { termId: w.term._id, departmentId: w.deptA._id, status: 'active' as const };
+    const noTeacher = await makeOffering({ ...base, facultyIds: [], title: 'No teacher' });
+    const ready = await makeOffering({ ...base, facultyIds: [w.facultyA._id], title: 'Ready' });
+    await Offering.updateOne({ _id: ready._id }, { 'plan.publishedAt': new Date() });
+    await Offering.updateOne({ _id: w.offB._id }, { 'plan.publishedAt': new Date() });
+    await Promise.all([
+      enroll(w.offA._id, student._id),
+      enroll(ready._id, student._id),
+      enroll(noTeacher._id, student._id),
+      enroll(w.offB._id, student._id, 'dropped'),
+    ]);
+    await signInAs(await makeUser({ roles: ['admin'] }));
+
+    expect(await offeringNeeds(w.term._id)).toEqual({
+      draft: 1,
+      no_teacher: 1,
+      no_students: 1,
+      no_plan: 1,
+      ready: 1,
     });
-    expect(after.admin?.recent.length).toBeLessThanOrEqual(6);
+    const listed = async (need: OfferingNeed) =>
+      (await listOfferings(1, { termId: String(w.term._id), need })).rows.map((r) => r.id);
+    expect(await listed('draft')).toEqual([String(w.draftA._id)]);
+    expect(await listed('no_teacher')).toEqual([String(noTeacher._id)]);
+    expect(await listed('no_students')).toEqual([String(w.offB._id)]);
+    expect(await listed('no_plan')).toEqual([String(w.offA._id)]);
+    const page = await listOfferings(1, { termId: String(w.term._id), need: 'ready' });
+    expect(page).toMatchObject({ total: 1, rows: [{ id: String(ready._id) }] });
   });
 
-  it('counts the last seven days of audit entries by IST day and by person', async () => {
-    const day = 86_400_000;
-    const busy = await makeUser({ roles: ['admin'], name: 'Busy Admin' });
-    await signInAs(await makeUser({ roles: ['admin'] }));
-    const before = await getHomeSummary();
-    const now = new Date();
-    const threeDaysAgo = new Date(now.getTime() - 3 * day);
-    const entry = (at: Date) => ({ at, actorId: busy._id, action: 'user.created', entity: 'user', entityId: newId() });
-    await AuditLog.create([entry(now), entry(now), entry(threeDaysAgo), entry(new Date(now.getTime() - 8 * day))]);
-    const after = await getHomeSummary();
-
-    const activity = after.admin?.activity ?? [];
-    expect(activity).toHaveLength(7);
-    expect(istDayKey(activity[6].day)).toBe(istDayKey(now));
-    activity.forEach((d, i) => {
-      expect(d.day).toEqual(istDateToDate(istDayKey(d.day)));
-      if (i > 0) expect(d.day.getTime() - activity[i - 1].day.getTime()).toBe(day);
-    });
-    const added = activity.map((d, i) => d.count - (before.admin?.activity[i].count ?? 0));
-    expect(added[activity.findIndex((d) => istDayKey(d.day) === istDayKey(now))]).toBe(2);
-    expect(added[activity.findIndex((d) => istDayKey(d.day) === istDayKey(threeDaysAgo))]).toBe(1);
-    expect(added.reduce((a, b) => a + b, 0)).toBe(3);
-    expect(after.admin?.mostActive[0]).toEqual({ id: String(busy._id), name: 'Busy Admin', count: 3 });
-    expect(after.admin?.mostActive.length).toBeLessThanOrEqual(3);
+  it('is for admins only', async () => {
+    const w = await world();
+    await signInAs(w.facultyA);
+    await expect(offeringNeeds(w.term._id)).rejects.toMatchObject(redirectsTo('/home'));
   });
 });
 

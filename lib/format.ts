@@ -4,7 +4,7 @@ import type { EngagementBand, EngagementSignal, EngagementTrend } from '@/lib/sc
 import type { RUBRICS } from '@/lib/domain/evaluation';
 import { roundHalfUp } from '@/lib/domain/round';
 import type { RubricComponent, TheoryPart, Trend } from '@/lib/schemas/marks';
-import type { COURSE_TYPES } from '@/lib/schemas/structure';
+import type { COURSE_TYPES, OfferingNeed } from '@/lib/schemas/structure';
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
@@ -225,6 +225,13 @@ export const TREND_LABEL: Record<Trend, string> = {
 
 // M10 (07 §7): engagement's bands, signals and trend.
 export const BAND_LABEL: Record<EngagementBand, string> = { high: 'High', medium: 'Medium', low: 'Low' };
+export const NEED_LABEL: Record<OfferingNeed, string> = {
+  draft: 'Still a draft',
+  no_teacher: 'No teacher',
+  no_students: 'No students',
+  no_plan: 'No course plan',
+  ready: 'Ready',
+};
 export const SIGNAL_LABEL: Record<EngagementSignal, string> = {
   attendance: 'Live attendance',
   video: 'Videos watched',
