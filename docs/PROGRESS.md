@@ -3814,3 +3814,31 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 
 **Verification**
 - `npx next typegen` then `npx tsc --noEmit` → exit 0; `npx eslint` and `npx prettier` on the changed files → no problems. Walked with T8.
+
+### 2026-10-28 · Home redesign H1 Mock-ups · Cursor agent, at Aniket's request
+
+Three static Home layouts with the same content, each for faculty, a student and a head of department (kept locally in `.mockups/home/`, not committed): **A** today first in one column, **B** two columns (needs attention and your courses on the left, today and notifications on the right), **C** a this-week planner. **Aniket picked B** (28 Oct 2026). The shared content: a greeting with the date; one row of quick actions; "Needs attention", most urgent first (red for overdue, amber for soon or waiting), at most five rows and "Show all"; "Today" with Join on a running class; "You're all caught up" when there is nothing; faculty's courses with their low-engagement count; a head of department's five courses with the most students in the low band.
+
+**Assumptions** (where the plan named something the app does not have)
+- Faculty's "Post announcement" is "New meeting": the LMS has no announcements.
+- The head of department's "Course plans to approve" is "Continuous evaluation": course plans are published by their teachers, not approved.
+- A student's "Recent results" is left out: no existing indexed query lists a student's latest published results, and the plan said to leave it out then.
+- A head of department sees their department's classes under Today but opens the class page, not the room: 09 §2 says they only look.
+
+### 2026-10-28 · Home redesign H2 Home's data · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`lib/data/live.ts`* `listTodaysLiveSessions`: a head of department also gets their department's active offerings' classes today (at most 500 offerings, 10 classes); each row says whether the viewer may `join` it (enrolled or teaching; an admin always).
+- *`lib/data/notifications.ts`*: `unreadCount` is wrapped in React `cache`, so the layout's bell and Home share one count per request.
+- *`lib/data/engagement-views.ts`*: `getHomeEngagement()` (M10 T7) — a teacher's active offerings (newest first, at most 20) with their active students and low-band count, and a head of department's five department offerings with the most low-band students (none listed when no one is low).
+- The admin's newest offering is no longer shown twice: the hero card goes in H3 and the offerings list remains.
+
+**Not done** — H3 builds the page.
+
+**Assumptions**
+- The head of department's count reads every active enrolment of the department's active offerings (index `{ offeringId, status }`, the band filtered after); no new index was added for it.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems.

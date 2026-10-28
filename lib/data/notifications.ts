@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { Notification, type NotificationKind } from '@/lib/models/notification';
@@ -38,8 +39,9 @@ export async function listMyNotifications(page: number): Promise<{ rows: Notific
   };
 }
 
-export async function unreadCount(): Promise<number> {
+// Once per request: the app layout's bell and Home both read it.
+export const unreadCount = cache(async (): Promise<number> => {
   const viewer = await requireViewer();
   await db();
   return Notification.countDocuments({ userId: viewer.id, readAt: null });
-}
+});

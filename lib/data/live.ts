@@ -633,10 +633,13 @@ export type TodayClass = {
   status: 'scheduled' | 'live';
   scheduledStart: Date;
   scheduledEnd: Date;
+  // A head of department only looks at their department's classes (09 §2): they open its page, not the room.
+  join: boolean;
 };
 
-// T9, A-70: Home's "Today's live classes" for the courses a student is in or a teacher teaches. An admin, who may join
-// any class, gets the ten running now across the university, the earliest to end first (index status, scheduledEnd).
+// T9, A-70: Home's "Today's live classes" for the courses a student is in, a teacher teaches or (Home redesign) a head
+// of department oversees. An admin, who may join any class, gets the ten running now across the university, the
+// earliest to end first (index status, scheduledEnd).
 export async function listTodaysLiveSessions(): Promise<TodayClass[]> {
   const viewer = await requireViewer();
   await db();
@@ -658,20 +661,29 @@ export async function listTodaysLiveSessions(): Promise<TodayClass[]> {
       status: 'live',
       scheduledStart: doc.scheduledStart,
       scheduledEnd: doc.scheduledEnd,
+      join: true,
     }));
   }
   const enrolledIn = viewer.roles.includes('student')
     ? await Enrollment.distinct('offeringId', { studentId: viewer.id, status: 'active' })
     : [];
+  const department = viewer.roles.includes('hod') ? viewer.departmentId : null;
   const scope = [
     ...(enrolledIn.length > 0 ? [{ _id: { $in: enrolledIn } }] : []),
     ...(viewer.roles.includes('faculty') ? [{ facultyIds: new Types.ObjectId(viewer.id) }] : []),
+    ...(department ? [{ departmentId: new Types.ObjectId(department) }] : []),
   ];
   if (scope.length === 0) return [];
   // Students see classes of active courses only (09 §3); nobody schedules on any other.
-  const offerings = await Offering.find({ $or: scope, status: 'active' }, { title: 1 }).limit(100).lean();
+  const offerings = await Offering.find({ $or: scope, status: 'active' }, { title: 1, facultyIds: 1 })
+    .limit(department ? 500 : 100)
+    .lean();
   if (offerings.length === 0) return [];
   const titleOf = new Map(offerings.map((o) => [String(o._id), o.title]));
+  const joinable = new Set([
+    ...enrolledIn.map(String),
+    ...offerings.filter((o) => o.facultyIds.some((f) => f.equals(viewer.id))).map((o) => String(o._id)),
+  ]);
   const now = new Date();
   const dayStart = istDateToDate(istDayKey(now));
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * MINUTE_MS);
@@ -699,6 +711,7 @@ export async function listTodaysLiveSessions(): Promise<TodayClass[]> {
             status: doc.status,
             scheduledStart: doc.scheduledStart,
             scheduledEnd: doc.scheduledEnd,
+            join: joinable.has(String(doc.offeringId)),
           },
         ]
       : [],

@@ -355,6 +355,45 @@ export async function getEngagementReport(
   };
 }
 
+export type EngagementCourse = { id: string; title: string; students: number; low: number };
+
+// T7 (AC-M10-02) for Home: a teacher's active offerings with their active students and how many are in the low band
+// (newest first, at most 20); a head of department's five department offerings with the most, from last night's
+// snapshot. One `$group` over enrolments each (index { offeringId, status }).
+export async function getHomeEngagement(): Promise<{ teaching: EngagementCourse[]; department: EngagementCourse[] }> {
+  const viewer = await requireViewer();
+  const department = viewer.roles.includes('hod') ? viewer.departmentId : null;
+  const teaches = viewer.roles.includes('faculty');
+  if (!teaches && !department) return { teaching: [], department: [] };
+  await db();
+  const [taught, overseen] = await Promise.all([
+    teaches
+      ? Offering.find({ facultyIds: viewer.id, status: 'active' }, { title: 1 }).sort({ _id: -1 }).limit(20).lean()
+      : [],
+    department ? Offering.find({ departmentId: department, status: 'active' }, { title: 1 }).limit(500).lean() : [],
+  ]);
+  const countsOf = async (offerings: { _id: Types.ObjectId; title: string }[], top: number | null) => {
+    if (offerings.length === 0) return [];
+    const rows = await Enrollment.aggregate<{ _id: Types.ObjectId; students: number; low: number }>([
+      { $match: { offeringId: { $in: offerings.map((o) => o._id) }, status: 'active' } },
+      { $group: { _id: '$offeringId', students: { $sum: 1 }, low: countWhen('$engagement.band', 'low') } },
+      ...(top
+        ? [{ $match: { low: { $gt: 0 } } }, { $sort: { low: -1 as const, _id: 1 as const } }, { $limit: top }]
+        : []),
+    ]);
+    const countOf = new Map(rows.map((r) => [String(r._id), r]));
+    const shown = top ? rows.flatMap((r) => offerings.filter((o) => o._id.equals(r._id))) : offerings;
+    return shown.map((o) => ({
+      id: String(o._id),
+      title: o.title,
+      students: countOf.get(String(o._id))?.students ?? 0,
+      low: countOf.get(String(o._id))?.low ?? 0,
+    }));
+  };
+  const [teaching, departmentRows] = await Promise.all([countsOf(taught, null), countsOf(overseen, 5)]);
+  return { teaching, department: departmentRows };
+}
+
 // The numbers the AI is told (06 §4.7, 09 §12): counts, percentages and the class's P90s, under plain labels. No name,
 // roll number, email or course is in it.
 export function engagementMetrics(view: StudentEngagementView): Record<string, number> {
