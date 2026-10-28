@@ -323,6 +323,7 @@ export async function QuestionBank({
           credit={false}
           sections={[]}
           languages={bank.languages}
+          ai={bank.aiReady}
         />
       )}
       {bank.canEdit && open === 'draft' && (

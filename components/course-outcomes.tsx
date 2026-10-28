@@ -32,16 +32,19 @@ const list = new Intl.ListFormat('en-IN', { type: 'conjunction' });
 // The workspace's Outcomes tab and the catalogue course page (M03b, "Outcomes A"): the COs with their Bloom levels,
 // how strongly each PO and PSO is supported, and the CO × PO/PSO grid. The coordinator and admins edit in place;
 // everyone else reads. Edit dialogs open from the URL (`?new=co`, `?new=co-<id>`) on `base`, the page's own path.
+// `offeringId` (the Outcomes tab) has the AI's mapping suggestion use that class's programme titles (M09 decision 2).
 export function CourseOutcomes({
   course,
   outcomes,
   base,
   open,
+  offeringId,
 }: {
   course: EditableCourse;
   outcomes: OutcomeColumn[];
   base: string;
   open: string | undefined;
+  offeringId?: string;
 }) {
   const { cos, canEdit } = course;
   const coverage = mappingCoverage(
@@ -148,6 +151,7 @@ export function CourseOutcomes({
                   cos={cos}
                   outcomes={outcomes}
                   cells={course.cells}
+                  suggest={course.aiReady ? { courseId: course.id, offeringId } : null}
                 />
                 <FieldErrors name="cell[]" />
               </ActionForm>

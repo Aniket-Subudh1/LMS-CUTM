@@ -5,6 +5,7 @@ import { isValidObjectId } from 'mongoose';
 import { canEditCourse, offeringAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
+import { aiConfigured } from '@/lib/integrations/ai';
 import {
   courseMode,
   courseReadiness,
@@ -228,11 +229,13 @@ const readiness = (course: CourseDoc) =>
     sessions: course.sessionPlan.length,
   });
 
-// A course as `CourseOutcomes` and `CourseSyllabus` show it: its content and whether the viewer may change it.
-export type EditableCourse = CourseDetail & { canEdit: boolean };
+// A course as `CourseOutcomes` and `CourseSyllabus` show it: its content and whether the viewer may change it, and
+// whether the AI can suggest its mapping (M09, CPP-07).
+export type EditableCourse = CourseDetail & { canEdit: boolean; aiReady: boolean };
 
 export type CatalogCourse = CourseDetail & {
   canEdit: boolean;
+  aiReady: boolean;
   isAdmin: boolean;
   // A course that has been offered keeps its code (A-62).
   offered: boolean;
@@ -257,6 +260,7 @@ export async function getCatalogCourse(id: string): Promise<CatalogCourse> {
   return {
     ...detail,
     canEdit,
+    aiReady: aiConfigured(),
     isAdmin: viewer.roles.includes('admin'),
     offered: Boolean(offered),
     readiness: readiness(course),
@@ -275,6 +279,7 @@ export type OfferingCourse = CourseDetail & {
   // PO1–PO12 and PSO1–PSO3 with the offering programme's titles ('' where it has none).
   outcomes: { code: OutcomeCode; title: string }[];
   canEdit: boolean;
+  aiReady: boolean;
   readiness: { key: ReadinessKey; done: boolean }[];
 };
 
@@ -295,6 +300,7 @@ export async function getOfferingCourse(offeringId: string): Promise<OfferingCou
     ...detail,
     outcomes: OUTCOME_CODES.map((code) => ({ code, title: titles.get(code) ?? '' })),
     canEdit,
+    aiReady: aiConfigured(),
     readiness: readiness(course),
   };
 }

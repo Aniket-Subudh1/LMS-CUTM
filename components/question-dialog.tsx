@@ -3,9 +3,11 @@ import { Field, FieldErrors } from '@/components/action-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageIcon, type PageIconName } from '@/components/page-icon';
 import { RichTextEditor } from '@/components/rich-text-editor';
+import { SuggestOutcomes } from '@/components/suggest-outcomes';
 import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/cn';
 import type { ActionResult } from '@/lib/errors';
 import type { TeacherItem } from '@/lib/data/assessments';
 import {
@@ -47,7 +49,8 @@ const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 // TP-05, TP-06: one question's dialog — for an assessment (builder) and for a question bank. `hidden` carries where
 // it is saved; `cos` is null where course outcomes do not apply (a standalone test, a personal bank); `sections` lets
-// an assessment's question move between its sections; `languages` are those a code question may offer (TP-09).
+// an assessment's question move between its sections; `languages` are those a code question may offer (TP-09); `ai`
+// offers "Suggest outcomes (AI)" beside the course's outcomes (M09, CPP-07).
 export function QuestionDialog({
   openParam,
   title,
@@ -59,6 +62,7 @@ export function QuestionDialog({
   credit,
   sections,
   languages,
+  ai,
 }: {
   openParam: string;
   title: string;
@@ -70,6 +74,7 @@ export function QuestionDialog({
   credit: boolean;
   sections: { id: string; title: string }[];
   languages: { key: string; label: string }[];
+  ai: boolean;
 }) {
   const options = item?.options ?? [];
   const correct = new Set(item?.key && 'optionIds' in item.key ? item.key.optionIds : []);
@@ -284,8 +289,10 @@ export function QuestionDialog({
         </Field>
       )}
       {cos && (
-        <fieldset className="grid gap-2">
-          <legend className="mb-1 text-sm font-medium">Course outcomes</legend>
+        <fieldset className="relative grid gap-2">
+          {/* The suggestion button sits on the legend's line, so the legend leaves it room. */}
+          <legend className={cn('text-sm font-medium', ai && cos.length > 0 ? 'mb-3' : 'mb-1')}>Course outcomes</legend>
+          {ai && cos.length > 0 && <SuggestOutcomes cos={cos} />}
           {cos.length === 0 ? (
             <p className="text-muted-foreground text-[0.8125rem]">
               This course has no outcomes yet. The course coordinator adds them on the Outcomes tab.

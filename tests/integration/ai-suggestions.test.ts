@@ -120,6 +120,8 @@ describe('suggestCoMap', () => {
       data: { cells: [{ coId: w.co2, outcome: 'PO1', level: 3, rationale: 'Files are core knowledge.' }] },
     });
     expect(result.ok && result.data?.untitled).toContain('PO2');
+    // An admin is shown where to give the untitled codes their titles.
+    expect(result.ok && result.data?.titlesAt).toEqual([{ id: String(w.program._id), code: w.program.code }]);
     expect(ai.map.mock.calls.at(-1)?.[0].outcomes).toEqual([{ code: 'PO1', title: 'Engineering knowledge' }]);
     expect((await Course.findById(w.course._id).lean())?.coMap).toHaveLength(1);
   });

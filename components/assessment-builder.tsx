@@ -404,6 +404,7 @@ export async function AssessmentBuilder({
           credit={b.credit}
           sections={b.sections}
           languages={b.languages}
+          ai={b.aiReady}
         />
       )}
       {editQuestions && (open === 'section' || editingSection) && (

@@ -281,6 +281,8 @@ export const suggestCoMap = action(
         return coId ? [{ coId, outcome: cell.outcome, level: cell.level, rationale: cell.rationale }] : [];
       }),
       untitled,
+      // Where the untitled codes get their titles (M09 decision 2): the programmes' pages, which only admins open.
+      titlesAt: viewer.roles.includes('admin') ? programs.map((p) => ({ id: String(p._id), code: p.code })) : [],
     };
   },
 );

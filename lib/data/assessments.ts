@@ -17,6 +17,7 @@ import {
 import { getSettings } from '@/lib/data/settings';
 import { escapeRegex } from '@/lib/data/courses';
 import { db } from '@/lib/db';
+import { aiConfigured } from '@/lib/integrations/ai';
 import {
   canStart,
   countedAttempt,
@@ -585,6 +586,8 @@ export type Builder = {
   theory: boolean;
   offeringTitle: string | null;
   cos: { id: string; code: string; statement: string }[];
+  // M09 (CPP-07): whether the question dialog offers "Suggest outcomes (AI)".
+  aiReady: boolean;
   assessment: AssessmentSummary & {
     status: AssessmentDoc['status'];
     countsToward: CountsToward | null;
@@ -654,6 +657,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     theory: credit && (offering?.credits.theory ?? 0) > 0,
     offeringTitle: offering?.title ?? null,
     cos: (course?.cos ?? []).map((co) => ({ id: String(co._id), code: co.code, statement: co.statement })),
+    aiReady: aiConfigured(),
     assessment: {
       ...summaryOf({ ...doc, questions: questionsOf(doc) }, new Date()),
       status: doc.status,

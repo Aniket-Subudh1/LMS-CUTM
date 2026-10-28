@@ -67,6 +67,7 @@ async function Outcomes({
           outcomes={course.outcomes}
           base={`/courses/${offeringId}/outcomes`}
           open={open}
+          offeringId={offeringId}
         />
       </div>
     </div>
