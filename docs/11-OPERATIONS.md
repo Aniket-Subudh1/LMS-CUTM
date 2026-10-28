@@ -28,7 +28,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `S3_FORCE_PATH_STYLE` | M02 | `true` locally (RustFS); `false` for R2 | |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | M00 | `localhost`, `1025`, `false` | Mailpit locally |
 | `SMTP_USER`, `SMTP_PASSWORD` | M00 | | Optional (Mailpit needs none) |
-| `MAIL_FROM` | M00 | `CUTM LMS <lms@cutm.ac.in>` | Sender domain needs SPF/DKIM (Q-31) |
+| `MAIL_FROM` | M00 | `CUTM LMS <lms@cutm.ac.in>` | Sender domain needs SPF/DKIM (Q-31). Since 28 Oct 2026 the test server (and `.env`/`.env.local`) sends through Amazon SES: `SMTP_HOST=email-smtp.us-east-1.amazonaws.com`, `SMTP_PORT=587`, `SMTP_SECURE=false` (STARTTLS), the SES SMTP user and password, `MAIL_FROM="LMS CUTM <team@infotactlearning.in>"`. The Gmail App Password used before was rejected (`535 Username and Password not accepted`) from 26 Oct. An SES account in its sandbox delivers only to verified addresses |
 | `COURSEWARE_URL` | M01b | `https://courseware.cutm.ac.in` | CUTM's public course pages, read by the courseware import; the default is the real site |
 | `LOG_LEVEL` | M00 | `info` | `debug` · `info` · `warn` · `error` |
 | `LIVEKIT_URL` | M03 | `wss://live.cutm.ac.in` | Passed to the browser as a prop, not `NEXT_PUBLIC_` |

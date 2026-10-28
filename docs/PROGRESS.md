@@ -24,14 +24,14 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T11 pushed. The meeting fixes, T12–T18 (decisions 9–12, 28 Oct 2026), committed on main, not pushed; real phones still to try (T18) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T11 pushed. The meeting fixes, T12–T19 (decisions 9–13, 28 Oct 2026), and T20 (the emails) pushed and deployed to the test server; real phones still to try (T18) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
-| M09 Attainment & AI tagging | Done — awaiting human validation. Committed on main on 28 Oct 2026, not pushed | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
+| M09 Attainment & AI tagging | Done — awaiting human validation. Committed on main on 28 Oct 2026; pushed and deployed with M03c T19 | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
@@ -71,7 +71,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-28 | Login identifier: email or roll number? University email domain? | @client | Email | — | Open |
 | Q-29 | Should students see their own engagement score? | @client | No (DSH-01 audience is faculty/admin) | — | Open |
 | Q-30 | Should late submissions carry an automatic penalty? | @client | No; flagged only (A-11) | — | Open |
-| Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env | M11 | Open |
+| Q-31 | Email sender address/domain and SMTP provider (SPF/DKIM) | @client | `MAIL_FROM` from env. Interim (28 Oct 2026): the test server sends through Amazon SES as `team@infotactlearning.in` (11 §2); CUTM's own sender for production is still to choose | M11 | Open |
 | Q-32 | CUTM brand colours and logo | @client | Official lockup `public/brand/logo.svg` (emblem plus the wordmark and tagline). Palette sampled from it: seal crimson primary, paper background and light sidebar, flame gold hairline (08 §4). **Superseded 13 Oct 2026:** Aniket chose a blue palette (decision in §5); the lockup stays in the sidebar, on the sign-in pages and on the 404 page. Worth confirming with the client | — | Answered 13 Oct 2026 |
 | Q-33 | Do lab machines reach the LMS through one public IP (campus NAT)? The login limit is 30 failed attempts per IP per 15 min (successes do not count) | @client / @dev | Per-IP limit as specified; revisit with the campus network map | M11 load test | Open |
 | Q-34 | Login and forgot-password take measurably longer for a registered email (argon2 runs only then), which allows email enumeration by timing. Add a dummy-hash verify for unknown emails? | @dev | Not built. Forgot-password now states whether the email is registered (requested 13 Oct 2026). Login messages stay identical. | M11 hardening | Open |
@@ -3633,3 +3633,25 @@ Aniket, with the request to push and deploy: "the meeting can be cancelled anyti
   - a guest typed there was saved and listed;
   - "Cancel the meeting" asked first ("Everyone in it leaves now."), and the host's room then showed "This meeting was cancelled".
   - No page errors. The check's meetings were then deleted from the e2e database.
+
+### 2026-10-28 · M03c/ops Mail through Amazon SES · Cursor agent, at Aniket's request
+
+Picked up from the Claude Code session that stopped at its limit mid-task.
+
+**Created**
+- `docs/11-OPERATIONS.md` §2 `MAIL_FROM` row: the test server's SES settings and why (the Gmail App Password was rejected from 26 Oct).
+- `docs/PROGRESS.md`: Q-31 notes the interim sender; the M03c and M09 status rows say pushed and deployed (they still said "not pushed").
+- Not in git: `.env`, `.env.local` and the server's `/etc/cutm-lms/app.env` use SES (`email-smtp.us-east-1.amazonaws.com:587`, STARTTLS, `MAIL_FROM="LMS CUTM <team@infotactlearning.in>"`); the server's previous file is `/etc/cutm-lms/app.env.bak-202610281025`.
+
+**Not done**
+- Whether the SES account is out of its sandbox is not known from here (the SMTP credentials cannot call the SES API). The live send to an unverified address after the T20 deploy answers it (next entry).
+- The four invitations that failed under Gmail were for meetings that ended on 26 Oct; they were not re-sent.
+
+**Assumptions** — none.
+
+**Open questions** — none new; Q-31 stays open for CUTM's production sender.
+
+**Verification** (by the Claude Code session, 28 Oct 10:24–10:27 UTC, read from its transcript)
+- From the server, nodemailer `verify()` against SES: `LOGIN OK`; a test to `team@infotactlearning.in`: `250 Ok`.
+- `systemctl is-active cutm-lms-worker cutm-lms-web`: `active`, `active`; `/api/health`: `{"ok":true,"mongo":"up","redis":"up"}`.
+- The day's invitation for the live meeting "dsadsa" was retried after the switch and completed (BullMQ `completed`, attempt 5).
