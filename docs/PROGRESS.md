@@ -32,7 +32,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
 | M09 Attainment & AI tagging | Done — awaiting human validation. Committed on main on 28 Oct 2026; pushed and deployed with M03c T19 | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
-| M10 Engagement & dashboards | Not started | | Q-26 |
+| M10 Engagement & dashboards | Done — awaiting human validation. Committed on main on 28 Oct 2026, with the Home redesign; not pushed | | What engagement must mean: Q-26; students seeing their own score: Q-29 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
 ## 3. Open questions
@@ -3863,3 +3863,27 @@ Three static Home layouts with the same content, each for faculty, a student and
 **Verification**
 - `npx tsc --noEmit` → exit 0; `npx eslint "app/(app)/home"` → no problems; prettier applied.
 - Signed in on the local dev server (seeded data) as faculty1, student01, the HoD and the admin at 1440 px, and as faculty1 at 390 px, with a Playwright script, and looked at the screenshots: every section rendered as described, with the faculty's three overdue course plans first and "No scores yet" before any nightly run. Not checked: a running class (none was live), the low-band rows (no snapshot in the local data).
+
+### 2026-10-28 · M10/T8 Tests · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- `tests/integration/engagement.test.ts`: one class worked out by hand. Three students (all classes, the whole video, on time and the busiest; one class of two, a quarter of the video, late; nothing at all) give P90s of 10 runs and 4 days, scores 100 (high), 33 (low, from 32.5) and 0 (low, attendance shared out). The nightly job writes every active student's snapshot, and a second run the same day finds the day's job and changes nothing. Home's counts come from the snapshot (faculty and HoD). The drill-down shows the records behind each signal, and the shown numbers give the shown score again (AC-M10-01). It is not found (404) for a student, even about themselves, or for the head of another department, and opens for the head of the class's department. The AI is told only numbers under plain labels plus the band and trend: no name, email, roll number, course title, teacher or id, and asking changes no score (AC-M10-03).
+- `tests/e2e/home.spec.ts` (new): faculty2's "New assessment" asks "Which course?" and opens that course's New assessment dialog; Your courses shows CUTM1014's "10 low engagement" and one click lists those ten on People. The HoD sees "You're all caught up", the department's low engagement, and the Engagement report quick action.
+- *`tests/e2e/people.spec.ts`*: faculty2 filters CUTM1014's People to Low (ten students, none of Student 01–10), opens Student 11 and sees the numbers behind the score: 1 attempt against 25, 1 day against 5, and "÷ 25 = 10".
+- *`scripts/seed.ts`* (`--e2e`): CUTM1014 A's study counters and engagement snapshot (10 §3), so the low band is deterministic.
+- *`app/(app)/home/page.tsx`*: each Home card is a named region (`aria-label` from its title), which screen readers announce and the specs find.
+- *`docs/10-TESTING-AND-VALIDATION.md`* §3: the M10 fixture.
+- The 07 §7 unit vectors, including 69.5 → 70 and the "no live sessions" share-out, were written with T1 (`lib/domain/engagement.test.ts`).
+
+**Not done** — The AI summary was not checked against the real model: the integration test replaces the adapter, and no `OPENAI_API_KEY` was used.
+
+**Assumptions**
+- The E2E low band lives on CUTM1014 A, not CUTM1602 A: CUTM1602's seeded quiz is on time for everyone, and other specs add classes and assessments to it. CUTM1014 has none, and only engagement reads its counters.
+- "Snapshot written once per day per offering" is tested through the nightly job twice in one day; "Work it out again" deliberately replaces the day's snapshot (T3).
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run --project integration tests/integration/engagement.test.ts` → 5 passed; the full integration suite `npx vitest run --project integration` → 30 files, 359 tests passed.
+- `npm run check` → lint and typecheck clean; unit 42 files, 680 tests passed.
+- `npm run db:indexes:e2e && npm run db:seed:e2e` → CUTM1014 A has 10 enrolments at high (100) and 10 at low (10) (read back with mongosh). `npm run build`, then `npx playwright test tests/e2e/home.spec.ts tests/e2e/people.spec.ts` (with `PW_CHROMIUM_PATH` set to the local headless Chromium) → 4 passed. The rest of the E2E suite was not run.

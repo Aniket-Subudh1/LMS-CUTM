@@ -312,7 +312,7 @@ function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="surface overflow-hidden">
+    <section aria-label={title} className="surface overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-3">
         <div className="min-w-0">
           <h2 className="text-[0.9375rem] font-semibold tracking-tight">{title}</h2>

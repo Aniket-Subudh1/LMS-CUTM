@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import mongoose, { Types } from 'mongoose';
 import { hashPassword } from '@/lib/auth/password';
+import { addEngagement, snapshotEngagement } from '@/lib/data/engagement';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
 import { db } from '@/lib/db';
 import { DEFAULT_OUTCOME_TITLES, mergeCos } from '@/lib/domain/catalog';
@@ -14,6 +15,7 @@ import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
 import { Department } from '@/lib/models/department';
 import { EndSemMark } from '@/lib/models/end-sem-mark';
+import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Enrollment } from '@/lib/models/enrollment';
 import { GradeSheet } from '@/lib/models/grade-sheet';
 import { Offering } from '@/lib/models/offering';
@@ -560,6 +562,30 @@ if (e2e) {
   );
 }
 
+// M10 (tests/e2e/people.spec.ts, home.spec.ts): CUTM1014 A has no classes, assessments or videos, so its engagement is
+// its study counters alone. Student 01–10 make five quiz attempts on each of the last five days and Student 11–20 one,
+// on one day, and the snapshot is written: half the class is high (100) and half low (10). Each e2e seed starts the
+// counters over.
+if (e2e) {
+  const now = new Date();
+  const trackerId = String(tracker._id);
+  const roll = await User.find({ _id: { $in: enrolled.map((s) => s._id) } }, { rollNo: 1 })
+    .sort({ rollNo: 1 })
+    .lean();
+  await EngagementDaily.deleteMany({ offeringId: tracker._id });
+  await addEngagement(
+    roll.flatMap((s, i) =>
+      Array.from({ length: i < 10 ? 5 : 1 }, (_, day) => ({
+        offeringId: trackerId,
+        studentId: String(s._id),
+        at: new Date(now.getTime() - (day + 1) * 86_400_000),
+        inc: { quizAttempts: i < 10 ? 5 : 1 },
+      })),
+    ),
+  );
+  await snapshotEngagement(trackerId, now);
+}
+
 const hod = found(await User.findOne({ email: 'hod@seed.cutm.test' }, { _id: 1 }).lean(), 'hod');
 const csePages = e2e
   ? []
@@ -648,7 +674,7 @@ const cseNote = csePages.length ? ` and the ${csePages.length} CSE courses from 
 console.log(
   `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, ${5 + csePages.length} courses, ` +
     `${3 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602, CUTM1014${cseNote}` +
-    `${e2e ? '; the exams term 2025-EVEN with LAB0201; a published outcomes quiz and end-semester marks on CUTM1602' : ''}` +
+    `${e2e ? '; the exams term 2025-EVEN with LAB0201; a published outcomes quiz and end-semester marks on CUTM1602; engagement on CUTM1014' : ''}` +
     `${passwordHash ? '; every account signs in with the seed password' : ''}.`,
 );
 await mongoose.disconnect();
