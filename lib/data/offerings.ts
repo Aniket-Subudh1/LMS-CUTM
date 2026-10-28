@@ -13,7 +13,7 @@ import { Program } from '@/lib/models/program';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { pageSize } from '@/lib/schemas/common';
-import type { OFFERING_STATUSES, OfferingNeed } from '@/lib/schemas/structure';
+import { OFFERING_NEEDS, type OFFERING_STATUSES, type OfferingNeed } from '@/lib/schemas/structure';
 import { Types, type PipelineStage } from 'mongoose';
 
 type Option = { id: string; label: string };
@@ -151,22 +151,49 @@ const needStages = (): PipelineStage[] => [
   },
 ];
 
-// Admin Home's bars: a term's offerings counted by their first gap.
-export async function offeringNeeds(termId: Types.ObjectId): Promise<Record<OfferingNeed, number>> {
+export type OfferingNeeds = {
+  counts: Record<OfferingNeed, number>;
+  // The first few still missing something, the earliest gap first (admin Home's "Needs setting up").
+  gaps: { id: string; title: string; need: Exclude<OfferingNeed, 'ready'> }[];
+};
+
+const GAPS_SHOWN = 5;
+
+// Admin Home: a term's offerings counted by their first gap, and the first few that are not ready.
+export async function offeringNeeds(termId: Types.ObjectId): Promise<OfferingNeeds> {
   await requireViewer(['admin']);
   await db();
-  const rows = await Offering.aggregate<{ _id: OfferingNeed; n: number }>([
+  const [result] = await Offering.aggregate<{
+    counts: { _id: OfferingNeed; n: number }[];
+    gaps: { _id: Types.ObjectId; title: string; need: OfferingNeed; rank: number }[];
+  }>([
     { $match: { termId } },
     ...needStages(),
-    { $group: { _id: '$need', n: { $sum: 1 } } },
+    {
+      $facet: {
+        counts: [{ $group: { _id: '$need', n: { $sum: 1 } } }],
+        gaps: [
+          { $match: { need: { $ne: 'ready' } } },
+          { $addFields: { rank: { $indexOfArray: [[...OFFERING_NEEDS], '$need'] } } },
+          { $sort: { rank: 1, title: 1 } },
+          { $limit: GAPS_SHOWN },
+          { $project: { title: 1, need: 1, rank: 1 } },
+        ],
+      },
+    },
   ]);
-  const count = (need: OfferingNeed) => rows.find((r) => r._id === need)?.n ?? 0;
+  const count = (need: OfferingNeed) => result?.counts.find((r) => r._id === need)?.n ?? 0;
   return {
-    draft: count('draft'),
-    no_teacher: count('no_teacher'),
-    no_students: count('no_students'),
-    no_plan: count('no_plan'),
-    ready: count('ready'),
+    counts: {
+      draft: count('draft'),
+      no_teacher: count('no_teacher'),
+      no_students: count('no_students'),
+      no_plan: count('no_plan'),
+      ready: count('ready'),
+    },
+    gaps: (result?.gaps ?? []).flatMap((g) =>
+      g.need === 'ready' ? [] : [{ id: String(g._id), title: g.title, need: g.need }],
+    ),
   };
 }
 

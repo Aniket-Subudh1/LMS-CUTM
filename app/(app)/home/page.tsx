@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import {
   BooksIcon,
+  CalendarBlankIcon,
   CalendarPlusIcon,
   CaretDownIcon,
   CaretRightIcon,
@@ -48,6 +49,7 @@ import {
   type MyOfferingRow,
 } from '@/lib/data/workspace';
 import { cn } from '@/lib/cn';
+import type { Role } from '@/lib/schemas/common';
 import { OFFERING_NEEDS, type OfferingNeed } from '@/lib/schemas/structure';
 import { formatDue, formatLongDate, formatPct, formatTime, NEED_LABEL } from '@/lib/format';
 
@@ -164,11 +166,13 @@ async function Home() {
           {offerings && offerings.rows.length > 0 && (
             <OfferingList rows={offerings.rows.slice(0, 3)} total={offerings.total} admin={has('admin')} />
           )}
-          {summary?.admin?.readiness && <Readiness readiness={summary.admin.readiness} />}
+          {summary?.admin?.readiness && <ReadinessChart readiness={summary.admin.readiness} />}
         </div>
         <div className="grid min-w-0 gap-4">
           {(attends || today.length > 0) && <Today rows={today} hod={has('hod') && !has('faculty')} />}
           <Notifications unread={unread} />
+          {summary?.admin && <People admin={summary.admin} />}
+          {summary?.admin?.readiness && <NeedsSettingUp readiness={summary.admin.readiness} />}
         </div>
       </div>
     </div>
@@ -710,45 +714,170 @@ function Tiles({ tiles }: { tiles: Tile[] }) {
   );
 }
 
-const NEED_TONE: Record<OfferingNeed, string> = {
-  draft: 'bg-muted-foreground/30',
-  no_teacher: 'bg-destructive',
-  no_students: 'bg-warning',
-  no_plan: 'bg-gold',
-  ready: 'bg-success',
-};
+type Readiness = NonNullable<NonNullable<HomeSummary['admin']>['readiness']>;
 
-// The current term's offerings by what each still needs, each counted once by its first gap; every bar opens them.
-function Readiness({ readiness }: { readiness: NonNullable<NonNullable<HomeSummary['admin']>['readiness']> }) {
+const NEED_DOT: Record<Exclude<OfferingNeed, 'ready'>, 'danger' | 'warning' | 'muted'> = {
+  draft: 'muted',
+  no_teacher: 'danger',
+  no_students: 'warning',
+  no_plan: 'warning',
+};
+const NEED_FIX: Record<Exclude<OfferingNeed, 'ready'>, string> = {
+  draft: 'Activate it when ready',
+  no_teacher: 'Assign a teacher',
+  no_students: 'Enrol its students',
+  no_plan: 'Teacher to publish the plan',
+};
+const offeringsIn = (term: Readiness['term'], need?: OfferingNeed) =>
+  `/admin/offerings?term=${term.id}${need ? `&need=${need}` : ''}`;
+
+// The current term's offerings as columns by the first thing each still needs (each counted once); every column
+// opens those offerings.
+function ReadinessChart({ readiness }: { readiness: Readiness }) {
   const { term, counts } = readiness;
   const total = OFFERING_NEEDS.reduce((sum, need) => sum + counts[need], 0);
-  const top = Math.max(1, ...OFFERING_NEEDS.map((need) => counts[need]));
+  // About a fifth of headroom above the tallest column keeps its label inside the chart.
+  const top = Math.max(4, Math.ceil((Math.max(...OFFERING_NEEDS.map((need) => counts[need])) * 1.2) / 4) * 4);
+  const level = `${(counts.ready / top) * 100}%`;
+  return (
+    <section aria-label={`Offerings in ${term.code}`} className="surface grid gap-5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[0.9375rem] font-semibold tracking-tight">Offerings by readiness</h2>
+          <p className="text-muted-foreground text-xs">
+            {total === 0
+              ? 'No offering in this term yet.'
+              : `${count.format(counts.ready)} of ${count.format(total)} ready to teach, the rest by what each still needs.`}
+          </p>
+        </div>
+        <Link
+          href={offeringsIn(term)}
+          className="ring-border text-muted-foreground hover:text-foreground flex h-7 items-center gap-2 rounded-md px-2.5 text-xs ring-1 transition-colors"
+        >
+          <CalendarBlankIcon className="size-3.5" />
+          {term.code}
+          <LinkSpinner />
+        </Link>
+      </div>
+      <figure className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2">
+        <figcaption className="sr-only">The offerings of {term.code} by what each still needs.</figcaption>
+        <ol
+          aria-hidden="true"
+          className="text-muted-foreground -my-2 flex h-44 flex-col justify-between text-xs tabular-nums"
+        >
+          {[4, 3, 2, 1, 0].map((i) => (
+            <li key={i} className="text-right">
+              {count.format((top / 4) * i)}
+            </li>
+          ))}
+        </ol>
+        <div className="relative h-44">
+          <span
+            aria-hidden="true"
+            className="border-foreground/25 absolute inset-x-0 border-t border-dashed"
+            style={{ bottom: level }}
+          />
+          <ol className="relative grid h-full grid-cols-5 items-end gap-2 sm:gap-3">
+            {OFFERING_NEEDS.map((need) => (
+              <li key={need} className="relative h-full">
+                <Link href={offeringsIn(term, need)} className="flex h-full flex-col justify-end">
+                  {need === 'ready' && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-0 z-10 flex justify-center"
+                      style={{ bottom: `calc(${level} - 0.3125rem)` }}
+                    >
+                      <span className="bg-foreground ring-card size-2.5 rounded-full ring-2" />
+                      <span className="bg-foreground text-background absolute right-0 bottom-full mb-1.5 rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap">
+                        {count.format(counts.ready)} ready
+                      </span>
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      'block rounded-sm',
+                      need === 'ready'
+                        ? 'bg-[repeating-linear-gradient(135deg,var(--primary)_0_0.375rem,color-mix(in_oklch,var(--primary)_55%,white)_0.375rem_0.75rem)]'
+                        : 'bg-muted-foreground/20',
+                    )}
+                    style={{ height: `max(${(counts[need] / top) * 100}%, 0.375rem)` }}
+                  />
+                  <span className="sr-only">
+                    {NEED_LABEL[need]}: {count.format(counts[need])}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </div>
+        <span />
+        <ol aria-hidden="true" className="grid grid-cols-5 gap-2 text-center text-xs sm:gap-3">
+          {OFFERING_NEEDS.map((need) => (
+            <li key={need} className={need === 'ready' ? 'font-semibold' : 'text-muted-foreground'}>
+              {NEED_LABEL[need]}
+            </li>
+          ))}
+        </ol>
+      </figure>
+    </section>
+  );
+}
+
+// The first offerings of the term still missing something, the earliest gap first; each opens where it is fixed.
+function NeedsSettingUp({ readiness }: { readiness: Readiness }) {
+  const { term, counts, gaps } = readiness;
+  const open = OFFERING_NEEDS.reduce((sum, need) => sum + (need === 'ready' ? 0 : counts[need]), 0);
   return (
     <Card
-      title={`Offerings in ${term.code}`}
-      description={
-        total === 0
-          ? 'No offering in this term yet.'
-          : `${count.format(counts.ready)} of ${count.format(total)} ready. Each is counted once, by the first thing it still needs.`
-      }
-      more={{ href: `/admin/offerings?term=${term.id}`, label: 'All offerings' }}
+      title="Needs setting up"
+      description={open === 0 ? `Every offering in ${term.code} is ready.` : `${count.format(open)} in ${term.code}.`}
+      more={open > gaps.length ? { href: offeringsIn(term, gaps[0]?.need), label: 'View all' } : undefined}
     >
+      {gaps.length === 0 ? (
+        <CaughtUp text="Every offering has a teacher, students and a published plan." />
+      ) : (
+        <ul>
+          {gaps.map((g) => (
+            <Row
+              key={g.id}
+              href={g.need === 'draft' || g.need === 'no_teacher' ? offeringsIn(term, g.need) : `/courses/${g.id}`}
+            >
+              <RowText title={g.title} detail={NEED_FIX[g.need]} />
+              <Dot tone={NEED_DOT[g.need]}>{NEED_LABEL[g.need]}</Dot>
+              <Chevron />
+            </Row>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+const PEOPLE: { role: Role; label: string }[] = [
+  { role: 'student', label: 'Students' },
+  { role: 'faculty', label: 'Faculty' },
+  { role: 'hod', label: 'Heads of department' },
+  { role: 'admin', label: 'Administrators' },
+  { role: 'support', label: 'Support' },
+];
+
+// Who uses the LMS: active accounts by role, and those invited who have not signed in yet.
+function People({ admin }: { admin: NonNullable<HomeSummary['admin']> }) {
+  return (
+    <Card title="People" description="Active accounts by role." more={{ href: '/admin/users', label: 'All users' }}>
       <ul>
-        {OFFERING_NEEDS.map((need) => (
-          <Row key={need} href={`/admin/offerings?term=${term.id}&need=${need}`}>
-            <span className="w-28 shrink-0 text-[0.8125rem] font-medium">{NEED_LABEL[need]}</span>
-            <span className="bg-muted relative h-2.5 min-w-0 flex-1 overflow-hidden rounded-full">
-              <span
-                className={cn('absolute inset-y-0 left-0 rounded-full', NEED_TONE[need])}
-                style={{ width: `${(counts[need] / top) * 100}%` }}
-              />
-            </span>
-            <span className="w-10 text-right text-[0.8125rem] font-semibold tabular-nums">
-              {count.format(counts[need])}
-            </span>
+        {PEOPLE.map((p) => (
+          <Row key={p.role} href={`/admin/users?role=${p.role}&status=active`}>
+            <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium">{p.label}</span>
+            <span className="text-[0.8125rem] font-semibold tabular-nums">{count.format(admin.people[p.role])}</span>
             <Chevron />
           </Row>
         ))}
+        <Row href="/admin/users?status=invited">
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium">Yet to sign in</span>
+          <Dot tone={admin.invited > 0 ? 'warning' : 'muted'}>{count.format(admin.invited)} invited</Dot>
+          <Chevron />
+        </Row>
       </ul>
     </Card>
   );

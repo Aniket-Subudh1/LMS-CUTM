@@ -313,13 +313,10 @@ describe('offeringNeeds and the need filter', () => {
     ]);
     await signInAs(await makeUser({ roles: ['admin'] }));
 
-    expect(await offeringNeeds(w.term._id)).toEqual({
-      draft: 1,
-      no_teacher: 1,
-      no_students: 1,
-      no_plan: 1,
-      ready: 1,
-    });
+    const needs = await offeringNeeds(w.term._id);
+    expect(needs.counts).toEqual({ draft: 1, no_teacher: 1, no_students: 1, no_plan: 1, ready: 1 });
+    expect(needs.gaps.map((g) => g.need)).toEqual(['draft', 'no_teacher', 'no_students', 'no_plan']);
+    expect(needs.gaps[1]).toMatchObject({ id: noTeacher._id.toString(), title: 'No teacher' });
     const listed = async (need: OfferingNeed) =>
       (await listOfferings(1, { termId: String(w.term._id), need })).rows.map((r) => r.id);
     expect(await listed('draft')).toEqual([String(w.draftA._id)]);

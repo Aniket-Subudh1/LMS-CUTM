@@ -3929,6 +3929,30 @@ Aniket: "keep the KPI and stats cards in student and faculty as well like admin"
 - `npx vitest run tests/integration/workspace.test.ts tests/integration/offerings.test.ts` → 40 passed. The first run caught the uncast `termId` in the readiness filter.
 - Screenshots of the dev server against the seed (`.mockups/home/real.mjs admin faculty student faculty-phone`): admin "Offerings in 2026-ODD" with 2 drafts, 1 without students, 5 without a plan; faculty Teaching 3, Students 60, To grade 0; student Courses 5, Attendance 0 of 5 classes, Lessons 0 of 1.
 
+### 2026-10-28 · Home: the admin's chart and right column restored with useful data · Cursor agent, at Aniket's request
+
+Aniket: "why did you remove graph and other components from admin dashboard — the graph and components should be there but should display necessary details", then "keep the exact previous design of graph".
+
+**Created** (*changed*)
+- *`lib/data/offerings.ts`*: `offeringNeeds(termId)` returns `{ counts, gaps }`; `gaps` is the term's first five offerings with a gap, ordered by gap then title, from the same aggregate (`$facet`).
+- *`lib/data/workspace.ts`*: the admin summary gains `people` (active accounts per role, one `countDocuments` per role); `readiness` carries the gaps.
+- *`app/(app)/home/page.tsx`*: "Offerings by readiness" in the earlier activity chart's markup (grey columns, the Ready column striped with the dashed level, dot and label); right column People and Needs setting up after Notifications.
+- *`tests/integration/workspace.test.ts`*: the readiness test also checks the gaps' order and ids.
+- Docs: 08 §6 Home.
+
+**Not done** — Nothing of this request.
+
+**Assumptions**
+- The highlighted column is Ready, where the old chart highlighted today; with no ready offering its label sits on the baseline, as the old chart's did on a day with no changes.
+- People counts active accounts only; invited ones are the "Yet to sign in" row.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → clean; `npx eslint` on the three changed source files → clean.
+- `npx vitest run tests/integration/workspace.test.ts` → 18 passed.
+- Screenshots of the dev server against the seed (`.mockups/home/real.mjs admin admin-phone`): the chart shows 2 drafts, 1 without students, 5 without a plan and "0 ready"; People 20 students, 3 faculty, 1 HoD, 2 admins; Needs setting up lists five offerings with their gap and what to do.
+
 ### 2026-10-28 · M04b/TP-10 Create with AI in the bank and the test builder · Cursor agent, at Aniket's request
 
 Aniket: "AI can create questions … keep a visible button Create with AI". He chose to have the builder's drafts go straight into the test being edited, marked as AI drafts, with publishing refused until each has been reviewed.

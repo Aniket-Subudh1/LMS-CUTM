@@ -6,7 +6,7 @@ import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { escapeRegex } from '@/lib/data/courses';
-import { offeringNeeds } from '@/lib/data/offerings';
+import { offeringNeeds, type OfferingNeeds } from '@/lib/data/offerings';
 import { readSnapshot, type EngagementSnapshot } from '@/lib/data/engagement';
 import { getSettings } from '@/lib/data/settings';
 import { countedScore } from '@/lib/domain/attempts';
@@ -29,12 +29,11 @@ import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { ASSESSMENT_LIMITS } from '@/lib/schemas/assessment';
 import type { EngagementBand, EngagementTrend } from '@/lib/schemas/engagement';
-import { pageSize, RichTextDoc, ROLES } from '@/lib/schemas/common';
+import { pageSize, RichTextDoc, ROLES, type Role } from '@/lib/schemas/common';
 import { SETTINGS } from '@/lib/schemas/settings';
 import {
   MAX_ENROLLMENTS,
   type COURSE_TYPES,
-  type OfferingNeed,
   type OFFERING_STATUSES,
   type SESSION_KINDS,
 } from '@/lib/schemas/structure';
@@ -221,7 +220,9 @@ export type HomeSummary = {
     users: number;
     invited: number;
     // The current term's offerings by their first gap (08 §6); null when no term exists.
-    readiness: { term: { id: string; code: string }; counts: Record<OfferingNeed, number> } | null;
+    // Active accounts by role (a person with two roles counts in both).
+    people: Record<Role, number>;
+    readiness: ({ term: { id: string; code: string } } & OfferingNeeds) | null;
   } | null;
 };
 
@@ -304,15 +305,18 @@ async function adminSummary(): Promise<NonNullable<HomeSummary['admin']>> {
       .lean()
       .then((current) => current ?? Term.findOne({}, { code: 1 }).sort({ code: -1 }).lean()),
   ]);
+  // Each a count on the { roles, status } index.
+  const [admin, hod, faculty, student, support, candidate] = await Promise.all(
+    ROLES.map((role) => User.countDocuments({ roles: role, status: 'active' })),
+  );
   return {
     programs,
     courses,
     activeOfferings,
     users,
     invited,
-    readiness: term
-      ? { term: { id: String(term._id), code: term.code }, counts: await offeringNeeds(term._id) }
-      : null,
+    people: { admin, hod, faculty, student, support, candidate },
+    readiness: term ? { term: { id: String(term._id), code: term.code }, ...(await offeringNeeds(term._id)) } : null,
   };
 }
 
