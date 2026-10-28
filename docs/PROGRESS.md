@@ -338,6 +338,10 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-230 | Reports' sidebar item opens `/reports`, which goes to Continuous evaluation; the item stays lit on both tabs | M09 | — |
 | A-231 | Reports › Attainment lists every programme for an admin (archived ones too) and a head of department's own department's; without a choice it opens on the first programme by code, its newest batch and every term | M09 | — |
 | A-232 | Only admins get links to the programmes' pages for codes the AI was not asked about (those pages are admin-only); a coordinator is told an administrator adds the titles | M09 | Q-43 |
+| A-233 | Emails call the product "Centurion LMS", as the sidebar and sign-in screens do (the browser tab still says CUTM LMS), and carry the university lockup from `<APP_URL>/brand/logo-email.png`, a 76 × 120 copy of `logo.png` (1.3 MB is too heavy for mail). A client that blocks images shows the wordmark alone | M03c | — |
+| A-234 | Inter reaches email through a Google Fonts `<link>`; Gmail and Outlook on Windows ignore it and use the fallback stack (Segoe UI, Roboto, Helvetica, Arial) | M03c | — |
+| A-235 | "Add to your calendar" offers Google Calendar and Outlook.com links (Outlook's `deeplink/compose`, which opens a new event after sign-in); Apple Calendar, Outlook on the desktop and work Outlook accounts use the attached `invite.ics`. The plain-text part points only to the attachment | M03c | — |
+| A-236 | No "Copy" button for a passcode or sign-in code: email runs no script. The code sits alone in a tinted box, in large type, with `user-select:all` so one tap selects it where the client honours that | M03c | — |
 
 ## 5. Log
 
@@ -3655,3 +3659,29 @@ Picked up from the Claude Code session that stopped at its limit mid-task.
 - From the server, nodemailer `verify()` against SES: `LOGIN OK`; a test to `team@infotactlearning.in`: `250 Ok`.
 - `systemctl is-active cutm-lms-worker cutm-lms-web`: `active`, `active`; `/api/health`: `{"ok":true,"mongo":"up","redis":"up"}`.
 - The day's invitation for the live meeting "dsadsa" was retried after the switch and completed (BullMQ `completed`, attempt 5).
+
+### 2026-10-28 · M03c/T20 The emails in the LMS's look · Cursor agent, at Aniket's request
+
+Request: "make the design of the email templates much better and stylish … professional links … dont send technical stuff … add calender option … copy code should be highlighted", then "join meeting should be under code in center and style of the template and font should be exactly like lms".
+
+**Created**
+- `lib/domain/email-templates.ts`: one layout for every email in the LMS's look (08 §4, 06 §4.2): the lockup and "Centurion LMS / Learning Management System" on the page grey, a white hairline card with 4 px corners, an uppercase label and the heading, the near-black main button centred, "If the button doesn't work" with the link written out, the university's name at the foot, and a preview line for the inbox. Codes (the meeting passcode, a guest's sign-in code) sit alone in the primary tint, large and monospaced. The meeting invitation: When and Hosts, the passcode, Join meeting under it, how to join in plain words, "Add to your calendar" (Google Calendar and Outlook.com buttons, the attached `invite.ics` for Apple and others) and "This link is personal to you". A cancellation shows the red "Cancelled" status and no button. Subjects of meeting mails end with the start time, and drop it when it would pass 200 characters. Every plain-text part is rewritten in the same words, without the long calendar addresses. The words say "Centurion LMS" throughout; the account mail's subject is "Welcome to Centurion LMS: set your password" and the reset's "Reset your Centurion LMS password".
+- `public/brand/logo-email.png`: the lockup at 76 × 120 (20 KB), for the emails' header.
+- `lib/domain/email-templates.test.ts`: the guest code's box and subject; the meeting invitation's time in IST, passcode box, escaping and the Google Calendar link's fields; the 200-character subject; the cancellation without a button or calendar links.
+- `tests/e2e/auth.spec.ts`: the two new subjects.
+- Docs: 06 §4.2, 08 §4 (the tokens as hex, to change together), M03c T20, A-233–A-236.
+
+**Not done**
+- A "Copy" button: email runs no script (A-236).
+- Outlook's link was opened signed out only (it lands on Outlook's sign-in); that it opens the new event after sign-in is not checked.
+
+**Assumptions** — A-233–A-236.
+
+**Open questions** — none.
+
+**Verification**
+- `npx vitest run --project unit lib/domain/email-templates.test.ts`: `Tests 7 passed (7)`.
+- `npm run check`: exit 0; `Tests 654 passed (654)`; ESLint `1 problem (0 errors, 1 warning)`, the unused `id` at `tests/integration/meetings.test.ts:560`, which was there before.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/tests.test.ts tests/integration/mail-worker.test.ts`: `Test Files 3 passed (3)`, `Tests 39 passed (39)`.
+- Every template rendered to HTML and screenshotted at 420 px in Chromium (Playwright): invitation (guest and member), update, cancellation, account, reset, guest code, test invitation, course plan.
+- The Google Calendar link answers 200 with the event's fields.

@@ -142,6 +142,7 @@ Rules:
 - Typography: Inter for everything (`next/font/google`, self-hosted at build); no serif. Page titles via `PageHeader`; card titles via `CardTitle`. Numbers in stat tiles use `tabular-nums`.
 - Status → `Badge` variant mapping lives in one function, `statusTone(status)` in `lib/format.ts` (added with its first caller, M01); role names in `ROLE_LABEL` there (M00).
 - Rendered rich text uses one class, `.prose-lms`, defined in `globals.css` with `RichTextView` (M02).
+- Emails (M03c T20) copy this look in inline styles, with the tokens above written as hex (foreground `#1c1c1f`, muted text `#5d6069`, page `#f3f4f7`, hairline `#ebecee`, primary `#1c59e4`, accent `#e7f1ff`, destructive `#b91b25`), in `lib/domain/email-templates.ts` (06 §4.2). Change a token here and change it there.
 
 ## 5. Components
 

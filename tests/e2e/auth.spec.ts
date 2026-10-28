@@ -95,7 +95,7 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   await expect(page).toHaveURL(/\/login$/);
 
   const invite = createAdmin(email, name);
-  expect(await emailLink(email, 'Your CUTM LMS account')).toBe(invite);
+  expect(await emailLink(email, 'Welcome to Centurion LMS: set your password')).toBe(invite);
   await page.goto(invite);
   await expect(page.getByRole('heading', { name: 'Set up your account' })).toBeVisible();
   await setPassword(page, invite, 'first-password-123');
@@ -122,7 +122,7 @@ test('invited admin sets a password, signs in and out, and resets a forgotten pa
   await field(page, 'Email').fill(email);
   await page.getByRole('button', { name: 'Send link' }).click();
   await expect(page.getByText('This email is registered. A reset link has been sent.')).toBeVisible();
-  const reset = await emailLink(email, 'Reset your CUTM LMS password');
+  const reset = await emailLink(email, 'Reset your Centurion LMS password');
   await page.goto(reset);
   await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
   await setPassword(page, reset, 'second-password-456');

@@ -183,6 +183,7 @@ Each task: database → backend → frontend, one commit, one PROGRESS entry.
 - **T17** The bar's labelled buttons, the phone's sheet, the poll's pop-up, and the remaining fixes.
 - **T18** Report: the walk of T12–T17 and its fixes.
 - **T19** Decision 13: cancel at any time; people added and taken off while it runs; "Invite people" in the room.
+- **T20** Aniket, 28 Oct 2026: every email in the LMS's look and in plain words, the passcode highlighted with Join meeting centred under it, and "Add to your calendar" (06 §4.2, A-233–A-236).
 
 ## Not built
 
