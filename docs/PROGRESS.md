@@ -3842,3 +3842,24 @@ Three static Home layouts with the same content, each for faculty, a student and
 
 **Verification**
 - `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems.
+
+### 2026-10-28 · Home redesign H3 and M10/T7 The new Home · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`app/(app)/home/page.tsx`*: rewritten as layout B (08 §6). A greeting by IST hour; one row of quick actions per role (faculty: Mark attendance when a class of theirs is on today, Schedule a class, New assessment, each asking "Which course?" in a menu when they teach several; student: Join the class or Next class, Continue lesson, My results; head of department: Engagement report, Continuous evaluation, Department courses; faculty and HoD: New meeting; admin: Add users, New offering, Settings; support: Find a user). Left: the admin's count tiles; Needs attention (an unpublished course plan after the course started and an assessment closing within 24 h in red, the rest in amber; five rows, "Show all n" in `<details>`; "You're all caught up" when empty); Continue learning; Your courses with each active offering's low-engagement count (T7, AC-M10-02); Most students with low engagement for a head of department (T7); the student's or admin's courses as three `OfferingCard`s; the admin's activity bars. Right: Today (Join opens the room in its own tab; a head of department opens the class page; "No live classes today."), Notifications with the unread count, and the admin's Most active and Recent activity. The old hero card is gone.
+- *`app/(app)/home/loading.tsx`*: a neutral skeleton of the same shape (heading, a row of buttons, two columns).
+- *`lib/data/engagement-views.ts`*: `getHomeEngagement` rows also carry `scored` (active students with a snapshot), so Home says "No scores yet" instead of "No one low" before the first nightly run.
+- *`docs/08-UI-SYSTEM.md`*: §6 Home rewritten for layout B, recording that the quick-actions row reverses the 13 Oct 2026 decision that removed the quick-actions grid; §5.2 `LinkSpinner` call sites updated.
+
+**Not done** — none of the plan's Home items is left; announcements, course plan approval and a student's recent results are absent because the app has none (H1 assumptions).
+
+**Assumptions**
+- Quick actions open the existing `?new=` dialogs; "Mark attendance" opens today's class page, where attendance is taken.
+- The page's own date shows only below 1024 px, as the header shows it from there.
+- Course titles on Home rows wrap to two lines on a phone instead of being cut after a few characters.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → exit 0; `npx eslint "app/(app)/home"` → no problems; prettier applied.
+- Signed in on the local dev server (seeded data) as faculty1, student01, the HoD and the admin at 1440 px, and as faculty1 at 390 px, with a Playwright script, and looked at the screenshots: every section rendered as described, with the faculty's three overdue course plans first and "No scores yet" before any nightly run. Not checked: a running class (none was live), the low-band rows (no snapshot in the local data).

@@ -355,7 +355,8 @@ export async function getEngagementReport(
   };
 }
 
-export type EngagementCourse = { id: string; title: string; students: number; low: number };
+// `scored`: active students with a snapshot, so "no one low" is not said before the first nightly run.
+export type EngagementCourse = { id: string; title: string; students: number; scored: number; low: number };
 
 // T7 (AC-M10-02) for Home: a teacher's active offerings with their active students and how many are in the low band
 // (newest first, at most 20); a head of department's five department offerings with the most, from last night's
@@ -374,9 +375,16 @@ export async function getHomeEngagement(): Promise<{ teaching: EngagementCourse[
   ]);
   const countsOf = async (offerings: { _id: Types.ObjectId; title: string }[], top: number | null) => {
     if (offerings.length === 0) return [];
-    const rows = await Enrollment.aggregate<{ _id: Types.ObjectId; students: number; low: number }>([
+    const rows = await Enrollment.aggregate<{ _id: Types.ObjectId; students: number; scored: number; low: number }>([
       { $match: { offeringId: { $in: offerings.map((o) => o._id) }, status: 'active' } },
-      { $group: { _id: '$offeringId', students: { $sum: 1 }, low: countWhen('$engagement.band', 'low') } },
+      {
+        $group: {
+          _id: '$offeringId',
+          students: { $sum: 1 },
+          scored: { $sum: { $cond: [{ $gt: ['$engagement.computedAt', null] }, 1, 0] } },
+          low: countWhen('$engagement.band', 'low'),
+        },
+      },
       ...(top
         ? [{ $match: { low: { $gt: 0 } } }, { $sort: { low: -1 as const, _id: 1 as const } }, { $limit: top }]
         : []),
@@ -387,6 +395,7 @@ export async function getHomeEngagement(): Promise<{ teaching: EngagementCourse[
       id: String(o._id),
       title: o.title,
       students: countOf.get(String(o._id))?.students ?? 0,
+      scored: countOf.get(String(o._id))?.scored ?? 0,
       low: countOf.get(String(o._id))?.low ?? 0,
     }));
   };

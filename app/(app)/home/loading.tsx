@@ -1,25 +1,23 @@
 import { Skeleton } from '@/components/ui/skeleton';
 
+// The shape every role's Home shares: the greeting, the quick actions, then the two columns.
 export default function Loading() {
   return (
-    <div className="grid gap-6" aria-busy="true" aria-label="Loading">
-      <Skeleton className="h-9 w-48" />
-      <div className="grid items-start gap-5 xl:grid-cols-[19rem_minmax(0,1fr)]">
-        <div className="grid gap-5">
-          <Skeleton className="h-72 rounded-lg" />
-          <Skeleton className="h-96 rounded-md" />
+    <div className="grid gap-5" aria-busy="true" aria-label="Loading">
+      <Skeleton className="h-8 w-56" />
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-9 w-36 rounded-md" />
+        ))}
+      </div>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid gap-4">
+          <Skeleton className="h-64 rounded-md" />
+          <Skeleton className="h-52 rounded-md" />
         </div>
-        <div className="grid gap-5">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,9.5rem),1fr))] gap-4">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-28 rounded-md" />
-            ))}
-          </div>
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
-            <Skeleton className="h-80 rounded-md" />
-            <Skeleton className="h-80 rounded-md" />
-          </div>
-          <Skeleton className="h-56 rounded-md" />
+        <div className="grid gap-4">
+          <Skeleton className="h-44 rounded-md" />
+          <Skeleton className="h-13 rounded-md" />
         </div>
       </div>
     </div>
