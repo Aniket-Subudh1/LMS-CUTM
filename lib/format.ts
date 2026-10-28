@@ -1,5 +1,6 @@
 import type { AssessmentMode, ItemType, ProctorEvent } from '@/lib/schemas/assessment';
 import type { Role } from '@/lib/schemas/common';
+import type { EngagementBand, EngagementSignal, EngagementTrend } from '@/lib/schemas/engagement';
 import type { RUBRICS } from '@/lib/domain/evaluation';
 import { roundHalfUp } from '@/lib/domain/round';
 import type { RubricComponent, TheoryPart, Trend } from '@/lib/schemas/marks';
@@ -123,6 +124,10 @@ const TONE: Record<string, Tone> = {
   graded: 'success',
   to_grade: 'warning',
   missing: 'outline',
+  // M10: an engagement band.
+  high: 'success',
+  medium: 'warning',
+  low: 'danger',
 };
 
 // The one place a status becomes a Badge variant (08 §4).
@@ -216,6 +221,22 @@ export const TREND_LABEL: Record<Trend, string> = {
   dropping: 'Dropping',
   steady: 'Steady',
   insufficient: 'Too few results',
+};
+
+// M10 (07 §7): engagement's bands, signals and trend.
+export const BAND_LABEL: Record<EngagementBand, string> = { high: 'High', medium: 'Medium', low: 'Low' };
+export const SIGNAL_LABEL: Record<EngagementSignal, string> = {
+  attendance: 'Live attendance',
+  video: 'Videos watched',
+  timeliness: 'On-time work',
+  practice: 'Practice',
+  activity: 'Active days',
+};
+export const ENGAGEMENT_TREND_LABEL: Record<EngagementTrend, string> = {
+  rising: 'Rising',
+  steady: 'Steady',
+  falling: 'Falling',
+  new: 'New',
 };
 
 export const MODE_LABEL: Record<AssessmentMode, string> = {

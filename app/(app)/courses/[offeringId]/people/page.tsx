@@ -2,10 +2,14 @@ import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
+  ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
+  ArrowRightIcon,
   CheckIcon,
   DownloadSimpleIcon,
   FileArrowUpIcon,
+  TrendDownIcon,
+  TrendUpIcon,
   UserMinusIcon,
   UserPlusIcon,
   UsersThreeIcon,
@@ -15,7 +19,8 @@ import type { Icon } from '@phosphor-icons/react';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { addStudent, changeEnrollments, setEnrollmentStatus } from '../../actions';
-import { Field, FieldErrors } from '@/components/action-form';
+import { requestEngagement } from './actions';
+import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
@@ -30,8 +35,26 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/cn';
 import { getWorkspace, listRoster, type Roster, type RosterRow, type Workspace } from '@/lib/data/workspace';
-import { formatDateTime, formatPct, initials, statusTone } from '@/lib/format';
+import type { EngagementSignals } from '@/lib/domain/engagement';
+import { istDateToDate } from '@/lib/domain/time';
+import {
+  BAND_LABEL,
+  ENGAGEMENT_TREND_LABEL,
+  formatDate,
+  formatDateTime,
+  formatPct,
+  initials,
+  SIGNAL_LABEL,
+  statusTone,
+} from '@/lib/format';
 import { page as pageParam, pageSize } from '@/lib/schemas/common';
+import {
+  ENGAGEMENT_BANDS,
+  ENGAGEMENT_SIGNALS,
+  ENGAGEMENT_TRENDS,
+  EngagementBand,
+  EngagementTrend,
+} from '@/lib/schemas/engagement';
 
 export const metadata: Metadata = { title: 'People' };
 
@@ -39,6 +62,10 @@ const Search = z.object({
   page: pageParam.catch(1),
   q: z.string().trim().max(80).optional().catch(undefined),
   status: z.enum(['active', 'dropped']).optional().catch(undefined),
+  // M10 T4: the nightly engagement snapshot's band and trend, and the lowest score first.
+  band: EngagementBand.optional().catch(undefined),
+  trend: EngagementTrend.optional().catch(undefined),
+  sort: z.literal('engagement').optional().catch(undefined),
   // The dialog to show: student, csv (URL-driven, M03b).
   new: z.string().max(20).optional().catch(undefined),
 });
@@ -61,17 +88,24 @@ async function People({
   searchParams: PageProps<'/courses/[offeringId]/people'>['searchParams'];
 }) {
   const { offeringId } = await params;
-  const { page, q, status, new: open } = Search.parse(await searchParams);
+  const { page, q, status, band, trend, sort, new: open } = Search.parse(await searchParams);
   const [workspace, roster] = await Promise.all([
     getWorkspace(offeringId),
-    listRoster(offeringId, page, { q, status }),
+    listRoster(offeringId, page, { q, status, band, trend, sort }),
   ]);
   const base = `/courses/${offeringId}/people`;
-  const query = { ...(q ? { q } : {}), ...(status ? { status } : {}), ...(page > 1 ? { page: String(page) } : {}) };
+  const filters = {
+    ...(q ? { q } : {}),
+    ...(status ? { status } : {}),
+    ...(band ? { band } : {}),
+    ...(trend ? { trend } : {}),
+    ...(sort ? { sort } : {}),
+  };
+  const query = { ...filters, ...(page > 1 ? { page: String(page) } : {}) };
   // A dialog opens over the list as it is: closing it leaves the search, filter and page in place.
   const dialog = (name: string) => `${base}?${new URLSearchParams({ ...query, new: name })}`;
   const { counts } = roster;
-  const tiles: { icon: Icon; value: number; label: string; tone?: string }[] = [
+  const tiles: { icon: Icon; value: number; label: string; tone?: string; href?: string }[] = [
     { icon: UsersThreeIcon, value: counts.enrolled, label: 'Enrolled' },
     { icon: CheckIcon, value: counts.active, label: 'Active' },
     { icon: UserMinusIcon, value: counts.dropped, label: 'Dropped' },
@@ -85,6 +119,18 @@ async function People({
             tone: counts.short > 0 ? 'text-warning' : undefined,
           },
         ]),
+    // AC-M10-02: one click lists the students in the low band.
+    ...(roster.engagementAt
+      ? [
+          {
+            icon: TrendDownIcon,
+            value: counts.lowEngagement,
+            label: 'Low engagement',
+            tone: counts.lowEngagement > 0 ? 'text-destructive' : undefined,
+            href: `${base}?${new URLSearchParams({ band: 'low', status: 'active' })}`,
+          },
+        ]
+      : []),
   ];
   return (
     <div className="grid gap-5">
@@ -113,15 +159,34 @@ async function People({
           )
         }
       >
-        <dl className={cn('grid grid-cols-2 gap-3', tiles.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+        <dl
+          className={cn(
+            'grid grid-cols-2 gap-3',
+            tiles.length >= 5 ? 'lg:grid-cols-5' : tiles.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3',
+          )}
+        >
           {tiles.map((tile) => (
-            <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
+            <div
+              key={tile.label}
+              className={cn(
+                'ring-border/70 relative flex items-center gap-3 rounded-md px-3.5 py-3 ring-1',
+                tile.href && 'hover:bg-muted/50 transition-colors',
+              )}
+            >
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
                 <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
               </span>
               <div className="grid min-w-0">
                 <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>
-                <dt className="text-muted-foreground order-first truncate text-xs">{tile.label}</dt>
+                <dt className="text-muted-foreground order-first truncate text-xs">
+                  {tile.href ? (
+                    <Link href={tile.href} className="after:absolute after:inset-0 after:rounded-md">
+                      {tile.label}
+                    </Link>
+                  ) : (
+                    tile.label
+                  )}
+                </dt>
               </div>
             </div>
           ))}
@@ -141,7 +206,46 @@ async function People({
             <NativeSelectOption value="active">Active</NativeSelectOption>
             <NativeSelectOption value="dropped">Dropped</NativeSelectOption>
           </NativeSelect>
+          <NativeSelect name="band" aria-label="Engagement" defaultValue={band ?? ''}>
+            <NativeSelectOption value="">Any engagement</NativeSelectOption>
+            {ENGAGEMENT_BANDS.map((b) => (
+              <NativeSelectOption key={b} value={b}>
+                {BAND_LABEL[b]}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect name="trend" aria-label="Trend" defaultValue={trend ?? ''}>
+            <NativeSelectOption value="">Any trend</NativeSelectOption>
+            {ENGAGEMENT_TRENDS.map((t) => (
+              <NativeSelectOption key={t} value={t}>
+                {ENGAGEMENT_TREND_LABEL[t]}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect name="sort" aria-label="Order" defaultValue={sort ?? ''}>
+            <NativeSelectOption value="">By roll number</NativeSelectOption>
+            <NativeSelectOption value="engagement">Lowest engagement first</NativeSelectOption>
+          </NativeSelect>
         </FilterForm>
+        <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p>
+            {roster.engagementAt
+              ? `Engagement looks at the last ${roster.engagementDays} days, worked out ${formatDateTime(roster.engagementAt)}. Open a student to see the numbers behind it.`
+              : 'Engagement is worked out each night; it shows here after the first run.'}
+          </p>
+          {workspace.canTeach && (
+            <ActionForm
+              action={requestEngagement}
+              submitLabel="Work it out again"
+              submitVariant="outline"
+              submitSize="sm"
+              submitIcon={<ArrowClockwiseIcon />}
+              successMessage="Queued. The new scores show here within a minute."
+            >
+              <input type="hidden" name="offeringId" value={offeringId} />
+            </ActionForm>
+          )}
+        </div>
         <DataTable
           columns={columns(roster, workspace)}
           rows={roster.rows}
@@ -149,11 +253,11 @@ async function People({
           total={roster.total}
           page={page}
           pageSize={pageSize}
-          query={{ ...(q ? { q } : {}), ...(status ? { status } : {}) }}
+          query={filters}
           path={base}
           empty={
-            q || status
-              ? 'No student matches. Clear the search or the filter.'
+            Object.keys(filters).length > 0
+              ? 'No student matches. Clear the search or the filters.'
               : 'Nobody is enrolled in this class yet.'
           }
           bare
@@ -244,24 +348,81 @@ function columns(roster: Roster, workspace: Workspace) {
           },
         ]
       : [];
+  // M10 T4 (ENG-02, DSH-01): the nightly snapshot's score, band and trend, and its five signals.
+  const engagement: Column[] = [
+    {
+      header: 'Engagement',
+      cell: (s) =>
+        s.engagement ? (
+          <span className="flex items-center gap-2 whitespace-nowrap">
+            <b className="w-6 text-right tabular-nums">{s.engagement.score ?? '—'}</b>
+            {s.engagement.band && <Badge variant={statusTone(s.engagement.band)}>{s.engagement.band}</Badge>}
+            <TrendMark trend={s.engagement.trend} />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      header: 'Signals',
+      cell: (s) =>
+        s.engagement ? (
+          <span className="flex items-end gap-1" aria-label={signalSummary(s.engagement.signals)} role="img">
+            {ENGAGEMENT_SIGNALS.map((signal) => {
+              const value = s.engagement?.signals[signal] ?? null;
+              return (
+                <span
+                  key={signal}
+                  title={`${SIGNAL_LABEL[signal]}: ${value === null ? 'does not apply' : formatPct(Math.round(100 * value))}`}
+                  className="bg-muted relative h-5 w-1.5 overflow-hidden rounded-sm"
+                >
+                  {value !== null && (
+                    <span className="bg-primary absolute inset-x-0 bottom-0" style={{ height: `${100 * value}%` }} />
+                  )}
+                </span>
+              );
+            })}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    ...(publishedLessons === null
+      ? [
+          {
+            header: 'Last active',
+            cell: (s: RosterRow) =>
+              s.lastActiveDay ? (
+                <span className="whitespace-nowrap">{formatDate(istDateToDate(s.lastActiveDay))}</span>
+              ) : (
+                'Not yet'
+              ),
+          },
+        ]
+      : []),
+  ];
   return [
     {
       header: 'Student',
       cell: (s) => (
-        <span className={cn('flex min-w-48 items-center gap-3', s.status === 'dropped' && 'opacity-60')}>
+        <Link
+          href={`/courses/${workspace.id}/people/${s.studentId}`}
+          className={cn('group flex min-w-48 items-center gap-3', s.status === 'dropped' && 'opacity-60')}
+        >
           <Avatar className="size-8">
             <AvatarFallback className="bg-primary/10 text-primary text-[0.6875rem] font-semibold">
               {initials(s.name)}
             </AvatarFallback>
           </Avatar>
           <span className="grid min-w-0">
-            <span className="truncate font-semibold">{s.name}</span>
+            <span className="truncate font-semibold group-hover:underline">{s.name}</span>
             <span className="text-muted-foreground truncate text-xs">{s.email}</span>
           </span>
-        </span>
+        </Link>
       ),
     },
     { header: 'Roll no.', cell: (s) => <span className="whitespace-nowrap tabular-nums">{s.rollNo}</span> },
+    ...engagement,
     ...live,
     ...skill,
     { header: 'Status', cell: (s) => <Badge variant={statusTone(s.status)}>{s.status}</Badge> },
@@ -281,6 +442,29 @@ function Share({ pct, detail, short = false }: { pct: number | null; detail?: st
     </span>
   );
 }
+
+function TrendMark({ trend }: { trend: EngagementTrend }) {
+  const label = ENGAGEMENT_TREND_LABEL[trend];
+  if (trend === 'new') return <span className="text-muted-foreground text-xs">{label}</span>;
+  const Mark = trend === 'rising' ? TrendUpIcon : trend === 'falling' ? TrendDownIcon : ArrowRightIcon;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 text-xs',
+        trend === 'rising' ? 'text-success' : trend === 'falling' ? 'text-destructive' : 'text-muted-foreground',
+      )}
+    >
+      <Mark className="size-3.5" aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+const signalSummary = (signals: EngagementSignals) =>
+  ENGAGEMENT_SIGNALS.map((signal) => {
+    const value = signals[signal];
+    return `${SIGNAL_LABEL[signal]} ${value === null ? 'does not apply' : formatPct(Math.round(100 * value))}`;
+  }).join(', ');
 
 // Dropping keeps the student's progress and attendance; they can be added again until marks are locked.
 function StudentMenu({ row, offeringId }: { row: RosterRow; offeringId: string }) {

@@ -3752,3 +3752,22 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 
 **Verification**
 - `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems.
+
+### 2026-10-28 · M10/T4 The People tab's engagement · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`lib/data/workspace.ts`* `listRoster`: each row's `studentId`, the snapshot (`readSnapshot`) and the last IST day with any activity (one `$group` over `engagementDaily` for the page's students, index `{ offeringId, studentId, day }`); filters `band` and `trend` on the snapshot, and `sort: 'engagement'` (lowest score first, none last, over the bounded set of matching students, A-83); `counts.lowEngagement`, `engagementAt` and `engagementDays`.
+- *`lib/data/engagement.ts`*: `EngagementSnapshot` and `readSnapshot`, the stored snapshot as screens read it.
+- *`lib/format.ts`*: `BAND_LABEL`, `SIGNAL_LABEL`, `ENGAGEMENT_TREND_LABEL`, and the bands' tones (high green, medium amber, low red).
+- *`app/(app)/courses/[offeringId]/people/page.tsx`*: the "Low engagement" tile (a link to `?band=low&status=active`, AC-M10-02), the band, trend and order filters, "Engagement looks at the last 28 days, worked out …" with "Work it out again" for those who teach, and the Engagement, Signals and (credit courses) Last active columns. The student's name links to the drill-down (T5).
+- *08 §2*: the People row.
+
+**Not done** — T5–T8 follow.
+
+**Assumptions**
+- A skill course keeps its own "Last active" (from lesson progress, SKL-02); the new one from the daily counters is shown on credit courses only, so a skill row does not show two.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems. The screens are walked with T8.

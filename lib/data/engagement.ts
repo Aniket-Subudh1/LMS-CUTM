@@ -14,13 +14,13 @@ import { istDateToDate, istDayKey } from '@/lib/domain/time';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { EngagementDaily } from '@/lib/models/engagement-daily';
-import { Enrollment } from '@/lib/models/enrollment';
+import { Enrollment, type EnrollmentDoc } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
 import { Setting } from '@/lib/models/setting';
 import { Submission } from '@/lib/models/submission';
-import type { EngagementBand, EngagementTrend } from '@/lib/schemas/engagement';
+import { EngagementBand, EngagementTrend } from '@/lib/schemas/engagement';
 import { SETTINGS, type SettingsValue } from '@/lib/schemas/settings';
 import { MAX_ENROLLMENTS } from '@/lib/schemas/structure';
 
@@ -246,6 +246,33 @@ export async function computeOfferingEngagement(
         trend: engagementTrend(score, previousScore, settings.trendDelta),
       };
     }),
+  };
+}
+
+export type EngagementSnapshot = {
+  score: number | null;
+  band: EngagementBand | null;
+  trend: EngagementTrend;
+  signals: EngagementSignals;
+  computedAt: Date;
+};
+
+// An enrolment's stored snapshot as the screens read it; a value the enums no longer hold reads as none.
+export function readSnapshot(stored: EnrollmentDoc['engagement']): EngagementSnapshot | null {
+  if (!stored) return null;
+  const s = stored.signals;
+  return {
+    score: stored.score ?? null,
+    band: EngagementBand.safeParse(stored.band).data ?? null,
+    trend: EngagementTrend.safeParse(stored.trend).data ?? 'new',
+    signals: {
+      attendance: s?.attendance ?? null,
+      video: s?.video ?? null,
+      timeliness: s?.timeliness ?? null,
+      practice: s?.practice ?? null,
+      activity: s?.activity ?? null,
+    },
+    computedAt: stored.computedAt,
   };
 }
 

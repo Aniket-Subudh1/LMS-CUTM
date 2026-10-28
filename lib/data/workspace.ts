@@ -6,6 +6,7 @@ import { offeringAccess, type OfferingAccess } from '@/lib/auth/access';
 import { requireViewer, type Viewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { escapeRegex } from '@/lib/data/courses';
+import { readSnapshot, type EngagementSnapshot } from '@/lib/data/engagement';
 import { getSettings } from '@/lib/data/settings';
 import { countedScore } from '@/lib/domain/attempts';
 import { attendancePct, shortOfAttendance } from '@/lib/domain/attendance';
@@ -16,6 +17,7 @@ import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
 import { AuditLog } from '@/lib/models/audit-log';
 import { Course } from '@/lib/models/course';
+import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Enrollment } from '@/lib/models/enrollment';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
@@ -26,6 +28,7 @@ import { Submission } from '@/lib/models/submission';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { ASSESSMENT_LIMITS } from '@/lib/schemas/assessment';
+import type { EngagementBand, EngagementTrend } from '@/lib/schemas/engagement';
 import { pageSize, RichTextDoc, ROLES } from '@/lib/schemas/common';
 import { SETTINGS } from '@/lib/schemas/settings';
 import {
@@ -514,9 +517,20 @@ export type RosterRow = {
   } | null;
   // Credit offerings only (ATT-02, M03 T9): finished live classes the student attended; null for skill offerings.
   live: { attended: number; held: number; pct: number | null } | null;
+  // M10 T4 (ENG-02): the nightly snapshot (null before the first), and the last IST day with any activity.
+  studentId: string;
+  engagement: EngagementSnapshot | null;
+  lastActiveDay: string | null;
 };
 
-export type RosterFilter = { q?: string; status?: 'active' | 'dropped' };
+export type RosterFilter = {
+  q?: string;
+  status?: 'active' | 'dropped';
+  band?: EngagementBand;
+  trend?: EngagementTrend;
+  // Roll number (the default) or the lowest engagement score first.
+  sort?: 'engagement';
+};
 
 export type Roster = {
   rows: RosterRow[];
@@ -524,9 +538,12 @@ export type Roster = {
   total: number;
   // The whole class, whatever the filter: the People tab's number tiles. `short` counts active students under the
   // minimum attendance (credit offerings; null for skill ones).
-  counts: { enrolled: number; active: number; dropped: number; short: number | null };
+  counts: { enrolled: number; active: number; dropped: number; short: number | null; lowEngagement: number };
   minPct: number | null;
   publishedLessons: number | null;
+  // When the snapshot was last worked out (null before the first), and the days it looks at.
+  engagementAt: Date | null;
+  engagementDays: number;
 };
 
 // M03b T7: the roster by roll number, searched by roll number or email (from the start) or name (anywhere), and
@@ -539,8 +556,15 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
   const offering = await Offering.findById(offeringId, { category: 1, evaluation: 1 }).lean();
   if (!offering) notFound();
   const skill = offering.category === 'skill';
-  const enrolments = await Enrollment.find({ offeringId }, { studentId: 1, status: 1 }).limit(MAX_ENROLLMENTS).lean();
-  const shown = filter.status ? enrolments.filter((e) => e.status === filter.status) : enrolments;
+  const enrolments = await Enrollment.find({ offeringId }, { studentId: 1, status: 1, engagement: 1 })
+    .limit(MAX_ENROLLMENTS)
+    .lean();
+  const shown = enrolments.filter(
+    (e) =>
+      (!filter.status || e.status === filter.status) &&
+      (!filter.band || e.engagement?.band === filter.band) &&
+      (!filter.trend || e.engagement?.trend === filter.trend),
+  );
   const enrolmentOf = new Map(shown.map((e) => [String(e.studentId), e]));
   const q = filter.q?.trim();
   const userFilter = {
@@ -555,15 +579,39 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
         }
       : {}),
   };
-  const [students, total] = await Promise.all([
-    User.find(userFilter, { name: 1, email: 1, rollNo: 1 })
-      .sort({ rollNo: 1, _id: 1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
-      .lean(),
-    User.countDocuments(userFilter),
-  ]);
+  const projection = { name: 1, email: 1, rollNo: 1 };
+  const [students, total] =
+    filter.sort === 'engagement'
+      ? // M10 T4: the lowest score first, those without one last; the matching students are a bounded set (A-83).
+        await User.find(userFilter, { rollNo: 1 })
+          .sort({ rollNo: 1, _id: 1 })
+          .lean()
+          .then(async (matching) => {
+            // Scores run 0–100, so 101 sorts after every one.
+            const scoreOf = (id: Types.ObjectId) => enrolmentOf.get(String(id))?.engagement?.score ?? 101;
+            const ids = matching
+              .map((u) => u._id)
+              .sort((a, b) => scoreOf(a) - scoreOf(b))
+              .slice((page - 1) * pageSize, page * pageSize);
+            const docs = new Map(
+              (await User.find({ _id: { $in: ids } }, projection).lean()).map((u) => [String(u._id), u]),
+            );
+            return [ids.flatMap((id) => docs.get(String(id)) ?? []), matching.length] as const;
+          })
+      : await Promise.all([
+          User.find(userFilter, projection)
+            .sort({ rollNo: 1, _id: 1 })
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
+            .lean(),
+          User.countDocuments(userFilter),
+        ]);
   const studentIds = students.map((s) => s._id);
+  const lastActive = await EngagementDaily.aggregate<{ _id: Types.ObjectId; day: string }>([
+    { $match: { offeringId: new Types.ObjectId(offeringId), studentId: { $in: studentIds } } },
+    { $group: { _id: '$studentId', day: { $max: '$day' } } },
+  ]);
+  const lastActiveOf = new Map(lastActive.map((row) => [String(row._id), row.day]));
 
   // T9: per student on this page, completed published lessons, watched time and last activity (one $group).
   const publishedIds = skill ? await Lesson.distinct('_id', { offeringId, published: true }) : [];
@@ -669,14 +717,23 @@ export async function listRoster(offeringId: string, page: number, filter: Roste
               }
             : null,
           live: skill ? null : { attended, held, pct: attendancePct(attended, held) },
+          studentId: String(student._id),
+          engagement: readSnapshot(enrolment.engagement),
+          lastActiveDay: lastActiveOf.get(String(student._id)) ?? null,
         },
       ];
     }),
     total,
+    engagementAt: enrolments.reduce<Date | null>(
+      (latest, e) => (e.engagement && (!latest || e.engagement.computedAt > latest) ? e.engagement.computedAt : latest),
+      null,
+    ),
+    engagementDays: (await getSettings('engagement')).windowDays,
     counts: {
       enrolled: enrolments.length,
       active: active.length,
       dropped: enrolments.length - active.length,
+      lowEngagement: active.filter((e) => e.engagement?.band === 'low').length,
       short:
         minPct === null
           ? null
