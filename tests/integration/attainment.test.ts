@@ -6,7 +6,7 @@ import { importEndSem, publishGradeSheets } from '@/app/(app)/admin/exams/action
 import { saveCoMap } from '@/app/(app)/catalog/actions';
 import { requestAttainment } from '@/app/(app)/courses/[offeringId]/outcomes/actions';
 import { recomputeAttainment } from '@/lib/data/attainment';
-import { getOfferingAttainment, getProgramAttainment } from '@/lib/data/attainment-views';
+import { getAttainmentFilters, getOfferingAttainment, getProgramAttainment } from '@/lib/data/attainment-views';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import { Assessment } from '@/lib/models/assessment';
@@ -329,6 +329,29 @@ describe('working attainment out (07 §4)', () => {
     expect(values(r)).toMatchObject({ PO1: null, PSO3: null });
   });
 
+  it('a student who missed a test is assessed on its outcomes and does not attain them (A-179, A-14)', async () => {
+    const w = await world(4);
+    await marked(
+      w,
+      [
+        { co: w.cos.co1, max: 5 },
+        { co: w.cos.co2, max: 5 },
+      ],
+      [
+        [5, 5],
+        [4, 1],
+        [3, 3],
+      ],
+    );
+    await recomputeAttainment(w.id, new Date());
+    const r = await record(w);
+    expect(r?.cos.map((co) => [co.code, co.cie])).toEqual([
+      ['CO1', { assessed: 4, attained: 3, pct: 75, level: 3 }],
+      ['CO2', { assessed: 4, attained: 2, pct: 50, level: 1 }],
+      ['CO3', null],
+    ]);
+  });
+
   it('judges each student on their own drawn paper, and a missed draw at 0 (A-179)', async () => {
     const w = await world(3);
     const [d1, d2, d3, d4] = [newId(), newId(), newId(), newId()];
@@ -514,5 +537,23 @@ describe('who reads it (09 §2)', () => {
     await expect(getProgramAttainment(input)).rejects.toThrow(NOT_FOUND);
     await signInAs(w.faculty);
     await expect(getProgramAttainment(input)).rejects.toThrow();
+  });
+
+  it('the report offers a head their department’s programmes only, and falls back on an id not among them', async () => {
+    const w = await world(1);
+    const foreign = await makeProgram({ departmentId: newId() });
+    await signInAs(w.hod);
+    const filters = await getAttainmentFilters({ programId: String(foreign._id), termId: String(newId()) });
+    expect(filters.programmes.map((p) => p.id)).toEqual([String(w.program._id)]);
+    expect(filters).toMatchObject({ programId: String(w.program._id), batchId: String(w.batch._id), termId: null });
+    expect(filters.batches).toEqual([{ id: String(w.batch._id), label: w.batch.name }]);
+    await signInAs(w.admin);
+    const all = await getAttainmentFilters({ programId: String(foreign._id) });
+    expect(all.programmes.map((p) => p.id)).toEqual(
+      expect.arrayContaining([String(w.program._id), String(foreign._id)]),
+    );
+    expect(all).toMatchObject({ programId: String(foreign._id), batchId: null });
+    await signInAs(w.students[0]);
+    await expect(getAttainmentFilters({})).rejects.toThrow();
   });
 });

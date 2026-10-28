@@ -7,6 +7,8 @@ import { db } from '@/lib/db';
 import { DEFAULT_OUTCOME_TITLES, mergeCos } from '@/lib/domain/catalog';
 import { normalizeCourseware } from '@/lib/domain/courseware';
 import { parseCoursePage } from '@/lib/integrations/courseware';
+import { Assessment } from '@/lib/models/assessment';
+import { Attainment } from '@/lib/models/attainment';
 import { Batch } from '@/lib/models/batch';
 import { Course } from '@/lib/models/course';
 import { CurriculumEntry } from '@/lib/models/curriculum-entry';
@@ -17,6 +19,7 @@ import { GradeSheet } from '@/lib/models/grade-sheet';
 import { Offering } from '@/lib/models/offering';
 import { Program } from '@/lib/models/program';
 import { RubricMark } from '@/lib/models/rubric-mark';
+import { Submission } from '@/lib/models/submission';
 import { SyncRun } from '@/lib/models/sync-run';
 import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
@@ -485,6 +488,78 @@ if (e2e) {
   await recomputeInternalMarks(String(labOffering._id), new Date());
 }
 
+// M09 (tests/e2e/outcomes.spec.ts): CUTM1602 A gets a published quiz with one question per outcome, a marked attempt
+// for every student, and end-semester marks for all but the last, so its teacher has attainment to work out. Each e2e
+// seed starts the attempts, the marks and the attainment record over. 15, 12 and 9 of 20 reach 60 % on CO1–CO3, and
+// 13 of 19 on the end-semester marks (credits 1-2-1).
+if (e2e) {
+  const now = new Date();
+  const doc = (text: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+  const quiz = found(
+    await upsert(
+      Assessment,
+      { offeringId: offering._id, title: 'Outcomes quiz (seeded)' },
+      {
+        offeringId: offering._id,
+        mode: 'quiz',
+        title: 'Outcomes quiz (seeded)',
+        opensAt: new Date(now.getTime() - 7 * 86_400_000),
+        closesAt: new Date(now.getTime() - 6 * 86_400_000),
+        status: 'results_published',
+        createdBy: faculty1._id,
+        maxMarks: 15,
+        items: programming.cos.map((c) => ({
+          _id: new Types.ObjectId(),
+          type: 'text',
+          prompt: doc(`Answer on ${c.code}: ${c.statement}`),
+          maxMarks: 5,
+          coIds: [c._id],
+        })),
+      },
+    ),
+    'the seeded outcomes quiz',
+  );
+  const reached = [15, 12, 9];
+  await Promise.all([
+    Submission.deleteMany({ assessmentId: quiz._id }),
+    EndSemMark.deleteMany({ offeringId: offering._id }),
+    Attainment.deleteMany({ offeringId: offering._id }),
+  ]);
+  await Submission.insertMany(
+    enrolled.map((s, i) => {
+      const marks = quiz.items.map((_, q) => (i < reached[q] ? 4 : 2));
+      return {
+        assessmentId: quiz._id,
+        offeringId: offering._id,
+        studentId: s._id,
+        attemptNo: 1,
+        status: 'graded',
+        startedAt: quiz.opensAt,
+        deadlineAt: quiz.closesAt,
+        submittedAt: quiz.opensAt,
+        paper: quiz.items,
+        scores: Object.fromEntries(quiz.items.map((item, q) => [String(item._id), { marks: marks[q], by: 'auto' }])),
+        total: marks.reduce((sum, m) => sum + m, 0),
+      };
+    }),
+  );
+  const syncRunId = new Types.ObjectId();
+  await EndSemMark.insertMany(
+    enrolled.slice(0, -1).map((s, i) => ({
+      offeringId: offering._id,
+      studentId: s._id,
+      externals: [
+        { component: 'theory', marks: i < 13 ? 45 : 25, max: 60, absent: false },
+        { component: 'practice', marks: i < 13 ? 35 : 20, max: 50, absent: false },
+        { component: 'project', marks: i < 13 ? 35 : 25, max: 50, absent: false },
+      ],
+      source: 'csv',
+      syncRunId,
+      importedAt: now,
+    })),
+  );
+}
+
 const hod = found(await User.findOne({ email: 'hod@seed.cutm.test' }, { _id: 1 }).lean(), 'hod');
 const csePages = e2e
   ? []
@@ -573,7 +648,7 @@ const cseNote = csePages.length ? ` and the ${csePages.length} CSE courses from 
 console.log(
   `Seeded ${e2e ? 'e2e fixtures' : 'development data'}: 2 departments, 2 programmes, ${5 + csePages.length} courses, ` +
     `${3 + csePages.length} offerings, ${enrolled.length} students enrolled in CUTM1602, CUTM1014${cseNote}` +
-    `${e2e ? '; the exams term 2025-EVEN with LAB0201' : ''}` +
+    `${e2e ? '; the exams term 2025-EVEN with LAB0201; a published outcomes quiz and end-semester marks on CUTM1602' : ''}` +
     `${passwordHash ? '; every account signs in with the seed password' : ''}.`,
 );
 await mongoose.disconnect();
