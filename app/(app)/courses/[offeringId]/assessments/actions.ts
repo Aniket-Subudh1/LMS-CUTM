@@ -12,7 +12,7 @@ import { assertUnlocked } from '@/lib/data/offerings';
 import { notify } from '@/lib/data/notify';
 import { sectionPools, shortfallMessages } from '@/lib/data/papers';
 import { requireOfferedLanguages } from '@/lib/data/code';
-import { questionOf, storedItem } from '@/lib/data/questions';
+import { questionOf, recountMarks, storedItem } from '@/lib/data/questions';
 import { releaseResults, rulesOf } from '@/lib/data/results';
 import { db } from '@/lib/db';
 import { countedAttempt, deadlineAt, windowState } from '@/lib/domain/attempts';
@@ -23,6 +23,7 @@ import { earnsCertificate } from '@/lib/domain/test-files';
 import { assessmentPath } from '@/lib/domain/test-links';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
+import { aiConfigured } from '@/lib/integrations/ai';
 import { formatDateTime } from '@/lib/format';
 import { Assessment } from '@/lib/models/assessment';
 import { BankItem } from '@/lib/models/bank-item';
@@ -33,7 +34,14 @@ import { Submission } from '@/lib/models/submission';
 import { TestFile } from '@/lib/models/test-file';
 import { TestLink } from '@/lib/models/test-link';
 import { User } from '@/lib/models/user';
-import { queueAttainment, queueGradeCode, queueInternalMarks, queueTestFile, queueTestStats } from '@/lib/queue';
+import {
+  queueAttainment,
+  queueDraftQuestions,
+  queueGradeCode,
+  queueInternalMarks,
+  queueTestFile,
+  queueTestStats,
+} from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import {
   ASSESSMENT_LIMITS,
@@ -61,7 +69,7 @@ import {
   UpdateAssessmentSettings,
   WaivePenalty,
 } from '@/lib/schemas/assessment';
-import { AddFromBank } from '@/lib/schemas/bank';
+import { AddFromBank, DraftIntoTest } from '@/lib/schemas/bank';
 import { marks as marksInput, ROLES } from '@/lib/schemas/common';
 
 const TEACH = ['admin', 'faculty'] as const;
@@ -94,43 +102,6 @@ async function countsTowardOf(
   }
   return posted === 'none' ? null : posted;
 }
-
-// 05 §5.1: the stored total follows every change to the questions and to the sections' draws (M04b).
-const recountMarks = (assessmentId: string) =>
-  Assessment.updateOne(
-    { _id: assessmentId },
-    [
-      {
-        $set: {
-          maxMarks: {
-            $round: [
-              {
-                $add: [
-                  { $sum: '$items.maxMarks' },
-                  {
-                    $sum: {
-                      $map: {
-                        input: '$sections',
-                        as: 'section',
-                        in: {
-                          $multiply: [
-                            { $ifNull: ['$$section.draw.count', 0] },
-                            { $ifNull: ['$$section.draw.marksEach', 0] },
-                          ],
-                        },
-                      },
-                    },
-                  },
-                ],
-              },
-              2,
-            ],
-          },
-        },
-      },
-    ],
-    { updatePipeline: true },
-  );
 
 // TP-09: at most ASSESSMENT_LIMITS.codeItems code questions a test, in languages the codeRunner setting offers.
 async function requireCode(
@@ -371,6 +342,40 @@ export const addFromBank = action({ input: AddFromBank, roles: TEACH }, async (i
   await recountMarks(String(assessment._id));
   refresh();
   return { added: docs.length };
+});
+
+// TP-10: the builder's "Create with AI" drafts straight into this test, in the worker (06 §6). Each waits marked as an AI
+// draft until the teacher saves it in its dialog, and publishing is refused meanwhile, so only a draft test takes them.
+// Only the topic, the chosen outcomes' statements and the level are sent (09 §12). Limited as AI suggestions (09 §4).
+export const draftIntoTest = action({ input: DraftIntoTest, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (assessment.status !== 'draft') {
+    throw new AppError('CONFLICT', 'AI drafts go into a test before it is published. Draft into the bank instead.');
+  }
+  if (!aiConfigured()) throw new AppError('CONFLICT', 'AI suggestions are not set up.');
+  if (!MODE_ITEM_TYPES[assessment.mode].includes(input.type)) {
+    throw new AppError('VALIDATION', 'This type of assessment does not use that kind of question.', {
+      type: ['Pick a kind of question this assessment uses.'],
+    });
+  }
+  await requireCourseCos(assessment.offeringId, input['coIds[]'], 'coIds[]');
+  if (assessment.items.length + input.count > ASSESSMENT_LIMITS.items) {
+    const room = ASSESSMENT_LIMITS.items - assessment.items.length;
+    throw new AppError('VALIDATION', `This test has room for ${room} more question${room === 1 ? '' : 's'}.`, {
+      count: [`At most ${room}.`],
+    });
+  }
+  await limit('ai', viewer.id, 30, 60 * 60_000);
+  await queueDraftQuestions({
+    into: { assessmentId: String(assessment._id) },
+    offeringId: assessment.offeringId ? String(assessment.offeringId) : null,
+    requestedBy: viewer.id,
+    topic: input.topic,
+    count: input.count,
+    type: input.type,
+    level: input.level,
+    coIds: input['coIds[]'],
+  });
 });
 
 // M04b (TP-05, TP-06): a section's name, clock, order rule, passage and draw from the bank. The first section takes
@@ -686,6 +691,11 @@ export const publishAssessment = action({ input: AssessmentRef, roles: TEACH }, 
   if (offering?.category === 'ugc' && untagged.length > 0) {
     const list = untagged.length === 1 ? `question ${untagged[0]}` : `questions ${untagged.join(', ')}`;
     throw new AppError('VALIDATION', `Tag ${list} with a course outcome before publishing.`);
+  }
+  const drafts = assessment.items.flatMap((item, i) => (item.aiDraft ? [i + 1] : []));
+  if (drafts.length > 0) {
+    const list = drafts.length === 1 ? `question ${drafts[0]}` : `questions ${drafts.join(', ')}`;
+    throw new AppError('VALIDATION', `Review the AI draft${drafts.length === 1 ? '' : 's'} (${list}) before publishing.`);
   }
   const unbalanced = assessment.items.flatMap((item, i) =>
     item.rubric && rubricTotal(item.rubric.map((row) => row.maxMarks)) !== item.maxMarks ? [i + 1] : [],

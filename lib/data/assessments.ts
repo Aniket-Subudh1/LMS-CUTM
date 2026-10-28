@@ -606,8 +606,10 @@ export type Builder = {
   languages: { key: string; label: string }[];
   // TP-11
   results: ResultRules;
-  // What publishing still needs (T4): question numbers without a CO on a credit course.
+  // What publishing still needs (T4): question numbers without a CO on a credit course, and (TP-10) the AI's drafts
+  // no teacher has saved yet.
   missingCos: number[];
+  aiDrafts: number[];
   counts: { handedIn: number; toGrade: number; inProgress: number };
 };
 
@@ -702,6 +704,7 @@ export async function getBuilder(assessmentId: string): Promise<Builder> {
     languages: runner.languages.map(({ key, label }) => ({ key, label })),
     results: rulesOf(doc),
     missingCos: credit ? items.flatMap((item, i) => (item.coIds.length === 0 ? [i + 1] : [])) : [],
+    aiDrafts: doc.items.flatMap((item, i) => (item.aiDraft ? [i + 1] : [])),
     counts: { handedIn: n('submitted') + n('graded'), toGrade: n('submitted'), inProgress: n('in_progress') },
   };
 }

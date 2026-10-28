@@ -14,6 +14,7 @@ import {
   PlusIcon,
   PowerIcon,
   PulseIcon,
+  SparkleIcon,
   TrashIcon,
   WarningIcon,
   XIcon,
@@ -24,6 +25,7 @@ import {
   addFromBank,
   deleteItem,
   deleteSection,
+  draftIntoTest,
   publishAssessment,
   reorderItems,
   reorderSections,
@@ -38,6 +40,7 @@ import {
 import { copyToBank } from '@/app/(app)/tests/bank/actions';
 import { createLink, deleteLink, inviteToTest, setLinkActive } from '@/app/(app)/tests/actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
+import { AiDraftDialog } from '@/components/ai-draft-dialog';
 import { ModeChip, STATE_LABEL } from '@/components/assessment-lists';
 import { BloomChip } from '@/components/bloom-chip';
 import { CopyButton } from '@/components/copy-button';
@@ -69,6 +72,7 @@ import {
   RESULT_LIMITS,
 } from '@/lib/schemas/assessment';
 import type { RichTextDoc } from '@/lib/schemas/common';
+import { BANK_LIMITS, DRAFT_TYPES } from '@/lib/schemas/bank';
 import { TEST_LIMITS } from '@/lib/schemas/tests';
 
 const plain = (doc: RichTextDoc | null) => plainText(doc) || 'Untitled question';
@@ -112,6 +116,10 @@ export async function AssessmentBuilder({
       ? await pickFromBank(b.offeringId, MODE_ITEM_TYPES[a.mode], { q: bq, topic: btopic })
       : null;
   const sectionTitle = new Map(b.sections.map((section) => [section.id, section.title]));
+  // TP-10: the AI drafts into a test only before it is published, and only the kinds of question it uses.
+  const aiTypes = DRAFT_TYPES.filter((type) => MODE_ITEM_TYPES[a.mode].includes(type));
+  const aiRoom = Math.min(BANK_LIMITS.draft, ASSESSMENT_LIMITS.items - a.items.length);
+  const createWithAi = editQuestions && a.status === 'draft' && aiTypes.length > 0 && aiRoom > 0;
 
   const rows = a.items.map((item, i) => ({
     id: item.id,
@@ -122,6 +130,7 @@ export async function AssessmentBuilder({
         item={item}
         n={i + 1}
         b={b}
+        aiDraft={b.aiDrafts.includes(i + 1)}
         editable={editQuestions}
         here={here}
         section={item.sectionId ? (sectionTitle.get(item.sectionId) ?? null) : null}
@@ -146,6 +155,14 @@ export async function AssessmentBuilder({
               b.missingCos.length === 0
                 ? 'Every question has a course outcome'
                 : `Question${b.missingCos.length === 1 ? '' : 's'} ${b.missingCos.join(', ')} ${b.missingCos.length === 1 ? 'has' : 'have'} no outcome`,
+          },
+        ]
+      : []),
+    ...(b.aiDrafts.length > 0
+      ? [
+          {
+            ok: false,
+            text: `Question${b.aiDrafts.length === 1 ? '' : 's'} ${b.aiDrafts.join(', ')} ${b.aiDrafts.length === 1 ? 'is an AI draft' : 'are AI drafts'} to review`,
           },
         ]
       : []),
@@ -255,6 +272,15 @@ export async function AssessmentBuilder({
                 : b.credit
                   ? 'Drag to reorder. Each question needs at least one course outcome.'
                   : 'Drag to reorder. Course outcomes are optional on a non-credit course.'
+            }
+            action={
+              createWithAi && (
+                <Button asChild size="sm">
+                  <Link href={here('ai')} scroll={false}>
+                    <SparkleIcon /> Create with AI
+                  </Link>
+                </Button>
+              )
             }
           >
             {a.items.length === 0 && !editQuestions ? (
@@ -390,7 +416,7 @@ export async function AssessmentBuilder({
         <QuestionDialog
           key={open}
           openParam={open}
-          title={`Question ${editItem ? a.items.indexOf(editItem) + 1 : a.items.length + 1} · ${ITEM_LABEL[editItem?.type ?? newType ?? 'text']}`}
+          title={`${editItem && b.aiDrafts.includes(a.items.indexOf(editItem) + 1) ? 'Review the AI draft · ' : ''}Question ${editItem ? a.items.indexOf(editItem) + 1 : a.items.length + 1} · ${ITEM_LABEL[editItem?.type ?? newType ?? 'text']}`}
           type={editItem?.type ?? newType ?? 'text'}
           item={editItem}
           action={saveItem}
@@ -410,6 +436,19 @@ export async function AssessmentBuilder({
       {editQuestions && (open === 'section' || editingSection) && (
         <SectionDialog key={open} b={b} section={editingSection} openParam={open ?? 'section'} />
       )}
+      {createWithAi && open === 'ai' && (
+        <AiDraftDialog
+          key={open}
+          action={draftIntoTest}
+          hidden={ref}
+          description="AI writes drafts with keys and explanations into this test, marked “AI draft”. Open and save each to accept it; the test cannot be published until you have."
+          successMessage="Creating them now. They appear below marked “AI draft” in a minute or two, and you get a notification."
+          types={aiTypes}
+          max={aiRoom}
+          cos={course ? b.cos : []}
+          aiReady={b.aiReady}
+        />
+      )}
       {picking && <BankPicker key={`${bq}-${btopic}`} b={b} rows={picking} base={base} bq={bq} />}
     </>
   );
@@ -419,6 +458,7 @@ function QuestionRow({
   item,
   n,
   b,
+  aiDraft,
   editable,
   here,
   section,
@@ -426,6 +466,7 @@ function QuestionRow({
   item: TeacherItem;
   n: number;
   b: Builder;
+  aiDraft: boolean;
   editable: boolean;
   here: (name: string) => string;
   section: string | null;
@@ -464,6 +505,11 @@ function QuestionRow({
             </span>
           )}
           {item.bloomLevel && <BloomChip level={item.bloomLevel} />}
+          {aiDraft && (
+            <span className="bg-gold/10 text-gold inline-flex items-center gap-1 rounded-sm px-1.5 py-px text-[0.6875rem] font-medium">
+              <PageIcon name="sparkle" className="size-3.5" /> AI draft · review it
+            </span>
+          )}
           {section && <span className="text-muted-foreground text-xs">{section} ·</span>}
           <span className="text-muted-foreground text-xs">{how}</span>
         </div>
@@ -471,6 +517,13 @@ function QuestionRow({
       <span className="text-[0.8125rem] font-medium whitespace-nowrap tabular-nums">
         {item.maxMarks} mark{item.maxMarks === 1 ? '' : 's'}
       </span>
+      {aiDraft && editable && (
+        <Button asChild variant="outline" size="sm">
+          <Link href={here(`item-${item.id}`)} scroll={false}>
+            Review
+          </Link>
+        </Button>
+      )}
       {b.canEdit && (
         <RowMenu
           label={`Question ${n}`}

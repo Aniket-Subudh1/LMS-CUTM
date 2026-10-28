@@ -38,7 +38,7 @@ One schema in `lib/env.ts`; web and worker receive the same set. A variable beco
 | `CODE_RUNNER_URL`, `CODE_RUNNER_TOKEN` | M04b | `http://judge0:2358`, token | Judge0 `AUTHN_TOKEN`. Unset, the URL is Judge0's free public server (`https://ce.judge0.com`, no token): fine for development and the pilot, but students' code goes to a third party and its rate limits are not ours — set the university's own server before going public (Q-55). The e2e run uses `tests/e2e/fake-runner.ts` on port 2358 |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY` | M07 | | Optional, all six together: without them GitHub projects say GitHub is not set up. The PEM may use `\n` escapes. Until CUTM's organisation (Q-22) the test server uses Aniket's test App |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET` | M07 | | The App's OAuth credentials and webhook secret |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | M04b, M09 | `sk-…`, `gpt-5.4-mini` | Optional: without the key the AI helpers (the bank's Draft with AI) say "AI suggestions are not set up" and nothing is sent. `OPENAI_MODEL` defaults to `gpt-5.4-mini`, a small, inexpensive model; any model that supports structured outputs works |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | M04b, M09 | `sk-…`, `gpt-5.4-mini` | Optional: without the key the AI helpers (Create with AI in the bank and the builder) say "AI suggestions are not set up" and nothing is sent. `OPENAI_MODEL` defaults to `gpt-5.4-mini`, a small, inexpensive model; any model that supports structured outputs works |
 
 `.env.example` lists every variable with a safe placeholder. `.env*` files other than `.env.example` are git-ignored (already in `.gitignore`).
 

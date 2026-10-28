@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import {
   DownloadSimpleIcon,
-  InfoIcon,
   PencilSimpleIcon,
   PlusIcon,
   SparkleIcon,
@@ -10,7 +9,8 @@ import {
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import { deleteBankItem, draftWithAi, importBankCsv, saveBankItem } from '@/app/(app)/tests/bank/actions';
-import { Field, FieldErrors } from '@/components/action-form';
+import { Field } from '@/components/action-form';
+import { AiDraftDialog } from '@/components/ai-draft-dialog';
 import { BloomChip } from '@/components/bloom-chip';
 import { DataTable } from '@/components/data-table';
 import { FilterForm } from '@/components/filter-form';
@@ -26,7 +26,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { cn } from '@/lib/cn';
 import { getBank, getBankItem, type BankRow } from '@/lib/data/bank';
 import { ITEM_LABEL } from '@/lib/format';
-import { ASSESSMENT_LIMITS, DIFFICULTIES, ITEM_TYPES } from '@/lib/schemas/assessment';
+import { DIFFICULTIES, ITEM_TYPES } from '@/lib/schemas/assessment';
 import { BANK_LIMITS, BankFilter, DRAFT_TYPES } from '@/lib/schemas/bank';
 import { page as pageParam, pageSize } from '@/lib/schemas/common';
 
@@ -96,9 +96,9 @@ export async function QuestionBank({
                   <UploadSimpleIcon /> Import CSV
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href={here('draft')} scroll={false}>
-                  <SparkleIcon /> Draft with AI
+              <Button asChild size="sm">
+                <Link href={here('ai')} scroll={false}>
+                  <SparkleIcon /> Create with AI
                 </Link>
               </Button>
             </>
@@ -326,84 +326,18 @@ export async function QuestionBank({
           ai={bank.aiReady}
         />
       )}
-      {bank.canEdit && open === 'draft' && (
-        <FormDialog
+      {bank.canEdit && open === 'ai' && (
+        <AiDraftDialog
           key={open}
-          openParam="draft"
-          size="wide"
-          icon={<PageIcon name="sparkle" className="size-8" />}
-          title="Draft questions with AI"
-          description="AI writes drafts with keys and explanations. Nothing is used until you review and accept each one."
           action={draftWithAi}
-          submitLabel="Draft the questions"
-          successMessage="Drafting now. The drafts appear here marked “AI draft” in a minute or two, and you get a notification."
-        >
-          {scope}
-          {!bank.aiReady && (
-            <p className="bg-gold/10 rounded-md px-3 py-2 text-[0.8125rem]">
-              <b className="font-semibold">AI suggestions are not set up.</b> An administrator adds the AI key to the
-              server. Until then, write questions yourself or import a CSV.
-            </p>
-          )}
-          <Field name="topic" label="Topic">
-            <Input
-              name="topic"
-              required
-              minLength={3}
-              maxLength={ASSESSMENT_LIMITS.topic}
-              placeholder="Pointers and dynamic memory in C"
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field name="count" label="How many">
-              <Input name="count" type="number" min={1} max={BANK_LIMITS.draft} defaultValue={10} required />
-            </Field>
-            <Field name="type" label="Type">
-              <NativeSelect name="type" defaultValue="mcq">
-                {DRAFT_TYPES.map((type) => (
-                  <NativeSelectOption key={type} value={type}>
-                    {ITEM_LABEL[type]}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-            <Field name="level" label="Level">
-              <NativeSelect name="level" defaultValue="mixed">
-                <NativeSelectOption value="mixed">Mixed (30/45/25)</NativeSelectOption>
-                {DIFFICULTIES.map((level) => (
-                  <NativeSelectOption key={level} value={level}>
-                    {cap(level)}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </Field>
-          </div>
-          {bank.cos.length > 0 && (
-            <fieldset className="grid gap-2">
-              <legend className="mb-1 text-sm font-medium">Course outcomes</legend>
-              <div className="ring-border grid gap-2.5 rounded-md p-3 ring-1">
-                {bank.cos.map((co) => (
-                  <label key={co.id} className="flex items-start gap-2.5 text-[0.8125rem]">
-                    <input
-                      type="checkbox"
-                      name="coIds[]"
-                      value={co.id}
-                      className="accent-foreground mt-0.5 size-4 shrink-0"
-                    />
-                    <span>
-                      <b className="font-semibold">{co.code}</b> {co.statement}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <FieldErrors name="coIds[]" />
-            </fieldset>
-          )}
-          <p className="text-muted-foreground bg-muted/60 flex gap-2 rounded-md px-3 py-2 text-xs">
-            <InfoIcon className="size-4 shrink-0" />
-            Only the topic, the outcomes you pick and the level are sent. No student data leaves the LMS.
-          </p>
-        </FormDialog>
+          hidden={scope}
+          description="AI writes drafts with keys and explanations. Nothing is used until you review and accept each one."
+          successMessage="Creating them now. The drafts appear here marked “AI draft” in a minute or two, and you get a notification."
+          types={DRAFT_TYPES}
+          max={BANK_LIMITS.draft}
+          cos={bank.cos}
+          aiReady={bank.aiReady}
+        />
       )}
       {bank.canEdit && open === 'import' && (
         <FormDialog

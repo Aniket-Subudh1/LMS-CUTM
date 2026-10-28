@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { rubricTotal } from '@/lib/domain/grading';
 import { roundHalfUp } from '@/lib/domain/round';
 import { AppError } from '@/lib/errors';
+import { Assessment } from '@/lib/models/assessment';
 import type { ItemInput } from '@/lib/schemas/assessment';
 import type { BankCsvRow } from '@/lib/schemas/bank';
 import type { RichTextDoc } from '@/lib/schemas/common';
@@ -136,3 +137,40 @@ export function csvItem(row: BankCsvRow, coIds: string[]): ItemInput {
     code: null,
   };
 }
+
+// 05 §5.1: the stored total follows every change to the questions and to the sections' draws (M04b).
+export const recountMarks = (assessmentId: string) =>
+  Assessment.updateOne(
+    { _id: assessmentId },
+    [
+      {
+        $set: {
+          maxMarks: {
+            $round: [
+              {
+                $add: [
+                  { $sum: '$items.maxMarks' },
+                  {
+                    $sum: {
+                      $map: {
+                        input: '$sections',
+                        as: 'section',
+                        in: {
+                          $multiply: [
+                            { $ifNull: ['$$section.draw.count', 0] },
+                            { $ifNull: ['$$section.draw.marksEach', 0] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+              2,
+            ],
+          },
+        },
+      },
+    ],
+    { updatePipeline: true },
+  );

@@ -109,6 +109,8 @@ const itemSchema = new Schema({
   ...itemDefinition,
   // M04b: the section it belongs to; null while the assessment has no sections.
   sectionId: { type: Schema.Types.ObjectId, default: null },
+  // TP-10: written by the AI and not yet saved by a teacher in its dialog; the test cannot be published meanwhile.
+  aiDraft: { type: Boolean, default: false },
 });
 
 // M04b (TP-05, TP-06): a part of the test with its own clock and order rule, a passage shown beside its questions, and

@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Types } from 'mongoose';
-import { addFromBank } from '@/app/(app)/courses/[offeringId]/assessments/actions';
+import {
+  addFromBank,
+  draftIntoTest,
+  publishAssessment,
+  saveItem,
+} from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { draftWithAi, saveBankItem } from '@/app/(app)/tests/bank/actions';
+import { getBuilder } from '@/lib/data/assessments';
 import { getBank, pickFromBank } from '@/lib/data/bank';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
@@ -200,5 +206,102 @@ describe('AI drafts in the question bank (TP-10)', () => {
       title: 'The AI’s drafts on “Pointers in C” could not be used. Try again, perhaps with a narrower topic.',
     });
     expect(await BankItem.countDocuments({ courseId: third.course._id })).toBe(0);
+  });
+});
+
+describe('AI drafts straight into a test (TP-10)', () => {
+  const review = (aid: string, itemId: string, prompt: unknown) =>
+    saveItem(
+      form({
+        assessmentId: aid,
+        itemId,
+        type: 'mcq',
+        prompt: JSON.stringify(prompt),
+        maxMarks: '2',
+        'option[]': ['The address of x', 'The value of x'],
+        correct: '1',
+      }),
+    );
+
+  it('are added to the draft test marked as AI drafts, and it cannot be published until each is saved', async () => {
+    const w = await world();
+    ai.configured = true;
+    ai.draftQuestions.mockResolvedValueOnce([draft(), draft({ question: 'What does &x give?', answer: '1' })]);
+    const quiz = await makeAssessment({ offeringId: w.offeringId, status: 'draft', createdBy: w.faculty._id });
+    const aid = String(quiz._id);
+    await signInAs(w.faculty);
+    expect(await draftIntoTest(ask({ assessmentId: aid, count: '2', 'coIds[]': [w.co1] }))).toMatchObject({ ok: true });
+    expect(await noticeFor(w.faculty._id)).toMatchObject({
+      title: `2 AI drafts on “Pointers in C” added to “${quiz.title}” — review each before publishing`,
+      href: `/courses/${w.offeringId}/assessments/${aid}/edit`,
+    });
+    expect(ai.draftQuestions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ count: 2, cos: [{ code: 'CO1', statement: 'Explain pointers.' }] }),
+    );
+
+    const added = await Assessment.findById(aid).lean();
+    expect(added?.items.map((item) => item.aiDraft)).toEqual([true, true]);
+    expect(added?.items[0].coIds.map(String)).toEqual([w.co1]);
+    expect(added?.maxMarks).toBe(2);
+    expect((await getBuilder(aid)).aiDrafts).toEqual([1, 2]);
+    expect(await publishAssessment(form({ assessmentId: aid }))).toMatchObject({
+      code: 'VALIDATION',
+      message: 'Review the AI drafts (questions 1, 2) before publishing.',
+    });
+
+    const [first, second] = added?.items ?? [];
+    expect(await review(aid, String(first._id), first.prompt)).toMatchObject({ ok: true });
+    expect((await getBuilder(aid)).aiDrafts).toEqual([2]);
+    expect(await publishAssessment(form({ assessmentId: aid }))).toMatchObject({
+      message: 'Review the AI draft (question 2) before publishing.',
+    });
+    expect(await review(aid, String(second._id), second.prompt)).toMatchObject({ ok: true });
+    expect(await publishAssessment(form({ assessmentId: aid }))).toMatchObject({ ok: true });
+    expect((await Assessment.findById(aid).lean())?.maxMarks).toBe(4);
+  });
+
+  it('are refused for a published test, a kind it does not use, another course’s outcomes, a reader, or without the key', async () => {
+    const w = await world();
+    ai.configured = true;
+    const published = await makeAssessment({ offeringId: w.offeringId, createdBy: w.faculty._id });
+    const assignment = await makeAssessment({
+      offeringId: w.offeringId,
+      mode: 'assignment',
+      status: 'draft',
+      createdBy: w.faculty._id,
+    });
+    const quiz = await makeAssessment({ offeringId: w.offeringId, status: 'draft', createdBy: w.faculty._id });
+    await signInAs(w.faculty);
+    expect(await draftIntoTest(ask({ assessmentId: String(published._id) }))).toMatchObject({ code: 'CONFLICT' });
+    expect(await draftIntoTest(ask({ assessmentId: String(assignment._id) }))).toMatchObject({ code: 'VALIDATION' });
+    expect(await draftIntoTest(ask({ assessmentId: String(quiz._id), 'coIds[]': [String(newId())] }))).toMatchObject({
+      code: 'VALIDATION',
+    });
+    ai.configured = false;
+    expect(await draftIntoTest(ask({ assessmentId: String(quiz._id) }))).toMatchObject({
+      code: 'CONFLICT',
+      message: 'AI suggestions are not set up.',
+    });
+    ai.configured = true;
+    await signInAs(w.hod);
+    await expect(draftIntoTest(ask({ assessmentId: String(quiz._id) }))).rejects.toMatchObject({
+      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
+    });
+  });
+
+  it('are not added when the test was published while the AI wrote them', async () => {
+    const w = await world();
+    ai.configured = true;
+    const quiz = await makeAssessment({ offeringId: w.offeringId, status: 'draft', createdBy: w.faculty._id });
+    ai.draftQuestions.mockImplementationOnce(async () => {
+      await Assessment.updateOne({ _id: quiz._id }, { status: 'published' });
+      return [draft()];
+    });
+    await signInAs(w.faculty);
+    expect(await draftIntoTest(ask({ assessmentId: String(quiz._id), count: '1' }))).toMatchObject({ ok: true });
+    expect(await noticeFor(w.faculty._id)).toMatchObject({
+      title: `The AI’s drafts on “Pointers in C” were not added: “${quiz.title}” was published or is full.`,
+    });
+    expect((await Assessment.findById(quiz._id).lean())?.items).toEqual([]);
   });
 });

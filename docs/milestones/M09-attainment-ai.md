@@ -141,7 +141,7 @@ Files: `lib/schemas/ai.ts`, `lib/integrations/ai.ts` (made by M04b, with `draftQ
   - Item tags: "You help university teachers tag an assessment question with the course outcomes (COs) it assesses and its Bloom's taxonomy level (remember, understand, apply, analyse, evaluate, create). Choose only from the CO codes provided. Prefer one CO; choose two only when the question clearly assesses both. Base the Bloom level on what the student must do. Give a one-sentence rationale."
   - CO map: "You help define a CO–PO–PSO correlation matrix. For each pair where the course outcome contributes to the program outcome, give a level: 3 strong, 2 moderate, 1 slight. Omit pairs with no meaningful contribution. Use only the codes provided."
 - The briefs hold only the question (its prompt and options as plain text), CO codes and statements, and the titled outcome codes (decision 2). No student data reaches them (09 §12).
-- Actions: both need the AI to be set up (CONFLICT otherwise), count toward the `ai` limit (30 an hour per user, shared with "Draft with AI"), and write nothing.
+- Actions: both need the AI to be set up (CONFLICT otherwise), count toward the `ai` limit (30 an hour per user, shared with "Create with AI"), and write nothing.
   - `suggestItemTags(formData)` (`app/(app)/tests/bank/actions.ts`, beside `draftWithAi`) takes the question dialog's own fields. In the builder, `assessmentId` gives the offering (teach). In a course bank, `offeringId` gives the course (`requireBankEditor`). It returns the CO ids, the level and the reason.
   - `suggestCoMap({ courseId, offeringId? })` (`app/(app)/catalog/actions.ts`, the course's editors) returns the cells, the reasons, and the codes left out for want of a title.
 

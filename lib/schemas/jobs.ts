@@ -116,10 +116,14 @@ export type GithubNightlyJob = z.infer<typeof GithubNightlyJob>;
 export const ProctorRetentionJob = z.object({});
 export type ProctorRetentionJob = z.infer<typeof ProctorRetentionJob>;
 
-// `compute/draftQuestions` (06 §6, M04b TP-10): AI drafts into a bank — a course's or one person's. `offeringId` is
-// where the bank page was opened, for the notice's link.
+// `compute/draftQuestions` (06 §6, M04b TP-10): AI drafts into a bank — a course's or one person's — or straight into a
+// draft test. `offeringId` is where the bank page was opened, for the notice's link.
 export const DraftQuestionsJob = z.object({
-  bank: z.union([z.object({ courseId: objectId }), z.object({ ownerId: objectId })]),
+  into: z.union([
+    z.object({ courseId: objectId }),
+    z.object({ ownerId: objectId }),
+    z.object({ assessmentId: objectId }),
+  ]),
   offeringId: objectId.nullable(),
   requestedBy: objectId,
   topic: z.string().min(1).max(60),

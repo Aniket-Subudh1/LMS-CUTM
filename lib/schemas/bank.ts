@@ -49,6 +49,8 @@ export const DraftQuestions = z.object({
   'coIds[]': z.preprocess((value) => value ?? [], z.array(objectId).max(ASSESSMENT_LIMITS.coIds)),
 });
 export type DraftQuestions = z.output<typeof DraftQuestions>;
+// The builder's "Create with AI": the drafts go straight into the draft test being edited.
+export const DraftIntoTest = DraftQuestions.omit({ offeringId: true }).extend({ assessmentId: objectId });
 
 // What the AI writes for each draft: plain fields only (a structured output cannot carry the CSV row's checks), checked
 // afterwards as an imported row is. `answer` is said as a CSV row says it.

@@ -3928,3 +3928,30 @@ Aniket: "keep the KPI and stats cards in student and faculty as well like admin"
 - `npx tsc --noEmit` → clean; `npx eslint` on the changed files → clean.
 - `npx vitest run tests/integration/workspace.test.ts tests/integration/offerings.test.ts` → 40 passed. The first run caught the uncast `termId` in the readiness filter.
 - Screenshots of the dev server against the seed (`.mockups/home/real.mjs admin faculty student faculty-phone`): admin "Offerings in 2026-ODD" with 2 drafts, 1 without students, 5 without a plan; faculty Teaching 3, Students 60, To grade 0; student Courses 5, Attendance 0 of 5 classes, Lessons 0 of 1.
+
+### 2026-10-28 · M04b/TP-10 Create with AI in the bank and the test builder · Cursor agent, at Aniket's request
+
+Aniket: "AI can create questions … keep a visible button Create with AI". He chose to have the builder's drafts go straight into the test being edited, marked as AI drafts, with publishing refused until each has been reviewed.
+
+**Created** (*changed*)
+- `components/ai-draft-dialog.tsx` (new, 08 §5.2): the "Create questions with AI" dialog, moved from the bank and now used by the bank and the builder.
+- *`components/question-bank.tsx`*: "Draft with AI" (outline) becomes **Create with AI**, a filled button (`?new=ai`).
+- *`components/assessment-builder.tsx`*: **Create with AI** beside the Questions title while the test is a draft, offering only the kinds of question its mode uses and at most the room left. Drafts carry "AI draft · review it" and a Review button, their dialog is titled "Review the AI draft", and the readiness strip names them.
+- *`app/(app)/courses/[offeringId]/assessments/actions.ts`*: `draftIntoTest` (manage access, draft only, the course's outcomes, the room left, the `ai` limit, the key) queues the job into the test. `publishAssessment` refuses while any question is an AI draft; `saveItem` accepts one, as `saveBankItem` does in the bank.
+- *`worker/jobs/compute.ts`*: `draftQuestions` takes `into: { assessmentId }` too. It checks drafts as before, pushes them only while the test is still a draft and has room (both in the update's filter), recounts the marks, and links the notice to the builder. `recountMarks` moved to *`lib/data/questions.ts`* so the worker can use it.
+- *`lib/models/assessment.ts`*: `items[].aiDraft`. *`lib/schemas/jobs.ts`*: `DraftQuestionsJob.bank` renamed `into`, with `{ assessmentId }`. *`lib/schemas/bank.ts`*: `DraftIntoTest`. *`lib/data/assessments.ts`*: `Builder.aiDrafts`. *`app/(app)/tests/bank/actions.ts`*: `copyToBank` keeps an unreviewed draft's flag.
+- *`tests/integration/ai-drafts.test.ts`*: drafts into a test are flagged, take the picked outcomes and count toward its marks. Publishing is refused naming the questions until each is saved, then succeeds. Drafting is refused for a published test, a mode that does not use the type, another course's outcomes, without the key, and for a head of department (404). Nothing is added when the test is published while the AI is writing. *`tests/e2e/bank.spec.ts`*: the new labels.
+- Docs: 05 (the item's `aiDraft`), 06 §6 (`compute/draftQuestions`) and the AI drafts contract, 08 (routes, §5.2 `AiDraftDialog`), 09 §12, 11, M09.
+
+**Not done** — Not run against the real model: the integration tests replace the adapter, and no question was drafted with the server's key.
+
+**Assumptions**
+- A draft test only: questions stay editable after publishing until someone starts, so a draft pushed into a published test could reach a student unreviewed.
+- A `draftQuestions` job queued before this deploy with the old `bank` field fails to parse and is not retried. Such a job lives for under a minute.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → clean; `npx eslint` on the changed files → clean.
+- `npx vitest run tests/integration/ai-drafts.test.ts tests/integration/assessments.test.ts` → 29 passed.
+- Screenshots on the dev server (faculty1, CUTM1602): a draft quiz with one AI draft shows Create with AI, the draft's chip and Review, and "Question 2 is an AI draft to review"; the dialog lists CO1–CO3; the bank shows the filled Create with AI. The quiz was inserted for the screenshot and deleted after.

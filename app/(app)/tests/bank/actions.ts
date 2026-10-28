@@ -74,7 +74,7 @@ export const draftWithAi = action({ input: DraftQuestions, roles: STAFF }, async
   await requireRoom(bank, input.count);
   await limit('ai', viewer.id, 30, 60 * 60_000);
   await queueDraftQuestions({
-    bank:
+    into:
       'courseId' in bank.filter ? { courseId: String(bank.filter.courseId) } : { ownerId: String(bank.filter.ownerId) },
     offeringId: input.offeringId ?? null,
     requestedBy: viewer.id,
@@ -172,6 +172,9 @@ export const copyToBank = action({ input: CopyToBank, roles: STAFF }, async (inp
   const items = assessment.items.filter((item) => wanted.has(String(item._id)));
   if (items.length === 0) throw new AppError('NOT_FOUND', 'Those questions were deleted. Reload the page.');
   await requireRoom({ filter, courseId: offering ? String(offering.courseId) : null, canEdit: true }, items.length);
-  await BankItem.insertMany(items.map((item) => ({ ...filter, ...questionOf(item), createdBy: viewer.id })));
+  // An unreviewed AI draft stays one in the bank (TP-10).
+  await BankItem.insertMany(
+    items.map((item) => ({ ...filter, ...questionOf(item), aiDraft: item.aiDraft, createdBy: viewer.id })),
+  );
   return { added: items.length };
 });

@@ -9,7 +9,7 @@ import { settleRecordings } from '@/lib/data/recordings';
 import { lockForRun } from '@/lib/data/locks';
 import { addEngagement, snapshotEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
-import { csvItem, paragraph, storedItem } from '@/lib/data/questions';
+import { csvItem, paragraph, recountMarks, storedItem } from '@/lib/data/questions';
 import { releaseResults } from '@/lib/data/results';
 import { countedAttempt, windowState } from '@/lib/domain/attempts';
 import { deriveAttendance } from '@/lib/domain/attendance';
@@ -44,7 +44,7 @@ import {
   queueLiveFinalize,
   queueTestStats,
 } from '@/lib/queue';
-import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
+import { ASSESSMENT_LIMITS, RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
 import { BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { RichTextDoc } from '@/lib/schemas/common';
 import {
@@ -727,19 +727,35 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
 // `compute/draftQuestions` (06 §6, TP-10): the AI's drafts into a bank, each checked as an imported CSV row is (one that
 // fails is dropped) and kept as an AI draft until a teacher reviews it. Only the topic, the chosen outcomes' statements
 // and the level are sent (09 §12). The teacher is told how it went, a failure included.
+// TP-10: drafts into a bank, or straight into a test that is still a draft (each marked until a teacher saves it).
 async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
-  const bank =
-    'courseId' in job.bank
-      ? { courseId: new mongoose.Types.ObjectId(job.bank.courseId) }
-      : { ownerId: new mongoose.Types.ObjectId(job.bank.ownerId) };
-  const course = 'courseId' in bank ? await Course.findById(bank.courseId, { cos: 1 }).lean() : null;
+  const { into } = job;
+  const test =
+    'assessmentId' in into
+      ? await Assessment.findById(into.assessmentId, { offeringId: 1, title: 1, items: 1, 'sections._id': 1 }).lean()
+      : null;
+  const courseId =
+    'courseId' in into
+      ? into.courseId
+      : test?.offeringId
+        ? (await Offering.findById(test.offeringId, { courseId: 1 }).lean())?.courseId
+        : null;
+  const course = courseId ? await Course.findById(courseId, { cos: 1 }).lean() : null;
   const cos = (course?.cos ?? []).filter((co) => job.coIds.includes(String(co._id)));
   const tellTeacher = (title: string) =>
     notify([job.requestedBy], {
       kind: 'bank.drafted',
       title: title.length > 160 ? `${title.slice(0, 159)}…` : title,
-      href: job.offeringId ? `/courses/${job.offeringId}/bank` : '/tests/bank',
+      href: test
+        ? `${assessmentPath(test.offeringId ? String(test.offeringId) : null, String(test._id))}/edit`
+        : job.offeringId
+          ? `/courses/${job.offeringId}/bank`
+          : '/tests/bank',
     });
+  if ('assessmentId' in into && !test) {
+    await tellTeacher(`The test for the AI’s drafts on “${job.topic}” was deleted.`);
+    return;
+  }
   let drafts;
   try {
     drafts = await draftQuestions({
@@ -772,17 +788,42 @@ async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
     const explanation = draft.explanation.trim();
     return [storedItem({ ...csvItem(row.data, coIds), explanation: explanation ? paragraph(explanation) : null })];
   });
-  const room = Math.max(0, BANK_LIMITS.perBank - (await BankItem.countDocuments(bank)));
-  const kept = items.slice(0, room);
-  if (kept.length > 0) {
-    await BankItem.insertMany(kept.map((item) => ({ ...bank, ...item, aiDraft: true, createdBy: job.requestedBy })));
+  let kept: typeof items = [];
+  if (test) {
+    kept = items.slice(0, Math.max(0, ASSESSMENT_LIMITS.items - test.items.length));
+    const sectionId = test.sections[0]?._id ?? null;
+    // Only while it is a draft, and only with room left: the filter holds both, against a publish or an add meanwhile.
+    const written =
+      kept.length === 0
+        ? null
+        : await Assessment.updateOne(
+            { _id: test._id, status: 'draft', [`items.${ASSESSMENT_LIMITS.items - kept.length}`]: { $exists: false } },
+            { $push: { items: { $each: kept.map((item) => ({ ...item, sectionId, aiDraft: true })) } } },
+          );
+    if (!written || written.matchedCount === 0) kept = [];
+    else await recountMarks(String(test._id));
+  } else if (!('assessmentId' in into)) {
+    const bank =
+      'courseId' in into
+        ? { courseId: new mongoose.Types.ObjectId(into.courseId) }
+        : { ownerId: new mongoose.Types.ObjectId(into.ownerId) };
+    const room = Math.max(0, BANK_LIMITS.perBank - (await BankItem.countDocuments(bank)));
+    kept = items.slice(0, room);
+    if (kept.length > 0) {
+      await BankItem.insertMany(kept.map((item) => ({ ...bank, ...item, aiDraft: true, createdBy: job.requestedBy })));
+    }
   }
+  const drafted = `${kept.length} AI draft${kept.length === 1 ? '' : 's'} on “${job.topic}”`;
   await tellTeacher(
     kept.length > 0
-      ? `${kept.length} AI draft${kept.length === 1 ? '' : 's'} on “${job.topic}” ready to review`
-      : `The AI’s drafts on “${job.topic}” could not be used. Try again, perhaps with a narrower topic.`,
+      ? test
+        ? `${drafted} added to “${test.title}” — review each before publishing`
+        : `${drafted} ready to review`
+      : items.length > 0 && test
+        ? `The AI’s drafts on “${job.topic}” were not added: “${test.title}” was published or is full.`
+        : `The AI’s drafts on “${job.topic}” could not be used. Try again, perhaps with a narrower topic.`,
   );
-  log.info('bank drafts', { requested: job.count, returned: drafts?.length ?? 0, kept: kept.length });
+  log.info('ai drafts', { into: test ? 'test' : 'bank', requested: job.count, returned: drafts?.length ?? 0, kept: kept.length });
 }
 
 // The nightly scheduler `internalMarksNightly` (02 §8): a safety net under the recomputes that changes queue.

@@ -275,6 +275,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | partialCredit | B | M04b; msq, fill_blank, matching, ordering only |
 | explanation | RichText? | M04b; shown to graders now, to takers with results when the release rules say so (phase E) |
 | sectionId | Id? | M04b; the section it belongs to (all of them once any section exists) |
+| aiDraft | B | TP-10 (28 Oct 2026): added by the builder's "Create with AI" and not yet saved by a teacher in its dialog; `publishAssessment` refuses while any is set, and drafts are added only to a `draft` assessment. Not in a paper's copy |
 | options | `[{ _id: Id, text: S }]?` | mcq/msq/ordering: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-108) |
 | answer | `{ optionId? , optionIds?, value?, tolerance?, truth? }?` | mcq: optionId; msq: optionIds; ordering: optionIds in the right order; numeric: value + tolerance ≥ 0; true_false: truth. **Never sent to students** |
 | template, blanks | S?, `[{ _id, accepted: [S] }]?` | fill_blank: the sentence with `___` per blank (≤ 10 blanks); what each blank accepts (≤ 10 answers). **`accepted` never sent to students** |
