@@ -49,7 +49,8 @@ export function SuggestOutcomes({ cos }: { cos: { id: string; code: string }[] }
         size="sm"
         disabled={asking}
         onClick={ask}
-        className="absolute -top-1 right-0"
+        // On the line of the fieldset's legend, which sits above the fieldset's content box (the legend leaves room).
+        className="absolute -top-9 right-0"
       >
         {asking ? <CircleNotchIcon className="animate-spin" /> : <SparkleIcon />}
         {shown && 'codes' in shown ? 'Suggest again' : 'Suggest outcomes (AI)'}
