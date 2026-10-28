@@ -253,7 +253,7 @@ export type SessionDetail = {
   // M03c T7: open breakout rooms as the viewer may see them.
   breakout: RoomBreakout | null;
   // M03c T8: the whiteboard, while one is open.
-  board: { studentsDraw: boolean } | null;
+  board: RoomBoard | null;
   inClass: number;
   enrolled: number;
   // Staff, once the class has started.
@@ -261,6 +261,9 @@ export type SessionDetail = {
   mine: MyAttendance | null;
   thresholdPct: number;
 };
+
+// M03c T8: an open whiteboard — whether the others may draw, and who opened it (T16: the presenter the others follow).
+export type RoomBoard = { studentsDraw: boolean; by: string };
 
 // M03c T2, T4: what a host sees in People — what the others may do and who was removed (the latest first). Removed
 // people are users, or a meeting's guests.
@@ -516,7 +519,7 @@ export async function getSession(offeringId: string, sessionId: string): Promise
     recordings,
     polls,
     breakout,
-    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw, by: String(doc.board.by) } : null,
     inClass,
     enrolled,
     summary:

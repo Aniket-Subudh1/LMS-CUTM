@@ -40,6 +40,7 @@ import {
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
   CameraRotateIcon,
+  DeviceRotateIcon,
   ChartBarIcon,
   PencilSimpleLineIcon,
   SquaresFourIcon,
@@ -126,9 +127,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/cn';
-import type { RoomBreakout, RoomControls, RoomPoll } from '@/lib/data/live';
+import type { RoomBoard, RoomBreakout, RoomControls, RoomPoll } from '@/lib/data/live';
 import { formatTime, initials } from '@/lib/format';
-import type { StudentRight } from '@/lib/schemas/live';
+import { BOARD_TRACK, type StudentRight } from '@/lib/schemas/live';
 
 // M03c T4: the room serves a class (and a project review) and a meeting; its words follow which.
 type Noun = 'class' | 'meeting';
@@ -163,7 +164,7 @@ type Props = {
   // M03c T7: open breakout rooms as the viewer may see them (none for a guest).
   breakout: RoomBreakout | null;
   // M03c T8: the whiteboard, while a host has one open.
-  board: { studentsDraw: boolean } | null;
+  board: RoomBoard | null;
 };
 
 // M03c T8: Excalidraw is large, so it loads only when a board opens.
@@ -535,6 +536,28 @@ function useBrowser() {
   return { fullscreen, canFullscreen, canPopOut, canCaption };
 }
 
+// M03c T16: a phone held upright, asked to turn sideways for a presentation in full screen. An iPhone cannot turn the
+// page itself (A-226); browsers that can only do so in full screen.
+declare global {
+  interface ScreenOrientation {
+    lock?: (orientation: 'landscape') => Promise<void>;
+  }
+}
+const portraitQuery = '(orientation: portrait)';
+const onTurn = (notify: () => void) => {
+  const query = window.matchMedia(portraitQuery);
+  query.addEventListener('change', notify);
+  return () => query.removeEventListener('change', notify);
+};
+const usePortrait = () =>
+  useSyncExternalStore(
+    onTurn,
+    () => window.matchMedia(portraitQuery).matches,
+    () => false,
+  );
+// The stage's key for the board among the presentations (a screen's is `identity:source`).
+const BOARD = 'board';
+
 // M03c T15: Flip is for phones and tablets, which have a front and a back camera; a computer keeps its one camera.
 const touchQuery = '(pointer: coarse)';
 const onPointer = (notify: () => void) => {
@@ -607,7 +630,10 @@ function Classroom(
   }, [connection, isCameraEnabled, isMicrophoneEnabled, remember]);
   const permissions = useLocalParticipantPermissions();
   const cameras = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }], { onlySubscribed: false });
-  const screens = useTracks([Track.Source.ScreenShare]);
+  // The board's own video (sent for a recording, T16) is not a shared screen: everyone in the room has the board itself.
+  const screens = useTracks([Track.Source.ScreenShare]).filter(
+    (t) => isTrackReference(t) && t.publication.trackName !== BOARD_TRACK,
+  );
   const now = useNow();
   // Breakout rooms past their closing time are over, though the page has not read them again yet: nobody is asked to
   // join one, and the people back from them are not asked again.
@@ -908,6 +934,32 @@ function Classroom(
     );
   };
   const canFlip = useCanFlip();
+  // T16: the screen is shared and stopped here rather than with LiveKit's toggle, which would take the board's own
+  // video (sent for a recording) for a shared screen. The browser's own "Stop sharing" ends it too.
+  const sharing = screens.some((t) => t.participant.identity === me);
+  const [sharePending, setSharePending] = useState(false);
+  const share = async () => {
+    setSharePending(true);
+    try {
+      if (sharing) {
+        for (const publication of localParticipant.trackPublications.values()) {
+          const shared =
+            publication.source === Track.Source.ScreenShareAudio ||
+            (publication.source === Track.Source.ScreenShare && publication.trackName !== BOARD_TRACK);
+          if (shared && publication.track) await localParticipant.unpublishTrack(publication.track);
+        }
+      } else {
+        for (const track of await localParticipant.createScreenTracks({ audio: true })) {
+          await localParticipant.publishTrack(track);
+        }
+      }
+    } catch (error) {
+      // Cancel in the browser's picker is the viewer's choice, not a failure.
+      if (!(error instanceof Error && error.name === 'NotAllowedError')) setError('Your screen could not be shared.');
+    } finally {
+      setSharePending(false);
+    }
+  };
   const open = (next: Panel) => {
     if (panel === 'chat' || next === 'chat') setSeen(chat.chatMessages.length);
     setChoice(panel === next ? null : next);
@@ -935,14 +987,60 @@ function Classroom(
     />
   );
 
-  // The main tile: what the viewer pinned; else a shared screen; else a host's camera (the one speaking, if any), then
-  // anyone speaking, then any camera; with no camera on, the first host's (or the viewer's) initials.
+  // M03c T8: the whiteboard, while a host has one open (the main room only).
+  const board = inBreakout ? null : props.board;
+  const canDraw = host || (board?.studentsDraw === true && mayChat);
+  const mayDraw = useCallback(
+    (identity: string) => {
+      const sender = room.remoteParticipants.get(identity);
+      return sender !== undefined && (isHost(sender) || board?.studentsDraw === true);
+    },
+    [room, board?.studentsDraw],
+  );
+  const showError = useCallback((message: string) => setError(message), []);
+  // T16: whom the others follow on the board — the host who opened it, else a host in the room. While the room is
+  // recorded, the presenter's browser also sends the board as a video (decision 11).
+  const presenterOf = board
+    ? (participants.find((p) => p.identity === board.by && isHost(p)) ?? participants.find(isHost))
+    : undefined;
+  const presenter = presenterOf
+    ? { identity: presenterOf.identity, name: presenterOf.identity === me ? 'you' : nameOf(presenterOf) }
+    : null;
+
+  // M03c T16: what is being presented — the open board and every shared screen. The newest fills the stage and the
+  // others wait as tiles beside it; a viewer may put one of them on the stage (until something new is presented), and a
+  // pin still wins. The board stays loaded while it waits, so no stroke is missed.
+  const presentations = [...(board ? [BOARD] : []), ...screens.map(keyOf)];
+  const presented = presentations.join(' ');
+  const [order, setOrder] = useState<{ presented: string; newest: string[]; chosen: string | null }>({
+    presented: '',
+    newest: [],
+    chosen: null,
+  });
+  if (order.presented !== presented) {
+    const added = presentations.filter((k) => !order.newest.includes(k));
+    setOrder({
+      presented,
+      newest: [...order.newest.filter((k) => presentations.includes(k)), ...added],
+      chosen: added.length === 0 && order.chosen && presentations.includes(order.chosen) ? order.chosen : null,
+    });
+  }
+  const showing = order.chosen ?? order.newest.at(-1) ?? null;
+  const show = (key: string) => {
+    setPinned(null);
+    setOrder({ ...order, chosen: key });
+  };
+
+  // The main tile: what the viewer pinned; else the screen presented; else a host's camera (the one speaking, if any),
+  // then anyone speaking, then any camera; with no camera on, the first host's (or the viewer's) initials.
   const cameraOf = (p: Participant) => cameras.find((c) => c.participant.identity === p.identity);
   const pinnedTile = pinned === null ? undefined : [...screens, ...cameras].find((t) => keyOf(t) === pinned);
+  const boardShown = board !== null && pinnedTile === undefined && showing === BOARD;
+  const shownScreen = showing === null ? undefined : screens.find((t) => keyOf(t) === showing);
   const speakers = room.activeSpeakers;
   const main =
     pinnedTile ??
-    screens[0] ??
+    shownScreen ??
     [...speakers.filter(isHost), ...participants.filter(isHost), ...speakers, ...participants]
       .filter((p) => p.identity !== me || participants.length === 1)
       .map(cameraOf)
@@ -951,9 +1049,6 @@ function Classroom(
   const faces = cameras
     .filter((c) => (view.showSelf || c.participant.identity !== me) && (!view.hideNoVideo || cameraOn(c)))
     .sort(byPlace);
-  // Auto puts the faces beside a shared screen or a pinned tile (R1-A); Sidebar always.
-  const withStrip =
-    view.layout === 'sidebar' || (view.layout === 'auto' && (pinnedTile !== undefined || screens.length > 0));
   const mine = cameraOf(localParticipant);
   const latest = hands.at(-1);
   const toastKey = latest ? `${latest.identity}:${handOf(latest)}` : '';
@@ -982,54 +1077,171 @@ function Classroom(
     />
   );
 
-  // M03c T8: an open whiteboard takes the main tile, with the faces beside it.
-  const board = inBreakout ? null : props.board;
-  const canDraw = host || (board?.studentsDraw === true && mayChat);
-  const mayDraw = useCallback(
-    (identity: string) => {
-      const sender = room.remoteParticipants.get(identity);
-      return sender !== undefined && (isHost(sender) || board?.studentsDraw === true);
-    },
-    [room, board?.studentsDraw],
+  // T16: the presentation alone on the screen — the browser's full screen where it allows it, turned to landscape on a
+  // phone that can turn; elsewhere (an iPhone) the stage fills the window and asks for the phone to be turned. Leaving
+  // the browser's full screen (Esc) leaves it too.
+  const stageBox = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState(false);
+  const portrait = usePortrait();
+  const focus = () => {
+    setFocused(true);
+    const box = stageBox.current;
+    if (!box || !document.fullscreenEnabled) return;
+    // Refused full screen, or a phone that will not turn, still leaves the presentation filling the window.
+    void box
+      .requestFullscreen()
+      .then(() => (canFlip ? screen.orientation.lock?.('landscape') : undefined))
+      .catch(() => undefined);
+  };
+  const unfocus = () => {
+    setFocused(false);
+    if (document.fullscreenElement) void document.exitFullscreen();
+  };
+  useEffect(() => {
+    if (!focused) return;
+    const left = () => {
+      if (!document.fullscreenElement) setFocused(false);
+    };
+    document.addEventListener('fullscreenchange', left);
+    return () => document.removeEventListener('fullscreenchange', left);
+  }, [focused]);
+  const full = focused && (boardShown || shownScreen !== undefined);
+  const fullButton = (
+    <button
+      type="button"
+      onClick={full ? unfocus : focus}
+      aria-label={full ? 'Exit full screen' : 'Full screen'}
+      className="flex h-8 items-center gap-1.5 rounded-md bg-black/70 px-2.5 text-xs font-medium text-white ring-1 ring-white/10 hover:bg-black/85"
+    >
+      {full ? <CornersInIcon className="size-4" /> : <CornersOutIcon className="size-4" />}
+      <span className="max-sm:hidden">{full ? 'Exit full screen' : 'Full screen'}</span>
+    </button>
   );
-  const showError = useCallback((message: string) => setError(message), []);
 
-  let stage: ReactNode;
-  if (board) {
-    const others = faces.slice(0, wide ? 5 : 3);
-    stage = (
-      <div className="absolute inset-0 flex flex-col gap-2 px-2 pt-14 pb-20 lg:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg bg-white text-slate-900">
-          <Whiteboard canDraw={canDraw} host={host} mayDraw={mayDraw} onError={showError} />
+  // The board, header and all; it stays where it is in the page (hidden while another presentation is shown), so
+  // Excalidraw is not loaded again.
+  const boardStage = board && (
+    <div
+      className={cn(
+        'absolute inset-0 flex flex-col overflow-hidden bg-white text-slate-900',
+        !full && 'rounded-lg',
+        !boardShown && 'invisible',
+      )}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2 bg-slate-900 px-2.5 text-[0.8125rem] text-white">
+        <PencilSimpleLineIcon className="size-4 shrink-0" />
+        <span className="font-medium">Whiteboard</span>
+        {presenter && (
+          <span className="truncate text-white/60 max-sm:hidden">
+            · {presenter.identity === me ? 'you are presenting' : `${presenter.name} is presenting`}
+          </span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           {host && (
-            <div className="absolute top-3 right-3 z-10 flex items-center gap-2.5 rounded-md bg-black/75 px-3 py-1.5 text-[0.8125rem] text-white">
-              <label className="flex items-center gap-2">
-                {OTHERS[noun]} can draw
-                <Switch
-                  checked={board.studentsDraw}
-                  disabled={busy}
-                  onCheckedChange={(allowed) => void run(() => setBoardDrawing({ ...ref, allowed }))}
-                  className="data-[state=unchecked]:bg-white/20"
-                />
-              </label>
-              <span className="h-4 w-px bg-white/20" />
-              <button type="button" disabled={busy} onClick={() => void run(() => closeBoard(ref))}>
-                Close
-              </button>
-            </div>
+            <label className="flex items-center gap-2">
+              <span className="max-sm:hidden">{OTHERS[noun]} can draw</span>
+              <span className="sm:hidden">Others draw</span>
+              <Switch
+                checked={board.studentsDraw}
+                disabled={busy}
+                onCheckedChange={(allowed) => void run(() => setBoardDrawing({ ...ref, allowed }))}
+                className="data-[state=unchecked]:bg-white/20"
+              />
+            </label>
+          )}
+          {fullButton}
+          {host && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void run(() => closeBoard(ref))}
+              className="h-8 rounded-md px-2.5 text-xs font-medium hover:bg-white/10"
+            >
+              Close
+            </button>
+          )}
+        </span>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        <Whiteboard
+          canDraw={canDraw}
+          host={host}
+          presenter={presenter}
+          mayDraw={mayDraw}
+          capture={recording && presenter?.identity === me}
+          onError={showError}
+        />
+      </div>
+    </div>
+  );
+  // Presentations not on the stage, as tiles that put themselves there.
+  const waiting = presentations.filter((k) => !(k === BOARD ? boardShown : main && k === keyOf(main)));
+  const stripTile = 'relative aspect-video h-full shrink-0 lg:h-auto lg:w-full';
+  const waitingTiles = waiting.map((k) => {
+    const screenTrack = screens.find((t) => keyOf(t) === k);
+    const label = screenTrack ? `${nameOf(screenTrack.participant)}’s screen` : 'Whiteboard';
+    return (
+      <button
+        key={k}
+        type="button"
+        onClick={() => show(k)}
+        aria-label={`Show ${label === 'Whiteboard' ? 'the whiteboard' : label} on the stage`}
+        className={cn(stripTile, 'overflow-hidden rounded-lg text-left ring-1 ring-white/20 hover:ring-white/50')}
+      >
+        {screenTrack ? (
+          tile(screenTrack, 'absolute inset-0 pointer-events-none')
+        ) : (
+          <span className="grid size-full place-items-center bg-white text-slate-600">
+            <PencilSimpleLineIcon className="size-7" />
+            <span className="absolute bottom-2 left-2 rounded-sm bg-black/60 px-2 py-0.5 text-xs text-white">
+              Whiteboard
+            </span>
+          </span>
+        )}
+      </button>
+    );
+  });
+
+  // The stage. A presentation, a pin or Sidebar puts the main tile large with the faces and waiting presentations
+  // beside it (below it on a phone), scrolling, so nobody disappears while someone presents (R1-A); Spotlight and full
+  // screen show the main tile alone; Tiled shows everyone the same size, a pinned tile or screen taking four cells.
+  const presenting = presentations.length > 0;
+  const stripped =
+    board !== null ||
+    view.layout === 'sidebar' ||
+    (view.layout === 'auto' && (pinnedTile !== undefined || presenting)) ||
+    (view.layout === 'spotlight' && presenting);
+  let stage: ReactNode;
+  if (stripped) {
+    const others = faces.filter((t) => !main || keyOf(t) !== keyOf(main));
+    const strip = !full && view.layout !== 'spotlight' && (waitingTiles.length > 0 || others.length > 0);
+    stage = (
+      <div
+        className={cn(
+          'absolute inset-0 flex flex-col gap-2 lg:flex-row',
+          // In full screen the bar stays below the presentation, for the microphone and Leave.
+          full ? 'pb-18' : 'px-2 pt-14 pb-20',
+        )}
+      >
+        <div className="relative min-h-0 min-w-0 flex-1">
+          {boardStage}
+          {!boardShown && main && tile(main, 'absolute inset-0', true)}
+          {!boardShown && shownScreen && main === shownScreen && (
+            <div className="absolute right-2 bottom-2 z-10">{fullButton}</div>
           )}
         </div>
-        {others.length > 0 && (
-          <div className="flex h-20 shrink-0 gap-2 overflow-hidden sm:h-24 lg:h-auto lg:w-56 lg:flex-col">
-            {others.map((t) => tile(t, 'relative aspect-video h-full shrink-0 lg:h-auto lg:w-full'))}
+        {strip && (
+          <div className="flex h-20 shrink-0 gap-2 overflow-x-auto sm:h-24 lg:h-auto lg:w-56 lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto">
+            {waitingTiles}
+            {others.map((t) => tile(t, stripTile))}
           </div>
         )}
       </div>
     );
   } else if (view.layout === 'tiled') {
-    // Everyone the same size; a pinned tile or a shared screen takes four cells.
-    const big = pinnedTile ?? screens[0];
-    const all = [...(big ? [big] : []), ...[...screens, ...faces].filter((t) => !big || keyOf(t) !== keyOf(big))];
+    // Everyone the same size; a pinned tile takes four cells.
+    const big = pinnedTile;
+    const all = [...(big ? [big] : []), ...faces.filter((t) => !big || keyOf(t) !== keyOf(big))];
     const cap = wide ? 16 : 6;
     const shown = all.length > cap ? all.slice(0, cap - 1) : all;
     const more = all.length - shown.length;
@@ -1045,28 +1257,6 @@ function Classroom(
       >
         {shown.map((t) => tile(t, cn('relative', t === big && cols > 1 && 'col-span-2 row-span-2'), t === big))}
         {more > 0 && <MoreTile more={more} onClick={() => open('people')} />}
-      </div>
-    );
-  } else if (withStrip) {
-    // The main tile large, the faces beside it (below it on a phone), so nobody disappears while someone presents.
-    const others = faces.filter((t) => !main || keyOf(t) !== keyOf(main));
-    const cap = wide ? 5 : 3;
-    const shown = others.length > cap ? others.slice(0, cap - 1) : others;
-    stage = (
-      <div className="absolute inset-0 flex flex-col gap-2 px-2 pt-14 pb-20 lg:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1">{main && tile(main, 'absolute inset-0', true)}</div>
-        {others.length > 0 && (
-          <div className="flex h-20 shrink-0 gap-2 overflow-hidden sm:h-24 lg:h-auto lg:w-56 lg:flex-col">
-            {shown.map((t) => tile(t, 'relative aspect-video h-full shrink-0 lg:h-auto lg:w-full'))}
-            {others.length > shown.length && (
-              <MoreTile
-                more={others.length - shown.length}
-                onClick={() => open('people')}
-                className="aspect-video h-full shrink-0 lg:h-auto lg:w-full"
-              />
-            )}
-          </div>
-        )}
       </div>
     );
   } else {
@@ -1091,10 +1281,22 @@ function Classroom(
   return (
     <>
       <div className="relative flex min-w-0 flex-1 flex-col p-2 sm:p-3">
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-white/4">
+        <div
+          ref={stageBox}
+          className={cn(
+            'relative min-h-0 flex-1 overflow-hidden rounded-lg bg-white/4',
+            full && 'fixed inset-0 z-50 rounded-none bg-(--lk-bg)',
+          )}
+        >
           {stage}
 
-          <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-3">
+          {full && canFlip && portrait && (
+            <p className="pointer-events-none absolute top-12 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/80 px-3 py-1.5 text-xs whitespace-nowrap text-white">
+              <DeviceRotateIcon className="size-4" /> Turn your phone sideways for a bigger view
+            </p>
+          )}
+
+          <div className={cn('absolute inset-x-3 top-3 flex items-start justify-between gap-3', full && 'hidden')}>
             <div className="flex min-w-0 items-center gap-2.5 rounded-md bg-black/60 py-1 pr-3 pl-1 text-[0.8125rem] ring-1 ring-white/10">
               <button
                 type="button"
@@ -1278,13 +1480,21 @@ function Classroom(
                   .catch(() => setError('Your camera could not start.'))
               }
             />
-            <MediaToggle
-              source={Track.Source.ScreenShare}
-              on={<MonitorArrowUpIcon />}
-              off={<MonitorArrowUpIcon />}
-              locked={may(Track.Source.ScreenShare) ? undefined : lockedBy(noun, 'screen sharing')}
+            <RoundButton
+              label={
+                may(Track.Source.ScreenShare)
+                  ? sharing
+                    ? 'Stop sharing your screen'
+                    : 'Share your screen'
+                  : lockedBy(noun, 'screen sharing')
+              }
+              pressed={sharing}
+              onClick={() => void share()}
+              disabled={sharePending || !may(Track.Source.ScreenShare)}
               className="max-sm:hidden"
-            />
+            >
+              <MonitorArrowUpIcon />
+            </RoundButton>
             {!host && !inBreakout && (
               <RoundButton
                 label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
@@ -1981,7 +2191,7 @@ function MediaToggle({
   turnOn,
   className,
 }: {
-  source: Track.Source.Microphone | Track.Source.Camera | Track.Source.ScreenShare;
+  source: Track.Source.Microphone | Track.Source.Camera;
   on: ReactNode;
   off: ReactNode;
   // Why a host has turned this off for students, if they have.
@@ -1991,23 +2201,16 @@ function MediaToggle({
   className?: string;
 }) {
   const { enabled, pending, toggle } = useTrackToggle({ source });
-  const what = source === Track.Source.Microphone ? 'microphone' : source === Track.Source.Camera ? 'camera' : 'screen';
-  const label =
-    locked ??
-    (source === Track.Source.ScreenShare
-      ? enabled
-        ? 'Stop sharing your screen'
-        : 'Share your screen'
-      : `Turn ${enabled ? 'off' : 'on'} your ${what}`);
+  const what = source === Track.Source.Microphone ? 'microphone' : 'camera';
+  const label = locked ?? `Turn ${enabled ? 'off' : 'on'} your ${what}`;
   return (
     <RoundButton
       label={label}
-      pressed={source === Track.Source.ScreenShare && enabled}
       onClick={() => (!enabled && turnOn ? turnOn() : void toggle())}
       disabled={pending || locked !== undefined}
-      className={cn(source !== Track.Source.ScreenShare && !enabled && 'bg-red-500/20 text-red-300', className)}
+      className={cn(!enabled && 'bg-red-500/20 text-red-300', className)}
     >
-      {enabled || source === Track.Source.ScreenShare ? on : off}
+      {enabled ? on : off}
     </RoundButton>
   );
 }

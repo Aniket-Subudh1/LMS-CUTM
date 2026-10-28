@@ -3418,3 +3418,50 @@ Aniket: "in mobile the default back camera opens but we need to open front as de
 - `npm run check` → exit 0, `Tests 650 passed (650)`.
 - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
 - The screens are walked with T16–T17 in T18. A real phone's front camera and Flip are for Aniket to try.
+
+### 2026-10-28 · M03c/T16 The stage: the board and shared screens together, full screen, following the presenter, the laser, the board in recordings · Claude Code, at Aniket's request
+
+Aniket: "if canvas is open and someone shares screen then until we close canvas the other screen don't show … there is no option for canvas whiteboard full screen and all the things like highlight should be properly visible to participant and should be in landscape view in mobile as we draw in laptop in landscape". Later: "add the white board full screen option as well".
+
+What the code did:
+- With the board open, the stage drew only the board and the faces, so a shared screen never showed.
+- Each viewer had their own view of the board, so a phone in portrait saw a sliver of what the laptop drew.
+- The laser and pointer stayed on the presenter's screen.
+- Full screen was the whole page from More.
+- A stroke that failed to send was never sent again.
+
+**Created**
+- **`components/live-room.tsx`:**
+  - **Presentations:** the board and every shared screen.
+    - The newest fills the stage; the others wait as tiles at the start of the strip.
+    - A tap puts one on the stage until something new is presented. A pin still wins.
+    - The board stays loaded, only hidden, while another is shown.
+    - The strip scrolls instead of stopping at five faces.
+  - **The board's strip:** "Whiteboard · <name> is presenting", for hosts "Others can draw" and Close, and Full screen for everyone. These used to cover Excalidraw's own tools.
+  - **Full screen** on the board and on a shared screen:
+    - the browser's full screen of the stage where allowed, the window otherwise (an iPhone), with the bar kept below;
+    - `screen.orientation.lock('landscape')` on a phone or tablet, and "Turn your phone sideways" while it is upright (A-226);
+    - Esc leaves it.
+  - **Sharing a screen** is started and stopped by the room (`createScreenTracks`, then unpublishing the room's own share), because LiveKit's toggle would take the board's recorded video for a shared screen.
+- **`components/whiteboard.tsx`:**
+  - **Following the presenter:** the presenter (who opened the board, else a host in the room) sends the part of the board in view. The others fit it to their screen, so a phone sees the laptop's view, scaled. Panning or zooming stops following, and "Follow <name>" resumes it.
+  - **Pointers and the laser** reach everyone as Excalidraw collaborators (lossy data messages, `whiteboard-pointer`).
+  - **Sync:** an element is marked as sent only once it has gone. The stream handler is registered once, so allowing others to draw no longer resends the board.
+  - **In a recording:** while the room is recorded, the presenter's browser sends a 1280 × 720, 10 fps copy of the board as a video named `whiteboard`, which Egress records as a shared screen (decision 11, A-227).
+- **Data:** `RoomBoard { studentsDraw, by }` on the class's, meeting's and link's reads (`lib/data/live.ts`, `lib/data/meetings.ts`), and `BOARD_TRACK` in `lib/schemas/live.ts`.
+- **Tests:** `tests/integration/meetings.test.ts`, the board's `by`.
+- **Docs:** 05 (`board.by`), 06 §8.8 (view, pointers, the recorded board), 08 (`LiveRoom`, `Whiteboard`).
+
+**Not done**
+- The bar's buttons and pop-ups come in T17.
+- The board's drawing is still not stored (A-204): a host who reloads alone starts from a blank board.
+- The laser's trail is not in the recording (A-227).
+
+**Assumptions** — A-226, A-227 (from T12).
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 650 passed (650)`.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
+- In the browser: walked in T18.

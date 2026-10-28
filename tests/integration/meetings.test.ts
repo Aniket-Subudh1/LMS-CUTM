@@ -938,11 +938,13 @@ describe('the whiteboard (M03c T8)', () => {
     expect(await openBoard({ ...ref, studentsDraw: false })).toMatchObject({ ok: true });
     expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'board', 'opened');
     await signInAs(w.taught);
-    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: false });
-    expect((await getMeetingLink(token)).board).toEqual({ studentsDraw: false });
+    // T16: who opened it is the presenter the others follow.
+    const by = String(w.faculty._id);
+    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: false, by });
+    expect((await getMeetingLink(token)).board).toEqual({ studentsDraw: false, by });
     await signInAs(w.colleague);
     expect(await setBoardDrawing({ ...ref, allowed: true })).toMatchObject({ ok: true });
-    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: true });
+    expect((await getMeetingRoom(id)).board).toEqual({ studentsDraw: true, by });
     expect(await closeBoard(ref)).toMatchObject({ ok: true });
     expect((await getMeetingRoom(id)).board).toBeNull();
     expect(tell).toHaveBeenCalledWith(`ls-${id}`, 'board', 'closed');

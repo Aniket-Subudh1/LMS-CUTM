@@ -113,6 +113,8 @@ export const breakoutRoomName = (roomName: string, room: number) => (room === 0 
 // --- The whiteboard (M03c T8): a host opens it on the stage and lets the others draw, or only watch. ---
 
 export const OpenBoard = z.object({ sessionId: objectId, studentsDraw: z.boolean().default(false) });
+// T16 (decision 11): the name of the video a presenter's browser sends of the board while the room is recorded.
+export const BOARD_TRACK = 'whiteboard';
 export const BoardDrawing = z.object({ sessionId: objectId, allowed: z.boolean() });
 
 // --- Meetings (M03c T4) ---

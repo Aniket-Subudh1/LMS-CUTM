@@ -14,6 +14,7 @@ import {
   toRow,
   type LiveSessionRow,
   type RecordingRow,
+  type RoomBoard,
   type RoomBreakout,
   type RoomControls,
   type RoomPoll,
@@ -344,7 +345,7 @@ export type MeetingRoom = {
   canRecord: boolean;
   polls: RoomPoll[];
   breakout: RoomBreakout | null;
-  board: { studentsDraw: boolean } | null;
+  board: RoomBoard | null;
   invited: number;
   canStartAt: Date;
 };
@@ -381,7 +382,7 @@ export async function getMeetingRoom(meetingId: string): Promise<MeetingRoom> {
     canRecord: live && host && recordingEnabled(),
     polls,
     breakout,
-    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw, by: String(doc.board.by) } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
   };
@@ -430,7 +431,7 @@ export type MeetingLink = {
   join: { serverUrl: string; token: string } | null;
   // T15 (A-225): the polls as someone taking part sees them, while they are in.
   polls: RoomPoll[];
-  board: { studentsDraw: boolean } | null;
+  board: RoomBoard | null;
   invited: number;
 };
 
@@ -468,7 +469,7 @@ export async function getMeetingLink(token: string): Promise<MeetingLink> {
         })
       : null,
     polls: inside ? await roomPolls(doc, person.id, false) : [],
-    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
+    board: live && doc.board ? { studentsDraw: doc.board.studentsDraw, by: String(doc.board.by) } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
   };
 }
