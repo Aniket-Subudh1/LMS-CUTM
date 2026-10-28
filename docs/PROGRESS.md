@@ -31,7 +31,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M06 Continuous evaluation | Done — awaiting human validation | | Entry 2026-10-23 · M06. Q-41 answered 23 Oct 2026; mock-up picks in the milestone file. CE-10 specifics: Q-06; attendance source: Q-58 |
 | M07 Projects | Done — awaiting human validation. GitHub not yet tried with a real App | | Entry 2026-10-23 · M07. Decisions and mock-up picks in the milestone file; GitHub on Aniket's test App until Q-22; PRJ-10: Q-03 |
 | M08 Exam integration & grade sheet | Done — awaiting human validation. T7 (exam-system API) not built: Q-04 | | Decisions in `docs/milestones/M08-exam-integration-grades.md`. API: Q-04; grade table: Q-39, Q-40 |
-| M09 Attainment & AI tagging | In progress — decisions and plan (24 Oct 2026); mock-ups picked (A1 A by default); T1–T7 being built | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
+| M09 Attainment & AI tagging | Done — awaiting human validation. Committed on main on 28 Oct 2026, not pushed | | Decisions in `docs/milestones/M09-attainment-ai.md`. Formula sign-off: Q-07 |
 | M10 Engagement & dashboards | Not started | | Q-26 |
 | M11 Hardening & launch | Not started | | Hosting: Q-12 |
 
@@ -99,6 +99,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | Q-54 | Camera snapshots are deleted `snapshotRetentionDays` after a test's results are published (05 §8). A test whose results are never published keeps them. Should they also go a set time after the test closes? | @client | Kept until results are published, then the retention period | — | Open |
 | Q-58 | Most CUTM classes are in person. Should the theory attendance part (5 marks) come only from attendance recorded in the LMS — live classes, and in-person classes a teacher records as manual-attendance classes — or will attendance come from another system? | @client | LMS attendance only (A-162) | — | Open |
 | Q-59 | The file for the exam section shows internal marks at 2 dp (28.53), but a grade sheet adds the unrounded internal (28.5333…) to the external mark, since 07 §1 rounds only once, at the course percentage. A component total can then differ from the exam section's own sum in the second decimal. Should grade sheets use the 2 dp internal the exam section saw? | @client / @dev | Unrounded (07 §1) | — | Open |
+| Q-60 | `next build`'s standalone output copies `.env` into `.next/standalone`, and the server loads it after `.env.e2e`, so `npm run start:e2e` gets every variable `.env.e2e` lacks from the developer's `.env` — `OPENAI_API_KEY` among them. The e2e app can therefore call OpenAI (the AI buttons show there). Should `start:e2e` keep the dev `.env` out? | @dev | As is; no e2e spec presses an AI button | — | Open |
 | Q-36 | After the first publish, a teacher's saved edits to the plan and calendar show on the Overview at once; publishing again only notifies and emails students (05 §3.8 keeps one plan per offering, no draft copy). Should students see only the last published version instead? That needs a draft copy of the plan and calendar | @client | As built: saved edits are visible; the Course plan page says so before publishing again (A-49) | — | Open |
 
 ## 4. Assumptions register
@@ -332,6 +333,11 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-225 | Guests answer polls and raise hands; a guest's answer is kept against their guest id, as a member's against their account | M03c (fixes) | — |
 | A-226 | An iPhone cannot turn the page to landscape by itself: in full screen the board fills the window and asks to be turned sideways | M03c (fixes) | — |
 | A-227 | The board in a recording is the presenter's view at 10 frames a second, without the laser's trail or the cursors | M03c (fixes) | — |
+| A-228 | "Suggest levels (AI)" puts the cells the AI names into the grid and leaves the others as they were, as mock-up A4 draws it; it never clears a cell | M09 | — |
+| A-229 | The Outcomes tab's "Students" tile counts the class's students from the end-semester rows (with and without marks); before any end-semester marks it is the most students assessed on one CO, since the record keeps no enrolment count | M09 | — |
+| A-230 | Reports' sidebar item opens `/reports`, which goes to Continuous evaluation; the item stays lit on both tabs | M09 | — |
+| A-231 | Reports › Attainment lists every programme for an admin (archived ones too) and a head of department's own department's; without a choice it opens on the first programme by code, its newest batch and every term | M09 | — |
+| A-232 | Only admins get links to the programmes' pages for codes the AI was not asked about (those pages are admin-only); a coordinator is told an administrator adds the titles | M09 | Q-43 |
 
 ## 5. Log
 
@@ -3207,3 +3213,69 @@ Request (28 Oct 2026): invited people do not get a link they can use; someone wi
 **Open questions** — none new.
 
 **Verification** — Docs only; nothing to run.
+
+### 2026-10-28 · M09/T3, T4, T6, T7 The screens, the e2e test, and the milestone · Claude Code, at Aniket's request
+
+Request: "plan and complete m9". The plan (T3, T4, T6, T7 and this report) was approved before building; the mock-up images (A1–A6) were pulled from the mock-up page and each screen built against them.
+
+**Created** (*changed*)
+- **Outcomes tab (T3, mock-ups A1 A and A2):** *`app/(app)/courses/[offeringId]/outcomes/page.tsx`*.
+  - For whoever teaches or oversees the class, above what the tab showed before: "Worked out <time> by <name> with: …" from the record's own settings, "Work it out again" (teachers and admins) and Print.
+  - Tiles: COs met, students, SEE marks, SEE level.
+  - Each CO's attained, CIE %, CIE and SEE levels as chips, its value as a bar out of 3, the target and Met / Not met; how it is worked out in one sentence; the warnings under "Worth knowing".
+  - "Outcomes reached": the grid of the record's own map with an Attainment row.
+  - Before the first run, a sentence on what works it out. Students see the tab as before.
+  - *`components/co-po-matrix.tsx`*: `attainment?` on `CoPoMatrix` and `MatrixFrame` (amber below the target).
+  - On paper: *`components/tab-nav.tsx`* and the workspace's cover button (*`app/(app)/courses/[offeringId]/layout.tsx`*) are hidden, and so are the outcomes editor and the buttons.
+- **Reports › Attainment (T4, mock-up A5):**
+  - `app/(app)/reports/layout.tsx` (`TabNav`: Continuous evaluation · Attainment);
+  - `app/(app)/reports/page.tsx` (goes to Continuous evaluation);
+  - *`components/app-nav.tsx`* (Reports → `/reports`);
+  - `app/(app)/reports/attainment/page.tsx`: programme, batch, term ("All terms"), Print, four tiles, a row per course with its terms and sections, "Not worked out yet · open its Outcomes tab", the programme row and "Against the target".
+  - *`lib/data/attainment-views.ts`*: `getAttainmentFilters` (A-231); `ProgramAttainment.courses[].sections`.
+- **AI suggestions (T6, mock-ups A3, A4):**
+  - `components/suggest-outcomes.tsx` (`SuggestOutcomes`, a required client boundary in `QuestionDialog`): sends the dialog's form as it stands, ticks the outcomes, picks the Bloom level, and says "Suggested by AI — review, then Save" with the reason.
+  - *`components/question-dialog.tsx`* (`ai`), *`assessment-builder.tsx`*, *`question-bank.tsx`*.
+  - *`components/co-po-editor.tsx`* (`suggest`): "Suggest levels (AI)" beside Discard; the cells go into the grid as unsaved changes, each with an "AI" mark; the reasons and the codes not asked about follow (A-228, A-232).
+  - *`components/course-outcomes.tsx`* (`offeringId`).
+  - Whether the buttons show: `aiReady` on *`lib/data/courses.ts`*'s `OfferingCourse` and `CatalogCourse` (and `EditableCourse`), and on *`lib/data/assessments.ts`*'s `Builder`.
+  - *`app/(app)/catalog/actions.ts`*: `suggestCoMap` also returns `titlesAt` for admins.
+- **Tests (T7):**
+  - `tests/e2e/outcomes.spec.ts`;
+  - *`scripts/seed.ts`* (e2e): CUTM1602 A gets "Outcomes quiz (seeded)", one question per CO, a marked attempt per student, end-semester marks for 19 of 20, and its attainment record removed;
+  - *`tests/integration/attainment.test.ts`* (+2: a missed fixed-question test; the report's filters);
+  - *`tests/integration/ai-suggestions.test.ts`* (`titlesAt`).
+- **Docs:** 06 §4.7 (the M09 actions' answers and the `aiReady` reads); 08 (the route rows for the Outcomes tab and Reports, and §5.2: `TabNav`, `PrintButton`, `CoPoMatrix`, `CoPoEditor`, `CourseOutcomes`, `QuestionDialog`, `SuggestOutcomes` new); this file (§2, Q-60, A-228–A-232).
+- Commits: `9df4a57` (T3, T4), `618d741` (T6), `e646052` (the suggestion button's place), `7eb193d` (T7), and this report.
+
+**Not done**
+- The validation checklist is the client's and the faculty's: Q-07, a real course against the department's sheet, and ten real questions.
+- The exam-system API (M08 T7, Q-04) is not M09's.
+
+**Assumptions** — A-228–A-232 (§4).
+
+**Open questions** — Q-60 (§3).
+
+**Verification**
+- **Where it ran.** Another session was editing the same working tree during this work (the meeting fixes: guest lobby, recordings), and `next build` of the working tree failed on its unfinished changes ("Export askToJoin doesn't exist", and three more). So every check below ran in a separate git worktree at the committed `main` (`7eb193d`), with none of that session's uncommitted files. Its staged rename (`lib/auth/guest-link.ts` → `meeting-link.ts`) was kept out of these commits, and left staged as it was.
+- `npm run check` → exit 0, `Tests 648 passed (648)`.
+- `npm run test:integration` → `Test Files 29 passed (29)`, `Tests 349 passed (349)`.
+- `npm run check:bundle` → `check-bundle: 320 files scanned for 4 names and 6 secret values; clean`.
+- `npm run build && npm run db:seed:e2e && npx playwright test outcomes marks` → `2 passed (26.6s)`.
+  - The other specs were not run: no Mailpit, RustFS or LiveKit runs on this machine, and auth, content, results, exams, live and proctoring need them.
+  - Values on the e2e database include the published tests that earlier e2e runs left on CUTM1602; the spec checks the values are there, not the seed's numbers.
+- **Seen at 1440 and 390 px on the e2e server**, against the mock-ups:
+  - the Outcomes tab as faculty1 and as the head of department, with its print preview (Chromium's print media);
+  - Reports › Attainment as the head of department.
+  - Phones scroll the tables inside their cards.
+- **The AI buttons, tried on the e2e server with fixture data only** (the course's outcome statements and a made-up question; no student data). The key reached it through Q-60.
+  - "Suggest levels (AI)": 17 unsaved cells, each marked, with their reasons.
+  - "Suggest outcomes (AI)": CO2 ticked, Understand selected, and the reason shown.
+  - Nothing was saved.
+- **Acceptance criteria:**
+  - **AC-M09-01** — the documented dataset gives CO1 2.5, CO2 2, CO3 2 and PO1 2.21, PO2 2.08, PO3 2, PSO1 2, PSO3 2.25, with the rest null (integration, through the real worker). Passed.
+  - **AC-M09-02** — importing end-semester marks recomputes the offerings the file touched (integration). Passed.
+  - **AC-M09-03** — a CO never assessed is null with a warning (integration). Passed. The tab shows the warnings under "Worth knowing", and a CO without CIE as "Not assessed".
+  - **AC-M09-04** — the briefs hold no seeded name, email or roll number, and the question and the map are unchanged after a suggestion (integration). Passed. Tried by hand as well: the suggestions stayed unsaved changes.
+  - **AC-M09-05** — 0.4 / 0.6 gives CO1 2.4, and the record states the settings used (integration). Passed. The tab prints them in "Worked out … with: …".
+
