@@ -4,12 +4,10 @@ import Link from 'next/link';
 import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
-  ArrowRightIcon,
   CheckIcon,
   DownloadSimpleIcon,
   FileArrowUpIcon,
   TrendDownIcon,
-  TrendUpIcon,
   UserMinusIcon,
   UserPlusIcon,
   UsersThreeIcon,
@@ -22,6 +20,7 @@ import { addStudent, changeEnrollments, setEnrollmentStatus } from '../../action
 import { requestEngagement } from './actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
 import { DataTable } from '@/components/data-table';
+import { EngagementMark } from '@/components/engagement-mark';
 import { FilterForm } from '@/components/filter-form';
 import { FormDialog } from '@/components/form-dialog';
 import { PageIcon } from '@/components/page-icon';
@@ -354,11 +353,7 @@ function columns(roster: Roster, workspace: Workspace) {
       header: 'Engagement',
       cell: (s) =>
         s.engagement ? (
-          <span className="flex items-center gap-2 whitespace-nowrap">
-            <b className="w-6 text-right tabular-nums">{s.engagement.score ?? '—'}</b>
-            {s.engagement.band && <Badge variant={statusTone(s.engagement.band)}>{s.engagement.band}</Badge>}
-            <TrendMark trend={s.engagement.trend} />
-          </span>
+          <EngagementMark score={s.engagement.score} band={s.engagement.band} trend={s.engagement.trend} />
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -439,23 +434,6 @@ function Share({ pct, detail, short = false }: { pct: number | null; detail?: st
       <Progress value={pct} className="bg-muted h-1.5 w-16" aria-hidden="true" />
       <span className={cn('tabular-nums', short && 'text-warning font-medium')}>{formatPct(pct)}</span>
       {detail && <span className="text-muted-foreground text-xs tabular-nums">{detail}</span>}
-    </span>
-  );
-}
-
-function TrendMark({ trend }: { trend: EngagementTrend }) {
-  const label = ENGAGEMENT_TREND_LABEL[trend];
-  if (trend === 'new') return <span className="text-muted-foreground text-xs">{label}</span>;
-  const Mark = trend === 'rising' ? TrendUpIcon : trend === 'falling' ? TrendDownIcon : ArrowRightIcon;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 text-xs',
-        trend === 'rising' ? 'text-success' : trend === 'falling' ? 'text-destructive' : 'text-muted-foreground',
-      )}
-    >
-      <Mark className="size-3.5" aria-hidden="true" />
-      {label}
     </span>
   );
 }

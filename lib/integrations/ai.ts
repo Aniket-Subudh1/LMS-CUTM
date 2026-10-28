@@ -6,12 +6,13 @@ import { AppError } from '@/lib/errors';
 import { log } from '@/lib/log';
 import type { AutoParseableTextFormat } from 'openai/lib/parser';
 import type { z } from 'zod';
-import { CoMapSuggestion, ItemTagSuggestion } from '@/lib/schemas/ai';
+import { CoMapSuggestion, EngagementExplanation, ItemTagSuggestion } from '@/lib/schemas/ai';
 import { AiDrafts, type AiDraft } from '@/lib/schemas/bank';
 
 // 06 §4.7. Only this file talks to the AI (OpenAI, Aniket's choice of 18 Oct 2026 for cost). It is sent what a teacher
-// types for it and the course's outcome statements, never anything about a student (09 §12); what comes back is a
-// suggestion a person reviews before it is used. The model is the OPENAI_MODEL setting.
+// types for it, the course's outcome statements and (M10) a student's engagement numbers under plain labels, never a
+// name, roll number or email (09 §12); what comes back is a suggestion or a summary a person reads, which changes
+// nothing by itself. The model is the OPENAI_MODEL setting.
 
 let client: OpenAI | undefined;
 
@@ -128,6 +129,26 @@ export async function suggestCoMap(input: {
     return [{ co, outcome, level, rationale: cell.rationale.trim().slice(0, 200) }];
   });
   return cells.length > 0 ? cells : null;
+}
+
+// M10 T5 (ENG-02, ADR-16): a summary of one student's engagement numbers, as the milestone wrote its instructions.
+const EXPLAIN = `Explain to a university teacher, in at most 120 words and plain language, what these engagement numbers
+suggest and which one or two signals most need attention. Do not speculate about causes outside the data. Do not judge
+the student.`;
+
+export async function explainEngagement(input: {
+  metrics: Record<string, number>;
+  band: string;
+  trend: string;
+}): Promise<string | null> {
+  const brief = [
+    ...Object.entries(input.metrics).map(([label, value]) => `${label}: ${value}`),
+    `band: ${input.band}`,
+    `trend: ${input.trend}`,
+  ].join('\n');
+  const answer = await ask('explainEngagement', EXPLAIN, brief, zodTextFormat(EngagementExplanation, 'summary'), 1_000);
+  const summary = answer?.summary.trim();
+  return summary ? summary.slice(0, 1_200) : null;
 }
 
 // One structured request (06 §4.7): null when the AI declines or its answer does not fit the format; an AppError when

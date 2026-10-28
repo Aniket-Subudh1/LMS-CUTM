@@ -13,6 +13,8 @@ export const ItemTagSuggestion = z.object({
 export const CoMapSuggestion = z.object({
   cells: z.array(z.object({ co: z.string(), outcome: z.string(), level: z.number(), rationale: z.string() })),
 });
+// M10 T5: the drill-down's "Explain with AI".
+export const EngagementExplanation = z.object({ summary: z.string() });
 
 // The question dialog's own fields: in the builder its test, in a course bank its class (the bank of the course).
 export const SuggestItemTags = z

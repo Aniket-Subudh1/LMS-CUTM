@@ -169,7 +169,7 @@ aiConfigured(): boolean // OPENAI_API_KEY is set (M04b)
 draftQuestions(input: { topic: string; count: number; type: 'mcq' | 'msq' | 'true_false' | 'numeric' | 'text'; level: 'mixed' | 'easy' | 'medium' | 'hard'; cos: { code: string; statement: string }[] }): Promise<AiDraft[] | null> // M04b, TP-10: AiDrafts in lib/schemas/bank.ts; 16,000 output tokens
 suggestItemTags(input: { promptText: string; cos: { code: string; statement: string }[] }): Promise<{ coCodes: string[]; bloomLevel: BloomLevel; rationale: string } | null> // M09: ItemTagSuggestion in lib/schemas/ai.ts; codes not in `cos` dropped, none left → null
 suggestCoMap(input: { cos: { code: string; statement: string }[]; outcomes: { code: string; title: string }[] }): Promise<{ co: string; outcome: string; level: 1 | 2 | 3; rationale: string }[] | null> // M09: CoMapSuggestion; only titled outcomes are passed (M09 decision 2); unknown codes and repeated pairs dropped, none left → null
-explainEngagement(input: { metrics: Record<string, number>; band: string; trend: string }): Promise<string | null>
+explainEngagement(input: { metrics: Record<string, number>; band: string; trend: string }): Promise<string | null> // M10 T5: EngagementExplanation { summary } in lib/schemas/ai.ts; 1,000 output tokens; the text trimmed to 1,200 characters, empty → null. Called by explainStudentEngagement (lib/data/engagement-views.ts: 30 an hour per viewer, key `ai`) with engagementMetrics(view) — counts, percentages and the class's P90s under plain labels, never a name, roll number, email or course
 ```
 Reference call shape (type-checked against SDK 7.27.0; OpenAI replaced Anthropic on 18 Oct 2026, Aniket's choice for cost):
 ```ts

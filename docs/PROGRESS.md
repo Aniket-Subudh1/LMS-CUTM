@@ -3771,3 +3771,26 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 
 **Verification**
 - `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems. The screens are walked with T8.
+
+### 2026-10-28 · M10/T5 The student drill-down · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- `lib/data/engagement-views.ts`: `getStudentEngagement(offeringId, studentId)` (404 for `learn`, an invalid id, or someone not enrolled in the class), which works the student's engagement out now (`computeOfferingEngagement(…, studentId)`) and reads the records behind it — the daily counters in the period, the live classes with attendance taken, the assessments that closed with the first hand-in, every published video with what was watched, the internal marks on a credit course and the student's project; `engagementMetrics(view)`, the numbers the AI is told; `explainStudentEngagement(view)` (rate limit `ai`, 30 an hour per viewer; an `AppError` becomes the reason shown).
+- *`lib/integrations/ai.ts`*: `explainEngagement`, with the milestone's instructions word for word; *`lib/schemas/ai.ts`*: `EngagementExplanation`.
+- `app/(app)/courses/[offeringId]/people/[studentId]/page.tsx`: the drill-down (08 §2 row).
+- `components/trend-chart.tsx` (moved out of the Marks page, its second route) and `components/engagement-mark.tsx` (the score, band and trend, also on the People tab); *the Marks and People pages* import them.
+- *06 §4.7*, *08 §2* and *08 §5.2* (`TrendChart`, `EngagementMark`, `BarChart`'s call sites).
+
+**Not done** — T6–T8 follow.
+
+**Assumptions**
+- The milestone asks for daily activity as a `TrendChart`, but that chart draws percentages on 0–100 %; minutes a day are a `BarChart` (already shared), so no new chart was written.
+- The milestone says the drill-down reuses the class's P90s from the snapshot; the snapshot does not store them, so the drill-down reads the class's daily counters whole for them (one aggregation on `{ offeringId, day }`) and everything else for the one student.
+- "Assessment timeline (% per published assessment with the M06 trend)" is the internal mark's `points` and `trend` (the published percentages M06 keeps), shown with `TrendChart`; a skill course has no internal marks, so it shows only the hand-in list.
+- "Project metrics" is the student's project with a link to its page, where the commit metrics or the board already are, rather than a second copy of them.
+- A dropped student's page still opens for staff, says they are not counted and shows their records.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx next typegen` then `npx tsc --noEmit` → exit 0; `npx eslint` and `npx prettier --check` on the changed files → no problems. The page is walked with T8.
