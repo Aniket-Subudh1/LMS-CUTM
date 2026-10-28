@@ -3794,3 +3794,23 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 
 **Verification**
 - `npx next typegen` then `npx tsc --noEmit` → exit 0; `npx eslint` and `npx prettier --check` on the changed files → no problems. The page is walked with T8.
+
+### 2026-10-28 · M10/T6 The engagement report · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`lib/data/engagement-views.ts`*: `getEngagementReport({ termId, departmentId, category }, page)` (HoD and admin; a HoD's own department, an admin's choice): the term's offerings that are not drafts, ten a page by title, with one `$group` over active `enrollments` (index `{ offeringId, status }`) for the tiles and one for the page — students, average score, high/medium/low and falling, from the nightly snapshot. Non-credit offerings on the page add lesson completion and quizzes attempted per active student (published lessons, quiz assessments, then one aggregation each over `lessonProgress` and `submissions`).
+- `app/(app)/reports/engagement/page.tsx`; *`app/(app)/reports/layout.tsx`*: the Engagement tab.
+- *08 §2* (the route's row; Reports' tabs) and *08 §5.2* (`TabNav`'s call sites).
+
+**Not done** — T7 is built with the Home redesign (H3); T8 follows.
+
+**Assumptions**
+- SKL-04 makes a non-credit course's attendance its completed lessons over its published ones, so the milestone's "average lesson completion" and "average time-based attendance" are one number, shown once as "Lessons completed".
+- The skill columns show only when the course type is "Non-credit courses"; with every course they would be blank on credit rows.
+- An admin also gets the department filter, as on `/reports/ce`.
+- "People" opens the course's low band when it has one, else the list lowest first.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx next typegen` then `npx tsc --noEmit` → exit 0; `npx eslint` and `npx prettier` on the changed files → no problems. Walked with T8.

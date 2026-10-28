@@ -8,6 +8,7 @@ export default function ReportsLayout({ children }: LayoutProps<'/reports'>) {
         tabs={[
           { href: '/reports/ce', label: 'Continuous evaluation' },
           { href: '/reports/attainment', label: 'Attainment' },
+          { href: '/reports/engagement', label: 'Engagement' },
         ]}
       />
       {children}

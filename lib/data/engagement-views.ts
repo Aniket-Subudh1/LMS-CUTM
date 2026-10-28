@@ -1,6 +1,6 @@
 import 'server-only';
 import { notFound } from 'next/navigation';
-import { isValidObjectId, Types } from 'mongoose';
+import { isValidObjectId, Types, type QueryFilter } from 'mongoose';
 import { offeringAccess } from '@/lib/auth/access';
 import { requireViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
@@ -17,18 +17,22 @@ import { AppError } from '@/lib/errors';
 import { aiConfigured, explainEngagement } from '@/lib/integrations/ai';
 import { Assessment } from '@/lib/models/assessment';
 import { Attendance } from '@/lib/models/attendance';
+import { Department } from '@/lib/models/department';
 import { EngagementDaily } from '@/lib/models/engagement-daily';
 import { Enrollment } from '@/lib/models/enrollment';
 import { InternalMark } from '@/lib/models/internal-mark';
 import { Lesson } from '@/lib/models/lesson';
 import { LessonProgress } from '@/lib/models/lesson-progress';
 import { LiveSession } from '@/lib/models/live-session';
-import { Offering } from '@/lib/models/offering';
+import { Offering, type OfferingDoc } from '@/lib/models/offering';
 import { Project } from '@/lib/models/project';
 import { Submission } from '@/lib/models/submission';
+import { Term } from '@/lib/models/term';
 import { User } from '@/lib/models/user';
 import { limit } from '@/lib/rate-limit';
-import type { EngagementSignal } from '@/lib/schemas/engagement';
+import { ASSESSMENT_LIMITS } from '@/lib/schemas/assessment';
+import { pageSize } from '@/lib/schemas/common';
+import type { EngagementBand, EngagementSignal } from '@/lib/schemas/engagement';
 import type { Trend } from '@/lib/schemas/marks';
 
 const DAY_MS = 86_400_000;
@@ -161,6 +165,193 @@ export async function getStudentEngagement(offeringId: string, studentId: string
       ? { id: String(project._id), title: project.title, dueOn: project.dueOn, status: project.status }
       : null,
     aiReady: aiConfigured(),
+  };
+}
+
+export type EngagementReport = {
+  admin: boolean;
+  terms: { id: string; label: string }[];
+  termId: string | null;
+  departments: { id: string; label: string }[];
+  departmentId: string | null;
+  category: 'ugc' | 'skill' | null;
+  totals: { offerings: number; students: number; averageScore: number | null; low: number; falling: number };
+  rows: {
+    id: string;
+    title: string;
+    category: 'ugc' | 'skill';
+    faculty: string[];
+    students: number;
+    averageScore: number | null;
+    bands: Record<EngagementBand, number>;
+    falling: number;
+    // Skill offerings (DSH-05): the share of published lessons completed, which is also their attendance (SKL-04), and
+    // the quizzes each student attempted, on average.
+    skill: { completedPct: number | null; quizzesAttempted: number | null } | null;
+  }[];
+  total: number;
+};
+
+type BandTotals = {
+  _id: Types.ObjectId | null;
+  students: number;
+  averageScore: number | null;
+  high: number;
+  medium: number;
+  low: number;
+  falling: number;
+};
+const countWhen = (field: string, value: string) => ({ $sum: { $cond: [{ $eq: [field, value] }, 1, 0] } });
+const bandTotals = (offeringIds: Types.ObjectId[], perOffering: boolean) =>
+  Enrollment.aggregate<BandTotals>([
+    { $match: { offeringId: { $in: offeringIds }, status: 'active' } },
+    {
+      $group: {
+        _id: perOffering ? '$offeringId' : null,
+        students: { $sum: 1 },
+        averageScore: { $avg: '$engagement.score' },
+        high: countWhen('$engagement.band', 'high'),
+        medium: countWhen('$engagement.band', 'medium'),
+        low: countWhen('$engagement.band', 'low'),
+        falling: countWhen('$engagement.trend', 'falling'),
+      },
+    },
+  ]);
+
+// T6 (DSH-01, DSH-05): the nightly snapshot across a term's offerings — a head of department's own department, any
+// for an admin — optionally credit or skill only. Ten offerings a page; the tiles count the whole selection. A skill
+// page adds lesson completion and quizzes attempted, from two more reads of the page's offerings.
+export async function getEngagementReport(
+  filter: { termId?: string; departmentId?: string; category?: 'ugc' | 'skill' },
+  page: number,
+): Promise<EngagementReport> {
+  const viewer = await requireViewer(['hod', 'admin']);
+  const admin = viewer.roles.includes('admin');
+  await db();
+  const [terms, departments] = await Promise.all([
+    Term.find({}, { code: 1, name: 1, status: 1 }).sort({ code: -1 }).limit(100).lean(),
+    admin ? Department.find({}, { code: 1, name: 1 }).sort({ code: 1 }).limit(200).lean() : [],
+  ]);
+  const termId =
+    terms.find((t) => String(t._id) === filter.termId)?._id ??
+    terms.find((t) => t.status === 'current')?._id ??
+    terms[0]?._id ??
+    null;
+  const departmentId = admin
+    ? (departments.find((d) => String(d._id) === filter.departmentId)?._id ?? null)
+    : viewer.departmentId
+      ? new Types.ObjectId(viewer.departmentId)
+      : null;
+  const category = filter.category ?? null;
+  const base = {
+    admin,
+    terms: terms.map((t) => ({ id: String(t._id), label: `${t.code} · ${t.name}` })),
+    termId: termId ? String(termId) : null,
+    departments: departments.map((d) => ({ id: String(d._id), label: `${d.code} · ${d.name}` })),
+    departmentId: departmentId ? String(departmentId) : null,
+    category,
+  };
+  if (!termId || (!admin && !departmentId)) {
+    return {
+      ...base,
+      totals: { offerings: 0, students: 0, averageScore: null, low: 0, falling: 0 },
+      rows: [],
+      total: 0,
+    };
+  }
+  const query: QueryFilter<OfferingDoc> = {
+    termId,
+    status: { $ne: 'draft' },
+    ...(category ? { category } : {}),
+    ...(departmentId ? { departmentId } : {}),
+  };
+  const [ids, offerings] = await Promise.all([
+    Offering.find(query, { _id: 1 })
+      .lean()
+      .then((rows) => rows.map((row) => row._id)),
+    Offering.find(query, { title: 1, category: 1, facultyIds: 1 })
+      .sort({ title: 1, _id: 1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .lean(),
+  ]);
+  const pageIds = offerings.map((o) => o._id);
+  const skillIds = offerings.filter((o) => o.category === 'skill').map((o) => o._id);
+  const [all, perOffering, faculty, published, quizzes, active] = await Promise.all([
+    bandTotals(ids, false),
+    bandTotals(pageIds, true),
+    User.find({ _id: { $in: offerings.flatMap((o) => o.facultyIds) } }, { name: 1 }).lean(),
+    skillIds.length === 0
+      ? []
+      : Lesson.find({ offeringId: { $in: skillIds }, published: true }, { offeringId: 1 }).lean(),
+    skillIds.length === 0
+      ? []
+      : Assessment.find({ offeringId: { $in: skillIds }, mode: 'quiz', status: { $ne: 'draft' } }, { offeringId: 1 })
+          .limit(skillIds.length * ASSESSMENT_LIMITS.perOffering)
+          .lean(),
+    skillIds.length === 0 ? [] : Enrollment.distinct('studentId', { offeringId: { $in: skillIds }, status: 'active' }),
+  ]);
+  // Only active students count, as in the averages' denominators.
+  const [completed, attempted] = await Promise.all([
+    published.length === 0
+      ? []
+      : LessonProgress.aggregate<{ _id: Types.ObjectId; n: number }>([
+          {
+            $match: {
+              lessonId: { $in: published.map((l) => l._id) },
+              studentId: { $in: active },
+              completedAt: { $ne: null },
+            },
+          },
+          { $group: { _id: '$offeringId', n: { $sum: 1 } } },
+        ]),
+    quizzes.length === 0
+      ? []
+      : Submission.aggregate<{ _id: Types.ObjectId; n: number }>([
+          { $match: { assessmentId: { $in: quizzes.map((q) => q._id) }, studentId: { $in: active } } },
+          { $group: { _id: { o: '$offeringId', a: '$assessmentId', s: '$studentId' } } },
+          { $group: { _id: '$_id.o', n: { $sum: 1 } } },
+        ]),
+  ]);
+  const nameOf = new Map(faculty.map((f) => [String(f._id), f.name]));
+  const totalsOf = new Map(perOffering.map((t) => [String(t._id), t]));
+  const lessonsOf = Map.groupBy(published, (l) => String(l.offeringId));
+  const completedOf = new Map(completed.map((c) => [String(c._id), c.n]));
+  const attemptedOf = new Map(attempted.map((a) => [String(a._id), a.n]));
+  return {
+    ...base,
+    totals: {
+      offerings: ids.length,
+      students: all[0]?.students ?? 0,
+      averageScore: all[0]?.averageScore ?? null,
+      low: all[0]?.low ?? 0,
+      falling: all[0]?.falling ?? 0,
+    },
+    rows: offerings.map((o) => {
+      const id = String(o._id);
+      const t = totalsOf.get(id);
+      const students = t?.students ?? 0;
+      const lessons = lessonsOf.get(id)?.length ?? 0;
+      return {
+        id,
+        title: o.title,
+        category: o.category,
+        faculty: o.facultyIds.flatMap((f) => nameOf.get(String(f)) ?? []),
+        students,
+        averageScore: t?.averageScore ?? null,
+        bands: { high: t?.high ?? 0, medium: t?.medium ?? 0, low: t?.low ?? 0 },
+        falling: t?.falling ?? 0,
+        skill:
+          o.category === 'skill'
+            ? {
+                completedPct:
+                  lessons > 0 && students > 0 ? (100 * (completedOf.get(id) ?? 0)) / (lessons * students) : null,
+                quizzesAttempted: students > 0 ? (attemptedOf.get(id) ?? 0) / students : null,
+              }
+            : null,
+      };
+    }),
+    total: ids.length,
   };
 }
 
