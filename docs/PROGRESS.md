@@ -3709,3 +3709,26 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 **Verification**
 - `npx vitest run lib/domain/engagement.test.ts` → `Tests 26 passed (26)`.
 - `npm run typecheck` → exit 0; `npx eslint` on the changed files → no problems; `npx vitest run --project unit lib/schemas lib/domain` → `Tests 630 passed (630)`.
+
+### 2026-10-28 · M10/T2 Working engagement out · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`lib/data/engagement.ts`* (safe in the worker, as before):
+  - `engagementSettings()`: the setting read without Next's cache, the `attainmentSettings` pattern.
+  - `computeOfferingEngagement(offeringId, now, onlyStudentId?)`: every active student's raw numbers, signals, score, band, previous score and trend, from the milestone's five reads: the daily counters of both windows grouped by student (index `{ offeringId, day }`), the class's live classes in the windows and their marked attendance rows, the published video lessons and their progress, the assessments that closed in the windows and each student's first hand-in. The P90s are over every active student, zeros included.
+  - `snapshotEngagement(offeringId, now)`: the result on each enrolment in one `bulkWrite` (T3's job calls it).
+
+**Not done** — the job, the screens and the tests follow (T3–T8).
+
+**Assumptions**
+- The drill-down asks for one student: the class's daily counters are still read whole, for the P90s, and the other four reads are that student's. The snapshot keeps no P90, so "reuse the P90s from the snapshot" (T5) became this.
+- A live class is in a window by its scheduled start; a student's classes held are their attendance rows with a status (present or absent), as the People tab counts them. Only `class` sessions count, not project reviews or meetings.
+- A day counts as active when any counter but `onTimeSubmissions` is above 0 (that one only ever moves with `submissions`).
+- The previous window's video signal is today's, since videos count since the course began (07 §7) and no history of watched seconds is kept.
+- An assessment is on time for a student when their first hand-in is at or before its `closesAt`.
+- 05 §3.9 already describes `enrollments.engagement`; nothing changed there.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → exit 0; `npx eslint lib/data/engagement.ts` → no problems. The integration tests come with T8.
