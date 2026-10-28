@@ -331,7 +331,8 @@ export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
           }
         : null,
     canStartAt: new Date(doc.scheduledStart.getTime() - START_EARLY_MS),
-    canEdit: role === 'host' && session.state === 'upcoming',
+    // T19: hosts change its people and cancel it while it runs too.
+    canEdit: role === 'host' && (session.state === 'upcoming' || session.state === 'live'),
     recordings: await savedRecordings(doc),
   };
 }

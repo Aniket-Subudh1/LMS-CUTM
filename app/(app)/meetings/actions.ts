@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { action } from '@/lib/action';
 import { requireRoomHost } from '@/lib/auth/access';
 import type { Viewer } from '@/lib/auth/session';
-import { START_EARLY_MS } from '@/lib/data/live';
+import { closeLiveRooms, START_EARLY_MS } from '@/lib/data/live';
 import {
   matchPeople as matchKeys,
   findPeople as searchPeople,
@@ -18,11 +18,12 @@ import { notify } from '@/lib/data/notify';
 import { db } from '@/lib/db';
 import { parseIstLocal } from '@/lib/domain/time';
 import { AppError } from '@/lib/errors';
+import { removeFromRoom } from '@/lib/integrations/live';
 import { formatDateTime, formatDay, formatTime } from '@/lib/format';
 import { LiveSession } from '@/lib/models/live-session';
 import type { NotificationKind } from '@/lib/models/notification';
 import { User } from '@/lib/models/user';
-import { mailQueue } from '@/lib/queue';
+import { mailQueue, queueLiveControl } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 import type { MailJob } from '@/lib/schemas/jobs';
@@ -65,7 +66,7 @@ async function hostedMeeting(viewer: Viewer, meetingId: string) {
   await requireRoomHost(viewer, meetingId);
   const doc = await LiveSession.findOne(
     { _id: meetingId, kind: 'meeting' },
-    { title: 1, status: 1, scheduledStart: 1, scheduledEnd: 1, meeting: 1 },
+    { title: 1, status: 1, scheduledStart: 1, scheduledEnd: 1, meeting: 1, roomName: 1, breakout: 1, recordings: 1 },
   ).lean();
   if (!doc?.meeting) throw new AppError('NOT_FOUND', 'Meeting not found.');
   return { ...doc, meeting: doc.meeting };
@@ -73,6 +74,8 @@ async function hostedMeeting(viewer: Viewer, meetingId: string) {
 
 // T4: schedule a meeting, or change one that has not started. A new time or title is a new version of the invitation
 // (`sequence`), sent to everyone; otherwise only the people added are invited. People taken off get a cancellation.
+// T19 (decision 13): while it runs, its people change and nothing else — the people added are invited at once and can
+// join; the people taken off are put out of the room.
 export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, async (input, viewer) => {
   await db();
   const start = parseIstLocal(`${input.date}T${input.startTime}`);
@@ -153,8 +156,9 @@ export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, as
     return { id: String(_id) };
   }
 
-  if (existing.status !== 'scheduled' || existing.scheduledEnd < now) {
-    throw new AppError('CLOSED', 'This meeting has started or ended, so it can no longer be changed.');
+  const running = existing.status === 'live';
+  if (!running && (existing.status !== 'scheduled' || existing.scheduledEnd < now)) {
+    throw new AppError('CLOSED', 'This meeting has ended or was cancelled, so it can no longer be changed.');
   }
   const id = String(existing._id);
   const before = [...existing.meeting.hostIds.slice(1), ...existing.meeting.memberIds].map(String);
@@ -166,9 +170,14 @@ export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, as
   const droppedGuests = existing.meeting.guests.filter((g) => !guestEmails.includes(g.email));
   const droppedUsers = before.filter((uid) => !after.includes(uid));
   const moved = startChanged || end.getTime() !== existing.scheduledEnd.getTime() || input.title !== existing.title;
+  if (running && moved) {
+    throw new AppError('VALIDATION', 'While the meeting runs, only its people can change.', {
+      startTime: ['The time and title stay as they are while the meeting runs.'],
+    });
+  }
   const sequence = existing.meeting.sequence + (moved || droppedUsers.length + droppedGuests.length > 0 ? 1 : 0);
   const written = await LiveSession.updateOne(
-    { _id: id, status: 'scheduled' },
+    { _id: id, status: existing.status },
     {
       $set: {
         title: input.title,
@@ -181,9 +190,15 @@ export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, as
       },
     },
   );
-  if (written.matchedCount === 0)
-    throw new AppError('CLOSED', 'This meeting has started, so it can no longer be changed.');
+  if (written.matchedCount === 0) {
+    throw new AppError('CLOSED', 'This meeting started, ended or was cancelled meanwhile. Open it again.');
+  }
   const added = after.filter((uid) => !before.includes(uid));
+  // Taken off a running meeting: out of the room now, and their link no longer opens it.
+  if (running) {
+    const gone = [...droppedUsers, ...droppedGuests.map((g) => String(g._id))];
+    await Promise.all(gone.map((identity) => removeFromRoom(existing.roomName, identity)));
+  }
   const removedPeople = await User.find({ _id: { $in: droppedUsers } }, { email: 1, name: 1 }).lean();
   await sendInvites({
     sessionId: id,
@@ -206,7 +221,12 @@ export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, as
     ],
     changed: false,
   });
-  await tellMembers(added, 'meeting.invited', `${input.title} — ${when(start)}`, id);
+  await tellMembers(
+    added,
+    running ? 'meeting.started' : 'meeting.invited',
+    running ? `${input.title} has started — join now` : `${input.title} — ${when(start)}`,
+    id,
+  );
   if (moved) {
     await tellMembers(
       after.filter((uid) => !added.includes(uid)),
@@ -219,18 +239,26 @@ export const saveMeeting = action({ input: SaveMeeting, roles: STAFF_ROLES }, as
   return { id };
 });
 
-// Cancelling tells everyone invited, with a cancellation their calendar understands. A meeting that has started is
-// ended from its room instead.
+// Cancelling tells everyone invited, with a cancellation their calendar understands. T19 (decision 13): a host cancels at
+// any time until it ends; one that is running closes for everyone in it, and a recording running stops and is saved.
 export const cancelMeeting = action({ input: MeetingRef, roles: STAFF_ROLES }, async ({ meetingId }, viewer) => {
   const doc = await hostedMeeting(viewer, meetingId);
+  if (doc.status === 'cancelled') return refresh();
+  if (doc.status === 'ended') throw new AppError('CLOSED', 'This meeting is over.');
   const sequence = doc.meeting.sequence + 1;
+  const running = doc.status === 'live';
   const written = await LiveSession.updateOne(
-    { _id: meetingId, status: 'scheduled' },
-    { $set: { status: 'cancelled', 'meeting.sequence': sequence } },
+    { _id: meetingId, status: doc.status },
+    { $set: { status: 'cancelled', 'meeting.sequence': sequence, ...(running && { endedAt: new Date() }) } },
   );
   if (written.matchedCount === 0) {
-    if (doc.status === 'cancelled') return refresh();
-    throw new AppError('CLOSED', 'This meeting has already started. End it from its room.');
+    throw new AppError('CLOSED', 'This meeting started, ended or was cancelled meanwhile. Open it again.');
+  }
+  if (running) {
+    await closeLiveRooms(doc);
+    if (doc.recordings?.some((r) => r.status === 'recording')) {
+      await queueLiveControl({ op: 'settleRecordings', sessionId: meetingId }, 60_000);
+    }
   }
   const people = [...doc.meeting.hostIds, ...doc.meeting.memberIds].map(String).filter((uid) => uid !== viewer.id);
   const users = await User.find({ _id: { $in: people } }, { email: 1, name: 1 }).lean();

@@ -120,7 +120,10 @@ async function Meeting({ params }: { params: PageProps<'/meetings/[meetingId]'>[
                 submitIcon={<XIcon />}
                 confirm={{
                   title: 'Cancel this meeting?',
-                  message: 'Everyone invited is told, and the meeting leaves their calendars.',
+                  message:
+                    session.state === 'live'
+                      ? 'Everyone in it leaves now. Everyone invited is told, and the meeting leaves their calendars.'
+                      : 'Everyone invited is told, and the meeting leaves their calendars.',
                 }}
               >
                 <input type="hidden" name="meetingId" value={meetingId} />

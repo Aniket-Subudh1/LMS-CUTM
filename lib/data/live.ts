@@ -408,6 +408,17 @@ export async function roomBreakout(
 // T3, M03c T4: ending a class or a meeting for everyone. The room closes first, so a failure changes nothing and the host
 // can try again; the engine's room_finished may end it first. Either way it is ended and finalized (a meeting without
 // attendance).
+// Everyone in the room leaves it; M03c T7: breakout rooms still open close with it. Ending a class or meeting, and
+// (T19) cancelling a meeting while it runs.
+export async function closeLiveRooms(session: { roomName: string; breakout?: LiveSessionDoc['breakout'] }) {
+  if (session.breakout && !session.breakout.closedAt) {
+    for (let room = 1; room <= session.breakout.rooms; room++) {
+      await closeRoom(breakoutRoomName(session.roomName, room));
+    }
+  }
+  await closeRoom(session.roomName);
+}
+
 export async function endLiveSession(session: {
   _id: Types.ObjectId;
   status: SessionStatus;
@@ -415,13 +426,7 @@ export async function endLiveSession(session: {
   breakout?: LiveSessionDoc['breakout'];
 }) {
   if (session.status === 'live') {
-    // M03c T7: breakout rooms still open close with it.
-    if (session.breakout && !session.breakout.closedAt) {
-      for (let room = 1; room <= session.breakout.rooms; room++) {
-        await closeRoom(breakoutRoomName(session.roomName, room));
-      }
-    }
-    await closeRoom(session.roomName);
+    await closeLiveRooms(session);
     await LiveSession.updateOne(
       { _id: session._id, status: 'live' },
       { $set: { status: 'ended', endedAt: new Date() } },

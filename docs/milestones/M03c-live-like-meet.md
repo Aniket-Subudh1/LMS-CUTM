@@ -53,6 +53,7 @@ Asked after using the room. Aniket reported that invited people did not get a li
 10. **Labelled buttons on the bar.** Hosts' tools (Board, Poll, Record) are buttons of their own. On a phone, the bar holds five buttons and `⋯` opens a sheet of labelled tiles. A poll pops up in front of everyone. (Replaces R3-B's Activities tab.)
 11. **A recording shows the whiteboard.** While a recording runs with the board open, the presenter's browser sends the board as a video beside the cameras.
 12. **The whiteboard has its own full screen**, and phones see the presenter's landscape view.
+13. **A meeting stays in its hosts' hands while it runs** (28 Oct 2026, with the push): a host cancels it at any time until it ends — one that is running closes for everyone in it — and adds or takes off people while it runs; those added get their link and the passcode at once, those taken off are put out. Its time and title stay as they are once it has started.
 
 ### Design of T12–T18 (dev)
 
@@ -181,6 +182,7 @@ Each task: database → backend → frontend, one commit, one PROGRESS entry.
 - **T16** The stage: the board and shared screens together, full screen, following the presenter, the laser, the board in the recording.
 - **T17** The bar's labelled buttons, the phone's sheet, the poll's pop-up, and the remaining fixes.
 - **T18** Report: the walk of T12–T17 and its fixes.
+- **T19** Decision 13: cancel at any time; people added and taken off while it runs; "Invite people" in the room.
 
 ## Not built
 

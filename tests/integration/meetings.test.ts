@@ -346,7 +346,7 @@ describe('scheduling a meeting (M03c T4)', () => {
     expect((await getMeetingLink(guestLink(guest?._id))).person.email).toBe('rao.kumar@example.com');
   });
 
-  it('cancels for everyone, once; a co-host cannot change a meeting that has started', async () => {
+  it('cancels for everyone, once, at any time until it ends; a running one closes for everyone in it (T19)', async () => {
     const w = await world();
     const id = await schedule(w);
     await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
@@ -357,12 +357,68 @@ describe('scheduling a meeting (M03c T4)', () => {
     expect(await LiveSession.findById(id).lean()).toMatchObject({ status: 'cancelled', meeting: { sequence: 1 } });
     await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
     expect(mailsTo(id).every((m) => m.calendar?.method === 'CANCEL')).toBe(true);
+    // Running: the room closes for everyone in it, and everyone invited is told.
     const live = await schedule(w);
+    await vi.waitFor(() => expect(mailsTo(live)).toHaveLength(4));
     await LiveSession.updateOne({ _id: live }, { $set: { status: 'live', startedAt: new Date() } });
+    sendMail.mockClear();
+    closeRoom.mockClear();
     await signInAs(w.colleague);
-    expect(await saveMeeting({ meetingId: live, title: 'Changed', ...slot(tomorrow()), guests: '' })).toMatchObject({
-      code: 'CLOSED',
-    });
+    expect(await cancelMeeting({ meetingId: live })).toMatchObject({ ok: true });
+    expect(closeRoom).toHaveBeenCalledWith(`ls-${live}`);
+    expect(await LiveSession.findById(live).lean()).toMatchObject({ status: 'cancelled', endedAt: expect.any(Date) });
+    await vi.waitFor(() => expect(mailsTo(live)).toHaveLength(4));
+    expect(mailsTo(live).every((m) => m.calendar?.method === 'CANCEL')).toBe(true);
+    expect(await Notification.countDocuments({ kind: 'meeting.cancelled', href: `/meetings/${live}` })).toBe(2);
+    // One that has ended stays as it was.
+    await LiveSession.updateOne({ _id: live }, { $set: { status: 'ended' } });
+    expect(await cancelMeeting({ meetingId: live })).toMatchObject({ code: 'CLOSED' });
+  });
+
+  it('changes only the people of a running meeting: those added join at once, those taken off are put out (T19)', async () => {
+    const w = await world();
+    const id = await schedule(w);
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(4));
+    await LiveSession.updateOne({ _id: id }, { $set: { status: 'live', startedAt: new Date() } });
+    const sita = (await LiveSession.findById(id).lean())?.meeting?.guests.find((g) => g.email === 'sita@example.com');
+    sendMail.mockClear();
+    removeFromRoom.mockClear();
+    await signInAs(w.faculty);
+    const base = {
+      meetingId: id,
+      title: 'Project review with an industry mentor',
+      'coHost[]': [String(w.colleague._id)],
+      'member[]': [String(w.taught._id)],
+    };
+    expect(
+      await saveMeeting({ ...base, ...slot(tomorrow(11)), guests: 'rao.kumar@example.com\nsita@example.com' }),
+    ).toMatchObject({ code: 'VALIDATION', fieldErrors: { startTime: [expect.any(String)] } });
+    expect(
+      await saveMeeting({ ...base, ...slot(tomorrow()), guests: 'rao.kumar@example.com\nnew.guest@example.com' }),
+    ).toMatchObject({ ok: true });
+    const doc = await LiveSession.findById(id).lean();
+    expect(doc?.status).toBe('live');
+    expect(doc?.meeting?.guests.map((g) => g.email)).toEqual(['rao.kumar@example.com', 'new.guest@example.com']);
+    expect(removeFromRoom).toHaveBeenCalledExactlyOnceWith(`ls-${id}`, String(sita?._id));
+    await vi.waitFor(() => expect(mailsTo(id)).toHaveLength(2));
+    expect(
+      mailsTo(id)
+        .map((m) => [m.to, m.calendar?.method])
+        .sort(),
+    ).toEqual([
+      ['new.guest@example.com', 'REQUEST'],
+      ['sita@example.com', 'CANCEL'],
+    ]);
+    // The new guest joins straight away with their link and the passcode; Sita's link no longer opens it.
+    const added = doc?.meeting?.guests[1];
+    signedOut();
+    expect(
+      await joinMeeting({ token: guestLink(added?._id), name: 'New Guest', passcode: doc?.meeting?.passcode ?? '' }),
+    ).toMatchObject({ ok: true });
+    expect((await getMeetingLink(guestLink(added?._id))).join).not.toBeNull();
+    await expect(getMeetingLink(guestLink(sita?._id))).rejects.toThrow(NOT_FOUND);
+    await signInAs(w.faculty);
+    expect((await getMeeting(id)).canEdit).toBe(true);
   });
 });
 

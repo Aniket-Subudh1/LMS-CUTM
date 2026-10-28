@@ -38,7 +38,7 @@
 | Live sessions: mute someone, mute everyone (M03c; off only, never on) | — | ✔ (host) | — | ✔ (host) | — |
 | Live sessions: remove a student, let them back (M03c; audited) | — | ✔ (host) | — | ✔ (host) | — |
 | Live sessions: turn off students' screen sharing, microphones, chat and reactions (M03c) | — | ✔ (host) | — | ✔ (host) | — |
-| Meetings: schedule, change, cancel (M03c T4; their hosts) | — | ✔ | ✔ | ✔ | — |
+| Meetings: schedule, change, cancel (M03c T4; their hosts; T19: cancel until it ends, and change its people while it runs) | — | ✔ | ✔ | ✔ | — |
 | Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
 | Meetings: join by one's own link without signing in, with the passcode, and there raise a hand and answer polls (M03c T14, T15; invited people, guests included; as a guest in the room, never hosting, A-221) | ✔ | ✔ | ✔ | ✔ | — |
 | Meetings: host controls; see the passcode, copy anyone's link, send one invitation again (their hosts, T14) | — | ✔ | ✔ | ✔ | — |

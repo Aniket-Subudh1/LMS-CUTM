@@ -66,6 +66,7 @@ import {
   SmileyIcon,
   StopIcon,
   UserMinusIcon,
+  UserPlusIcon,
   UsersIcon,
   VideoCameraIcon,
   VideoCameraSlashIcon,
@@ -2792,6 +2793,7 @@ function People({
   endsAt,
   expected,
   attendanceNote,
+  backHref,
   controls,
   now,
   participants,
@@ -2852,6 +2854,12 @@ function People({
                 >
                   <HandPalmIcon className="size-3.5" /> Lower all hands
                 </button>
+                {/* M03c T19: a meeting's hosts invite more people while it runs, on its page in a new tab. */}
+                {noun === 'meeting' && backHref && (
+                  <a href={`${backHref}?new=people`} target="_blank" rel="noopener" className={small}>
+                    <UserPlusIcon className="size-3.5" /> Invite people
+                  </a>
+                )}
               </div>
             </div>
           </section>

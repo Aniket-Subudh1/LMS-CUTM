@@ -3587,3 +3587,49 @@ Aniket: "poll appears inside the bar instead of popping up in front where user h
 - Its two recordings were deleted from the test bucket.
 
 **Redis on this Mac:** the Redis the other session's tests used stopped twice during this work (a client's SHUTDOWN). Each time I started a local `redis-server` with no persistence files, in the session's scratchpad, to finish my runs. One may still be running on port 6379.
+
+### 2026-10-28 · M03c/T19 Cancel at any time, and people added while a meeting runs · Claude Code, at Aniket's request
+
+Aniket, with the request to push and deploy: "the meeting can be cancelled anytime by the host even after starting, and the people can also be added in between meeting". This is decision 13 in the M03c file.
+
+**Created**
+- **`app/(app)/meetings/actions.ts`:**
+  - `cancelMeeting` works until the meeting ends. A running meeting:
+    - becomes `cancelled` with `endedAt`;
+    - closes for everyone in it, breakout rooms too;
+    - has any running recording settled a minute later.
+    Everyone invited gets the cancellation, as before. An ended meeting is CLOSED.
+  - `saveMeeting`, while a meeting runs, changes its people only:
+    - a new time or title is VALIDATION;
+    - people added are invited at once, and those from the LMS are told it has started;
+    - people taken off get the cancellation and are put out of the room.
+- **`lib/data/live.ts`:** `closeLiveRooms`, shared by ending and cancelling.
+- **`lib/data/meetings.ts`:** `canEdit` is true while the meeting runs too.
+- **`components/meeting-dialog.tsx`:**
+  - While the meeting runs, the dialog is "People in this meeting": the time and title are read-only and greyed, and the button is "Save and invite".
+  - It opens by itself from `?new=people`.
+- **The meeting's page:** Edit and "Cancel the meeting" show while it runs. Cancelling says everyone in it leaves.
+- **`components/live-room.tsx`:** "Invite people" in a meeting host's People panel opens that dialog in a new tab.
+- **Tests** (`tests/integration/meetings.test.ts`):
+  - cancelling a running meeting: the room closes, four cancellations go out, two notifications are sent, and an ended meeting cannot be cancelled;
+  - while it runs, a new time is refused;
+  - a guest added joins at once with the passcode;
+  - a guest taken off is put out and their link stops opening the meeting.
+- **Docs:** decision 13 and T19 (M03c), 06 §8.8, 08 (`/meetings/[meetingId]`), 09 (permissions).
+
+**Not done** — none.
+
+**Assumptions** — A cancelled meeting that had started counts as cancelled, not held, and keeps its saved recordings.
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 650 passed (650)`.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 56 passed (56)`.
+- `npm run build` → exit 0.
+- In the browser (port 3101, the dev LiveKit server):
+  - faculty1 scheduled a meeting, started it and joined;
+  - "Invite people" opened "People in this meeting" in a new tab;
+  - a guest typed there was saved and listed;
+  - "Cancel the meeting" asked first ("Everyone in it leaves now."), and the host's room then showed "This meeting was cancelled".
+  - No page errors. The check's meetings were then deleted from the e2e database.
