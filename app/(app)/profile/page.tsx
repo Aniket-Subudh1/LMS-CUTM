@@ -73,7 +73,7 @@ async function Profile({ searchParams }: { searchParams: PageProps<'/profile'>['
 
         {github && (github.ready || github.login) && (
           <Section
-            icon={<PageIcon name="code" className="size-8" />}
+            icon={<PageIcon name="github" className="size-8" />}
             title="GitHub"
             description="Link your GitHub account so your commits in project repositories count as yours."
           >

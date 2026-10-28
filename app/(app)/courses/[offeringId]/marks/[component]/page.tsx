@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeftIcon, LockSimpleIcon } from '@phosphor-icons/react/ssr';
+import { ArrowLeftIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../../loading';
 import { saveRubricMarks } from '../actions';
@@ -64,7 +64,7 @@ async function Rubric({
         </Link>
       </Button>
       <Section
-        icon={<PageIcon name={component.data === 'practice' ? 'lab' : 'plan'} className="size-8" />}
+        icon={<PageIcon name={component.data === 'practice' ? 'lab' : 'projects'} className="size-8" />}
         title={TITLE[component.data]}
         description={`Out of ${formatMarks(sheet.max)}, by the Examination Policy. ${EXTERNAL[component.data]}`}
       >
@@ -84,7 +84,8 @@ async function Rubric({
         )}
         {sheet.locked && (
           <p className="text-muted-foreground flex items-center gap-1.5 text-[0.8125rem]">
-            <LockSimpleIcon className="size-4" /> The marks of this class are locked, so the rubric cannot change.
+            <PageIcon name="locked" className="size-4" /> The marks of this class are locked, so the rubric cannot
+            change.
           </p>
         )}
         {sheet.canEdit && sheet.rows.length > 0 ? (

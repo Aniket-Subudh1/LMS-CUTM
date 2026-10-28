@@ -62,8 +62,8 @@ async function Users({ searchParams }: { searchParams: PageProps<'/admin/users'>
       }
       stats={[
         { label: 'Users', value: stats.total, icon: <PageIcon name="users" className="size-7" /> },
-        { label: 'Students', value: stats.students, icon: <PageIcon name="badge" className="size-7" /> },
-        { label: 'Faculty and HoDs', value: stats.staff, icon: <PageIcon name="profile" className="size-7" /> },
+        { label: 'Students', value: stats.students, icon: <PageIcon name="students" className="size-7" /> },
+        { label: 'Faculty and HoDs', value: stats.staff, icon: <PageIcon name="faculty" className="size-7" /> },
         { label: 'Yet to sign in', value: stats.invited, icon: <PageIcon name="envelope" className="size-7" /> },
       ]}
     >

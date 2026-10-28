@@ -64,8 +64,8 @@ export const metadata: Metadata = { title: 'Lesson' };
 
 const KIND: Record<LessonKind, { label: string; icon: PageIconName }> = {
   video: { label: 'Video', icon: 'video' },
-  document: { label: 'PDF notes', icon: 'books' },
-  link: { label: 'Link', icon: 'globe' },
+  document: { label: 'PDF notes', icon: 'document' },
+  link: { label: 'Link', icon: 'link' },
 };
 
 export default function LessonPage({ params }: PageProps<'/courses/[offeringId]/content/[lessonId]'>) {
@@ -269,7 +269,7 @@ function Editor({ lesson, content, activity }: { lesson: LessonDetail; content: 
                         <UploadSimpleIcon /> Replace
                       </Button>
                     }
-                    icon={<PageIcon name={lesson.kind === 'video' ? 'video' : 'books'} className="size-8" />}
+                    icon={<PageIcon name={lesson.kind === 'video' ? 'video' : 'document'} className="size-8" />}
                     title={lesson.kind === 'video' ? 'Replace the video' : 'Replace the PDF'}
                     description={
                       lesson.kind === 'video'

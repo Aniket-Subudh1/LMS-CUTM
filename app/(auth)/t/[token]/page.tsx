@@ -3,16 +3,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
-import {
-  EnvelopeSimpleIcon,
-  GlobeIcon,
-  LockKeyIcon,
-  UsersThreeIcon,
-  WarningCircleIcon,
-} from '@phosphor-icons/react/ssr';
+import { EnvelopeSimpleIcon, LockKeyIcon, WarningCircleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import { leaveLink, openLink, registerGuest, returnAsGuest, signInToTest, verifyGuestCode } from './actions';
 import { ActionForm, Field, FieldErrors } from '@/components/action-form';
+import { PageIcon } from '@/components/page-icon';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/password-input';
 import { Input } from '@/components/ui/input';
@@ -63,7 +58,11 @@ async function Landing({
     <div className="grid gap-7">
       <div className="grid gap-3">
         <span className="bg-primary/8 text-primary inline-flex w-fit items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs font-medium">
-          {landing.audience === 'guests' ? <GlobeIcon className="size-3.5" /> : <UsersThreeIcon className="size-3.5" />}
+          {landing.audience === 'guests' ? (
+            <PageIcon name="guests" className="size-3.5" />
+          ) : (
+            <PageIcon name="users" className="size-3.5" />
+          )}
           {landing.audience === 'guests' ? 'Open to registered guests' : 'For CUTM LMS users'} · {MODE_LABEL[test.mode]}
         </span>
         <h1 className="text-3xl leading-tight font-semibold tracking-tight text-balance">{test.title}</h1>

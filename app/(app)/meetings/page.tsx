@@ -119,7 +119,7 @@ async function Meetings({ searchParams }: { searchParams: PageProps<'/meetings'>
           bare
         />
       </Section>
-      <Section icon={<PageIcon name="session" className="size-8" />} title="Past" description="Latest first.">
+      <Section icon={<PageIcon name="history" className="size-8" />} title="Past" description="Latest first.">
         <DataTable
           columns={columns(true)}
           rows={list.past}

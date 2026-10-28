@@ -1,8 +1,6 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BookOpenIcon, CheckCircleIcon, TargetIcon, WarningIcon } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { FilterForm } from '@/components/filter-form';
@@ -122,16 +120,20 @@ function Report({ report, termChosen }: { report: ProgramAttainment; termChosen:
   const { target } = report;
   const valued = report.outcomes.filter((o) => o.value !== null);
   const met = valued.filter((o) => (o.value ?? 0) >= target).length;
-  const tiles: { icon: Icon; label: string; value: string; tone?: string }[] = [
-    { icon: BookOpenIcon, label: 'Courses', value: String(report.courses.length) },
+  const tiles: { icon: ReactNode; label: string; value: string; tone?: string }[] = [
+    { icon: <PageIcon name="courses" className="size-7" />, label: 'Courses', value: String(report.courses.length) },
     {
-      icon: CheckCircleIcon,
+      icon: <PageIcon name="complete" className="size-7" />,
       label: 'Worked out',
       value: `${report.courses.filter((c) => c.outcomes).length} of ${report.courses.length}`,
     },
-    { icon: TargetIcon, label: 'Outcomes met', value: `${met} of ${valued.length}` },
     {
-      icon: WarningIcon,
+      icon: <PageIcon name="outcomes" className="size-7" />,
+      label: 'Outcomes met',
+      value: `${met} of ${valued.length}`,
+    },
+    {
+      icon: <PageIcon name="warning" className="size-7" />,
       label: 'Below the target',
       value: String(valued.length - met),
       tone: valued.length > met ? 'text-warning' : undefined,
@@ -149,7 +151,7 @@ function Report({ report, termChosen }: { report: ProgramAttainment; termChosen:
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

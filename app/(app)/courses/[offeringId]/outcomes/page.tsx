@@ -1,14 +1,6 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
-import {
-  ArrowClockwiseIcon,
-  CheckCircleIcon,
-  ExamIcon,
-  FileTextIcon,
-  UsersThreeIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, WarningIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { requestAttainment } from './actions';
@@ -155,16 +147,20 @@ function Worked({ course, record }: { course: OfferingCourse; record: Attainment
   const students = see
     ? see.considered + see.withoutMarks
     : Math.max(0, ...record.cos.map((co) => co.cie?.assessed ?? 0));
-  const tiles: { icon: Icon; label: string; value: string; detail?: string }[] = [
+  const tiles: { icon: ReactNode; label: string; value: string; detail?: string }[] = [
     {
-      icon: CheckCircleIcon,
+      icon: <PageIcon name="complete" className="size-7" />,
       label: 'Met',
       value: `${assessed.filter((co) => co.met).length} of ${record.cos.length} COs`,
     },
-    { icon: UsersThreeIcon, label: 'Students', value: String(students) },
-    { icon: FileTextIcon, label: 'SEE marks', value: see ? `${see.considered} of ${students}` : 'None yet' },
+    { icon: <PageIcon name="students" className="size-7" />, label: 'Students', value: String(students) },
     {
-      icon: ExamIcon,
+      icon: <PageIcon name="exams" className="size-7" />,
+      label: 'SEE marks',
+      value: see ? `${see.considered} of ${students}` : 'None yet',
+    },
+    {
+      icon: <PageIcon name="attainment" className="size-7" />,
       label: 'SEE level',
       value: see ? String(see.level) : '—',
       detail: see ? formatPct(see.pct) : undefined,
@@ -181,7 +177,7 @@ function Worked({ course, record }: { course: OfferingCourse; record: Attainment
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className="size-[1.125rem]" />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className="text-lg leading-tight font-semibold tabular-nums">

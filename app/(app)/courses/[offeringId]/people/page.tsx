@@ -4,16 +4,11 @@ import Link from 'next/link';
 import {
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
-  CheckIcon,
   DownloadSimpleIcon,
   FileArrowUpIcon,
-  TrendDownIcon,
   UserMinusIcon,
   UserPlusIcon,
-  UsersThreeIcon,
-  WarningIcon,
 } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { addStudent, changeEnrollments, setEnrollmentStatus } from '../../actions';
@@ -104,15 +99,15 @@ async function People({
   // A dialog opens over the list as it is: closing it leaves the search, filter and page in place.
   const dialog = (name: string) => `${base}?${new URLSearchParams({ ...query, new: name })}`;
   const { counts } = roster;
-  const tiles: { icon: Icon; value: number; label: string; tone?: string; href?: string }[] = [
-    { icon: UsersThreeIcon, value: counts.enrolled, label: 'Enrolled' },
-    { icon: CheckIcon, value: counts.active, label: 'Active' },
-    { icon: UserMinusIcon, value: counts.dropped, label: 'Dropped' },
+  const tiles: { icon: ReactNode; value: number; label: string; tone?: string; href?: string }[] = [
+    { icon: <PageIcon name="students" className="size-7" />, value: counts.enrolled, label: 'Enrolled' },
+    { icon: <PageIcon name="complete" className="size-7" />, value: counts.active, label: 'Active' },
+    { icon: <PageIcon name="dropping" className="size-7" />, value: counts.dropped, label: 'Dropped' },
     ...(counts.short === null || roster.minPct === null
       ? []
       : [
           {
-            icon: WarningIcon,
+            icon: <PageIcon name="attendance" className="size-7" />,
             value: counts.short,
             label: `Below ${formatPct(roster.minPct)} attendance`,
             tone: counts.short > 0 ? 'text-warning' : undefined,
@@ -122,7 +117,7 @@ async function People({
     ...(roster.engagementAt
       ? [
           {
-            icon: TrendDownIcon,
+            icon: <PageIcon name="engagement" className="size-7" />,
             value: counts.lowEngagement,
             label: 'Low engagement',
             tone: counts.lowEngagement > 0 ? 'text-destructive' : undefined,
@@ -173,7 +168,7 @@ async function People({
               )}
             >
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
+                {tile.icon}
               </span>
               <div className="grid min-w-0">
                 <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>
@@ -264,7 +259,7 @@ async function People({
       </Section>
 
       <Section
-        icon={<PageIcon name="users" className="size-8" />}
+        icon={<PageIcon name="faculty" className="size-8" />}
         title="Teaching staff"
         description="Who teaches this class. An administrator changes this from Offerings."
       >
@@ -483,7 +478,7 @@ function AddStudentDialog({ offeringId }: { offeringId: string }) {
   return (
     <FormDialog
       openParam="student"
-      icon={<PageIcon name="users" className="size-8" />}
+      icon={<PageIcon name="students" className="size-8" />}
       title="Add a student"
       description="They see the course at once. A student who was dropped is added again."
       action={addStudent}

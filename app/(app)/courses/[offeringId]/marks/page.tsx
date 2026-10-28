@@ -1,16 +1,7 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowsClockwiseIcon,
-  ChartLineUpIcon,
-  CheckCircleIcon,
-  LockSimpleIcon,
-  TrendDownIcon,
-  UsersThreeIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowsClockwiseIcon, WarningIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { requestRecompute } from './actions';
@@ -102,17 +93,21 @@ function ClassMarks({
   const base = `/courses/${offeringId}/marks`;
   const query = { ...(q ? { q } : {}), ...(show ? { show } : {}) };
   const { counts } = sheet;
-  const tiles: { icon: Icon; value: string; label: string; tone?: string }[] = [
-    { icon: UsersThreeIcon, value: String(counts.students), label: 'Students' },
-    { icon: CheckCircleIcon, value: `${counts.complete} of ${counts.students}`, label: 'Complete' },
+  const tiles: { icon: ReactNode; value: string; label: string; tone?: string }[] = [
+    { icon: <PageIcon name="students" className="size-7" />, value: String(counts.students), label: 'Students' },
     {
-      icon: TrendDownIcon,
+      icon: <PageIcon name="complete" className="size-7" />,
+      value: `${counts.complete} of ${counts.students}`,
+      label: 'Complete',
+    },
+    {
+      icon: <PageIcon name="dropping" className="size-7" />,
       value: String(counts.dropping),
       label: 'Dropping',
       tone: counts.dropping > 0 ? 'text-destructive' : undefined,
     },
     {
-      icon: ChartLineUpIcon,
+      icon: <PageIcon name="chart" className="size-7" />,
       value: counts.averagePct === null ? '—' : formatPct(counts.averagePct),
       label: 'Average internal',
     },
@@ -150,7 +145,7 @@ function ClassMarks({
           : 'Not worked out yet. They appear within a minute of the first published result, class or rubric.'}
         {sheet.locked && (
           <span className="text-foreground inline-flex items-center gap-1 font-medium">
-            <LockSimpleIcon className="size-3.5" /> Locked: nothing here changes.
+            <PageIcon name="locked" className="size-3.5" /> Locked: nothing here changes.
           </span>
         )}
       </p>
@@ -158,7 +153,7 @@ function ClassMarks({
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>
@@ -349,7 +344,7 @@ function MyMarksView({ marks }: { marks: MyMarks }) {
           return (
             <Section
               key={rubric.component}
-              icon={<PageIcon name={rubric.component === 'practice' ? 'lab' : 'plan'} className="size-8" />}
+              icon={<PageIcon name={rubric.component === 'practice' ? 'lab' : 'projects'} className="size-8" />}
               title={`${COMPONENT_LABEL[rubric.component]} · ${
                 component?.marks === null || component?.marks === undefined
                   ? filled

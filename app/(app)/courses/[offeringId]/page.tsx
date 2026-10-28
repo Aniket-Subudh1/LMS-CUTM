@@ -153,7 +153,7 @@ function ClassCard({ cls }: { cls: ClassProgress }) {
   const labels = ['Under 25%', '25–50%', '50–75%', '75% and more'];
   return (
     <Section
-      icon={<PageIcon name="dashboard" className="size-8" />}
+      icon={<PageIcon name="chart" className="size-8" />}
       title="How the class is doing"
       description={
         cls.published === 0
@@ -246,7 +246,7 @@ function MyProgress({ progress }: { progress: LearnerProgress }) {
   const pct = progress.published === 0 ? 0 : (100 * progress.completed) / progress.published;
   return (
     <Section
-      icon={<PageIcon name="dashboard" className="size-8" />}
+      icon={<PageIcon name="lessons" className="size-8" />}
       title="Your progress"
       description={`${progress.completed} of ${progress.published} lessons done · ${progress.watchedMin} min watched${progress.attendancePct !== null ? ` · attendance ${formatPct(Math.round(progress.attendancePct))}` : ''}.`}
       action={<ProgressRing value={pct} label={`${Math.round(pct)}% of the lessons done`} />}

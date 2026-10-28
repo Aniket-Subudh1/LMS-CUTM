@@ -75,7 +75,7 @@ async function Program({
   return (
     <>
       <PageHeader
-        icon={<PageIcon name="diploma" />}
+        icon={<PageIcon name="programmes" />}
         title={`${program.code} · ${program.name}`}
         description={department ?? 'No department yet: set one before creating offerings.'}
         actions={
@@ -85,7 +85,7 @@ async function Program({
                 <PencilSimpleIcon weight="duotone" /> Edit details
               </Button>
             }
-            icon={<PageIcon name="diploma" className="size-8" />}
+            icon={<PageIcon name="programmes" className="size-8" />}
             title={`Edit ${program.code}`}
             description="Offerings copy the programme's department, so a programme with offerings keeps its department."
             action={saveProgram}
@@ -158,7 +158,7 @@ async function Program({
         <Outcomes program={program} />
 
         <Section
-          icon={<PageIcon name="users" className="size-8" />}
+          icon={<PageIcon name="batches" className="size-8" />}
           title="Batches"
           description="An intake year of students. Sections split a batch for offerings and enrolment."
           action={<BatchDialog programId={program.id} />}
@@ -305,7 +305,7 @@ function Curriculum({
 }) {
   return (
     <Section
-      icon={<PageIcon name="books" className="size-8" />}
+      icon={<PageIcon name="curriculum" className="size-8" />}
       title="Curriculum"
       description="The catalogue courses this programme lists. Offerings for its batches can only be of these courses."
       action={
@@ -315,7 +315,7 @@ function Curriculum({
               <PlusIcon weight="bold" /> Add course
             </Button>
           }
-          icon={<PageIcon name="books" className="size-8" />}
+          icon={<PageIcon name="curriculum" className="size-8" />}
           title="Add a course to the curriculum"
           description="The course must be in the catalogue. Most courses arrive with the course list upload."
           action={addProgrammeCourse}
@@ -423,7 +423,7 @@ function BatchDialog({ programId, batch }: { programId: string; batch?: BatchRow
           </Button>
         )
       }
-      icon={<PageIcon name="users" className="size-8" />}
+      icon={<PageIcon name="batches" className="size-8" />}
       title={batch ? `Edit ${batch.name}` : 'Add a batch'}
       description="Students are created into a batch and section; offerings enrol a whole batch or one section."
       action={saveBatch}

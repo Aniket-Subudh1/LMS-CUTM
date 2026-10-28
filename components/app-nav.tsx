@@ -36,7 +36,7 @@ const NAV: { label: string; foot?: true; items: Item[] }[] = [
       { href: '/reports', label: 'Reports', icon: 'reports', roles: ['hod', 'admin'] },
       { href: '/catalog', label: 'Course catalogue', icon: 'catalog', roles: ['faculty', 'hod', 'admin'] },
       // M04b (TP-02): standalone tests, and those a share link let anyone into (a candidate's whole LMS).
-      { href: '/tests', label: 'Tests', icon: 'evaluation' },
+      { href: '/tests', label: 'Tests', icon: 'tests' },
       { href: '/meetings', label: 'Meetings', icon: 'meetings', roles: ['student', 'faculty', 'hod', 'admin'] },
       // M08 (DSH-07): a student's published grade sheets.
       { href: '/results', label: 'Results', icon: 'results', roles: ['student'] },

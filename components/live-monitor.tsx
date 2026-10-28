@@ -1,16 +1,7 @@
+import { type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import {
-  ArrowLeftIcon,
-  ChatCircleTextIcon,
-  CheckCircleIcon,
-  PulseIcon,
-  StopCircleIcon,
-  TimerIcon,
-  WarningIcon,
-  WifiSlashIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, ChatCircleTextIcon, StopCircleIcon, TimerIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import { endAttempt, extendAttempts, messageTakers } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { Field } from '@/components/action-form';
@@ -80,12 +71,17 @@ export async function LiveMonitor({
   if (m.path !== assessmentPath(offeringId ?? null, aid)) notFound();
   const base = `${m.path}/monitor`;
   const { counts } = m;
-  const tiles: { icon: Icon; value: number; label: string; tone: string }[] = [
-    { icon: PulseIcon, value: counts.writing, label: 'Writing now', tone: '' },
-    { icon: CheckCircleIcon, value: counts.handedIn, label: 'Handed in', tone: '' },
-    { icon: WarningIcon, value: counts.warned, label: 'With warnings', tone: counts.warned > 0 ? 'text-warning' : '' },
+  const tiles: { icon: ReactNode; value: number; label: string; tone: string }[] = [
+    { icon: <PageIcon name="tests" className="size-7" />, value: counts.writing, label: 'Writing now', tone: '' },
+    { icon: <PageIcon name="handin" className="size-7" />, value: counts.handedIn, label: 'Handed in', tone: '' },
     {
-      icon: WifiSlashIcon,
+      icon: <PageIcon name="warning" className="size-7" />,
+      value: counts.warned,
+      label: 'With warnings',
+      tone: counts.warned > 0 ? 'text-warning' : '',
+    },
+    {
+      icon: <PageIcon name="missing" className="size-7" />,
       value: counts.lost,
       label: 'Connection lost',
       tone: counts.lost > 0 ? 'text-destructive' : '',
@@ -119,7 +115,7 @@ export async function LiveMonitor({
           {tiles.map((tile) => (
             <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                <tile.icon className="size-4.5" />
+                {tile.icon}
               </span>
               <div className="grid min-w-0">
                 <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

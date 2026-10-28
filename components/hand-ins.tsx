@@ -1,14 +1,7 @@
+import { type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import {
-  ArrowLeftIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  PaperPlaneTiltIcon,
-  UsersThreeIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, PaperPlaneTiltIcon, WarningIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import { publishResults } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm } from '@/components/action-form';
@@ -55,11 +48,15 @@ export async function HandInsView({
   const base = `${list.path}/grade`;
   const query = { ...(q ? { q } : {}), ...(status ? { status } : {}), ...(late ? { late } : {}) };
   const { counts, assessment: a } = list;
-  const tiles: { icon: Icon; value: number; label: string }[] = [
-    { icon: UsersThreeIcon, value: counts.enrolled, label: offeringId ? 'Enrolled' : 'Joined' },
-    { icon: PaperPlaneTiltIcon, value: counts.handedIn, label: 'Handed in' },
-    { icon: CheckCircleIcon, value: counts.graded, label: 'Graded' },
-    { icon: ClockIcon, value: counts.late, label: 'Late' },
+  const tiles: { icon: ReactNode; value: number; label: string }[] = [
+    {
+      icon: <PageIcon name="students" className="size-7" />,
+      value: counts.enrolled,
+      label: offeringId ? 'Enrolled' : 'Joined',
+    },
+    { icon: <PageIcon name="handin" className="size-7" />, value: counts.handedIn, label: 'Handed in' },
+    { icon: <PageIcon name="complete" className="size-7" />, value: counts.graded, label: 'Graded' },
+    { icon: <PageIcon name="deadline" className="size-7" />, value: counts.late, label: 'Late' },
   ];
   const ready = a.status === 'published' && a.state === 'closed';
   return (
@@ -70,7 +67,7 @@ export async function HandInsView({
         </Link>
       </Button>
       <Section
-        icon={<PageIcon name="badge" className="size-8" />}
+        icon={<PageIcon name="handin" className="size-8" />}
         title="Hand-ins"
         description="Grade each one. People see marks only when you publish the results."
         action={
@@ -108,7 +105,7 @@ export async function HandInsView({
           {tiles.map((tile) => (
             <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                <tile.icon className="size-4.5" />
+                {tile.icon}
               </span>
               <div className="grid min-w-0">
                 <dd className="text-lg leading-tight font-semibold tabular-nums">{tile.value}</dd>

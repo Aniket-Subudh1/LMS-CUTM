@@ -634,7 +634,7 @@ function kpis(
         label: 'Students',
         value: count.format(teaching.reduce((sum, c) => sum + c.students, 0)),
         note: 'in your courses',
-        icon: 'people',
+        icon: 'students',
       },
       {
         href: toGrade[0]
@@ -643,7 +643,7 @@ function kpis(
         label: 'To grade',
         value: count.format(summary.toGrade),
         note: 'awaiting marks',
-        icon: 'evaluation',
+        icon: 'handin',
       },
       {
         href: lowest && lowest.low > 0 ? lowBand(lowest.id) : undefined,
@@ -674,7 +674,7 @@ function kpis(
         label: 'Due this week',
         value: count.format(dueSoon),
         note: 'closing soon',
-        icon: 'assignment',
+        icon: 'deadline',
       },
     ];
   }

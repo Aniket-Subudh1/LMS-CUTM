@@ -1,8 +1,7 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { CalendarBlankIcon, PlusIcon, UsersThreeIcon, UserIcon, WarningIcon } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import { ProjectDialog } from './project-dialog';
@@ -77,16 +76,20 @@ async function Projects({
     );
   }
   const { counts } = view;
-  const tiles: { icon: Icon; value: string; label: string; tone?: string }[] = [
-    { icon: UsersThreeIcon, value: String(counts.projects), label: 'Projects' },
-    { icon: UserIcon, value: `${counts.inTeams} of ${counts.students}`, label: 'Students in a team' },
+  const tiles: { icon: ReactNode; value: string; label: string; tone?: string }[] = [
+    { icon: <PageIcon name="projects" className="size-7" />, value: String(counts.projects), label: 'Projects' },
     {
-      icon: WarningIcon,
+      icon: <PageIcon name="students" className="size-7" />,
+      value: `${counts.inTeams} of ${counts.students}`,
+      label: 'Students in a team',
+    },
+    {
+      icon: <PageIcon name="warning" className="size-7" />,
       value: String(counts.students - counts.inTeams),
       label: 'Without a team',
       tone: counts.students > counts.inTeams ? 'text-warning' : undefined,
     },
-    { icon: CalendarBlankIcon, value: String(counts.reviews), label: 'Reviews held' },
+    { icon: <PageIcon name="evaluation" className="size-7" />, value: String(counts.reviews), label: 'Reviews held' },
   ];
   return (
     <>
@@ -112,7 +115,7 @@ async function Projects({
           {tiles.map((tile) => (
             <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
               <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
+                {tile.icon}
               </span>
               <div className="grid min-w-0">
                 <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

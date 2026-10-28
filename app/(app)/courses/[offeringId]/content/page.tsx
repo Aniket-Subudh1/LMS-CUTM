@@ -495,7 +495,7 @@ function ModulePane({
             <Button key={kind} asChild variant="outline" size="sm">
               <Link href={here(`lesson-${kind}`)} scroll={false}>
                 <PageIcon
-                  name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'}
+                  name={kind === 'video' ? 'video' : kind === 'document' ? 'document' : 'link'}
                   className="size-4"
                 />
                 {KIND[kind].add}
@@ -521,7 +521,7 @@ function AddLesson({ here }: { here: (dialog?: string) => string }) {
           <DropdownMenuItem key={kind} asChild>
             <Link href={here(`lesson-${kind}`)} scroll={false}>
               <PageIcon
-                name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'}
+                name={kind === 'video' ? 'video' : kind === 'document' ? 'document' : 'link'}
                 className="size-4"
               />
               {KIND[kind].add}
@@ -538,7 +538,7 @@ function ModuleDialog({ offeringId, module }: { offeringId: string; module?: Con
   return (
     <FormDialog
       openParam={dialog}
-      icon={<PageIcon name="lessons" className="size-8" />}
+      icon={<PageIcon name="modules" className="size-8" />}
       title={module ? 'Rename module' : 'Add a module'}
       description="A module groups related lessons, for example one unit of the syllabus. Students see modules in this order."
       action={saveModule}
@@ -573,7 +573,9 @@ function LessonDialog({
     <FormDialog
       openParam={`lesson-${kind}`}
       size="wide"
-      icon={<PageIcon name={kind === 'video' ? 'video' : kind === 'document' ? 'books' : 'globe'} className="size-8" />}
+      icon={
+        <PageIcon name={kind === 'video' ? 'video' : kind === 'document' ? 'document' : 'link'} className="size-8" />
+      }
       title={kind === 'video' ? 'Add a video lesson' : kind === 'document' ? 'Add PDF notes' : 'Add a link'}
       description="It stays hidden from students until you publish it."
       action={createLesson}

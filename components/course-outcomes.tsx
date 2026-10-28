@@ -106,7 +106,7 @@ export function CourseOutcomes({
           )}
         </Section>
         <Section
-          icon={<PageIcon name="dashboard" className="size-8" />}
+          icon={<PageIcon name="mapping" className="size-8" />}
           title="How each programme outcome is covered"
           description="The average mapping level of each PO and PSO over the outcomes linked to it: 3 strong, 1 slight."
         >

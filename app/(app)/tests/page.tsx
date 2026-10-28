@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { DatabaseIcon, PlusIcon } from '@phosphor-icons/react/ssr';
+import { PlusIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../loading';
 import { AssessmentMenu, ModeChip, STATE_LABEL, StudentList } from '@/components/assessment-lists';
@@ -57,7 +57,7 @@ async function Tests({ searchParams }: { searchParams: PageProps<'/tests'>['sear
   if (list.view === 'take') {
     return (
       <Section
-        icon={<PageIcon name="evaluation" className="size-8" />}
+        icon={<PageIcon name="tests" className="size-8" />}
         title="My tests"
         description="Tests a link has let you into. Open one to check your device and start when it opens."
       >
@@ -81,14 +81,14 @@ async function Tests({ searchParams }: { searchParams: PageProps<'/tests'>['sear
   return (
     <>
       <Section
-        icon={<PageIcon name="evaluation" className="size-8" />}
+        icon={<PageIcon name="tests" className="size-8" />}
         title="Tests"
         description="Tests outside a course, such as recruitment, placement or entrance tests. Share them by link."
         action={
           <>
             <Button asChild variant="outline" size="sm">
               <Link href="/tests/bank">
-                <DatabaseIcon /> Your question bank
+                <PageIcon name="bank" className="size-4" /> Your question bank
               </Link>
             </Button>
             <Button asChild size="sm">

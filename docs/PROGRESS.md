@@ -3994,4 +3994,20 @@ Aniket asked for generated marks on the newer pages that were still sharing an o
 
 **Open questions** — none.
 
-**Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied.
+**Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean; Prettier applied. In the browser, signed in as an admin: Exams shows the booklet, batches the people mark, grade sheets ready the booklet and published the medal. Reports tabs are the score card, the three rings and the ring with a gold arc, and the page heading matches. Course tabs on Machine Learning show the notebook (Records), the score card (Marks) and the three cubes (Projects). The sidebar shows the clipboard (Reports), the laptop (Meetings), the booklet (Exams) and the joined plugs (Integrations). Each of those images loaded at 128 px.
+
+### 2026-10-28 · A mark of its own where one was being shared · Cursor
+
+Aniket asked for a generated mark wherever the same picture was standing in for two different things, and for the count tiles that were still line icons.
+
+**Created** — `public/icons/`: tests, batches, modules, credits, students, faculty, today, week, document, link, curriculum, draft, completed, locked, dropping, complete, warning, history, guests, task, proctoring, handin, deadline.
+
+**Changed** — those keys in `components/page-icon.tsx`. Tests, batches, modules, credits, students, faculty, a PDF lesson, an external link, a programme’s curriculum, draft and completed offerings, locked courses, past meetings, guests, project tasks, the code runner, proctoring, hand-ins and due-soon notices now use their own mark. Settings cards use the mark of the thing they configure. Count tiles on reports, marks, exams, outcomes, people, projects, hand-ins, test results and the live monitor use generated marks. 08 §5.2.
+
+**Not done** — the full check, integration suite and production build were not re-run. Buttons, row menus and sign out stay Phosphor.
+
+**Assumptions** — A count names the thing it counts, so “students” is the student mark even on a page whose header is something else. A control (a button, a caret, a spinner) stays a line icon.
+
+**Open questions** — none.
+
+**Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean, including the eight files Prettier rewrote. In the browser, signed in as an admin: Continuous evaluation tiles are the course stack, the student with a lanyard, the bar chart and the gold down arrow, each loaded at 128 px; the tabs are the score card, the three rings and the engagement ring. The Machine Learning header chips are the stacked slabs (modules), the folder (lessons), the lanyard (students) and the hex token (credits). Settings cards are distinct: play slab, sealed document, attendance, code brackets, webcam, cubes, medal, rings. The sidebar Tests item is the stopwatch; sign out stays the line arrow.

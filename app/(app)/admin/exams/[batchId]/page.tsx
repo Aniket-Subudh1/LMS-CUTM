@@ -1,17 +1,7 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  ArrowLeftIcon,
-  CheckCircleIcon,
-  CheckIcon,
-  DownloadSimpleIcon,
-  ExamIcon,
-  LockSimpleIcon,
-  UsersThreeIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowLeftIcon, CheckIcon, DownloadSimpleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../../loading';
 import {
@@ -328,7 +318,7 @@ function Courses({ view }: { view: ExamBatch }) {
           cell: (c) =>
             c.locked ? (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap">
-                <LockSimpleIcon className="size-3.5" />
+                <PageIcon name="locked" className="size-3.5" />
                 Locked {formatDateTime(c.locked.at)} · {c.locked.by}
               </span>
             ) : (
@@ -359,7 +349,7 @@ function LockButton({ course }: { course: BatchCourse }) {
             Unlock…
           </Button>
         }
-        icon={<LockSimpleIcon />}
+        icon={<PageIcon name="locked" />}
         title={`Unlock ${name}?`}
         description="Its teachers can change its marks again. Draft grade sheets that include it go back to incomplete until they are worked out again."
         action={unlockOffering}
@@ -399,7 +389,7 @@ function LockButton({ course }: { course: BatchCourse }) {
           Lock…
         </Button>
       }
-      icon={<LockSimpleIcon />}
+      icon={<PageIcon name="locked" />}
       title={`Lock ${name}?`}
       description={`${missing} of ${plural(course.students, 'student’s', 'students’')} internal marks are incomplete. Locked as they are, these students get no grade sheet until the course is unlocked and their marks are filled in. Nothing is counted as 0.`}
       action={lockOffering}
@@ -576,16 +566,21 @@ const STATUS_LABEL: Record<GradeSheetStatus, string> = {
 
 function Sheets({ view, page }: { view: ExamBatch; page: number }) {
   const { counts, status, rows, total } = view.sheets;
-  const tiles: { icon: Icon; value: number; label: string; tone?: string }[] = [
-    { icon: UsersThreeIcon, value: view.students, label: 'Students' },
-    { icon: CheckCircleIcon, value: counts.draft, label: 'Ready', tone: counts.draft > 0 ? 'text-success' : undefined },
+  const tiles: { icon: ReactNode; value: number; label: string; tone?: string }[] = [
+    { icon: <PageIcon name="students" className="size-7" />, value: view.students, label: 'Students' },
     {
-      icon: WarningIcon,
+      icon: <PageIcon name="complete" className="size-7" />,
+      value: counts.draft,
+      label: 'Ready',
+      tone: counts.draft > 0 ? 'text-success' : undefined,
+    },
+    {
+      icon: <PageIcon name="warning" className="size-7" />,
       value: counts.incomplete,
       label: 'Incomplete',
       tone: counts.incomplete > 0 ? 'text-warning' : undefined,
     },
-    { icon: ExamIcon, value: counts.published, label: 'Published' },
+    { icon: <PageIcon name="results" className="size-7" />, value: counts.published, label: 'Published' },
   ];
   const base = `/admin/exams/${view.batch.id}`;
   return (
@@ -594,7 +589,7 @@ function Sheets({ view, page }: { view: ExamBatch; page: number }) {
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className="size-[1.125rem]" />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

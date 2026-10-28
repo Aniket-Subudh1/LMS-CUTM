@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { PlayCircleIcon, StackIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
 import { CourseCover, coverTone } from '@/components/course-cover';
 import { LinkSpinner } from '@/components/link-spinner';
+import { PageIcon } from '@/components/page-icon';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -72,10 +72,10 @@ export function OfferingCard({ offering: o }: { offering: MyOfferingRow }) {
           </span>
         )}
         <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-1">
-          <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs [&_svg]:size-4 [&_svg]:shrink-0">
+          <span className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
             {view.as === 'learner' ? (
               <>
-                {view.published > 0 ? <PlayCircleIcon /> : <StackIcon />}
+                <PageIcon name={view.published > 0 ? 'lessons' : 'modules'} className="size-4 shrink-0" />
                 <span className="truncate">
                   {view.published > 0
                     ? `${view.completed} of ${plural(view.published, 'lesson')}${view.videoSec > 0 ? ` · ${formatDuration(view.videoSec)}` : ''}`
@@ -84,7 +84,7 @@ export function OfferingCard({ offering: o }: { offering: MyOfferingRow }) {
               </>
             ) : (
               <>
-                <UsersThreeIcon />
+                <PageIcon name="students" className="size-4 shrink-0" />
                 <span className="truncate">
                   {plural(view.students, 'student')} · {plural(o.units, 'unit')}
                 </span>

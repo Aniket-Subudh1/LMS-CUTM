@@ -50,8 +50,8 @@ async function Audit({ searchParams }: { searchParams: PageProps<'/admin/audit'>
       description="Every change to marks, structure and access, newest first. Dates are in IST."
       stats={[
         { label: 'Entries', value: stats.total, icon: <PageIcon name="audit" className="size-7" /> },
-        { label: 'Today', value: stats.today, icon: <PageIcon name="terms" className="size-7" /> },
-        { label: 'Last 7 days', value: stats.week, icon: <PageIcon name="audit" className="size-7" /> },
+        { label: 'Today', value: stats.today, icon: <PageIcon name="today" className="size-7" /> },
+        { label: 'Last 7 days', value: stats.week, icon: <PageIcon name="week" className="size-7" /> },
         { label: 'People in the last 7 days', value: stats.people, icon: <PageIcon name="users" className="size-7" /> },
       ]}
     >

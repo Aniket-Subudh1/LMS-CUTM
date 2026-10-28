@@ -94,7 +94,7 @@ async function Programs({ searchParams }: { searchParams: PageProps<'/admin/prog
       stats={[
         { label: 'Programmes', value: counts.programs, icon: <PageIcon name="programmes" className="size-7" /> },
         { label: 'Departments', value: counts.departments, icon: <PageIcon name="departments" className="size-7" /> },
-        { label: 'Batches', value: counts.batches, icon: <PageIcon name="users" className="size-7" /> },
+        { label: 'Batches', value: counts.batches, icon: <PageIcon name="batches" className="size-7" /> },
         {
           label: 'No department yet',
           value: counts.noDepartment,

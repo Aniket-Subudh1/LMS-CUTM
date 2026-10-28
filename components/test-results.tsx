@@ -1,16 +1,7 @@
+import { type ReactNode } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import {
-  ArrowClockwiseIcon,
-  ArrowLeftIcon,
-  FilePdfIcon,
-  FileXlsIcon,
-  PercentIcon,
-  SealCheckIcon,
-  UsersThreeIcon,
-  WarningIcon,
-} from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowLeftIcon, FilePdfIcon, FileXlsIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import { refreshResults } from '@/app/(app)/courses/[offeringId]/assessments/actions';
 import { ActionForm } from '@/components/action-form';
@@ -45,23 +36,28 @@ export async function TestResultsView({
   if (view.path !== assessmentPath(offeringId ?? null, aid)) notFound();
   const { stats, rules } = view;
   const top = rules.bands[0]?.minPct ?? null;
-  const tiles: { icon: Icon; value: string; label: string; tone: string }[] = stats
+  const tiles: { icon: ReactNode; value: string; label: string; tone: string }[] = stats
     ? [
-        { icon: UsersThreeIcon, value: String(stats.takers), label: 'Took the test', tone: '' },
         {
-          icon: PercentIcon,
+          icon: <PageIcon name="students" className="size-7" />,
+          value: String(stats.takers),
+          label: 'Took the test',
+          tone: '',
+        },
+        {
+          icon: <PageIcon name="chart" className="size-7" />,
           value: stats.averagePct === null ? '—' : `${Math.round(stats.averagePct)}%`,
           label: 'Average',
           tone: '',
         },
         {
-          icon: SealCheckIcon,
+          icon: <PageIcon name="trophy" className="size-7" />,
           value: stats.highestPct === null ? '—' : `${Math.round(stats.highestPct)}%`,
           label: 'Highest',
           tone: '',
         },
         {
-          icon: WarningIcon,
+          icon: <PageIcon name="warning" className="size-7" />,
           value: String(stats.flagged),
           label: 'Flagged for similarity',
           tone: stats.flagged > 0 ? 'text-warning' : '',
@@ -78,7 +74,7 @@ export async function TestResultsView({
         </Link>
       </Button>
       <Section
-        icon={<PageIcon name="chart" className="size-8" />}
+        icon={<PageIcon name="results" className="size-8" />}
         title="Results and analytics"
         description={
           stats
@@ -134,7 +130,7 @@ export async function TestResultsView({
               {tiles.map((tile) => (
                 <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
                   <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-                    <tile.icon className="size-4.5" />
+                    {tile.icon}
                   </span>
                   <div className="grid min-w-0">
                     <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

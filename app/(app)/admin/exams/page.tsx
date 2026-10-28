@@ -1,7 +1,6 @@
 import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { LockSimpleIcon } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { DataTable } from '@/components/data-table';
@@ -33,12 +32,12 @@ async function Exams({ searchParams }: { searchParams: PageProps<'/admin/exams'>
   const query: Record<string, string> = view.termId ? { term: view.termId } : {};
   const tiles: { icon: ReactNode; value: string; label: string }[] = [
     {
-      icon: <PageIcon name="users" className="size-7" />,
+      icon: <PageIcon name="batches" className="size-7" />,
       value: String(view.totals.batches),
       label: 'Batches this term',
     },
     {
-      icon: <LockSimpleIcon className="size-[1.125rem]" />,
+      icon: <PageIcon name="locked" className="size-7" />,
       value: `${view.totals.locked} of ${view.totals.courses}`,
       label: 'Courses locked',
     },

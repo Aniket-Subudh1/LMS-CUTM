@@ -16,13 +16,13 @@ const ICON: Record<SettingsKey, PageIconName> = {
   lessons: 'video',
   evaluation: 'evaluation',
   attendance: 'attendance',
-  codeRunner: 'evaluation',
-  proctoring: 'devices',
-  ceTrend: 'chart',
-  projects: 'code',
-  grading: 'diploma',
-  attainment: 'outcomes',
-  engagement: 'people',
+  codeRunner: 'code',
+  proctoring: 'proctoring',
+  ceTrend: 'marks',
+  projects: 'projects',
+  grading: 'results',
+  attainment: 'attainment',
+  engagement: 'engagement',
 };
 
 export default function SettingsPage() {

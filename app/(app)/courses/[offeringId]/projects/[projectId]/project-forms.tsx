@@ -21,7 +21,7 @@ export function TaskDialog({
   return (
     <FormDialog
       openParam={openParam}
-      icon={<PageIcon name="plan" className="size-8" />}
+      icon={<PageIcon name="task" className="size-8" />}
       title={task ? 'Edit the task' : 'New task'}
       description={task ? 'Changing the assignee tells the new one.' : 'It starts in Backlog. Its assignee is told.'}
       action={saveTask}

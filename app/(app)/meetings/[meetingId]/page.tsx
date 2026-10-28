@@ -169,7 +169,7 @@ async function Meeting({ params }: { params: PageProps<'/meetings/[meetingId]'>[
       <RecordingList recordings={meeting.recordings} noun="meeting" />
       {meeting.guests && (
         <Section
-          icon={<PageIcon name="envelope" className="size-8" />}
+          icon={<PageIcon name="guests" className="size-8" />}
           title="Guests"
           description="Each joins from their own link with the passcode; no account is needed."
         >

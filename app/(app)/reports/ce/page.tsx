@@ -1,8 +1,6 @@
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BookOpenIcon, ChartLineUpIcon, TrendDownIcon, UsersThreeIcon } from '@phosphor-icons/react/ssr';
-import type { Icon } from '@phosphor-icons/react';
 import { z } from 'zod';
 import Loading from '../../loading';
 import { DataTable } from '@/components/data-table';
@@ -44,16 +42,16 @@ async function CeReport({ searchParams }: { searchParams: PageProps<'/reports/ce
     ...(report.admin && report.departmentId ? { department: report.departmentId } : {}),
   };
   const { totals } = report;
-  const tiles: { icon: Icon; value: string; label: string; tone?: string }[] = [
-    { icon: BookOpenIcon, value: String(totals.offerings), label: 'Courses' },
-    { icon: UsersThreeIcon, value: String(totals.students), label: 'Students' },
+  const tiles: { icon: ReactNode; value: string; label: string; tone?: string }[] = [
+    { icon: <PageIcon name="courses" className="size-7" />, value: String(totals.offerings), label: 'Courses' },
+    { icon: <PageIcon name="students" className="size-7" />, value: String(totals.students), label: 'Students' },
     {
-      icon: ChartLineUpIcon,
+      icon: <PageIcon name="chart" className="size-7" />,
       value: totals.averagePct === null ? '—' : formatPct(Math.round(totals.averagePct * 10) / 10),
       label: 'Average internal',
     },
     {
-      icon: TrendDownIcon,
+      icon: <PageIcon name="dropping" className="size-7" />,
       value: String(totals.dropping),
       label: 'Dropping',
       tone: totals.dropping > 0 ? 'text-destructive' : undefined,
@@ -93,7 +91,7 @@ async function CeReport({ searchParams }: { searchParams: PageProps<'/reports/ce
         {tiles.map((tile) => (
           <div key={tile.label} className="ring-border/70 flex items-center gap-3 rounded-md px-3.5 py-3 ring-1">
             <span className="bg-muted text-muted-foreground grid size-9 shrink-0 place-items-center rounded-md">
-              <tile.icon className={cn('size-[1.125rem]', tile.tone)} />
+              {tile.icon}
             </span>
             <div className="grid min-w-0">
               <dd className={cn('text-lg leading-tight font-semibold tabular-nums', tile.tone)}>{tile.value}</dd>

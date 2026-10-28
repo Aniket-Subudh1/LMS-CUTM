@@ -159,10 +159,10 @@ function CodeRunner({
 }) {
   return (
     <>
-      <Header page={page} icon={<PageIcon name="evaluation" />} />
+      <Header page={page} icon={<PageIcon name="code" />} />
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Section
-          icon={<PageIcon name="evaluation" className="size-8" />}
+          icon={<PageIcon name="code" className="size-8" />}
           title="Languages and runs"
           description={changed(page)}
         >
@@ -194,7 +194,7 @@ function CodeRunner({
           </ActionForm>
         </Section>
         <Section
-          icon={<PageIcon name="evaluation" className="size-8" />}
+          icon={<PageIcon name="code" className="size-8" />}
           title="The code runner’s languages"
           description={runner ? `${runner.length} languages, with the id to use.` : 'The code runner did not answer.'}
         >
@@ -508,10 +508,10 @@ function Engagement({ page }: { page: SettingsPage<'engagement'> }) {
 function Proctoring({ page }: { page: SettingsPage<'proctoring'> }) {
   return (
     <>
-      <Header page={page} icon={<PageIcon name="devices" />} />
+      <Header page={page} icon={<PageIcon name="proctoring" />} />
       <div className="max-w-3xl">
         <Section
-          icon={<PageIcon name="devices" className="size-8" />}
+          icon={<PageIcon name="proctoring" className="size-8" />}
           title="How long are camera snapshots kept?"
           description={changed(page)}
         >
@@ -554,10 +554,10 @@ function Proctoring({ page }: { page: SettingsPage<'proctoring'> }) {
 function Projects({ page }: { page: SettingsPage<'projects'> }) {
   return (
     <>
-      <Header page={page} icon={<PageIcon name="code" />} />
+      <Header page={page} icon={<PageIcon name="projects" />} />
       <div className="max-w-3xl">
         <Section
-          icon={<PageIcon name="code" className="size-8" />}
+          icon={<PageIcon name="projects" className="size-8" />}
           title="How are commits read?"
           description={changed(page)}
         >

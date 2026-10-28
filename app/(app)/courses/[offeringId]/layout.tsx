@@ -112,16 +112,16 @@ function Chips({ workspace }: { workspace: Workspace }) {
   const { stats } = workspace;
   const credits = creditTotal(workspace.credits);
   const chips = [
-    { icon: <PageIcon name="lessons" className="size-3.5" />, text: plural(stats.modules, 'module') },
-    { icon: <PageIcon name="video" className="size-3.5" />, text: plural(stats.lessons, 'lesson') },
+    { icon: <PageIcon name="modules" className="size-3.5" />, text: plural(stats.modules, 'module') },
+    { icon: <PageIcon name="lessons" className="size-3.5" />, text: plural(stats.lessons, 'lesson') },
     ...(stats.videoSec > 0
       ? [{ icon: <PageIcon name="session" className="size-3.5" />, text: `${formatDuration(stats.videoSec)} of video` }]
       : []),
     ...(workspace.access === 'learn'
       ? []
-      : [{ icon: <PageIcon name="users" className="size-3.5" />, text: plural(stats.students, 'student') }]),
+      : [{ icon: <PageIcon name="students" className="size-3.5" />, text: plural(stats.students, 'student') }]),
     {
-      icon: <PageIcon name="diploma" className="size-3.5" />,
+      icon: <PageIcon name="credits" className="size-3.5" />,
       text: credits > 0 ? `${plural(credits, 'credit')} · ${formatCredits(workspace.credits)}` : 'Non-credit',
     },
   ];

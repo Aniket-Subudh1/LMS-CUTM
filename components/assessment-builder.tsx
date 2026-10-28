@@ -202,7 +202,7 @@ export async function AssessmentBuilder({
             {a.status !== 'draft' && (
               <Button asChild variant="outline" size="sm">
                 <Link href={`${b.path}/results`}>
-                  <PageIcon name="chart" className="size-4" /> Results
+                  <PageIcon name="results" className="size-4" /> Results
                 </Link>
               </Button>
             )}
@@ -687,7 +687,7 @@ function ResultRules({ b, here }: { b: Builder; here: (name: string) => string }
   ];
   return (
     <Section
-      icon={<PageIcon name="chart" className="size-8" />}
+      icon={<PageIcon name="results" className="size-8" />}
       title="Results"
       description="When they go out and what people see."
       action={
@@ -727,7 +727,7 @@ function ResultRulesDialog({ b }: { b: Builder }) {
     <FormDialog
       openParam="results"
       size="wide"
-      icon={<PageIcon name="chart" className="size-8" />}
+      icon={<PageIcon name="results" className="size-8" />}
       title="Results"
       description="None of this changes a mark. Ranks and the leaderboard appear once the results are published."
       action={saveResultRules}

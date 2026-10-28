@@ -66,7 +66,9 @@ async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/off
     getOfferingStats(),
   ]);
   const query = Object.fromEntries(
-    Object.entries({ q, term, department, status, need }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+    Object.entries({ q, term, department, status, need }).filter((entry): entry is [string, string] =>
+      Boolean(entry[1]),
+    ),
   );
   return (
     <PageHeader
@@ -77,8 +79,8 @@ async function Offerings({ searchParams }: { searchParams: PageProps<'/admin/off
       stats={[
         { label: 'Offerings', value: stats.total, icon: <PageIcon name="offerings" className="size-7" /> },
         { label: 'Active', value: stats.active, icon: <PageIcon name="course" className="size-7" /> },
-        { label: 'Draft', value: stats.draft, icon: <PageIcon name="plan" className="size-7" /> },
-        { label: 'Completed', value: stats.completed, icon: <PageIcon name="diploma" className="size-7" /> },
+        { label: 'Draft', value: stats.draft, icon: <PageIcon name="draft" className="size-7" /> },
+        { label: 'Completed', value: stats.completed, icon: <PageIcon name="completed" className="size-7" /> },
       ]}
     >
       <FilterForm
@@ -337,7 +339,7 @@ function FacultyCell({ offering }: { offering: OfferingRow }) {
             <UserSwitchIcon weight="duotone" />
           </Button>
         }
-        icon={<PageIcon name="users" className="size-8" />}
+        icon={<PageIcon name="faculty" className="size-8" />}
         title="Change faculty"
         description={offering.title}
         action={updateOfferingFaculty}
