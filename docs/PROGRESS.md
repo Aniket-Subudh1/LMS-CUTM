@@ -24,7 +24,7 @@ The living record of the build. Agents append; humans sign validations. Newest l
 | M01b Catalogue v2 | Done — awaiting human validation | | Entry 2026-10-16 · M01b. Replaces M01's catalogue, schemes and offering creation. M06/M08 wait on Q-41 |
 | M03 Live classes & attendance | Done — awaiting human validation | | Entry 2026-10-16 · M03. Self-hosted LiveKit (ADR-18). CI e2e job (with LiveKit) not yet run on GitHub |
 | M03b Course workspace redesign | Done — awaiting human validation. Committed on main in the 17 Oct "fix" commits and pushed | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03b-course-workspace.md` |
-| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T11 pushed. The meeting fixes, T12–T18 (decisions 9–12, 28 Oct 2026), are being built | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
+| M03c Live room with Google Meet's features | Done — awaiting human validation. T1–T11 pushed. The meeting fixes, T12–T18 (decisions 9–12, 28 Oct 2026), committed on main, not pushed; real phones still to try (T18) | | Owner request, 17 Oct 2026; plan in `docs/milestones/M03c-live-like-meet.md` |
 | M04 Assessment engine | Done — awaiting human validation. Merged into main and pushed; the branch is gone (23 Oct 2026) | | Entry 2026-10-17 · M04. Plan and decisions in `docs/milestones/M04-assessment-engine.md`. Its assumptions are A-102–A-108 and M04b's A-109–A-161 (renumbered from `A-M04-n` and `A-M04b-n` on 23 Oct 2026) |
 | M04b Test platform | Done — awaiting human validation. Phases A–E merged into main and pushed; the AI runs on the test server since 18 Oct | | Plan and decisions in `docs/milestones/M04b-test-platform.md`. Open: Q-54–Q-57 |
 | M05 Virtual lab & proctoring | Done — awaiting human validation. Built in M04b phases C and D; T6 and the server's consent check on 23 Oct 2026 | | Entry 2026-10-23 · M05. The milestone file maps each task to where it was built. Feature set: Q-09; runner: Q-55 |
@@ -3518,3 +3518,72 @@ Aniket: "poll appears inside the bar instead of popping up in front where user h
 - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
 - `npm run build` → exit 0.
 - The browser walk is in T18's entry.
+
+### 2026-10-28 · M03c/T18 The walk of the meeting fixes, what it found, and the report · Claude Code, at Aniket's request
+
+**How it ran**
+- **The app:**
+  - `npm run build`, then the standalone server on port 3101 and the worker, both on the e2e database.
+  - The dev LiveKit server and its Egress from `.env`, with recordings going to the test bucket, as in T11.
+  - Redis database 2, so the integration tests' database 1 was untouched.
+- **The browsers:** Playwright's Chromium with fake cameras and microphones, three of them:
+  - faculty1 hosting, at 1440 × 900 and then 1280 × 800;
+  - a guest on a phone (390 × 844, touch, then 844 × 390);
+  - student01 by their own link, signed out, at 1280 × 800.
+- **Scripts:** the walk is three scripts in the session's scratchpad. The final run of each passed with no page errors and no console errors.
+
+**What passed**
+1. **Scheduling:**
+   - "New meeting" with student01 added by Enter and a guest's address typed but never confirmed. Both were invited.
+   - The meeting's page showed the passcode, "Copy link" and "Send again" on every row. The links from Copy link were each person's own.
+2. **The host's start:** the host's room showed "Ready to start", then Start meeting, then "Ready to join?", then Join now.
+3. **The guest on the phone:**
+   - A wrong passcode got "Not right. It is the six digits in your invitation email."
+   - The right one led to "Ready to join?" with their own picture mirrored, Flip, and the microphone off, then the room.
+   - The phone bar had five buttons.
+4. **student01 by link, signed out:** "Joining as Student 01", then the passcode, then in. People listed them as Guest.
+5. **The board:**
+   - The host opened it, and the guest's phone said "Following Pradeep Sahoo" and showed the host's pointer with its name.
+   - A rectangle the host drew reached the phone, scaled to fit.
+6. **The board and a shared screen together:** student01 shared their screen while the board was open. The screen took the stage and the board waited as a "Whiteboard" tile, for the host and the guest alike.
+7. **The poll:**
+   - The host asked in the Poll dialog, and it popped up in front of the guest.
+   - The guest answered and was told so. The host's dialog showed "1 answered".
+   - Ending it popped the results up for the guest.
+8. **Full screen on the board:**
+   - Upright, the board filled the phone with "Turn your phone sideways for a bigger view" and the bar below.
+   - At 844 × 390 it filled the screen. Exit full screen returned.
+9. **Recording:**
+   - Record showed "Recording" for everyone within about 15 s. Stop asked first, and the badge went.
+   - The dev server's webhook goes to the deployed app, not this one, so the worker's settle (T13), two minutes after Stop, marked it saved, 11 s long. That was the case T13 fixes: no webhook, and the row still saved.
+   - The MP4, fetched from the bucket, shows the whiteboard with the host's rectangle as the main picture and the cameras beside it (decision 11).
+10. **The phone's sheet:** People, Chat, React, Captions, Share, Mini window and Full screen as tiles, with Layout and Background as chips.
+11. **The host's bar and leaving:**
+    - While recording, the host's bar at 1440 px fits, with short words and Stop pressed.
+    - At 1280 px beside People, the bar is icons with the hosts' tools in More.
+    - A host's Leave offers "End the meeting for everyone", which asked first, ended it, and the guest's tab said the meeting had ended.
+
+**What it found, fixed in T17's commit**
+- Full screen of the stage element hid every menu and dialog, which are drawn outside it. Full screen now covers the page, with the stage filling it.
+- The board, waiting behind a shared screen, still showed Excalidraw's zoom and undo controls over the stage (`visibility: hidden` is undone by its own styles). It is now hidden by opacity and made `inert`.
+- On a wide bar, the name on a tile filling the stage sat under the bar.
+- A recording host's bar was wider than the stage and pushed Leave out. The words under the icons are now short (Share, Board, Rooms, Stop), and hosts get the wide bar from 1,000 px.
+- Someone joining saw the results of a poll that had ended before they came.
+- "Ready to start" still spoke of letting guests into the lobby.
+- "Your answer was sent…" was cut off on a phone.
+
+**Not verified by me, for Aniket**
+- On a real Android phone (Chrome): that the front camera opens first, that Flip works, and that full screen turns the board to landscape.
+- On a real iPhone (Safari): the front camera, Flip, and the "turn sideways" hint.
+- Drawing with a pen or a finger, and the laser seen on a phone.
+- Safari and Firefox on a computer.
+- A recording saved through the deployed app's own webhook, after a push.
+- The invitation emails: no mail sink ran here, so the `mail` jobs failed to connect, as expected. Their content is covered by the integration tests.
+- `tests/e2e/live.spec.ts`: it needs LiveKit at `ws://localhost:7880`, which was not running here.
+- A recording's load on the 2-vCPU test server with a full class, as before (decision 5).
+
+**Cleanup**
+- The walk's two meetings were deleted from the e2e database, with their 4 notifications, 5 poll answers and 4 audit rows.
+- Its two recordings were deleted from the test bucket.
+
+**Redis on this Mac:** the Redis the other session's tests used stopped twice during this work (a client's SHUTDOWN). Each time I started a local `redis-server` with no persistence files, in the session's scratchpad, to finish my runs. One may still be running on port 6379.
