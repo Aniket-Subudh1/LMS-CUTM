@@ -202,7 +202,7 @@ Two checks, always both:
 | Queue | Job names | Concurrency / instance | Producers |
 |---|---|---|---|
 | `mail` | `send`, `fanout` | 10 | auth, announcements, notifications |
-| `compute` | `internalMarks`, `internalMarksNightly` (M06), `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `proctorRetention`, `lockOffering`, `gradeSheets` (M08) | 4 | actions, schedulers, webhooks |
+| `compute` | `internalMarks`, `internalMarksNightly` (M06), `attainment`, `finalizeLiveSession`, `liveSweep` (M03), `assessmentSweep`, `gradeCode`, `testStats`, `makeTestFile`, `draftQuestions` (M04b), `engagementSnapshot`, `engagementNightly` (M10), `proctorRetention`, `lockOffering`, `gradeSheets` (M08) | 4 | actions, schedulers, webhooks |
 | `sync` | `coursewareList`, `coursewarePage` (M01b), `githubProject`, `examPull`, `examPush` | 2, and at most one job a second (CUTM's courseware server answers a page in under a second to 60 s and stopped answering when read faster; a full import takes from about 25 minutes to hours) | actions, schedulers, webhooks |
 | `media` | `transcodeLesson` | 1 (CPU-bound; scale by adding worker instances) | lesson upload |
 
@@ -214,7 +214,7 @@ Schedulers (registered by `worker/index.ts` with `upsertJobScheduler`, timezone 
 | `internalMarksNightly` (M06) | `0 2 * * *` | `compute/internalMarksNightly`: enqueue `compute/internalMarks` for every active credit offering (safety net) |
 | `liveSweep` (M03) | `5 * * * *` | `compute/liveSweep`: end live sessions still open 30 min after their scheduled end and finalize ended sessions left unfinalized (M03) |
 | `assessmentSweep` (M04; BullMQ names a scheduler after its job) | `0 * * * *` | `compute/assessmentSweep`: 24 h reminders + auto-submit expired attempts (M04) + publish the results of tests whose rule says so (M04b) |
-| `engagement-nightly` | `30 2 * * *` | `compute/engagementSnapshot` per active offering (M10) |
+| `engagementNightly` (M10) | `30 2 * * *` | `compute/engagementNightly`: enqueue `compute/engagementSnapshot` for every active offering |
 | `proctorRetention` (M04b) | `30 3 * * *` | `compute/proctorRetention`: deletes camera snapshots `snapshotRetentionDays` after a test's results (05 §8) |
 
 Rules:

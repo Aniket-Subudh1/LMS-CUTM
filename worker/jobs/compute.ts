@@ -7,7 +7,7 @@ import { workOutGradeSheets } from '@/lib/data/grade-sheets';
 import { recomputeInternalMarks } from '@/lib/data/internal-marks';
 import { settleRecordings } from '@/lib/data/recordings';
 import { lockForRun } from '@/lib/data/locks';
-import { addEngagement, type EngagementRow } from '@/lib/data/engagement';
+import { addEngagement, snapshotEngagement, type EngagementRow } from '@/lib/data/engagement';
 import { notify } from '@/lib/data/notify';
 import { csvItem, paragraph, storedItem } from '@/lib/data/questions';
 import { releaseResults } from '@/lib/data/results';
@@ -37,7 +37,13 @@ import { Submission } from '@/lib/models/submission';
 import { TestGrant } from '@/lib/models/test-grant';
 import { TestStats } from '@/lib/models/test-stats';
 import { User } from '@/lib/models/user';
-import { queueAttainment, queueInternalMarks, queueLiveFinalize, queueTestStats } from '@/lib/queue';
+import {
+  queueAttainment,
+  queueEngagementSnapshot,
+  queueInternalMarks,
+  queueLiveFinalize,
+  queueTestStats,
+} from '@/lib/queue';
 import { RESULT_LIMITS, type RunStatus } from '@/lib/schemas/assessment';
 import { BANK_LIMITS, BankCsvRow } from '@/lib/schemas/bank';
 import { RichTextDoc } from '@/lib/schemas/common';
@@ -45,6 +51,8 @@ import {
   AssessmentSweepJob,
   AttainmentJob,
   DraftQuestionsJob,
+  EngagementNightlyJob,
+  EngagementSnapshotJob,
   FinalizeLiveJob,
   GradeCodeJob,
   GradeSheetsJob,
@@ -75,7 +83,9 @@ type ComputeName =
   | 'internalMarksNightly'
   | 'lockOffering'
   | 'gradeSheets'
-  | 'attainment';
+  | 'attainment'
+  | 'engagementSnapshot'
+  | 'engagementNightly';
 type ComputeData =
   | FinalizeLiveJob
   | LiveSweepJob
@@ -90,7 +100,9 @@ type ComputeData =
   | InternalMarksNightlyJob
   | LockOfferingJob
   | GradeSheetsJob
-  | AttainmentJob;
+  | AttainmentJob
+  | EngagementSnapshotJob
+  | EngagementNightlyJob;
 type Ops = Parameters<typeof Attendance.bulkWrite>[0];
 
 const MINUTE_MS = 60_000;
@@ -784,6 +796,17 @@ async function internalMarksNightly(): Promise<void> {
   log.info('internal marks queued', { offerings: queued });
 }
 
+// M10 (02 §8): the nightly scheduler `engagementNightly` queues one snapshot a day for every active offering.
+async function engagementNightly(now: Date): Promise<void> {
+  const offerings = Offering.find({ status: 'active' }, { _id: 1 }).lean().cursor();
+  let queued = 0;
+  for await (const offering of offerings) {
+    await queueEngagementSnapshot(String(offering._id), now);
+    queued += 1;
+  }
+  log.info('engagement snapshots queued', { offerings: queued });
+}
+
 async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'finalizeLiveSession') return finalizeLiveSession(FinalizeLiveJob.parse(job.data));
   if (job.name === 'liveControl') return liveControl(LiveControlJob.parse(job.data));
@@ -816,6 +839,16 @@ async function run(job: Job<ComputeData, void, ComputeName>): Promise<void> {
   if (job.name === 'internalMarksNightly') {
     InternalMarksNightlyJob.parse(job.data);
     return internalMarksNightly();
+  }
+  if (job.name === 'engagementSnapshot') {
+    const { offeringId } = EngagementSnapshotJob.parse(job.data);
+    const result = await snapshotEngagement(offeringId, new Date());
+    log.info('engagement snapshot', { offeringId, ...result });
+    return;
+  }
+  if (job.name === 'engagementNightly') {
+    EngagementNightlyJob.parse(job.data);
+    return engagementNightly(new Date());
   }
   if (job.name === 'lockOffering') return lockForRun(LockOfferingJob.parse(job.data), new Date());
   if (job.name === 'gradeSheets') {

@@ -1,6 +1,7 @@
 import 'server-only';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
+import { istDayKey } from '@/lib/domain/time';
 import { env } from '@/lib/env';
 import type {
   AssessmentSweepJob,
@@ -8,6 +9,8 @@ import type {
   CoursewareListJob,
   CoursewarePageJob,
   DraftQuestionsJob,
+  EngagementNightlyJob,
+  EngagementSnapshotJob,
   FinalizeLiveJob,
   GithubNightlyJob,
   GithubProjectJob,
@@ -45,7 +48,9 @@ type ComputeData =
   | InternalMarksNightlyJob
   | LockOfferingJob
   | GradeSheetsJob
-  | AttainmentJob;
+  | AttainmentJob
+  | EngagementSnapshotJob
+  | EngagementNightlyJob;
 type ComputeName =
   | 'finalizeLiveSession'
   | 'liveSweep'
@@ -60,7 +65,9 @@ type ComputeName =
   | 'internalMarksNightly'
   | 'lockOffering'
   | 'gradeSheets'
-  | 'attainment';
+  | 'attainment'
+  | 'engagementSnapshot'
+  | 'engagementNightly';
 type ComputeQueue = Queue<ComputeData, void, ComputeName>;
 const globalForQueue = globalThis as typeof globalThis & {
   redis?: Redis;
@@ -201,6 +208,22 @@ export async function queueAttainment(offeringId: string, actorId?: string): Pro
   );
 }
 
+// M10 (06 §6): an offering's engagement snapshot, `eng-<offeringId>-<IST day>`. The nightly run adds it once a day;
+// a teacher's "Work it out again" (`again`) also replaces one that has finished, and follows one that is running.
+export async function queueEngagementSnapshot(offeringId: string, now: Date, again = false): Promise<void> {
+  const data: EngagementSnapshotJob = { offeringId };
+  const jobId = `eng-${offeringId}-${istDayKey(now)}`;
+  if (!again) {
+    await computeQueue().add('engagementSnapshot', data, { jobId });
+    return;
+  }
+  await queueRecompute(
+    (id, delay) => computeQueue().add('engagementSnapshot', data, { jobId: id, delay }),
+    computeQueue(),
+    jobId,
+  );
+}
+
 // M07 (06 §6): a GitHub project's new commits, after a push, a link or "Sync now".
 export async function queueGithubSync(projectId: string): Promise<void> {
   const data: GithubProjectJob = { projectId };
@@ -239,5 +262,9 @@ export async function queueGradeSheets(job: GradeSheetsJob): Promise<void> {
 
 // M03c T2: each control is its own job (no id), and the job reads the class as it is when it runs.
 export async function queueLiveControl(job: LiveControlJob, delayMs = 0): Promise<void> {
-  await computeQueue().add('liveControl', job, { attempts: 3, backoff: { type: 'fixed', delay: 2_000 }, delay: delayMs });
+  await computeQueue().add('liveControl', job, {
+    attempts: 3,
+    backoff: { type: 'fixed', delay: 2_000 },
+    delay: delayMs,
+  });
 }

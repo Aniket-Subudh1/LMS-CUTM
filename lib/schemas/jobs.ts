@@ -98,6 +98,13 @@ export type AttainmentJob = z.infer<typeof AttainmentJob>;
 export const InternalMarksNightlyJob = z.object({});
 export type InternalMarksNightlyJob = z.infer<typeof InternalMarksNightlyJob>;
 
+// `compute/engagementSnapshot` (06 §6, M10): one offering's engagement written to its enrolments (07 §7); and the
+// nightly job that queues it for every active offering.
+export const EngagementSnapshotJob = z.object({ offeringId: objectId });
+export type EngagementSnapshotJob = z.infer<typeof EngagementSnapshotJob>;
+export const EngagementNightlyJob = z.object({});
+export type EngagementNightlyJob = z.infer<typeof EngagementNightlyJob>;
+
 // `sync/githubProject` (06 §6, M07): one project's new commits from its repository; and the nightly job that queues it
 // for every active GitHub project with a repository.
 export const GithubProjectJob = z.object({ projectId: objectId });

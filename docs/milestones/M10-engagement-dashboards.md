@@ -32,7 +32,7 @@ File: `lib/data/engagement.ts` — `computeOfferingEngagement(offeringId, now)` 
 Class P90s are computed over active enrollments (zeros included). Returns `{ studentId, current: { signals, score, band }, previous: { score } , trend }[]`.
 
 ### T3 · Nightly snapshot
-Worker scheduler `engagement-nightly` (`30 2 * * *` IST) → `compute/engagementSnapshot { offeringId }` for every active offering (job id `eng-<offeringId>-<day>`): `computeOfferingEngagement` → one `bulkWrite` setting `enrollments.engagement`. A "Recompute" button on the People tab enqueues the same job (teach, 1/min).
+Worker scheduler `engagementNightly` (`30 2 * * *` IST; BullMQ names a scheduler after its job, `compute/engagementNightly`) → `compute/engagementSnapshot { offeringId }` for every active offering (job id `eng-<offeringId>-<day>`): `computeOfferingEngagement` → one `bulkWrite` setting `enrollments.engagement`. A "Recompute" button on the People tab enqueues the same job (teach, 1/min).
 
 ### T4 · People tab: engagement columns (ENG-02 list, DSH-01)
 For `teach`/`oversee`: score, band badge, trend arrow, the five signal values as small `Progress` bars, last activity; filters: band, trend; sort by score. For skill offerings the existing traceability columns (lessons completed, watched minutes, quizzes attempted, time-based attendance %) stay alongside (DSH-05). "Computed <time>".

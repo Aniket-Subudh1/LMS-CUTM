@@ -3732,3 +3732,23 @@ Request: "plan to complete m10 … and improve current dashboard"; the plan was 
 
 **Verification**
 - `npx tsc --noEmit` → exit 0; `npx eslint lib/data/engagement.ts` → no problems. The integration tests come with T8.
+
+### 2026-10-28 · M10/T3 The nightly snapshot and "Work it out again" · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`lib/schemas/jobs.ts`*: `EngagementSnapshotJob { offeringId }` and `EngagementNightlyJob {}`.
+- *`lib/queue.ts`*: `queueEngagementSnapshot(offeringId, now, again?)`, job id `eng-<offeringId>-<IST day>`. The nightly run adds it once a day; `again` replaces a finished one and follows a running one (the `queueRecompute` pattern).
+- *`worker/jobs/compute.ts`*: `engagementSnapshot` runs `snapshotEngagement`; `engagementNightly` queues one for every active offering (a cursor, as `internalMarksNightly` does).
+- *`worker/index.ts`*: the `engagementNightly` scheduler at `30 2 * * *` IST.
+- `app/(app)/courses/[offeringId]/people/actions.ts`: `requestEngagement`, for whoever teaches the class and admins, once a minute per class (`limit('engagement', offeringId, 1, 60 s)`). Its button comes with T4.
+- *02 §8, 06 §6, the M10 milestone*: the scheduler is `engagementNightly`, not `engagement-nightly`: BullMQ names a scheduler after the job it adds, as the other schedulers are.
+
+**Not done** — T4–T8 follow.
+
+**Assumptions**
+- Every active offering gets a snapshot, credit and skill alike; a draft or completed one does not.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx tsc --noEmit` → exit 0; `npx eslint` on the changed files → no problems.

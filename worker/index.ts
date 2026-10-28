@@ -37,6 +37,11 @@ await computeQueue().upsertJobScheduler(
   { pattern: '0 2 * * *', tz: 'Asia/Kolkata' },
   { name: 'internalMarksNightly', data: {} },
 );
+await computeQueue().upsertJobScheduler(
+  'engagementNightly',
+  { pattern: '30 2 * * *', tz: 'Asia/Kolkata' },
+  { name: 'engagementNightly', data: {} },
+);
 await syncQueue().upsertJobScheduler(
   'githubNightly',
   { pattern: '30 1 * * *', tz: 'Asia/Kolkata' },
