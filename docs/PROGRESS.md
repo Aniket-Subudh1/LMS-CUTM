@@ -3887,3 +3887,17 @@ Three static Home layouts with the same content, each for faculty, a student and
 - `npx vitest run --project integration tests/integration/engagement.test.ts` → 5 passed; the full integration suite `npx vitest run --project integration` → 30 files, 359 tests passed.
 - `npm run check` → lint and typecheck clean; unit 42 files, 680 tests passed.
 - `npm run db:indexes:e2e && npm run db:seed:e2e` → CUTM1014 A has 10 enrolments at high (100) and 10 at low (10) (read back with mongosh). `npm run build`, then `npx playwright test tests/e2e/home.spec.ts tests/e2e/people.spec.ts` (with `PW_CHROMIUM_PATH` set to the local headless Chromium) → 4 passed. The rest of the E2E suite was not run.
+
+### 2026-10-28 · M03c/T15 and T17 The camera preview and the floating poll · Cursor agent, at Aniket's request
+
+**Created** (*changed*)
+- *`components/live-room.tsx`*: the ready-to-join preview reads the saved camera and microphone choices only after hydration, so the server and the first client render both say "Starting your camera…" and React no longer reports a mismatch ("Your camera is off" came from the browser's storage). The hosts' poll window is a floating window with no backdrop (`role="dialog"`, Escape closes) in the stage's top-right corner; it and the participants' poll card drag by their title bar and stay inside the stage. Breakout rooms keep the modal overlay.
+- *`docs/08-UI-SYSTEM.md`* §2 LiveRoom.
+
+**Not done** — Not tried in a running room: the hydration fix and the drag were checked by type and lint only. Opening a class as a host and dragging the poll (mouse and phone) is for the human walkthrough.
+
+**Assumptions** — The poll window stays open while the host works in the room, so it has no backdrop and does not trap focus.
+
+**Open questions** — none new.
+
+**Verification** — `npx tsc --noEmit` → clean; `npx eslint components/live-room.tsx` → clean.

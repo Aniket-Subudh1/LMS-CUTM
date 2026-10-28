@@ -52,6 +52,7 @@ import {
   CornersInIcon,
   CornersOutIcon,
   DotsThreeIcon,
+  DotsSixIcon,
   DotsThreeVerticalIcon,
   HandPalmIcon,
   MicrophoneIcon,
@@ -1061,6 +1062,7 @@ function Classroom(
       : openPoll && (pollAsked || (openPoll.mine === null && !aside.includes(openPoll.id)) || shownResults(openPoll))
         ? openPoll
         : lastResults;
+  const pollDrag = useDrag();
   const putAside = (poll: RoomPoll) => {
     setPollAsked(false);
     setAside([...aside, poll.id, `r:${poll.id}`]);
@@ -1684,10 +1686,18 @@ function Classroom(
           {popPoll && (
             <section
               aria-label="Poll"
-              className="absolute bottom-22 left-1/2 z-30 grid max-h-[calc(100%-7rem)] w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg bg-(--lk-bg) shadow-lg ring-1 ring-white/20"
+              style={pollDrag.style}
+              className="absolute bottom-22 left-1/2 z-30 grid max-h-[calc(100%-7rem)] w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg bg-(--lk-bg) shadow-2xl ring-1 ring-white/20"
             >
-              <header className="flex items-center justify-between gap-3 border-b border-white/10 py-1.5 pr-1.5 pl-4">
+              <header
+                {...pollDrag.handle}
+                className={cn(
+                  pollDrag.handle.className,
+                  'flex items-center justify-between gap-3 border-b border-white/10 py-1.5 pr-1.5 pl-4',
+                )}
+              >
                 <h2 className="flex items-center gap-2 text-[0.8125rem] font-semibold">
+                  <DotsSixIcon className="size-4 text-white/50" aria-hidden="true" />
                   <ChartBarIcon className="size-4" />
                   {popPoll.status === 'open' ? (popPoll.mine ? 'Poll · answered' : 'A host asks') : 'Poll results'}
                 </h2>
@@ -1718,21 +1728,35 @@ function Classroom(
             </button>
           )}
 
-          {dialog && (
-            <Overlay title={dialog === 'poll' ? 'Poll' : 'Breakout rooms'} onClose={() => setDialog(null)}>
-              {dialog === 'poll' ? (
-                openPoll ? (
-                  <div className="grid gap-4 p-4">
-                    <PollCard key={openPoll.id} poll={openPoll} host {...pollActions} />
-                  </div>
-                ) : (
-                  <PollForm
-                    noun={noun}
-                    busy={busy}
-                    create={async (poll) => void (await run(() => createPoll({ ...ref, ...poll })))}
-                  />
-                )
-              ) : breakout ? (
+          {dialog === 'poll' && (
+            <FloatingWindow title="Poll" onClose={() => setDialog(null)}>
+              {openPoll ? (
+                <div className="grid gap-4 p-4">
+                  <PollCard key={openPoll.id} poll={openPoll} host {...pollActions} />
+                </div>
+              ) : (
+                <PollForm
+                  noun={noun}
+                  busy={busy}
+                  create={async (poll) => void (await run(() => createPoll({ ...ref, ...poll })))}
+                />
+              )}
+              {props.polls.some((p) => p.status === 'ended') && (
+                <section className="grid gap-3 border-t border-white/10 p-4">
+                  <h3 className={SECTION_HEADING}>Earlier in this {noun}</h3>
+                  {props.polls
+                    .filter((p) => p.status === 'ended')
+                    .reverse()
+                    .map((p) => (
+                      <PollCard key={p.id} poll={p} host {...pollActions} />
+                    ))}
+                </section>
+              )}
+            </FloatingWindow>
+          )}
+          {dialog === 'rooms' && (
+            <Overlay title="Breakout rooms" onClose={() => setDialog(null)}>
+              {breakout ? (
                 <div className="p-4">
                   <BreakoutStatus
                     breakout={breakout}
@@ -1756,17 +1780,6 @@ function Classroom(
                     if (await run(() => openBreakouts({ ...ref, ...rooms }))) setDialog(null);
                   }}
                 />
-              )}
-              {dialog === 'poll' && props.polls.some((p) => p.status === 'ended') && (
-                <section className="grid gap-3 border-t border-white/10 p-4">
-                  <h3 className={SECTION_HEADING}>Earlier in this {noun}</h3>
-                  {props.polls
-                    .filter((p) => p.status === 'ended')
-                    .reverse()
-                    .map((p) => (
-                      <PollCard key={p.id} poll={p} host {...pollActions} />
-                    ))}
-                </section>
               )}
             </Overlay>
           )}
@@ -2494,7 +2507,15 @@ function ReadyToJoin({
   const { userChoices, saveAudioInputEnabled, saveVideoInputEnabled } = usePersistentUserChoices({
     defaults: { audioEnabled: host, videoEnabled: true },
   });
-  const { videoEnabled: camera, audioEnabled: microphone } = userChoices;
+  // The saved choices live in the browser's storage: the server and the first client render show them off, so the
+  // two match, and they apply once the page has hydrated.
+  const hydrated = useSyncExternalStore(
+    never,
+    () => true,
+    () => false,
+  );
+  const camera = hydrated && userChoices.videoEnabled;
+  const microphone = hydrated && userChoices.audioEnabled;
   const [failed, setFailed] = useState(false);
   const onError = useCallback(() => setFailed(true), []);
   const tracks = usePreviewTracks({ video: camera && { facingMode: facing }, audio: microphone }, onError);
@@ -2521,7 +2542,7 @@ function ReadyToJoin({
             />
           ) : (
             <p className="grid size-full place-items-center p-6 text-center text-sm text-white/70">
-              {camera
+              {!hydrated || camera
                 ? failed
                   ? 'Your camera or microphone could not start. Allow them for this site (the icon at the left of the address bar), or join without them.'
                   : 'Starting your camera…'
@@ -2618,6 +2639,75 @@ function Overlay({
         <div className="min-h-0 overflow-y-auto">{children}</div>
       </section>
     </div>
+  );
+}
+
+// A window over the stage that its title bar drags, kept inside the stage. Buttons in the bar still click.
+function useDrag() {
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ px: number; py: number; x: number; y: number; box: DOMRect; area: DOMRect } | null>(null);
+  const stop = () => {
+    drag.current = null;
+  };
+  return {
+    style: { transform: `translate(${offset.x}px, ${offset.y}px)` },
+    handle: {
+      className: 'cursor-grab touch-none select-none active:cursor-grabbing',
+      onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+        if (event.button !== 0 || (event.target instanceof Element && event.target.closest('button'))) return;
+        const section = event.currentTarget.closest('section');
+        const area = section?.offsetParent?.getBoundingClientRect();
+        if (!section || !area) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { px: event.clientX, py: event.clientY, ...offset, box: section.getBoundingClientRect(), area };
+      },
+      onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+        const d = drag.current;
+        if (!d) return;
+        const dx = Math.min(Math.max(event.clientX - d.px, d.area.left - d.box.left), d.area.right - d.box.right);
+        const dy = Math.min(Math.max(event.clientY - d.py, d.area.top - d.box.top), d.area.bottom - d.box.bottom);
+        setOffset({ x: d.x + dx, y: d.y + dy });
+      },
+      onPointerUp: stop,
+      onPointerCancel: stop,
+    },
+  };
+}
+
+// The hosts' poll, floating like a pop-out window: no backdrop, so the room stays in view and usable behind it.
+function FloatingWindow({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const { style, handle } = useDrag();
+  return (
+    <section
+      role="dialog"
+      aria-label={title}
+      style={style}
+      onKeyDown={(event) => event.key === 'Escape' && onClose()}
+      className="absolute top-3 right-3 z-40 grid max-h-[calc(100%-7rem)] w-[min(28rem,calc(100%-1.5rem))] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg bg-(--lk-bg) shadow-2xl ring-1 ring-white/20"
+    >
+      <header
+        {...handle}
+        className={cn(
+          handle.className,
+          'flex items-center justify-between gap-3 border-b border-white/10 py-1.5 pr-1.5 pl-4',
+        )}
+      >
+        <h2 className="flex items-center gap-2 text-[0.9375rem] font-semibold">
+          <DotsSixIcon className="size-4 text-white/50" aria-hidden="true" />
+          {title}
+        </h2>
+        <button
+          type="button"
+          aria-label="Close"
+          autoFocus
+          onClick={onClose}
+          className="grid size-8 place-items-center rounded-md text-white/70 hover:bg-white/10 hover:text-white"
+        >
+          <XIcon className="size-4" />
+        </button>
+      </header>
+      <div className="min-h-0 overflow-y-auto">{children}</div>
+    </section>
   );
 }
 
