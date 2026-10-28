@@ -7,7 +7,6 @@ import { ActionForm, Field } from '@/components/action-form';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { LiveRoom } from '@/components/live-room';
 import { RoomNotice } from '@/components/room-notice';
-import { DeviceCheck } from '@/components/test-lobby';
 import { Input } from '@/components/ui/input';
 import { getMeetingLink } from '@/lib/data/meetings';
 import { formatDay, formatTime } from '@/lib/format';
@@ -44,7 +43,7 @@ async function Join({ params }: { params: PageProps<'/m/[token]'>['params'] }) {
         noun="meeting"
         trackFocus={false}
         host={false}
-        guest={person.kind === 'guest'}
+        guest
         backHref={null}
         title={session.title}
         course=""
@@ -53,7 +52,7 @@ async function Join({ params }: { params: PageProps<'/m/[token]'>['params'] }) {
         expected={link.invited}
         attendanceNote=""
         controls={null}
-        polls={[]}
+        polls={link.polls}
         breakout={null}
         board={link.board}
       />
@@ -92,10 +91,7 @@ async function Join({ params }: { params: PageProps<'/m/[token]'>['params'] }) {
   }
   return (
     <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-4 sm:p-8">
-      <div className="grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="text-foreground">
-          <DeviceCheck camera />
-        </div>
+      <div className="grid w-full max-w-md items-center gap-8">
         <div className="grid content-start gap-5">
           <div className="grid gap-1.5">
             <p className="text-xs font-medium tracking-wide text-white/60 uppercase">Centurion LMS · meeting</p>

@@ -40,11 +40,11 @@
 | Live sessions: turn off students' screen sharing, microphones, chat and reactions (M03c) | — | ✔ (host) | — | ✔ (host) | — |
 | Meetings: schedule, change, cancel (M03c T4; their hosts) | — | ✔ | ✔ | ✔ | — |
 | Meetings: join, raise a hand (invited) | ✔ | ✔ | ✔ | ✔ (invited only, A-185) | — |
-| Meetings: join by one's own link without signing in, with the passcode (M03c T14; invited people, guests included; taking part, never hosting, A-221) | ✔ | ✔ | ✔ | ✔ | — |
+| Meetings: join by one's own link without signing in, with the passcode, and there raise a hand and answer polls (M03c T14, T15; invited people, guests included; as a guest in the room, never hosting, A-221) | ✔ | ✔ | ✔ | ✔ | — |
 | Meetings: host controls; see the passcode, copy anyone's link, send one invitation again (their hosts, T14) | — | ✔ | ✔ | ✔ | — |
 | Record a class or meeting (M03c T5; its hosts; everyone in the room is told; audited) | — | ✔ (host) | — | ✔ (host) | — |
 | Polls (M03c T6; not audited, no record): ask, see counts, show, end | — | ✔ (host) | — | ✔ (host) | — |
-| Polls: answer (those taking part; never guests); see own answer, and counts once shown | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
+| Polls: answer (those taking part; since T15 people in by link too, through their pass); see own answer, and counts once shown | ✔ | ✔ (a meeting's member) | ✔ (a meeting's member) | ✔ (a meeting's member) | — |
 | Breakout rooms (M03c T7): open, close, message every room, visit any | — | ✔ (host) | — | ✔ (host) | — |
 | Whiteboard (M03c T8): open, close, choose whether the others draw | — | ✔ (host) | — | ✔ (host) | — |
 | Whiteboard: draw when a host allows it (and data messages are allowed); see it always, guests included | ✔ | ✔ | ✔ | ✔ | — |

@@ -3,12 +3,14 @@
 import { refresh } from 'next/cache';
 import { timingSafeEqual } from 'node:crypto';
 import { publicAction } from '@/lib/action';
-import { grantMeetingPass } from '@/lib/auth/meeting-pass';
+import { grantMeetingPass, meetingPassHolder } from '@/lib/auth/meeting-pass';
+import { answerPollAs } from '@/lib/data/live';
 import { findLinkedMeeting } from '@/lib/data/meetings';
 import { AppError } from '@/lib/errors';
+import { setHand } from '@/lib/integrations/live';
 import { LiveSession } from '@/lib/models/live-session';
 import { clientIp, limit } from '@/lib/rate-limit';
-import { JoinMeeting } from '@/lib/schemas/live';
+import { AnswerPoll, JoinMeeting, RoomRef } from '@/lib/schemas/live';
 
 // M03c T14 (decision 9): joining by a personal link without signing in. The link names the person; the passcode in
 // their invitation lets this browser in as them (a sealed cookie, A-223). Wrong passcodes are limited per link and per
@@ -52,5 +54,41 @@ export const joinMeeting = publicAction(JoinMeeting, async ({ token, name, passc
     );
   }
   await grantMeetingPass(String(doc._id), person.id);
+  refresh();
+});
+
+// T15 (A-225): someone in by their link raises or lowers their own hand and answers polls, as the person their pass
+// names, while they are still invited and not removed.
+async function passHolder(sessionId: string) {
+  const personId = await meetingPassHolder(sessionId);
+  if (!personId) throw new AppError('UNAUTHENTICATED', 'Open your link again to carry on.');
+  const doc = await LiveSession.findOne(
+    { _id: sessionId, kind: 'meeting' },
+    { status: 1, roomName: 1, meeting: 1, removed: 1 },
+  ).lean();
+  const invited =
+    doc?.meeting?.guests.some((g) => g._id.equals(personId)) ||
+    [...(doc?.meeting?.hostIds ?? []), ...(doc?.meeting?.memberIds ?? [])].some((id) => id.equals(personId));
+  if (!doc || !invited) throw new AppError('NOT_FOUND', 'This link is no longer valid.');
+  if (doc.status !== 'live') throw new AppError('CLOSED', 'The meeting is not running.');
+  if (doc.removed?.some((r) => r.userId.equals(personId))) {
+    throw new AppError('FORBIDDEN', 'A host removed you from this meeting.');
+  }
+  return { roomName: doc.roomName, personId };
+}
+
+export const raiseHandByLink = publicAction(RoomRef, async ({ sessionId }) => {
+  const { roomName, personId } = await passHolder(sessionId);
+  await setHand(roomName, personId, new Date());
+});
+
+export const lowerHandByLink = publicAction(RoomRef, async ({ sessionId }) => {
+  const { roomName, personId } = await passHolder(sessionId);
+  await setHand(roomName, personId, null);
+});
+
+export const answerPollByLink = publicAction(AnswerPoll, async ({ sessionId, pollId, optionId }) => {
+  const { personId } = await passHolder(sessionId);
+  await answerPollAs(sessionId, pollId, optionId, personId);
   refresh();
 });

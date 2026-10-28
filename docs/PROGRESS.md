@@ -326,7 +326,7 @@ Owner `@client` = Saneev Sir / CUTM; `@dev` = delivery team. "Blocks" names what
 | A-218 | M09's A1 is variant A, attainment first on the Outcomes tab, since Aniket asked for the build without picking (as with M03c's R3-B) | M09 | — |
 | A-219 | A meeting's passcode is 6 digits, kept as plain text on the meeting so hosts can read it out and invitations can carry it; it stays the same for the meeting's life | M03c (fixes) | — |
 | A-220 | Meetings scheduled before 28 Oct 2026 have no passcode, and their links still open them without one | M03c (fixes) | — |
-| A-221 | A co-host or member who opens their link signed out takes part under their own name; host controls need signing in | M03c (fixes) | — |
+| A-221 | Anyone in a meeting by their link without signing in — a member or co-host too — is a guest in the room: they raise a hand and answer polls, but host controls and breakout rooms need signing in | M03c (fixes) | — |
 | A-222 | A link takes at most 10 wrong passcodes in 15 minutes, and an address 30 across all links; a right passcode gives its tries back | M03c (fixes) | — |
 | A-223 | A right passcode lets that browser back into that meeting for 12 hours (a meeting lasts at most 6, A-192); another browser asks again | M03c (fixes) | — |
 | A-224 | Two browsers on one link are one person in the room: the later replaces the earlier, as LiveKit allows one connection per identity | M03c (fixes) | — |
@@ -3379,3 +3379,42 @@ T14 also takes the join by link and passcode that the plan gave to T15, since bo
 - `npm run check` → exit 0, `Tests 650 passed (650)`.
 - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 54 passed (54)` (with T13's).
 - Redis on this Mac stopped at about 14:12, during the other session's runs. I started a local `redis-server` (no persistence files) to finish these runs.
+
+### 2026-10-28 · M03c/T15 "Ready to join?", the front camera and Flip, and hands and polls by link · Claude Code, at Aniket's request
+
+Aniket: "in mobile the default back camera opens but we need to open front as default and there should be option to rotate camera". The room opened the camera with no facing mode, so a phone could pick the back one, and there was no way to turn it round. People in by link could not raise a hand or answer a poll, and signed-in people joined with no chance to see themselves first.
+
+**Created**
+- **`components/live-room.tsx`:**
+  - "Ready to join?" before connecting, for everyone:
+    - the viewer's own picture, mirrored, from the front camera;
+    - Flip on a phone or tablet;
+    - the microphone and camera as last chosen (`usePersistentUserChoices`; the first time, a host's microphone on and everyone else's off);
+    - Join now.
+  - In the room:
+    - every camera starts facing the viewer unless flipped (`videoCaptureDefaults.facingMode: 'user'`, and the facing carried into breakout rooms and a camera turned on later);
+    - Flip at the top on a phone while the camera is on (`restartTrack`, which keeps a blur);
+    - the viewer's own front camera shows mirrored.
+  - `guest` now means anyone in by link. Their hand and poll answers go through the link's pass, they get the raise-hand button and the Activities tab, and the mini window lets them raise a hand.
+- **The link's actions** (`app/(room)/m/[token]/actions.ts`): `raiseHandByLink`, `lowerHandByLink` and `answerPollByLink`, as the person the browser's pass names, while they are invited, not removed and the meeting runs.
+- **The shared poll write:** `answerPollAs` (`lib/data/live.ts`), shared with `answerPoll`.
+- **Data:** `getMeetingLink` gives the polls. Everyone in by link joins with `role: 'guest'` (A-221).
+- **The link page:** the test lobby's device check is gone (A-191): the passcode card alone, then "Ready to join?" in the room.
+- **Tests** (`tests/integration/meetings.test.ts`):
+  - a guest raises and lowers a hand and answers a poll by link, and their answer is kept against their id;
+  - no pass is UNAUTHENTICATED, and a removed guest is FORBIDDEN;
+  - members in by link are guests in the room.
+- **Docs:** 06 §8.8, 08 (`LiveRoom`, `/m/[token]`), 09 (permissions), A-221.
+
+**Not done**
+- The camera and microphone pickers on a computer (Mic ▾, Cam ▾) come with the bar in T17.
+- Flip shows on any touch screen while the camera is on, rather than after counting cameras: counting needs the camera permission first.
+
+**Assumptions** — A-221 (changed: everyone in by link is a guest in the room), A-225.
+
+**Open questions** — none new.
+
+**Verification**
+- `npm run check` → exit 0, `Tests 650 passed (650)`.
+- `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/live.test.ts` → `Tests 55 passed (55)`.
+- The screens are walked with T16–T17 in T18. A real phone's front camera and Flip are for Aniket to try.

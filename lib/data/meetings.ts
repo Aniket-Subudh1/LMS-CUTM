@@ -395,7 +395,7 @@ export async function findLinkedMeeting(token: string) {
   const ids = holder.kind === 'guest' ? [holder.guestId] : [holder.sessionId, holder.userId];
   if (!ids.every((id) => isValidObjectId(id))) return null;
   await db();
-  const fields = { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, board: 1 } as const;
+  const fields = { ...MEETING_FIELDS, roomName: 1, studentsMay: 1, removed: 1, board: 1, polls: 1 } as const;
   if (holder.kind === 'guest') {
     const id = new Types.ObjectId(holder.guestId);
     const doc = await LiveSession.findOne({ kind: 'meeting', 'meeting.guests._id': id }, fields).lean();
@@ -428,6 +428,8 @@ export type MeetingLink = {
   asksPasscode: boolean;
   // While it runs, for a browser holding this person's pass (T14).
   join: { serverUrl: string; token: string } | null;
+  // T15 (A-225): the polls as someone taking part sees them, while they are in.
+  polls: RoomPoll[];
   board: { studentsDraw: boolean } | null;
   invited: number;
 };
@@ -445,6 +447,7 @@ export async function getMeetingLink(token: string): Promise<MeetingLink> {
   ]);
   const removed = (doc.removed ?? []).some((r) => r.userId.equals(person.id));
   const live = doc.status === 'live';
+  const inside = live && !removed && holder === person.id;
   return {
     sessionId,
     session: toRow(doc, new Date()),
@@ -453,17 +456,18 @@ export async function getMeetingLink(token: string): Promise<MeetingLink> {
     signedIn: person.kind === 'member' && viewer?.id === person.id,
     removed,
     asksPasscode: Boolean(doc.meeting.passcode),
-    // A co-host who did not sign in takes part; hosting needs signing in (A-221).
-    join:
-      live && !removed && holder === person.id
-        ? await joinToken({
-            roomName: doc.roomName,
-            userId: person.id,
-            name: person.name ?? person.email,
-            role: person.kind === 'guest' ? 'guest' : 'participant',
-            rights: { ...ALL_RIGHTS, ...doc.studentsMay },
-          })
-        : null,
+    // Everyone in by link is a guest in the room, a member or co-host too: hosting and breakout rooms need signing in
+    // (A-221, A-201).
+    join: inside
+      ? await joinToken({
+          roomName: doc.roomName,
+          userId: person.id,
+          name: person.name ?? person.email,
+          role: 'guest',
+          rights: { ...ALL_RIGHTS, ...doc.studentsMay },
+        })
+      : null,
+    polls: inside ? await roomPolls(doc, person.id, false) : [],
     board: live && doc.board ? { studentsDraw: doc.board.studentsDraw } : null,
     invited: doc.meeting.hostIds.length + doc.meeting.memberIds.length + doc.meeting.guests.length,
   };

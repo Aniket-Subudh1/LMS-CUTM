@@ -26,6 +26,8 @@ import {
   useLocalParticipant,
   useLocalParticipantPermissions,
   useParticipants,
+  usePersistentUserChoices,
+  usePreviewTracks,
   useRoomContext,
   useTrackToggle,
   useTracks,
@@ -37,6 +39,7 @@ import {
   ArrowLeftIcon,
   ArrowSquareOutIcon,
   ArrowUUpLeftIcon,
+  CameraRotateIcon,
   ChartBarIcon,
   PencilSimpleLineIcon,
   SquaresFourIcon,
@@ -96,6 +99,7 @@ import {
   startRecording,
   stopRecording,
 } from '@/app/(room)/actions';
+import { answerPollByLink, lowerHandByLink, raiseHandByLink } from '@/app/(room)/m/[token]/actions';
 import { ActionForm } from '@/components/action-form';
 import { RoomNotice } from '@/components/room-notice';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -137,7 +141,8 @@ type Props = {
   // meeting's hosts): may lower anyone's hand, mute, remove, set what the others may do, let guests in, and end it.
   trackFocus: boolean;
   host: boolean;
-  // A meeting's guest (M03c T4): no hand to raise and no page to go back to.
+  // In a meeting by their own link, without signing in (M03c T4, T14: a guest, or a member who did not sign in): no
+  // page to go back to, and their hand and poll answers go through their link's pass (T15).
   guest?: boolean;
   // The class page (attendance and the summary) or the meeting's page; none for a guest.
   backHref: string | null;
@@ -175,8 +180,14 @@ type Float = { id: number; emoji: string; name: string };
 type Message = { payload: Uint8Array; from?: Participant };
 
 const BEACON_MS = 60_000;
-// LiveKit sends small tiles at a lower quality and pauses video nobody sees; the mini window counts as seen.
-const ROOM_OPTIONS: RoomOptions = { adaptiveStream: true, dynacast: true };
+// LiveKit sends small tiles at a lower quality and pauses video nobody sees; the mini window counts as seen. M03c T15:
+// a phone opens its front camera unless the viewer flips it (by default a phone may pick the back one).
+const ROOM_OPTIONS: RoomOptions = {
+  adaptiveStream: true,
+  dynacast: true,
+  videoCaptureDefaults: { facingMode: 'user' },
+};
+type Facing = 'user' | 'environment';
 // M03c T1, as in Google Meet (Aniket's pick R1-A: Auto puts the faces beside a shared screen).
 const LAYOUTS: { value: Layout; label: string; hint: string }[] = [
   { value: 'auto', label: 'Auto', hint: 'faces beside a shared screen' },
@@ -264,6 +275,9 @@ export function LiveRoom(props: Props) {
     audio: boolean;
   }>({ token: props.token, room: 0, video: false, audio: false });
   const [blur, setBlur] = useState<Blur>('off');
+  // M03c T15: "Ready to join?" comes first; the camera faces the viewer unless they flip it.
+  const [joined, setJoined] = useState(false);
+  const [facing, setFacing] = useState<Facing>('user');
   const media = useRef<Media>({ camera: false, microphone: false });
   const remember = useCallback((now: Media) => {
     media.current = now;
@@ -280,15 +294,15 @@ export function LiveRoom(props: Props) {
       const video =
         camera && blur !== 'off'
           ? await blurProcessor(blur).then(
-              (processor) => ({ processor }),
+              (processor) => ({ processor, facingMode: facing }),
               () => false,
             )
-          : camera;
+          : camera && { facingMode: facing };
       switching.current = true;
       setConn({ token: result.data.token, room, video, audio: microphone });
       return null;
     },
-    [sessionId, blur],
+    [sessionId, blur, facing],
   );
   // Back to the class or meeting when the breakout rooms close.
   const breakoutOpen = props.breakout !== null;
@@ -389,6 +403,22 @@ export function LiveRoom(props: Props) {
     );
   }
 
+  if (!joined) {
+    return (
+      <ReadyToJoin
+        title={props.title}
+        course={props.course}
+        host={host}
+        facing={facing}
+        setFacing={setFacing}
+        onJoin={(camera, microphone) => {
+          setConn({ ...conn, video: camera && { facingMode: facing }, audio: microphone });
+          setJoined(true);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1">
       {deviceFailed && (
@@ -440,6 +470,8 @@ export function LiveRoom(props: Props) {
           blur={blur}
           setBlur={setBlur}
           remember={remember}
+          facing={facing}
+          setFacing={setFacing}
         />
         <RoomAudioRenderer />
       </LiveKitRoom>
@@ -503,6 +535,20 @@ function useBrowser() {
   return { fullscreen, canFullscreen, canPopOut, canCaption };
 }
 
+// M03c T15: Flip is for phones and tablets, which have a front and a back camera; a computer keeps its one camera.
+const touchQuery = '(pointer: coarse)';
+const onPointer = (notify: () => void) => {
+  const query = window.matchMedia(touchQuery);
+  query.addEventListener('change', notify);
+  return () => query.removeEventListener('change', notify);
+};
+const useCanFlip = () =>
+  useSyncExternalStore(
+    onPointer,
+    () => window.matchMedia(touchQuery).matches,
+    () => false,
+  );
+
 // The token gives each participant a `role`; a raised hand is the attribute `hand`, the time it was raised (ms), set by
 // the server (lib/integrations/live.ts).
 const isHost = (p: Participant) => p.attributes.role === 'host';
@@ -541,9 +587,11 @@ function Classroom(
     blur: Blur;
     setBlur: (blur: Blur) => void;
     remember: (media: Media) => void;
+    facing: Facing;
+    setFacing: (facing: Facing) => void;
   },
 ) {
-  const { sessionId, host, noun, guest = false, inRoom, switchTo, blur, setBlur, remember } = props;
+  const { sessionId, host, noun, guest = false, inRoom, switchTo, blur, setBlur, remember, facing, setFacing } = props;
   const inBreakout = inRoom > 0;
   // A participant who said "Not now" to their breakout room (keyed by when the rooms opened).
   const [skipped, setSkipped] = useState<string | null>(null);
@@ -843,7 +891,23 @@ function Classroom(
     );
   const invited = !host && !inBreakout && (breakout?.mine ?? null) !== null;
   const inviteKey = breakout ? `${breakout.openedAt.getTime()}` : '';
-  const toggleHand = () => (myHand ? lower([me]) : run(() => raiseHand(ref)));
+  // T15: someone in by link raises and lowers their own hand through their link's pass.
+  const toggleHand = () =>
+    guest
+      ? run(() => (myHand ? lowerHandByLink(ref) : raiseHandByLink(ref)))
+      : myHand
+        ? lower([me])
+        : run(() => raiseHand(ref));
+  // T15: the other camera on a phone; the blur, if any, carries over. A camera that is off starts facing that way.
+  const flip = () => {
+    const next = facing === 'user' ? 'environment' : 'user';
+    if (!(camera instanceof LocalVideoTrack)) return setFacing(next);
+    void camera.restartTrack({ facingMode: next }).then(
+      () => setFacing(next),
+      () => setError('Your other camera could not start.'),
+    );
+  };
+  const canFlip = useCanFlip();
   const open = (next: Panel) => {
     if (panel === 'chat' || next === 'chat') setSeen(chat.chatMessages.length);
     setChoice(panel === next ? null : next);
@@ -910,6 +974,7 @@ function Classroom(
             : nameOf(t.participant)
       }
       hand={t.source === Track.Source.Camera ? handPlace(t.participant) : 0}
+      mirror={t.participant.identity === me && t.source === Track.Source.Camera && facing === 'user'}
       pinned={pinned === keyOf(t)}
       main={isMain}
       // A tile that fills the stage would put its menu under the time live; the People panel has the same menu.
@@ -1016,6 +1081,7 @@ function Classroom(
             className="absolute right-3 bottom-20 aspect-4/3 w-32 bg-(--lk-bg) ring-1 ring-white/15 sm:w-44 lg:w-52"
             label="You"
             hand={place}
+            mirror={facing === 'user'}
           />
         )}
       </>
@@ -1043,6 +1109,17 @@ function Classroom(
               <span className="truncate text-white/60 max-md:hidden">{inBreakout ? props.title : props.course}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {canFlip && isCameraEnabled && (
+                <button
+                  type="button"
+                  onClick={flip}
+                  aria-label="Switch to your other camera"
+                  title="Switch camera"
+                  className="grid size-8 place-items-center rounded-md bg-black/60 ring-1 ring-white/10 hover:bg-black/80"
+                >
+                  <CameraRotateIcon className="size-4.5" />
+                </button>
+              )}
               {breakout?.closesAt && (inBreakout || host) && now > 0 && (
                 <span className="flex items-center gap-2 rounded-md bg-black/60 px-3 py-1.5 text-[0.8125rem] ring-1 ring-white/10">
                   <span className="font-semibold tabular-nums">
@@ -1193,14 +1270,12 @@ function Classroom(
               source={Track.Source.Camera}
               on={<VideoCameraIcon />}
               off={<VideoCameraSlashIcon />}
-              // A camera turned on with its background blurred starts blurred, before anything is sent.
-              turnOn={
-                blur === 'off'
-                  ? undefined
-                  : () =>
-                      void blurProcessor(blur)
-                        .then((processor) => localParticipant.setCameraEnabled(true, { processor }))
-                        .catch(() => setError('Your camera could not start with its background blurred.'))
+              // It starts facing the way the viewer last chose, and with its background blurred before anything is
+              // sent.
+              turnOn={() =>
+                void (blur === 'off' ? Promise.resolve(undefined) : blurProcessor(blur))
+                  .then((processor) => localParticipant.setCameraEnabled(true, { facingMode: facing, processor }))
+                  .catch(() => setError('Your camera could not start.'))
               }
             />
             <MediaToggle
@@ -1210,7 +1285,7 @@ function Classroom(
               locked={may(Track.Source.ScreenShare) ? undefined : lockedBy(noun, 'screen sharing')}
               className="max-sm:hidden"
             />
-            {!host && !guest && !inBreakout && (
+            {!host && !inBreakout && (
               <RoundButton
                 label={myHand ? `Lower your hand (${place} in line)` : 'Raise your hand'}
                 pressed={myHand > 0}
@@ -1393,27 +1468,22 @@ function Classroom(
       {panel && (
         <aside className="flex w-88 shrink-0 flex-col border-l border-white/10 bg-(--lk-bg) max-lg:absolute max-lg:inset-0 max-lg:z-20 max-lg:w-full max-lg:border-l-0">
           <header className="flex items-center gap-1 border-b border-white/10 p-2">
-            {(guest || inBreakout ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map(
-              (tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => open(tab)}
-                  className={cn(
-                    'relative h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
-                    panel === tab ? 'bg-white/10 font-semibold' : 'text-white/60 hover:text-white',
-                  )}
-                >
-                  {tab}
-                  {tab === 'activities' && unanswered && (
-                    <span
-                      className="bg-gold absolute top-1.5 right-2 size-2 rounded-full"
-                      aria-label="A poll is open"
-                    />
-                  )}
-                </button>
-              ),
-            )}
+            {(inBreakout ? (['people', 'chat'] as const) : (['people', 'chat', 'activities'] as const)).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => open(tab)}
+                className={cn(
+                  'relative h-8 flex-1 rounded-md text-[0.8125rem] capitalize',
+                  panel === tab ? 'bg-white/10 font-semibold' : 'text-white/60 hover:text-white',
+                )}
+              >
+                {tab}
+                {tab === 'activities' && unanswered && (
+                  <span className="bg-gold absolute top-1.5 right-2 size-2 rounded-full" aria-label="A poll is open" />
+                )}
+              </button>
+            ))}
             <button
               type="button"
               aria-label="Close the panel"
@@ -1464,7 +1534,9 @@ function Classroom(
               visit={(room) => void go(room)}
               busy={busy}
               create={(poll) => run(() => createPoll({ ...ref, ...poll }))}
-              answer={(pollId, optionId) => void run(() => answerPoll({ ...ref, pollId, optionId }))}
+              answer={(pollId, optionId) =>
+                void run(() => (guest ? answerPollByLink : answerPoll)({ ...ref, pollId, optionId }))
+              }
               end={(pollId) => void run(() => endPoll({ ...ref, pollId }))}
               show={(pollId) => void run(() => showPollResults({ ...ref, pollId }))}
             />
@@ -1515,7 +1587,7 @@ function Classroom(
             main={main}
             faces={faces.filter((t) => !main || keyOf(t) !== keyOf(main)).slice(0, 3)}
             noun={noun}
-            canRaise={!host && !guest}
+            canRaise={!host}
             myHand={myHand}
             place={place}
             busy={busy}
@@ -1626,6 +1698,7 @@ function Tile({
   labelClassName,
   label,
   hand,
+  mirror = false,
   pinned = false,
   main = false,
   menu,
@@ -1636,6 +1709,8 @@ function Tile({
   labelClassName?: string;
   label: string;
   hand: number;
+  // M03c T15: the viewer's own front camera shows as in a mirror, as in Google Meet (others see it the right way).
+  mirror?: boolean;
   pinned?: boolean;
   // The stage's main tile: the video other browsers float as the mini window.
   main?: boolean;
@@ -1655,7 +1730,7 @@ function Tile({
       {cameraOn(trackRef) && isTrackReference(trackRef) ? (
         <VideoTrack
           trackRef={trackRef}
-          className={cn('size-full', fit === 'cover' ? 'object-cover' : 'object-contain')}
+          className={cn('size-full', fit === 'cover' ? 'object-cover' : 'object-contain', mirror && '-scale-x-100')}
         />
       ) : (
         <span className="grid size-full place-items-center">
@@ -1766,6 +1841,104 @@ function PersonMenu({
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// M03c T15: "Ready to join?" — the viewer's own picture before anyone sees it (the front camera on a phone, with Flip),
+// and their microphone and camera as they last chose; the first time, a host's microphone is on and everyone else's off,
+// so a class of sixty does not join talking. Joining is a click, which also lets the room play sound at once.
+function ReadyToJoin({
+  title,
+  course,
+  host,
+  facing,
+  setFacing,
+  onJoin,
+}: {
+  title: string;
+  course: string;
+  host: boolean;
+  facing: Facing;
+  setFacing: (facing: Facing) => void;
+  onJoin: (camera: boolean, microphone: boolean) => void;
+}) {
+  const { userChoices, saveAudioInputEnabled, saveVideoInputEnabled } = usePersistentUserChoices({
+    defaults: { audioEnabled: host, videoEnabled: true },
+  });
+  const { videoEnabled: camera, audioEnabled: microphone } = userChoices;
+  const [failed, setFailed] = useState(false);
+  const onError = useCallback(() => setFailed(true), []);
+  const tracks = usePreviewTracks({ video: camera && { facingMode: facing }, audio: microphone }, onError);
+  const video = camera ? tracks?.find((t) => t instanceof LocalVideoTrack) : undefined;
+  const element = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = element.current;
+    if (!video || !el) return;
+    video.attach(el);
+    return () => void video.detach(el);
+  }, [video]);
+  const canFlip = useCanFlip();
+  return (
+    <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto p-4 sm:p-8">
+      <div className="grid w-full max-w-4xl items-center gap-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="relative aspect-video overflow-hidden rounded-lg bg-white/6">
+          {video ? (
+            <video
+              ref={element}
+              muted
+              playsInline
+              autoPlay
+              className={cn('size-full object-cover', facing === 'user' && '-scale-x-100')}
+            />
+          ) : (
+            <p className="grid size-full place-items-center p-6 text-center text-sm text-white/70">
+              {camera
+                ? failed
+                  ? 'Your camera or microphone could not start. Allow them for this site (the icon at the left of the address bar), or join without them.'
+                  : 'Starting your camera…'
+                : 'Your camera is off'}
+            </p>
+          )}
+          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2">
+            <RoundButton
+              label={microphone ? 'Turn off your microphone' : 'Turn on your microphone'}
+              onClick={() => saveAudioInputEnabled(!microphone)}
+              className={cn(!microphone && 'bg-red-500/20 text-red-300')}
+            >
+              {microphone ? <MicrophoneIcon /> : <MicrophoneSlashIcon />}
+            </RoundButton>
+            <RoundButton
+              label={camera ? 'Turn off your camera' : 'Turn on your camera'}
+              onClick={() => saveVideoInputEnabled(!camera)}
+              className={cn(!camera && 'bg-red-500/20 text-red-300')}
+            >
+              {camera ? <VideoCameraIcon /> : <VideoCameraSlashIcon />}
+            </RoundButton>
+            {canFlip && camera && (
+              <RoundButton
+                label="Switch to your other camera"
+                onClick={() => setFacing(facing === 'user' ? 'environment' : 'user')}
+              >
+                <CameraRotateIcon />
+              </RoundButton>
+            )}
+          </div>
+        </div>
+        <div className="grid content-start gap-4">
+          <div className="grid gap-1.5">
+            <p className="text-xs font-medium tracking-wide text-white/60 uppercase">Ready to join?</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
+            {course && <p className="text-sm text-white/70">{course}</p>}
+          </div>
+          <Button size="lg" onClick={() => onJoin(camera, microphone)} className="w-full sm:w-max">
+            Join now
+          </Button>
+          <p className="text-xs leading-relaxed text-white/60">
+            You can turn your microphone and camera on or off at any time in the room.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 

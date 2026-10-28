@@ -28,7 +28,7 @@ import {
   startRecording,
   stopRecording,
 } from '@/app/(room)/actions';
-import { joinMeeting } from '@/app/(room)/m/[token]/actions';
+import { answerPollByLink, joinMeeting, lowerHandByLink, raiseHandByLink } from '@/app/(room)/m/[token]/actions';
 import { GET as file } from '@/app/api/files/[...key]/route';
 import { POST as webhook } from '@/app/api/webhooks/live/route';
 import { linkHolderOf, meetingLinkToken } from '@/lib/auth/meeting-link';
@@ -486,11 +486,11 @@ describe('joining by a personal link and the passcode (T14, decision 9)', () => 
     expect((await getMeetingLink(token)).signedIn).toBe(false);
     signedOut();
     expect(await joinMeeting({ token, passcode })).toMatchObject({ ok: true });
-    expect((await getMeetingLink(token)).join?.token).toBe(`participant-${w.taught._id}`);
-    // A co-host who did not sign in takes part; hosting needs signing in (A-221).
+    // In by link, a member is a guest in the room: no breakout rooms, no host controls (A-221, A-201).
+    expect((await getMeetingLink(token)).join?.token).toBe(`guest-${w.taught._id}`);
     const cohost = meetingLinkToken({ kind: 'member', sessionId: id, userId: String(w.colleague._id) });
     expect(await joinMeeting({ token: cohost, passcode })).toMatchObject({ ok: true });
-    expect((await getMeetingLink(cohost)).join?.token).toBe(`participant-${w.colleague._id}`);
+    expect((await getMeetingLink(cohost)).join?.token).toBe(`guest-${w.colleague._id}`);
     // Taken off the meeting, their link no longer opens it; nor does it open another meeting.
     await LiveSession.updateOne({ _id: id }, { $pull: { 'meeting.memberIds': w.taught._id } });
     await expect(getMeetingLink(token)).rejects.toThrow(NOT_FOUND);
@@ -498,6 +498,40 @@ describe('joining by a personal link and the passcode (T14, decision 9)', () => 
     const other = await schedule(w);
     const borrowed = token.replace(id, other);
     await expect(getMeetingLink(borrowed)).rejects.toThrow(NOT_FOUND);
+  });
+
+  it('lets someone in by link raise a hand and answer a poll as themselves, and nobody without the pass (T15)', async () => {
+    const { w, id, ref, rao, passcode } = await running();
+    const token = guestLink(rao._id);
+    const raoId = String(rao._id);
+    const raos = signedOut();
+    expect(await raiseHandByLink(ref)).toMatchObject({ code: 'UNAUTHENTICATED' });
+    await joinMeeting({ token, name: 'Rao Kumar', passcode });
+    expect(await raiseHandByLink(ref)).toMatchObject({ ok: true });
+    expect(await lowerHandByLink(ref)).toMatchObject({ ok: true });
+    await signInAs(w.faculty);
+    expect(
+      await createPoll({ ...ref, question: 'Ready?', 'option[]': ['Yes', 'No'], showResults: false }),
+    ).toMatchObject({
+      ok: true,
+    });
+    switchBrowser(raos);
+    const [poll] = (await getMeetingLink(token)).polls;
+    expect(poll).toMatchObject({ question: 'Ready?', mine: null, status: 'open' });
+    expect(await answerPollByLink({ ...ref, pollId: poll.id, optionId: poll.options[0].id })).toMatchObject({
+      ok: true,
+    });
+    expect((await getMeetingLink(token)).polls[0].mine).toBe(poll.options[0].id);
+    expect(await PollAnswer.countDocuments({ pollId: poll.id, userId: raoId })).toBe(1);
+    // Another browser holds no pass; a removed guest's pass no longer counts.
+    signedOut();
+    expect(await answerPollByLink({ ...ref, pollId: poll.id, optionId: poll.options[1].id })).toMatchObject({
+      code: 'UNAUTHENTICATED',
+    });
+    await signInAs(w.faculty);
+    await removeParticipant({ ...ref, identity: raoId });
+    switchBrowser(raos);
+    expect(await raiseHandByLink(ref)).toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('limits wrong passcodes per link, and refuses an altered link and joining before the start', async () => {

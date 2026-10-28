@@ -5,7 +5,7 @@ import mongoose, { Types } from 'mongoose';
 import { action } from '@/lib/action';
 import { writeAudit } from '@/lib/audit';
 import { requireRoomHost, roomAccess } from '@/lib/auth/access';
-import { endLiveSession } from '@/lib/data/live';
+import { answerPollAs, endLiveSession } from '@/lib/data/live';
 import { settleRecordings } from '@/lib/data/recordings';
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
@@ -23,7 +23,6 @@ import {
 } from '@/lib/integrations/live';
 import { Enrollment } from '@/lib/models/enrollment';
 import { LiveSession } from '@/lib/models/live-session';
-import { PollAnswer } from '@/lib/models/poll-answer';
 import { queueLiveControl } from '@/lib/queue';
 import { ASSIGNABLE_ROLES } from '@/lib/schemas/common';
 import {
@@ -348,16 +347,7 @@ export const answerPoll = action(
       throw new AppError('FORBIDDEN', 'Only the people taking part answer a poll.');
     }
     await liveRoom(sessionId);
-    const open = await LiveSession.exists({
-      _id: sessionId,
-      polls: { $elemMatch: { _id: pollId, status: 'open', 'options._id': optionId } },
-    });
-    if (!open) throw new AppError('CLOSED', 'This poll has ended.');
-    await PollAnswer.updateOne(
-      { pollId, userId: viewer.id },
-      { $set: { optionId }, $setOnInsert: { sessionId } },
-      { upsert: true },
-    );
+    await answerPollAs(sessionId, pollId, optionId, viewer.id);
     refresh();
   },
 );

@@ -313,6 +313,22 @@ export type RoomPoll = {
   mine: string | null;
 };
 
+// M03c T6, T15: an answer, or a changed one, from someone taking part — signed in, or in a meeting by their link (a
+// guest's id, A-225). Only while the poll is open and the option is one of its own.
+export async function answerPollAs(sessionId: string, pollId: string, optionId: string, personId: string) {
+  const open = await LiveSession.exists({
+    _id: sessionId,
+    status: 'live',
+    polls: { $elemMatch: { _id: pollId, status: 'open', 'options._id': optionId } },
+  });
+  if (!open) throw new AppError('CLOSED', 'This poll has ended.');
+  await PollAnswer.updateOne(
+    { pollId, userId: personId },
+    { $set: { optionId }, $setOnInsert: { sessionId } },
+    { upsert: true },
+  );
+}
+
 export async function roomPolls(
   doc: Pick<LiveSessionDoc, 'polls'>,
   viewerId: string,
