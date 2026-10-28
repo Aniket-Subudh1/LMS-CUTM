@@ -23,6 +23,13 @@ const levelPct = (fallback: number) =>
     .min(0, 'Use a percentage from 0 to 100.')
     .max(100, 'Use a percentage from 0 to 100.')
     .default(fallback);
+const whole = (fallback: number, min: number, max: number, unit: string) =>
+  z.coerce
+    .number({ error: `Enter a number of ${unit}.` })
+    .int(`Use whole ${unit}.`)
+    .min(min, `Use ${min} to ${max} ${unit}.`)
+    .max(max, `Use ${min} to ${max} ${unit}.`)
+    .default(fallback);
 const weight = (fallback: number) =>
   z.coerce
     .number({ error: 'Enter a weight.' })
@@ -413,6 +420,42 @@ export const SETTINGS = {
       defaultTargetLevel: 'The value every course outcome is meant to reach; a course outcome at or above it is met.',
     },
   },
+  engagement: {
+    // M10 (07 §7): the team's proposed values until the client confirms what engagement must mean (Q-26).
+    schema: z
+      .object({
+        windowDays: whole(28, 7, 90, 'days'),
+        attendanceWeight: whole(30, 0, 100, 'points'),
+        videoWeight: whole(20, 0, 100, 'points'),
+        timelinessWeight: whole(25, 0, 100, 'points'),
+        practiceWeight: whole(15, 0, 100, 'points'),
+        activityWeight: whole(10, 0, 100, 'points'),
+        highBand: whole(70, 1, 100, 'points'),
+        mediumBand: whole(40, 1, 100, 'points'),
+        trendDelta: whole(10, 1, 50, 'points'),
+      })
+      .superRefine((e, ctx) => {
+        const fail = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+        if (e.attendanceWeight + e.videoWeight + e.timelinessWeight + e.practiceWeight + e.activityWeight === 0) {
+          fail('activityWeight', 'Give at least one signal a weight.');
+        }
+        if (e.mediumBand >= e.highBand) fail('mediumBand', `Use less than ${e.highBand}, where high starts.`);
+      }),
+    label: 'Engagement',
+    description: 'How a student’s engagement score, band and trend are worked out for their teachers each night.',
+    fieldHelp: {
+      windowDays: 'The score looks at this many days up to today; the trend compares it with the same number before.',
+      attendanceWeight: 'Live classes attended out of those held in the window.',
+      videoWeight: 'Share of every published video watched, since the course began.',
+      timelinessWeight: 'Assessments handed in on time out of those that closed in the window.',
+      practiceWeight: 'Quiz attempts and code runs, against the class’s most active students.',
+      activityWeight: 'Days with any study, against the class’s most active students.',
+      highBand: 'A score from this is high.',
+      mediumBand: 'A score from this, below high, is medium; below it is low.',
+      trendDelta:
+        'How many points the score must gain or lose against the window before to count as rising or falling.',
+    },
+  },
 } as const;
 
 export const settingsKey = z.enum([
@@ -425,6 +468,7 @@ export const settingsKey = z.enum([
   'projects',
   'grading',
   'attainment',
+  'engagement',
 ]);
 export type SettingsKey = z.infer<typeof settingsKey>;
 export type SettingsValue<K extends SettingsKey> = z.infer<(typeof SETTINGS)[K]['schema']>;

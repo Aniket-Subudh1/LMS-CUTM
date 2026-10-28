@@ -22,6 +22,7 @@ const ICON: Record<SettingsKey, PageIconName> = {
   projects: 'code',
   grading: 'diploma',
   attainment: 'outcomes',
+  engagement: 'people',
 };
 
 export default function SettingsPage() {

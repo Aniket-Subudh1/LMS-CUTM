@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { getRunnerLanguages, getSettingsPage, type SettingsPage } from '@/lib/data/settings';
 import { ATTAINMENT_EXAMPLE, computeOfferingAttainment } from '@/lib/domain/attainment';
+import { engagementBand, engagementScore } from '@/lib/domain/engagement';
 import { coursePercentage, RUBRICS } from '@/lib/domain/evaluation';
 import { gradeFor } from '@/lib/domain/grades';
 import { cn } from '@/lib/cn';
@@ -33,7 +34,8 @@ export default function SettingPage({ params }: PageProps<'/admin/settings/[key]
 }
 
 // Each settings key has its own form (06 §7): M02's `lessons`, M01b's `evaluation`, M03's `attendance`, M04b's
-// `codeRunner` and `proctoring`, M06's `ceTrend`, M07's `projects`, M08's `grading`.
+// `codeRunner` and `proctoring`, M06's `ceTrend`, M07's `projects`, M08's `grading`, M09's `attainment`, M10's
+// `engagement`.
 async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>['params'] }) {
   const key = settingsKey.safeParse((await params).key);
   if (!key.success) notFound();
@@ -56,6 +58,8 @@ async function Setting({ params }: { params: PageProps<'/admin/settings/[key]'>[
       return <Grading page={await getSettingsPage('grading')} />;
     case 'attainment':
       return <Attainment page={await getSettingsPage('attainment')} />;
+    case 'engagement':
+      return <Engagement page={await getSettingsPage('engagement')} />;
   }
 }
 
@@ -393,6 +397,107 @@ function Attainment({ page }: { page: SettingsPage<'attainment'> }) {
               </p>
             </div>
           </ActionForm>
+        </Section>
+      </div>
+    </>
+  );
+}
+
+// M10 (07 §7): the window, each signal's weight, the bands and the trend's change; then 07 §7's two examples worked
+// out with the saved values.
+function Engagement({ page }: { page: SettingsPage<'engagement'> }) {
+  const v = page.value;
+  const signals = { attendance: 0.75, video: 0.6, timeliness: 0.75, practice: 0.75, activity: 0.5 };
+  const examples = [
+    { label: 'Every signal', signals },
+    { label: 'No live classes yet', signals: { ...signals, attendance: null } },
+  ].map((e) => {
+    const score = engagementScore(e.signals, v);
+    return { ...e, score, band: engagementBand(score, v) };
+  });
+  const number = (name: keyof typeof v, label: string, min: number, max: number, unit: string) => (
+    <Field name={name} label={label} hint={`${page.fieldHelp[name]} Recommended: ${page.defaults[name]} ${unit}.`}>
+      <Input
+        name={name}
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
+        required
+        defaultValue={v[name]}
+        className="tabular-nums"
+      />
+    </Field>
+  );
+  const group = (legend: string, help: string, fields: ReactNode) => (
+    <fieldset className="grid gap-4">
+      <legend className="mb-1 grid gap-0.5">
+        <span className="font-semibold">{legend}</span>
+        <span className="text-muted-foreground text-sm">{help}</span>
+      </legend>
+      <div className="grid gap-4 sm:grid-cols-3">{fields}</div>
+    </fieldset>
+  );
+  return (
+    <>
+      <Header page={page} icon={<PageIcon name="people" />} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Section
+          icon={<PageIcon name="people" className="size-8" />}
+          title="How engagement is worked out"
+          description={`${changed(page)} A proposal until the university confirms it.`}
+        >
+          <ActionForm
+            action={saveSettings}
+            submitLabel="Save"
+            successMessage="Saved. Scores follow this from the next nightly run, or when a teacher works them out again."
+          >
+            <input type="hidden" name="key" value={page.key} />
+            {group(
+              'Days looked at',
+              'Only what a student did in these days counts, except videos, which count since the course began.',
+              number('windowDays', 'Window', 7, 90, 'days'),
+            )}
+            {group(
+              'Weights',
+              'How much each signal counts. A signal that does not apply yet, such as attendance before the first live class, is left out and the others share its weight.',
+              <>
+                {number('attendanceWeight', 'Live attendance', 0, 100, 'points')}
+                {number('videoWeight', 'Videos watched', 0, 100, 'points')}
+                {number('timelinessWeight', 'On-time work', 0, 100, 'points')}
+                {number('practiceWeight', 'Practice', 0, 100, 'points')}
+                {number('activityWeight', 'Active days', 0, 100, 'points')}
+              </>,
+            )}
+            {group(
+              'Bands and trend',
+              'The score is out of 100.',
+              <>
+                {number('highBand', 'High from', 1, 100, 'points')}
+                {number('mediumBand', 'Medium from', 1, 100, 'points')}
+                {number('trendDelta', 'Change that counts', 1, 50, 'points')}
+              </>,
+            )}
+          </ActionForm>
+        </Section>
+        <Section
+          icon={<PageIcon name="people" className="size-8" />}
+          title="Worked example"
+          description="With the values saved now."
+        >
+          <p className="text-muted-foreground text-[0.8125rem]">
+            6 of 8 live classes, 60 % of the videos, 3 of 4 assessments on time, 12 practice runs where the class’s most
+            active do 16, and 10 active days where they do 20.
+          </p>
+          <ul className="grid gap-2 text-[0.8125rem]">
+            {examples.map((e) => (
+              <li key={e.label}>
+                {e.label}: <b>{e.score ?? '—'}</b>
+                {e.band && `, ${e.band}`}
+              </li>
+            ))}
+          </ul>
         </Section>
       </div>
     </>

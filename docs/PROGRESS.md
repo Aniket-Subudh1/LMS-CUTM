@@ -3685,3 +3685,27 @@ Request: "make the design of the email templates much better and stylish … pro
 - `npx vitest run --project integration tests/integration/meetings.test.ts tests/integration/tests.test.ts tests/integration/mail-worker.test.ts`: `Test Files 3 passed (3)`, `Tests 39 passed (39)`.
 - Every template rendered to HTML and screenshotted at 420 px in Chromium (Playwright): invitation (guest and member), update, cancellation, account, reset, guest code, test invitation, course plan.
 - The Google Calendar link answers 200 with the event's fields.
+
+### 2026-10-28 · M10/T1 The engagement setting and the pure functions · Cursor agent, at Aniket's request
+
+Request: "plan to complete m10 … and improve current dashboard"; the plan was approved with two decisions: Home gets a mock-up round before it is built, and students do not see engagement (Q-29 and A-19 stay as they are).
+
+**Created** (*changed*)
+- `lib/schemas/engagement.ts`: the bands (`high`, `medium`, `low`), the trends (`rising`, `steady`, `falling`, `new`) and the five signals.
+- *`lib/schemas/settings.ts`*: the `engagement` key (06 §7). Its weights are flat fields (`attendanceWeight` …), so the form posts them as they are; they must add up to more than 0, and medium must start below high. Its parser goes in *`lib/data/settings.ts`*, its card in *`app/(app)/admin/settings/page.tsx`*.
+- **Settings › Engagement**, in *`app/(app)/admin/settings/[key]/page.tsx`*: the window, the five weights, the bands and the change that counts, and 07 §7's two examples worked out with the saved values.
+- `lib/domain/engagement.ts`: `engagementWindows`, `p90`, `engagementSignals`, `signalWeights`, `engagementScore`, `engagementBand`, `engagementTrend`.
+- `lib/domain/engagement.test.ts`: every vector of 07 §7 (69.5 → 70 high; no live classes 67.14 → 67 medium; nothing applicable → null), the P90 examples, the band boundaries, the trend, the windows, and the setting's defaults and rules.
+- *06 §7*: the key's field names and rules.
+
+**Not done** — T2–T8 follow.
+
+**Assumptions**
+- The window's days are IST days: the current one runs from the first day's midnight to now, the previous one from `windowDays` earlier to the current one's start.
+- A video's watched seconds count up to its length (07 §7's min); a lesson without a length yet (not transcoded) is not a video lesson for the signal.
+
+**Open questions** — none new.
+
+**Verification**
+- `npx vitest run lib/domain/engagement.test.ts` → `Tests 26 passed (26)`.
+- `npm run typecheck` → exit 0; `npx eslint` on the changed files → no problems; `npx vitest run --project unit lib/schemas lib/domain` → `Tests 630 passed (630)`.
