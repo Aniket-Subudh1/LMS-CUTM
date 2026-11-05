@@ -524,13 +524,11 @@ function Preview({ lesson }: { lesson: LessonDetail }) {
   if (lesson.kind === 'video' && lesson.fileKey) {
     return (
       <section className="surface overflow-hidden p-2">
-        <video
-          controls
-          playsInline
-          preload="metadata"
+        <VideoPlayer
           src={fileSrc(lesson.fileKey)}
+          lowSrc={lesson.transcode === 'ready' && lesson.lowKey ? fileSrc(lesson.lowKey) : null}
           poster={poster ? fileSrc(poster) : undefined}
-          className="aspect-video w-full rounded-md bg-black"
+          title={lesson.title}
         />
       </section>
     );
@@ -640,6 +638,7 @@ function Player({
               src={fileSrc(lesson.fileKey)}
               lowSrc={lesson.transcode === 'ready' && lesson.lowKey ? fileSrc(lesson.lowKey) : null}
               poster={poster ? fileSrc(poster) : undefined}
+              title={lesson.title}
             />
             <div className="grid gap-1.5 px-2 pb-1.5">
               <Progress value={lesson.progressPct} className="bg-muted h-1.5" aria-label="Watched" />

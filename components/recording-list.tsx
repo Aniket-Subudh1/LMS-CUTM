@@ -1,5 +1,6 @@
 import { PageIcon } from '@/components/page-icon';
 import { Section } from '@/components/section';
+import { VideoPlayer } from '@/components/video-player';
 import type { RecordingRow } from '@/lib/data/live';
 import { formatDateTime, formatDuration } from '@/lib/format';
 
@@ -17,12 +18,7 @@ export function RecordingList({ recordings, noun }: { recordings: RecordingRow[]
         {recordings.map((r) => (
           <li key={r.key} className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             {/* The browser fetches only the opening part until someone plays it. */}
-            <video
-              controls
-              preload="metadata"
-              src={`/api/files/${r.key}`}
-              className="aspect-video w-full rounded-md bg-black"
-            />
+            <VideoPlayer src={`/api/files/${r.key}`} />
             <dl className="grid content-start gap-3 text-[0.8125rem]">
               <div className="grid gap-0.5">
                 <dt className="text-muted-foreground text-xs">Recorded</dt>
