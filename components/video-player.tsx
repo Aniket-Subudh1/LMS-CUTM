@@ -52,9 +52,14 @@ export function VideoPlayer({
   const start = useRef<number | null>(null);
   const last = useRef(0);
   const resume = useRef<{ at: number; play: boolean } | null>(null);
+  const retried = useRef(false);
+  const wantsPlay = useRef(false);
   const device = useSyncExternalStore(subscribe, deviceQuality, () => 'hd');
   const [choice, setChoice] = useState<Quality | null>(null);
+  const [fresh, setFresh] = useState(0);
+  const [failed, setFailed] = useState(false);
   const quality = lowSrc ? (choice ?? device) : 'hd';
+  const file = quality === 'low' && lowSrc ? lowSrc : src;
 
   const close = () => {
     if (start.current !== null && last.current > start.current) pending.current.push([start.current, last.current]);
@@ -69,6 +74,26 @@ export function VideoPlayer({
     pending.current = [];
   };
   const flushLater = useEffectEvent(flush);
+
+  // The signed link behind the file lasts 10 minutes (09 §5), so a later seek or reconnect fails: ask /api/files for a
+  // new one, which checks access again, and carry on from the same place. Once only, until it loads.
+  function recover(node: HTMLVideoElement) {
+    if (retried.current || node.error?.code === MediaError.MEDIA_ERR_DECODE) {
+      setFailed(true);
+      return;
+    }
+    retried.current = true;
+    flush();
+    // Not node.paused: the browser sets that before this event, and its pause event comes after.
+    resume.current = { at: node.currentTime, play: wantsPlay.current };
+    setFresh((n) => n + 1);
+  }
+  const recoverLater = useEffectEvent(recover);
+
+  // A file that failed before hydration fired no onError.
+  useEffect(() => {
+    if (video.current?.error) recoverLater(video.current);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(flushLater, BEACON_MS);
@@ -100,7 +125,7 @@ export function VideoPlayer({
         playsInline
         preload="metadata"
         poster={poster}
-        src={quality === 'low' && lowSrc ? lowSrc : src}
+        src={fresh > 0 ? `${file}?fresh=${fresh}` : file}
         className="aspect-video w-full rounded-md bg-black"
         onTimeUpdate={(event) => {
           const now = event.currentTarget.currentTime;
@@ -112,15 +137,29 @@ export function VideoPlayer({
           last.current = now;
         }}
         onSeeking={close}
-        onPause={flush}
+        onPlay={() => {
+          wantsPlay.current = true;
+        }}
+        onPause={() => {
+          wantsPlay.current = false;
+          flush();
+        }}
         onEnded={flush}
+        onError={(event) => recover(event.currentTarget)}
         onLoadedMetadata={(event) => {
+          retried.current = false;
+          setFailed(false);
           if (!resume.current) return;
           event.currentTarget.currentTime = resume.current.at;
           if (resume.current.play) void event.currentTarget.play();
           resume.current = null;
         }}
       />
+      {failed && (
+        <p role="alert" className="text-destructive text-sm">
+          This video could not be played. Check your connection and reload the page.
+        </p>
+      )}
       {lowSrc && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <p className="text-muted-foreground">
