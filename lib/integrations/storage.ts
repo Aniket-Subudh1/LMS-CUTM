@@ -29,8 +29,13 @@ function integrationFailure(operation: string, fields: Record<string, unknown>, 
   throw new AppError('INTEGRATION', 'Object storage is unavailable. Try again in a minute.');
 }
 
-function sanitizeInlineName(fileName: string): string {
-  return fileName.replace(/["\\\r\n]/g, '');
+// RFC 6266. S3 answers 400 to a header it cannot say in ISO-8859-1: an accent kept as its own character (macOS names),
+// Odia, Hindi, an emoji. So `filename` is plain ASCII and `filename*` carries the real name for the browser.
+function inlineDisposition(fileName: string): string {
+  const name = fileName.toWellFormed();
+  const plain = name.normalize('NFD').replace(/[^\x20-\x7e]|["\\]/g, '') || 'file';
+  const exact = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `inline; filename="${plain}"; filename*=UTF-8''${exact}`;
 }
 
 export async function presignUpload(key: string, contentType: string, size: number): Promise<string> {
@@ -57,7 +62,7 @@ export async function presignDownload(key: string, fileName: string): Promise<st
       new GetObjectCommand({
         Bucket: env().S3_BUCKET,
         Key: key,
-        ResponseContentDisposition: `inline; filename="${sanitizeInlineName(fileName)}"`,
+        ResponseContentDisposition: inlineDisposition(fileName),
       }),
       { expiresIn: 600 },
     );
