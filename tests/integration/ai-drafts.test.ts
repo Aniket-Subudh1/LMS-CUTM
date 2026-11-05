@@ -2,11 +2,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Types } from 'mongoose';
 import {
   addFromBank,
+  approveTestDrafts,
   draftIntoTest,
   publishAssessment,
   saveItem,
 } from '@/app/(app)/courses/[offeringId]/assessments/actions';
-import { draftWithAi, saveBankItem } from '@/app/(app)/tests/bank/actions';
+import { approveBankDrafts, draftWithAi, saveBankItem } from '@/app/(app)/tests/bank/actions';
 import { getBuilder } from '@/lib/data/assessments';
 import { getBank, pickFromBank } from '@/lib/data/bank';
 import { db } from '@/lib/db';
@@ -157,6 +158,59 @@ describe('AI drafts in the question bank (TP-10)', () => {
     expect((await pickFromBank(w.offeringId, ['mcq'], {})).map((row) => row.id)).toEqual([String(first._id)]);
   });
 
+  it('are approved all together, in this bank only, unless more arrived since the teacher looked', async () => {
+    const w = await world();
+    const other = await world();
+    ai.configured = true;
+    ai.draftQuestions.mockResolvedValueOnce([draft(), draft({ question: 'What does &x give?', answer: '1' })]);
+    await signInAs(w.faculty);
+    await draftWithAi(ask({ offeringId: w.offeringId, count: '2' }));
+    await noticeFor(w.faculty._id);
+    ai.draftQuestions.mockResolvedValueOnce([draft()]);
+    await signInAs(other.faculty);
+    await draftWithAi(ask({ offeringId: other.offeringId, count: '1' }));
+    await noticeFor(other.faculty._id);
+    const before = await BankItem.find({ courseId: w.course._id }).sort({ _id: 1 }).lean();
+
+    await signInAs(w.faculty);
+    const approve = (drafts: string) => approveBankDrafts(form({ offeringId: w.offeringId, drafts }));
+    expect(await approve('1')).toMatchObject({
+      code: 'CONFLICT',
+      message: 'The AI drafts changed. Reload the page.',
+    });
+    expect((await getBank(w.offeringId, {}, 1)).stats).toMatchObject({ total: 0, drafts: 2 });
+
+    expect(await approve('2')).toMatchObject({ ok: true });
+    expect((await getBank(w.offeringId, {}, 1)).stats).toMatchObject({ total: 2, drafts: 0 });
+    expect(await pickFromBank(w.offeringId, ['mcq'], {})).toHaveLength(2);
+    // Only the mark comes off: the AI's words and keys are what was approved.
+    const after = await BankItem.find({ courseId: w.course._id }).sort({ _id: 1 }).lean();
+    expect(after.map((item) => item.prompt)).toEqual(before.map((item) => item.prompt));
+    expect(after.map((item) => item.answer)).toEqual(before.map((item) => item.answer));
+    expect(await BankItem.countDocuments({ courseId: other.course._id, aiDraft: true })).toBe(1);
+
+    // Those who only read a bank, and students, cannot approve its drafts.
+    await signInAs(other.hod);
+    expect(await approveBankDrafts(form({ offeringId: other.offeringId, drafts: '1' }))).toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    await signInAs(await makeUser());
+    expect(await approveBankDrafts(form({ offeringId: other.offeringId, drafts: '1' }))).toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    expect(await BankItem.countDocuments({ courseId: other.course._id, aiDraft: true })).toBe(1);
+
+    // A person's own bank is approved on its own; a course's drafts stay as they are.
+    const own = await world();
+    ai.draftQuestions.mockResolvedValueOnce([draft({ outcomes: [] })]);
+    await signInAs(own.faculty);
+    await draftWithAi(ask({ count: '1' }));
+    await noticeFor(own.faculty._id);
+    expect(await approveBankDrafts(form({ drafts: '1' }))).toMatchObject({ ok: true });
+    expect(await BankItem.find({ ownerId: own.faculty._id }).lean()).toMatchObject([{ aiDraft: false }]);
+    expect(await BankItem.countDocuments({ courseId: other.course._id, aiDraft: true })).toBe(1);
+  });
+
   it('are refused without the AI key, to those who only read the bank, and for another course’s outcomes', async () => {
     const w = await world();
     await signInAs(w.faculty);
@@ -232,7 +286,7 @@ describe('AI drafts straight into a test (TP-10)', () => {
     await signInAs(w.faculty);
     expect(await draftIntoTest(ask({ assessmentId: aid, count: '2', 'coIds[]': [w.co1] }))).toMatchObject({ ok: true });
     expect(await noticeFor(w.faculty._id)).toMatchObject({
-      title: `2 AI drafts on “Pointers in C” added to “${quiz.title}” — review each before publishing`,
+      title: `2 AI drafts on “Pointers in C” added to “${quiz.title}” — review them before publishing`,
       href: `/courses/${w.offeringId}/assessments/${aid}/edit`,
     });
     expect(ai.draftQuestions).toHaveBeenLastCalledWith(
@@ -258,6 +312,41 @@ describe('AI drafts straight into a test (TP-10)', () => {
     expect(await review(aid, String(second._id), second.prompt)).toMatchObject({ ok: true });
     expect(await publishAssessment(form({ assessmentId: aid }))).toMatchObject({ ok: true });
     expect((await Assessment.findById(aid).lean())?.maxMarks).toBe(4);
+  });
+
+  it('are approved all together, and publishing still checks each question’s outcome', async () => {
+    const w = await world();
+    const credit = await makeOffering({ courseId: w.course._id, facultyIds: [w.faculty._id], category: 'ugc' });
+    ai.configured = true;
+    ai.draftQuestions.mockResolvedValueOnce([draft(), draft({ question: 'What does &x give?', answer: '1' })]);
+    const quiz = await makeAssessment({ offeringId: String(credit._id), status: 'draft', createdBy: w.faculty._id });
+    const aid = String(quiz._id);
+    await signInAs(w.faculty);
+    await draftIntoTest(ask({ assessmentId: aid, count: '2' }));
+    await noticeFor(w.faculty._id);
+    const before = await Assessment.findById(aid).lean();
+
+    expect(await approveTestDrafts(form({ assessmentId: aid, drafts: '1' }))).toMatchObject({ code: 'CONFLICT' });
+    expect((await getBuilder(aid)).aiDrafts).toEqual([1, 2]);
+
+    await signInAs(w.hod);
+    await expect(approveTestDrafts(form({ assessmentId: aid, drafts: '2' }))).rejects.toMatchObject({
+      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
+    });
+    await signInAs(w.faculty);
+    expect(await approveTestDrafts(form({ assessmentId: aid, drafts: '2' }))).toMatchObject({ ok: true });
+    expect((await getBuilder(aid)).aiDrafts).toEqual([]);
+    // Only the mark comes off: the AI's words, keys and marks are what was approved.
+    const after = await Assessment.findById(aid).lean();
+    expect(after?.items.map((item) => item.aiDraft)).toEqual([false, false]);
+    expect(after?.items.map((item) => item.prompt)).toEqual(before?.items.map((item) => item.prompt));
+    expect(after?.items.map((item) => item.answer)).toEqual(before?.items.map((item) => item.answer));
+    expect(after?.maxMarks).toBe(before?.maxMarks);
+    // No outcome was asked for, so a credit course's test is still held back.
+    expect(await publishAssessment(form({ assessmentId: aid }))).toMatchObject({
+      code: 'VALIDATION',
+      message: 'Tag questions 1, 2 with a course outcome before publishing.',
+    });
   });
 
   it('are refused for a published test, a kind it does not use, another course’s outcomes, a reader, or without the key', async () => {

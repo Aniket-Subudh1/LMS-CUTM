@@ -18,7 +18,15 @@ import { Offering } from '@/lib/models/offering';
 import { queueDraftQuestions } from '@/lib/queue';
 import { limit } from '@/lib/rate-limit';
 import { SuggestItemTags } from '@/lib/schemas/ai';
-import { BANK_LIMITS, BankItemRef, CopyToBank, DraftQuestions, ImportBankCsv, SaveBankItem } from '@/lib/schemas/bank';
+import {
+  ApproveBankDrafts,
+  BANK_LIMITS,
+  BankItemRef,
+  CopyToBank,
+  DraftQuestions,
+  ImportBankCsv,
+  SaveBankItem,
+} from '@/lib/schemas/bank';
 
 const STAFF = ['admin', 'faculty'] as const;
 
@@ -84,6 +92,18 @@ export const draftWithAi = action({ input: DraftQuestions, roles: STAFF }, async
     level: input.level,
     coIds: input['coIds[]'],
   });
+});
+
+// TP-10: "Approve all" accepts every draft in the bank at once, as the AI wrote it, instead of saving each in its dialog.
+export const approveBankDrafts = action({ input: ApproveBankDrafts, roles: STAFF }, async (input, viewer) => {
+  const bank = await requireBankEditor(viewer, input.offeringId);
+  await db();
+  const waiting = { ...bank.filter, aiDraft: true };
+  if ((await BankItem.countDocuments(waiting)) !== input.drafts) {
+    throw new AppError('CONFLICT', 'The AI drafts changed. Reload the page.');
+  }
+  await BankItem.updateMany(waiting, { $set: { aiDraft: false } });
+  refresh();
 });
 
 // M09 (CPP-07): outcomes and a Bloom level for the question being written, from the dialog's unsaved text; nothing is

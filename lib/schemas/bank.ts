@@ -51,6 +51,10 @@ export const DraftQuestions = z.object({
 export type DraftQuestions = z.output<typeof DraftQuestions>;
 // The builder's "Create with AI": the drafts go straight into the draft test being edited.
 export const DraftIntoTest = DraftQuestions.omit({ offeringId: true }).extend({ assessmentId: objectId });
+// "Approve all": `drafts` is how many the teacher was looking at, so a batch that arrived since is not approved unseen.
+const draftsSeen = z.coerce.number().int().min(1).max(BANK_LIMITS.perBank);
+export const ApproveBankDrafts = z.object({ ...scope, drafts: draftsSeen });
+export const ApproveTestDrafts = z.object({ assessmentId: objectId, drafts: draftsSeen });
 
 // What the AI writes for each draft: plain fields only (a structured output cannot carry the CSV row's checks), checked
 // afterwards as an imported row is. `answer` is said as a CSV row says it.

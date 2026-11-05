@@ -275,7 +275,7 @@ Assessment **modes**: `quiz` · `written_test` · `assignment` · `learning_reco
 | partialCredit | B | M04b; msq, fill_blank, matching, ordering only |
 | explanation | RichText? | M04b; shown to graders now, to takers with results when the release rules say so (phase E) |
 | sectionId | Id? | M04b; the section it belongs to (all of them once any section exists) |
-| aiDraft | B | TP-10 (28 Oct 2026): added by the builder's "Create with AI" and not yet saved by a teacher in its dialog; `publishAssessment` refuses while any is set, and drafts are added only to a `draft` assessment. Not in a paper's copy |
+| aiDraft | B | TP-10 (28 Oct 2026): added by the builder's "Create with AI" and not yet saved by a teacher in its dialog or accepted with "Approve all AI drafts" (5 Nov 2026); `publishAssessment` refuses while any is set, and drafts are added only to a `draft` assessment. Not in a paper's copy |
 | options | `[{ _id: Id, text: S }]?` | mcq/msq/ordering: 2–8, text ≤ 500; new ids on every save, which is allowed only before any attempt (A-108) |
 | answer | `{ optionId? , optionIds?, value?, tolerance?, truth? }?` | mcq: optionId; msq: optionIds; ordering: optionIds in the right order; numeric: value + tolerance ≥ 0; true_false: truth. **Never sent to students** |
 | template, blanks | S?, `[{ _id, accepted: [S] }]?` | fill_blank: the sentence with `___` per blank (≤ 10 blanks); what each blank accepts (≤ 10 answers). **`accepted` never sent to students** |
@@ -324,7 +324,7 @@ Indexes: `{ assessmentId: 1, studentId: 1, attemptNo: 1 }` unique (two tabs star
 Invariants: only one `in_progress` attempt per (assessment, student). Every score change is audited (`submission.graded`, with before/after marks). Learning and lab **records** are submissions of `learning_record`/`lab_record` assessments. The `testStats` job's writes (`rank`, `percentile`, `similar`) and the certificate code leave `updatedAt` alone, so it moves only when the attempt itself does (TP-12 uses it to tell a made scorecard is out of date).
 
 ### 5.2d `questionBank` (M04b, TP-05)
-`courseId` Id? · `ownerId` Id? (exactly one: a catalogue course's bank, shared by every offering of the course in any term; or one member of staff's own, for their standalone tests) · the Item fields above (no `sectionId`) · `usedCount` N (papers that drew it) · `aiDraft` B (M04b, TP-10: written by the AI and not reviewed; no paper draws it and "From the bank" does not offer it until a teacher saves it in its dialog) · `createdBy` Id · timestamps. Collection name `questionBank`.
+`courseId` Id? · `ownerId` Id? (exactly one: a catalogue course's bank, shared by every offering of the course in any term; or one member of staff's own, for their standalone tests) · the Item fields above (no `sectionId`) · `usedCount` N (papers that drew it) · `aiDraft` B (M04b, TP-10: written by the AI and not reviewed; no paper draws it and "From the bank" does not offer it until a teacher saves it in its dialog or accepts the bank's drafts with "Approve all AI drafts" (5 Nov 2026)) · `createdBy` Id · timestamps. Collection name `questionBank`.
 Indexes: `{ courseId: 1, createdAt: -1 }` and `{ ownerId: 1, createdAt: -1 }` (partial, the bank page) · `{ courseId: 1, type: 1, difficulty: 1 }` · `{ ownerId: 1, type: 1, difficulty: 1 }` (a draw's candidates).
 Invariants: at most 5,000 per bank (`BANK_LIMITS.perBank`), so a draw's candidates are one bounded read. A course bank's COs are its course's. Deleting a bank question changes no paper (each keeps its own copy).
 

@@ -4011,3 +4011,24 @@ Aniket asked for a generated mark wherever the same picture was standing in for 
 **Open questions** — none.
 
 **Verification** — `npx tsc --noEmit` clean; eslint on the changed TSX clean, including the eight files Prettier rewrote. In the browser, signed in as an admin: Continuous evaluation tiles are the course stack, the student with a lanyard, the bar chart and the gold down arrow, each loaded at 128 px; the tabs are the score card, the three rings and the engagement ring. The Machine Learning header chips are the stacked slabs (modules), the folder (lessons), the lanyard (students) and the hex token (credits). Settings cards are distinct: play slab, sealed document, attendance, code brackets, webcam, cubes, medal, rings. The sidebar Tests item is the stopwatch; sign out stays the line arrow.
+
+### 2026-11-05 · M04b/TP-10 Approve all the AI's drafts at once · Claude Code
+
+Aniket asked for one button to approve the AI's questions, because opening and saving each one is too slow.
+
+**Created** — no new files.
+
+**Changed** — `approveBankDrafts` in `app/(app)/tests/bank/actions.ts` and `approveTestDrafts` in `app/(app)/courses/[offeringId]/assessments/actions.ts`, with `ApproveBankDrafts` and `ApproveTestDrafts` in `lib/schemas/bank.ts`. "Approve all AI drafts (n)" in `components/question-bank.tsx` beside Import CSV and in `components/assessment-builder.tsx` beside Create with AI, both shown only to those who can edit and only while drafts wait, both asking first. The words that said each draft must be opened: the two Create with AI descriptions and the test's `bank.drafted` notice in `worker/jobs/compute.ts` ("review them before publishing"). A comment in `lib/models/bank-item.ts`. Tests in `tests/integration/ai-drafts.test.ts`. 05 §5.1 and §5.2d, 06 §6.2 (the AI drafts paragraph), 08 route map, 09 §12.
+
+**Not done** — The list rows still do not show a question's answer, so approving all accepts answers the teacher has not opened; the confirmation says so. No e2e spec was added and the e2e suite was not run; the browser walk below stands in for it, one time. The production build was not run.
+
+**Assumptions** —
+- "All" means every draft in the bank, also those on other pages or hidden by a search, and the confirmation says so. A search does not narrow it.
+- The button sends how many drafts the teacher was looking at. If that is no longer how many wait, nothing is approved and it says "The AI drafts changed. Reload the page.", so a batch the worker finished after the page loaded is not accepted unseen. It compares counts, so one draft deleted and another added in the same moment would pass.
+- Not written to the audit log, as saving a draft in its dialog is not: AGENTS law 7 names marks, attendance, schemes, locks and syncs, and publishing a test is already audited. Say if bulk approval should be recorded.
+- Approving needs no AI key, because it does not call the AI.
+- A draft approved in a credit course's test still needs its outcome: `publishAssessment` refuses until it has one.
+
+**Open questions** — none.
+
+**Verification** — `npm run check` exit 0 (eslint, `tsc`, 42 unit files, 680 tests). `TEST_MONGODB_URI='mongodb://localhost:27017/?replicaSet=rs0&directConnection=true' npx vitest run --project integration` exit 0 (30 files, 366 tests), on a throwaway local Redis; the new tests cover approving, a stale count, another bank's drafts staying, a personal bank, an HoD and a student refused, a test's marks, words and keys unchanged, and a credit course's test still held back for its outcomes. Browser walk with Playwright on `next dev` and the local e2e database, signed in as faculty1, drafts placed by hand in the database: a personal bank's button read "Approve all AI drafts (3)"; a draft added while the page was open made the click refuse and left 4 waiting (the message was then longer and crowded the section header, so it was shortened; the integration test checks the short wording, the browser did not see it); after a reload it read (4), approved them, and the button and chips went away. A draft test's button read (2) and approved both. At 390 px the page does not overflow. The only console error was a hydration warning about `caret-color`, which Playwright's screenshot adds. The seed data was put back afterwards.

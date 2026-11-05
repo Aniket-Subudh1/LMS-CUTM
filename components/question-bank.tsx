@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+  ChecksIcon,
   DownloadSimpleIcon,
   PencilSimpleIcon,
   PlusIcon,
@@ -8,8 +9,14 @@ import {
   UploadSimpleIcon,
 } from '@phosphor-icons/react/ssr';
 import { z } from 'zod';
-import { deleteBankItem, draftWithAi, importBankCsv, saveBankItem } from '@/app/(app)/tests/bank/actions';
-import { Field } from '@/components/action-form';
+import {
+  approveBankDrafts,
+  deleteBankItem,
+  draftWithAi,
+  importBankCsv,
+  saveBankItem,
+} from '@/app/(app)/tests/bank/actions';
+import { ActionForm, Field } from '@/components/action-form';
 import { AiDraftDialog } from '@/components/ai-draft-dialog';
 import { BloomChip } from '@/components/bloom-chip';
 import { DataTable } from '@/components/data-table';
@@ -41,7 +48,7 @@ const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 // TP-05 (mock-up "Question bank"): a course's bank, shared by every offering of the course in any term, or a member of
 // staff's own for their standalone tests. Questions are tagged so papers can be drawn by outcome, level and topic;
 // they come one by one, from a CSV, from a test ("Save to the bank"), or drafted by the AI (TP-10, mock-up C2: kept as AI
-// drafts until a teacher reviews each). Shared by the workspace tab and /tests/bank.
+// drafts until a teacher reviews each or approves them all). Shared by the workspace tab and /tests/bank.
 export async function QuestionBank({
   offeringId,
   base,
@@ -91,6 +98,23 @@ export async function QuestionBank({
         action={
           bank.canEdit && (
             <>
+              {bank.stats.drafts > 0 && (
+                <ActionForm
+                  action={approveBankDrafts}
+                  submitLabel={`Approve all AI drafts (${bank.stats.drafts})`}
+                  submitVariant="outline"
+                  submitSize="sm"
+                  submitIcon={<ChecksIcon />}
+                  confirm={{
+                    title: `Approve all AI drafts (${bank.stats.drafts})?`,
+                    message:
+                      'Every AI draft in this bank, on any page or hidden by a search, goes into use exactly as the AI wrote it, answers included. You can still edit or delete any question afterwards.',
+                  }}
+                >
+                  {scope}
+                  <input type="hidden" name="drafts" value={bank.stats.drafts} />
+                </ActionForm>
+              )}
               <Button asChild variant="outline" size="sm">
                 <Link href={here('import')} scroll={false}>
                   <UploadSimpleIcon /> Import CSV
@@ -331,7 +355,7 @@ export async function QuestionBank({
           key={open}
           action={draftWithAi}
           hidden={scope}
-          description="AI writes drafts with keys and explanations. Nothing is used until you review and accept each one."
+          description="AI writes drafts with keys and explanations. Nothing is used until you approve it, one at a time or all together."
           successMessage="Creating them now. The drafts appear here marked “AI draft” in a minute or two, and you get a notification."
           types={DRAFT_TYPES}
           max={BANK_LIMITS.draft}

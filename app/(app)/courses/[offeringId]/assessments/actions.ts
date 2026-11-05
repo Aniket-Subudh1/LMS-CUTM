@@ -70,7 +70,7 @@ import {
   UpdateAssessmentSettings,
   WaivePenalty,
 } from '@/lib/schemas/assessment';
-import { AddFromBank, DraftIntoTest } from '@/lib/schemas/bank';
+import { AddFromBank, ApproveTestDrafts, DraftIntoTest } from '@/lib/schemas/bank';
 import { SuggestMarks } from '@/lib/schemas/ai';
 import { marks as marksInput, RichTextDoc, ROLES } from '@/lib/schemas/common';
 
@@ -347,7 +347,8 @@ export const addFromBank = action({ input: AddFromBank, roles: TEACH }, async (i
 });
 
 // TP-10: the builder's "Create with AI" drafts straight into this test, in the worker (06 §6). Each waits marked as an AI
-// draft until the teacher saves it in its dialog, and publishing is refused meanwhile, so only a draft test takes them.
+// draft until the teacher saves it in its dialog or approves them all, and publishing is refused meanwhile, so only a
+// draft test takes them.
 // Only the topic, the chosen outcomes' statements and the level are sent (09 §12). Limited as AI suggestions (09 §4).
 export const draftIntoTest = action({ input: DraftIntoTest, roles: TEACH }, async (input, viewer) => {
   const assessment = await manageAssessment(viewer, input.assessmentId);
@@ -378,6 +379,21 @@ export const draftIntoTest = action({ input: DraftIntoTest, roles: TEACH }, asyn
     level: input.level,
     coIds: input['coIds[]'],
   });
+});
+
+// TP-10: "Approve all" accepts every draft in the test at once, as the AI wrote it, instead of saving each in its dialog.
+// Publishing still checks each question's outcome and rubric.
+export const approveTestDrafts = action({ input: ApproveTestDrafts, roles: TEACH }, async (input, viewer) => {
+  const assessment = await manageAssessment(viewer, input.assessmentId);
+  if (assessment.items.filter((item) => item.aiDraft).length !== input.drafts) {
+    throw new AppError('CONFLICT', 'The AI drafts changed. Reload the page.');
+  }
+  await Assessment.updateOne(
+    { _id: assessment._id },
+    { $set: { 'items.$[draft].aiDraft': false } },
+    { arrayFilters: [{ 'draft.aiDraft': true }] },
+  );
+  refresh();
 });
 
 // M04b (TP-05, TP-06): a section's name, clock, order rule, passage and draw from the bank. The first section takes

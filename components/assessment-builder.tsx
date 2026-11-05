@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   CheckCircleIcon,
   CheckSquareIcon,
+  ChecksIcon,
   DatabaseIcon,
   EnvelopeSimpleIcon,
   LockIcon,
@@ -25,6 +26,7 @@ import {
   addFromBank,
   deleteItem,
   deleteSection,
+  approveTestDrafts,
   draftIntoTest,
   publishAssessment,
   reorderItems,
@@ -120,6 +122,7 @@ export async function AssessmentBuilder({
   const aiTypes = DRAFT_TYPES.filter((type) => MODE_ITEM_TYPES[a.mode].includes(type));
   const aiRoom = Math.min(BANK_LIMITS.draft, ASSESSMENT_LIMITS.items - a.items.length);
   const createWithAi = editQuestions && a.status === 'draft' && aiTypes.length > 0 && aiRoom > 0;
+  const approveAll = editQuestions && b.aiDrafts.length > 0;
 
   const rows = a.items.map((item, i) => ({
     id: item.id,
@@ -274,12 +277,33 @@ export async function AssessmentBuilder({
                   : 'Drag to reorder. Course outcomes are optional on a non-credit course.'
             }
             action={
-              createWithAi && (
-                <Button asChild size="sm">
-                  <Link href={here('ai')} scroll={false}>
-                    <SparkleIcon /> Create with AI
-                  </Link>
-                </Button>
+              (approveAll || createWithAi) && (
+                <>
+                  {approveAll && (
+                    <ActionForm
+                      action={approveTestDrafts}
+                      submitLabel={`Approve all AI drafts (${b.aiDrafts.length})`}
+                      submitVariant="outline"
+                      submitSize="sm"
+                      submitIcon={<ChecksIcon />}
+                      confirm={{
+                        title: `Approve all AI drafts (${b.aiDrafts.length})?`,
+                        message:
+                          'Every AI draft in this test stays exactly as the AI wrote it, answers included, and no longer holds up publishing. You can still edit or delete any question before you publish.',
+                      }}
+                    >
+                      {ref}
+                      <input type="hidden" name="drafts" value={b.aiDrafts.length} />
+                    </ActionForm>
+                  )}
+                  {createWithAi && (
+                    <Button asChild size="sm">
+                      <Link href={here('ai')} scroll={false}>
+                        <SparkleIcon /> Create with AI
+                      </Link>
+                    </Button>
+                  )}
+                </>
               )
             }
           >
@@ -441,7 +465,7 @@ export async function AssessmentBuilder({
           key={open}
           action={draftIntoTest}
           hidden={ref}
-          description="AI writes drafts with keys and explanations into this test, marked “AI draft”. Open and save each to accept it; the test cannot be published until you have."
+          description="AI writes drafts with keys and explanations into this test, marked “AI draft”. Open and save each to accept it, or approve them all; the test cannot be published until you have."
           successMessage="Creating them now. They appear below marked “AI draft” in a minute or two, and you get a notification."
           types={aiTypes}
           max={aiRoom}

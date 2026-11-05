@@ -727,7 +727,7 @@ async function testStats({ assessmentId }: TestStatsJob): Promise<void> {
 // `compute/draftQuestions` (06 §6, TP-10): the AI's drafts into a bank, each checked as an imported CSV row is (one that
 // fails is dropped) and kept as an AI draft until a teacher reviews it. Only the topic, the chosen outcomes' statements
 // and the level are sent (09 §12). The teacher is told how it went, a failure included.
-// TP-10: drafts into a bank, or straight into a test that is still a draft (each marked until a teacher saves it).
+// TP-10: drafts into a bank, or straight into a test that is still a draft (each marked until a teacher accepts it).
 async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
   const { into } = job;
   const test =
@@ -817,7 +817,7 @@ async function draftBankQuestions(job: DraftQuestionsJob): Promise<void> {
   await tellTeacher(
     kept.length > 0
       ? test
-        ? `${drafted} added to “${test.title}” — review each before publishing`
+        ? `${drafted} added to “${test.title}” — review them before publishing`
         : `${drafted} ready to review`
       : items.length > 0 && test
         ? `The AI’s drafts on “${job.topic}” were not added: “${test.title}” was published or is full.`
